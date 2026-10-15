@@ -7,7 +7,7 @@ re-checked against the binary.
 
 | Format | Document | Status |
 |---|---|---|
-| All graphics types: stats, ranking, dependencies | [graphics-overview.md](graphics-overview.md) | Survey; ranks 1–10 CONFIRMED (terrain flat only) |
+| All graphics types: stats, ranking, dependencies | [graphics-overview.md](graphics-overview.md) | Survey; ranks 1–10 CONFIRMED |
 | `.256`, `*b.256` (smoothing), `.16a`, `.16` sprites | [sprites.md](sprites.md) | Decoding CONFIRMED on all game files; some draw variants open |
 | Palettes (embedded, `.pal`, `human.pal`, BMP, built in code), shade tables, day/night tint | [palettes.md](palettes.md) | CONFIRMED: all 2,973 palettes parse; FUN_00425bee conversion; text-colour users open |
 | `.bmp` | [bitmaps.md](bitmaps.md) | Verified |

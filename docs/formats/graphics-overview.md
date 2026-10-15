@@ -69,7 +69,7 @@ on.
 | 6 | `.256` | world sprites, equipment layers, cursors, UI | 1,535 | optional 1,024-byte palette; frames `{w, h, size}`; trailer `count | 0x80000000` | 8-bit indexed RLE (skip/copy/row-skip control bytes) | medium | a palette: embedded, a unit `palette<N>.pal`, or `human.pal[player]`; shade tables for lighting | CONFIRMED, [sprites](sprites.md) |
 | 7 | `b.256` | edge-smoothing overlays (not shadows) | 396 | as `.256`; the palette is usually all zero | same RLE as `.256` | medium | the main sprite's palette and frame index; 50 % blend; the Smoothing option | CONFIRMED, [sprites](sprites.md) |
 | 8 | `.16a` | icons, spell effects, UI, one font | 782 | 1,024-byte palette; frames; trailer | RLE over 16-bit words: `index << 1 | alpha << 9` | medium | the FADE16 shade table of its palette (alpha = row) | CONFIRMED, [sprites](sprites.md), [palettes §5](palettes.md) |
-| 9 | terrain (composite) | map ground | 52 tiles + `dirt.bmp` | `.alm` Tiles block (u16 per cell) → `tile<g>-<nn>.bmp` strips | 8-bit tiles × 96-row shade table | hard | `.alm` sections 1–2, tile flags, [lighting](../mechanics/lighting.md) | CONFIRMED flat (cell bits, strips, water, dirt, lit blit), [terrain](terrain.md); height-displaced blit open |
+| 9 | terrain (composite) | map ground | 52 tiles + `dirt.bmp` | `.alm` Tiles block (u16 per cell) → `tile<g>-<nn>.bmp` strips | 8-bit tiles × 96-row shade table | hard | `.alm` sections 1–2, tile flags, [lighting](../mechanics/lighting.md) | CONFIRMED (cell bits, strips, water, dirt, lit blit, signed heights, height-displaced blit), [terrain](terrain.md) |
 | 10 | unit animation (composite) | units on the map | 90 sprite sets | `units.reg` (`Palette`, phases, directions) | `.256` + `b.256` + shadows | hard | `.reg` semantics, palettes, mirroring flag, shadow shear | CONFIRMED, [units](units.md) (frame blocks, facing, mirror, placement), [reg](reg.md) |
 
 Not graphics files in this install: `.smk` video (absent, standard Smacker)
@@ -88,6 +88,6 @@ fontN.dat ──► text rendering ◄── .16 / .16a fonts + code colour tabl
 
 ## Open questions
 
-- Terrain relief: the height-displaced blit ([terrain](terrain.md)).
+None of its own; see each spec.
 
 All open questions: [../open-questions.md](../open-questions.md).

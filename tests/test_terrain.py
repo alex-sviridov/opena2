@@ -146,3 +146,50 @@ def test_game_maps_tiles_name_existing_sets():
         t = load_alm(p).tiles.astype(int)
         assert ((t & 0x1FFF) >> 6).max() < tr.SETS
         assert not (t & 0xC000).any()
+
+
+# --- height-displaced blit ---------------------------------------------------
+
+def test_step_table_rows():
+    assert tr.STEP_TABLE[1] == [16, 32]
+    assert tr.STEP_TABLE[2] == [11, 21, 32]
+    assert tr.STEP_TABLE[5] == [5, 11, 16, 21, 27, 32]
+    assert all(r[-1] == 32 for r in tr.STEP_TABLE[1:])
+
+
+def test_edge_offsets_up_and_down():
+    down = tr.edge_offsets(0, 2)                     # steps at T[2] = 11, 21
+    assert down[10] == 0 and down[11] == 1 and down[21] == 2 and down[31] == 2
+    up = tr.edge_offsets(2, 0)                       # 32 - T: 21, 11
+    assert up[10] == 0 and up[11] == -1 and up[21] == -2
+    assert (tr.edge_offsets(5, 5) == 0).all()
+
+
+def test_vertex_y_signed_heights():
+    vy = tr.vertex_y(np.array([[0, 10], [200, 0]], np.uint8))    # 200 -> -56
+    assert vy[0].tolist() == [0, -10, -10]
+    assert vy[1].tolist() == [32 + 56, 32, 32]
+    assert vy[2].tolist() == [64 + 56, 64, 64]
+
+
+def test_render_3d_flat_equals_flat_blit():
+    T = synthetic_terrain()
+    T.palette = np.stack([np.arange(256)] * 3, 1).astype(np.uint8)
+    tiles = np.array([[(1 << 6) | 3, (12 << 6) | (2 << 4) | 5]], np.uint16)
+    light = np.array([[40, 50]], np.uint8)
+    img, top = tr.render_3d(tiles, np.zeros((1, 2), np.uint8), T, light)
+    assert top == 0
+    assert (img == tr.render(tiles, T, light=light)).all()
+
+
+def test_render_3d_raised_tile_and_fold():
+    T = synthetic_terrain()
+    T.palette = np.stack([np.arange(256)] * 3, 1).astype(np.uint8)
+    # Raising the bottom row by 40 px makes the 32 px tile span -8 px:
+    # every column folds and nothing of row 0 is drawn.
+    cols = list(tr.tile_columns(0, 0, 32 - 40, 32 - 40, (64, 64, 64, 64)))
+    assert cols == []
+    # Raising it by 16 px squeezes the 32 texel rows into 16 pixels.
+    c, y0, rows, lrows = next(tr.tile_columns(0, 0, 16, 16, (64, 64, 64, 64)))
+    assert (c, y0, len(rows)) == (0, 0, 16) and rows.tolist() == list(range(0, 32, 2))
+    assert (lrows == 64).all()

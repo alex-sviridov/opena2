@@ -90,7 +90,7 @@ The company is legally entitled to recreate the game.
 - .alm maps: 216 from the allods2.eu maps pack in samples/.../maps/. Container
   (M7R header + 13 sections) walks to EOF on all; semantics open. docs/inventory.md §5.2
 - Graphics overview: docs/formats/graphics-overview.md (tools/gfx_survey.py ->
-  out/gfx/). Ranks 1-10 CONFIRMED (terrain flat only).
+  out/gfx/). Ranks 1-10 CONFIRMED.
 - Fonts: CONFIRMED. fontN.dat = u32 per glyph (char 0x20+g) = last ink column;
   advance = width + 2. Measure FUN_00461e19, .16 draw 0x4637f1 hooked by
   a2mgr Ordinal_125/126 (%[RGB] colour escapes), .16a draw FUN_00463bbd,
@@ -104,13 +104,16 @@ The company is legally entitled to recreate the game.
 - PNG: CONFIRMED. a2mgr Ordinal_102/103 try data\<path>.png before .256 for
   paper-doll layers; FUN_10010d70 draws only 160x240, float alpha blend into
   RGB565, channels >= 1. docs/formats/png.md (tools/validate_png.py)
-- Terrain: CONFIRMED flat. Tiles u16: row v&0xf, strip (v>>4)&3, set
+- Terrain: CONFIRMED incl. relief. Tiles u16: row v&0xf, strip (v>>4)&3, set
   (v&0x1fff)>>6 (0-12), 0x2000 dirt overlay; sets 8-11 = animated water.
-  Loader FUN_0047b899, draw FUN_00404eb5, flat lit blit FUN_0045c757.
-  allods2/alm.py reads the M7R container. docs/formats/terrain.md
-  (tools/validate_terrain.py, tools/terrain_contact.py; per-set indexed grids
-  tools/tile_contact.py -> out/contact/tiles_<set>.png). Open: FUN_0045c8ce
-  height-displaced blit, altitude -> vertex y.
+  Loader FUN_0047b899, draw FUN_00404eb5 (rows top->bottom), flat blit
+  FUN_0045c757. Heights: .alm section 2 copied verbatim to map+0x10, read
+  as SIGNED bytes; vertex y = 32*row - H (FUN_00406658), x never moves;
+  FUN_0045c8ce stretches each tile column between edges stepped by table
+  T[n][k] (FUN_0045752b). a2mgr Ordinal_65 = grid overlay only.
+  allods2/alm.py, allods2/graphics/terrain.py (render, render_3d),
+  docs/formats/terrain.md. Tools: validate_terrain, terrain_contact,
+  tile_contact (out/contact/tiles_<set>.png), terrain_render (out/terrain3d/).
 - Not started: data.bin, saves, game layer.
-- Next (see docs/open-questions.md): terrain heights (FUN_0045c8ce, altitudes -> vertex y), structures.reg
-  and objects.reg animation, unit states/tick timing, data.bin.
+- Next (see docs/open-questions.md): structures.reg and objects.reg
+  animation, unit states/tick timing, data.bin, .alm sections 3-12.

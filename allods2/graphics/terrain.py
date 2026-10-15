@@ -1,7 +1,9 @@
 """Terrain: .alm Tiles values -> 32x32 tiles from tile<g>-<nn>.bmp strips.
 
 Spec: docs/formats/terrain.md.  Loader FUN_0047b899, cell decode and
-water/dirt rules FUN_00404eb5, flat lit blit FUN_0045c757.
+water/dirt rules FUN_00404eb5, flat lit blit FUN_0045c757, height-displaced
+blit FUN_0045c8ce with the edge step table from FUN_0045752b, vertex table
+FUN_00406658.
 """
 
 import os
@@ -133,6 +135,106 @@ def light_rows(corners):
         top += (tr - tl) * 16
         bot += (br - bl) * 16
     return out
+
+
+def _cdiv(a, b):
+    """C integer division (truncates toward zero)."""
+    q = abs(a) // abs(b)
+    return q if (a >= 0) == (b > 0) else -q
+
+
+def _step_row(n):
+    """FUN_0045752b: T[n][k], k = 0..n, the column where an edge that moves
+    n pixels over the tile takes its (k+1)-th 1-pixel step."""
+    step = 0x200000 // (n + 1)
+    return [((k + 1) * step + 0x8000) >> 16 for k in range(n + 1)]
+
+
+STEP_ROWS = 128            # the game builds rows 1..127 (row 0 stays zero)
+STEP_TABLE = [[0]] + [_step_row(n) for n in range(1, STEP_ROWS)]
+
+
+def _step_row_any(n):
+    # |dy| > 127 makes the game read past its table (into DAT_00629780);
+    # that is undefined, so the formula is extended instead.
+    return STEP_TABLE[n] if n < STEP_ROWS else _step_row(n)
+
+
+def edge_offsets(y0, y1, bottom=False):
+    """Per tile column c = 0..31, the y of an edge from y0 (left) to y1
+    (right) relative to y0, as FUN_0045c8ce steps it before drawing column c.
+
+    The top edge counts T[n][k] <= c when it goes down (y0 < y1) and
+    32 - T[n][k] <= c when it goes up; the bottom edge does the opposite,
+    so the two edges round differently."""
+    n = abs(y1 - y0)
+    if n == 0:
+        return np.zeros(TILE, np.int64)
+    t = np.asarray(_step_row_any(n)[:n])
+    c = np.arange(TILE)[:, None]
+    fwd = (t[None, :] <= c).sum(1)
+    mir = ((TILE - t)[None, :] <= c).sum(1)
+    down = y0 < y1
+    if bottom:
+        return mir if down else -fwd
+    return fwd if down else -mir
+
+
+def tile_columns(ytl, ytr, ybl, ybr, lights):
+    """FUN_0045c8ce for one tile: yields (c, y_top, rows, light_rows) for
+    each column that has pixels.  rows[i] is the tile texel row drawn at
+    y_top + i, light_rows[i] the row of the 96-row shade table.  lights =
+    (tl, tr, bl, br) corner light values."""
+    ltl, ltr, lbl, lbr = (int(v) for v in lights)
+    top = ytl + edge_offsets(ytl, ytr)
+    bot = ybl + edge_offsets(ybl, ybr, bottom=True)
+    lt, lb = ltl << 9, lbl << 9
+    for c in range(TILE):
+        span = int(bot[c] - top[c])
+        if span > 0:
+            vstep = 0x200000 // span
+            lstep = _cdiv(lb - lt, span)
+            i = np.arange(span, dtype=np.int64)
+            yield c, int(top[c]), (i * vstep) >> 16, (lt + 0x100 + i * lstep) >> 9
+        lt += (ltr - ltl) * 16
+        lb += (lbr - lbl) * 16
+
+
+def vertex_y(heights):
+    """FUN_00406658: screen y of vertex (x, y) = 32·y − H[y][x], with H the
+    .alm Altitudes block read as signed bytes (runtime map +0x10).  Returns
+    an (h + 1, w + 1) array; the extra row and column repeat the last ones
+    (INFERRED: the game never draws the map edge)."""
+    H = np.asarray(heights).astype(np.int8).astype(np.int64)
+    H = np.pad(H, ((0, 1), (0, 1)), mode="edge")
+    return np.arange(H.shape[0])[:, None] * TILE - H
+
+
+def render_3d(tiles, heights, terrain, light, anim=0, animate=True, tint=(0, 0, 0)):
+    """(h·32 + top + bottom, w·32, 3) RGB of a Tiles block drawn like
+    FUN_00404eb5 with heights: rows top to bottom, each tile through
+    FUN_0045c8ce (on undistorted tiles this equals the flat blit).  Returns
+    (image, top) where `top` is the margin above map row 0 in pixels."""
+    h, w = tiles.shape
+    vy = vertex_y(heights)
+    top = max(0, -int(vy.min()))
+    height = max(int(vy.max()), h * TILE) + top
+    out = np.zeros((height, w * TILE, 3), np.uint8)
+    table = shade_table(terrain.palette, LIGHT_ROWS, BRIGHT32, tint)
+    L = np.pad(np.asarray(light), ((0, 1), (0, 1)), mode="edge")
+    for y in range(h):
+        for x in range(w):
+            t = terrain.cell_tile(tiles[y, x], x, y, anim, animate)
+            if t is None:
+                continue
+            corners = (vy[y, x], vy[y, x + 1], vy[y + 1, x], vy[y + 1, x + 1])
+            lights = (L[y, x], L[y, x + 1], L[y + 1, x], L[y + 1, x + 1])
+            for c, y0, rows, lrows in tile_columns(*(int(v) for v in corners), lights):
+                px = table[np.clip(lrows, 0, LIGHT_ROWS - 1), t[rows, c]]
+                yy = y0 + top + np.arange(len(rows))
+                ok = (yy >= 0) & (yy < height)
+                out[yy[ok], x * TILE + c] = px[ok]
+    return out, top
 
 
 def render(tiles, terrain, light=None, anim=0, animate=True, tint=(0, 0, 0)):

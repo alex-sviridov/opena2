@@ -45,11 +45,10 @@ Rules (also in CLAUDE.md):
 
 ## Terrain and lighting
 
-- Height-displaced tile blit `FUN_0045c8ce` and the vertex table at view
-  `+0xb4`; a2mgr `Ordinal_65` hooks the row loop at 0x40529d.
-  [terrain](formats/terrain.md#open-questions)
-- How `.alm` altitudes (u8) become the runtime signed height map at `+0x10`
-  (reader `FUN_0053ea3a`). [lighting](mechanics/lighting.md#open-questions)
+- What `.alm` section 3 holds (runtime `+0x14`, copied inside an 8-cell
+  border by `FUN_004abc1c`). [terrain](formats/terrain.md#open-questions)
+- Users of the vertex-table side arrays `view+0xb8` / `+0xbc` / `+0xc0`
+  (`FUN_00406658`). [terrain](formats/terrain.md#open-questions)
 - Who calls `FUN_0047b899` and with which mask; `DAT_00625778 & 2`
   (`terrain.3d`). [terrain](formats/terrain.md#open-questions)
 - `DAT_005fb974` (water animation option) and the rate of `view+0xa88`.

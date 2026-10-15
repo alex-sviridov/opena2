@@ -254,7 +254,7 @@ Section IDs always appear in the order 0, 1, 2, 3, 5, 11, 4, 9, 8, 6, 7, 10, 12.
 | 0 | 644 (+16) | General info. u32 width, height at data +0x00 / +0x04 (file 0x28 / 0x2c): 144² (101), 80² (46), 256² (38), 208² (13), plus non-square sizes from 48×112 to 256×144. Then at +0x08 f32 0x3f490fda (π/4) |
 | 1 | w·h·2 | u16 per cell; terrain tiles ("Tiles block", CONFIRMED by the error string in FUN_0056a69a) |
 | 2 | w·h | u8 per cell; heights ("Altitudes block", CONFIRMED by the error string) |
-| 3 | w·h | u8 per cell; object layer |
+| 3 | w·h | u8 per cell; copied to runtime map `+0x14` inside an 8-cell border (`FUN_004abc1c`, CONFIRMED); meaning open (INFERRED object layer). Section 2 is copied verbatim to `+0x10` and read as **signed** heights ([terrain](formats/terrain.md#heights)) |
 | 4–12 | variable | Records (structures, units, players, triggers, …, to be identified). Sections 8, 10 and 11 can be empty |
 
 ### 5.3 Others (all INFERRED)
