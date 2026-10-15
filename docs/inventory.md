@@ -248,8 +248,8 @@ Section IDs always appear in the order 0, 1, 2, 3, 5, 11, 4, 9, 8, 6, 7, 10, 12.
 | ID | Size | Observations |
 |---|---|---|
 | 0 | 644 (+16) | General info. u32 width, height at data +0x00 / +0x04 (file 0x28 / 0x2c): 144² (101), 80² (46), 256² (38), 208² (13), plus non-square sizes from 48×112 to 256×144. Then at +0x08 f32 0x3f490fda (π/4) |
-| 1 | w·h·2 | u16 per cell; terrain tiles |
-| 2 | w·h | u8 per cell; heights |
+| 1 | w·h·2 | u16 per cell; terrain tiles ("Tiles block", CONFIRMED by the error string in FUN_0056a69a) |
+| 2 | w·h | u8 per cell; heights ("Altitudes block", CONFIRMED by the error string) |
 | 3 | w·h | u8 per cell; object layer |
 | 4–12 | variable | Records (structures, units, players, triggers, …, to be identified). Sections 8, 10 and 11 can be empty |
 

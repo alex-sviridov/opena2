@@ -185,7 +185,11 @@ The registry values are written by FUN_00444xxx under these names:
 2. Where static map lights come from (`.alm` sections or spells such as
    Light), and what drives their phase.
 3. How `.alm` section 2 heights map to the runtime signed height map at
-   `+0x10`.
+   `+0x10`. The map reader is FUN_0053ea3a, called from FUN_0056a69a. Its
+   error codes 5 and 6 are "Tiles block not found" and "Altitudes block not
+   found", so section 1 = tiles and section 2 = altitudes (CONFIRMED by the
+   strings). Heights are u8 in the file. Only 1 of the 216 maps has values
+   above 127, so whether they are copied raw (and read as signed) is open.
 4. What `+0xa0` / `+0xa4` hold. FUN_004040e2 sets them from the cell flags
    (0, 8 or 16; INFERRED: fog of war) and FUN_00406981 / FUN_00406c9e
    build the draw spans from them.
