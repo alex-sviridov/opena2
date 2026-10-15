@@ -2,7 +2,7 @@
 
     python tools/sprite_contact.py [DATA_DIR] [-o out/contact] [-n 100]
 
-Writes out/contact/256.png, b.256.png, 16a.png and 16.png. Files are picked
+Writes out/contact/256.png, b.256.png, 16a.png, 16.png and png.png. Files are picked
 evenly across the sorted list, so every folder is represented. Palette: the
 embedded one, else the first .pal in the sprite's folder (unit palettes),
 else human.pal[0] for humans, else grey. b.256 overlays use their main
@@ -23,13 +23,13 @@ from allods2 import graphics as gfx
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from validate_sprites import DEFAULT_DATA, ROOT  # noqa: E402
 
-TYPES = {"256": "256", "b.256": "smooth", "16a": "16a", "16": "16"}
+TYPES = {"256": "256", "b.256": "smooth", "16a": "16a", "16": "16", "png": "png"}
 
 
 def files_of(data_dir, label):
     paths = sorted(glob.glob(os.path.join(data_dir, "**", "*"), recursive=True))
     return [p for p in paths if os.path.isfile(p) and os.path.getsize(p) > 4
-            and gfx.guess_kind(p) == TYPES[label]
+            and (label == "png" or gfx.guess_kind(p) == TYPES[label])
             and os.path.splitext(p)[1].lower() == "." + label.split(".")[-1]]
 
 
@@ -106,6 +106,10 @@ def main(argv=None):
         all_files = files_of(a.data, label)
         entries = []
         for path in pick(all_files, a.n):
+            rel = os.path.relpath(path, os.path.join(a.data, "graphics")).replace(os.sep, "/")
+            if label == "png":
+                entries.append((rel, gfx.load_png(path)))
+                continue
             sf = gfx.SpriteFile.load(path)
             if not len(sf):
                 continue

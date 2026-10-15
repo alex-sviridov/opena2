@@ -169,7 +169,8 @@ CONFIRMED via REA) reads from the save stream through a vtable `Read`
   `locale.res`, `world\data\*`, `data\%s%d.256`, `data\%s%d.png`): Ordinal_108
   and friends map `.res` paths onto `data/`, which is why this install has no
   `.res`. The `%s%d.png` path lets PNG replace `.256` for numbered
-  sprites. The equipment directories hold 516 PNGs whose IDs **never overlap**
+  sprites (CONFIRMED for the paper doll, see [formats/png.md](formats/png.md)).
+  The equipment directories hold 516 PNGs whose IDs **never overlap**
   the `.256` IDs, so they are items added after release.
 - Also UI in PNG/TTF via GDI+, screenshot upload, chat (`hat.allods2.eu`), and
   a log written to `allods2.log`.

@@ -63,7 +63,7 @@ on.
 |---:|---|---|---:|---|---|---|---|---|
 | 1 | `.pal` | unit and projectile palettes; `human.pal` player colours | 166 | 54-byte BMP header, table at 0x36; `human.pal` raw 16 × 1,024 | 256 × BGR0, 8-bit channels | trivial | none | CONFIRMED, [palettes](palettes.md) |
 | 2 | `.bmp` | UI, portraits, shop frames, terrain tiles | 1,012 | standard DIB | 24-bit or 8-bit indexed, bottom-up | trivial (standard) | terrain: 32×32 tiles stacked vertically | CONFIRMED, [bitmaps](bitmaps.md) |
-| 3 | `.png` | post-release equipment, localized UI | 536 | standard | RGBA | trivial (standard) | how a2mgr maps `%s%d.png` onto item ids (INFERRED, [inventory §4](../inventory.md)) | standard; mapping INFERRED |
+| 3 | `.png` | post-release equipment, localized UI | 536 | standard | RGBA; equipment 160 × 240 | trivial (standard) | a2mgr: `<path>.png` tried before `<path>.256`; float alpha blend into the RGB565 doll buffer | CONFIRMED, [png](png.md) |
 | 4 | `fontN.dat` | glyph widths | 4 | none; 224 or 64 × u32 | metrics, no pixels: `width[g]` = last ink column | trivial | the `.16`/`.16a` glyph sprites | CONFIRMED, [fonts](fonts.md) |
 | 5 | `.16` | 4-bit fonts | 3 | no palette; trailer count; `{w, h, size}` per glyph | 4-bit RLE, nibble-packed, value = colour slot 0–15 | easy | a 16-entry colour table from the caller (code ramps, [palettes §6](palettes.md)) | CONFIRMED, [sprites](sprites.md) |
 | 6 | `.256` | world sprites, equipment layers, cursors, UI | 1,535 | optional 1,024-byte palette; frames `{w, h, size}`; trailer `count | 0x80000000` | 8-bit indexed RLE (skip/copy/row-skip control bytes) | medium | a palette: embedded, a unit `palette<N>.pal`, or `human.pal[player]`; shade tables for lighting | CONFIRMED, [sprites](sprites.md) |
