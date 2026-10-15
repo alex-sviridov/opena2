@@ -59,4 +59,8 @@ The company is legally entitled to recreate the game.
 - Palettes: layout CONFIRMED; human.pal remap (FUN_00425bee) open.
   docs/formats/palettes.md
 - BMP: CONFIRMED. docs/formats/bitmaps.md
-- Not started: .reg metadata, maps, scenario.dll, a2mgr.dll rendering, game layer.
+- Inventory + binary triage + reversing plan: docs/inventory.md (tools/inventory.py
+  -> out/inventory.csv). This install has NO .res, .alm, music, .smk; a2mgr maps
+  .res paths to loose data/ files (INFERRED). data/version = SHA-1 manifest.
+- .reg: header CONFIRMED (sig 0x31415926, FUN_004ed6cc); entry semantics open.
+- Not started: data.bin, fonts .dat, maps (.alm, no samples), saves, game layer.

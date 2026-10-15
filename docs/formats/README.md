@@ -10,4 +10,6 @@ re-checked against the binary.
 | `.256`, `*b.256` (smoothing), `.16a`, `.16` sprites | [sprites.md](sprites.md) | Decoding CONFIRMED on all game files; some draw variants open |
 | Palettes (embedded, `.pal`, `human.pal`) | [palettes.md](palettes.md) | Layout verified; `human.pal` remap open |
 | `.bmp` | [bitmaps.md](bitmaps.md) | Verified |
-| `.reg` (unit/structure metadata) | — | Not yet documented |
+| `.reg` (unit/structure metadata) | [../inventory.md §5.1](../inventory.md#51-reg-registry-ya1) | Header CONFIRMED (FUN_004ed6cc, all 17 files); entries open |
+
+Install survey, binary triage and the reversing plan: [../inventory.md](../inventory.md).
