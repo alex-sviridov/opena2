@@ -60,7 +60,9 @@ The company is legally entitled to recreate the game.
   docs/formats/palettes.md
 - BMP: CONFIRMED. docs/formats/bitmaps.md
 - Inventory + binary triage + reversing plan: docs/inventory.md (tools/inventory.py
-  -> out/inventory.csv). This install has NO .res, .alm, music, .smk; a2mgr maps
+  -> out/inventory.csv). This install has NO .res, music, .smk; a2mgr maps
   .res paths to loose data/ files (INFERRED). data/version = SHA-1 manifest.
 - .reg: header CONFIRMED (sig 0x31415926, FUN_004ed6cc); entry semantics open.
-- Not started: data.bin, fonts .dat, maps (.alm, no samples), saves, game layer.
+- .alm maps: 216 from the allods2.eu maps pack in samples/.../maps/. Container
+  (M7R header + 13 sections) walks to EOF on all; semantics open. docs/inventory.md §5.2
+- Not started: data.bin, fonts .dat, saves, game layer.
