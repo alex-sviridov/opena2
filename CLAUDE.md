@@ -108,8 +108,16 @@ The company is legally entitled to recreate the game.
 - Fonts: CONFIRMED. fontN.dat = u32 per glyph (char 0x20+g) = last ink column;
   advance = width + 2. Measure FUN_00461e19, .16 draw 0x4637f1 hooked by
   a2mgr Ordinal_125/126 (%[RGB] colour escapes), .16a draw FUN_00463bbd,
-  '~' = hotkey underline, cp866 remap when DAT_0062c9c4 == 1.
+  '~' = hotkey underline. cp866 remap DAT_0062c9c4: exe reads data/main/id
+  digit, a2mgr Ordinal_81 forces 1 (Font defaults cyrillic=True); typed
+  input cp1251->cp866 FUN_0047a0f5. 0xC1 = font2 star glyph (a2mgr item
+  tooltip FUN_1002c700: %[rgb] by stars + N stars). FUN_004627f6 = shadowed
+  draw (slot 6 shadow table 0x62afb8). font5.ttf = a2mgr GDI+ widget font.
   docs/formats/fonts.md (tools/validate_fonts.py, tools/font_contact.py)
+- Text colours: palettes.md §6 maps every code table to its users (grey14
+  normal via 0x5fa5a0, grey17 highlight 0x5fa5a4, gold labels 0x5fa5a8, sage
+  values, orange headers/hover, tan tooltip). Chat kinds 0 near, 1 ally,
+  2 private, 3 shout (=), 4 lobby. Portrait crop table 0x5fcf70 (bitmaps.md).
 - Sprite frames have no hotspot; FUN_00468640 centres on the anchor with
   unit-type offsets T+0x2c..0x38 (from units.reg, INFERRED). sprites.md
 - CLI: python -m allods2 gfx export FILE DEST [--palette P]. Contact sheets:

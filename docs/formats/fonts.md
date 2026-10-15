@@ -22,8 +22,17 @@ character (the [sprite container](sprites.md), `.16` or `.16a` stream), and a
 | `font3/font3.16` | 64 | 8 × 6 | 0x20–0x5F (digits and a few signs drawn) | 256 B | `DAT_0062aff8` |
 | `font4/font4.16a` | 224 | 16 × 16 | 0x20–0xFF | 896 B | `DAT_0062af90` |
 
-`font5/font5.ttf` is a TrueType font used by a2mgr/SDL_ttf, not by these
-routines (INFERRED: it is not referenced by allods2.exe).
+`font5/font5.ttf` is not a bitmap font and allods2.exe never opens it.
+**CONFIRMED** (a2mgr `FUN_1000ed30`): a2mgr reads the file into memory and
+adds it to a GDI+ private font collection (`GdipPrivateAddMemoryFont`; it
+shows "FATAL ERROR: can't load …" and exits if that fails). Its own widgets
+draw their text with it through `GdipDrawString`. Patch 28 removed SDL, so
+SDL_ttf is no longer involved. Five lazily created font objects
+(`0x1007b9f0`–`0x1007ba0c`) are made in widget methods `0x10029d90`–`0x1002c610`
+at sizes 10, 12, 13 and 14. Those methods render the widget's string
+(`+0x28`) into cached images (`+0x40`/`+0x44`) and toggle bold/italic from
+`+0x48`/`+0x49`. **INFERRED**: these are the a2mgr menu and login screens
+(the nearby resources are `locale/ru/graphics/mainmenu/…`).
 
 **CONFIRMED** (all four files, `tools/validate_fonts.py`): each `.dat` is
 exactly 4 bytes per glyph of its sprite file, and every glyph stream is
@@ -76,9 +85,64 @@ map(c):
 0x20–0x7F ASCII, 0x80–0xA5 cp437 Latin letters (Ç ü é … ñ Ñ), 0xB0–0xDF
 Cyrillic А–п, 0xE0 Ё, 0xE1 ß, 0xF0–0xFF р–я. So with the remap on, text is
 cp866 (DOS Cyrillic): cp866 А = 0x80 → glyph 0xB0, р = 0xE0 → 0xF0, Ё = 0xF0
-→ 0xE0, ё = 0xF1 → 0x89 (the ë glyph). `DAT_0062c9c4` is probably the
-Russian-language flag (not traced). font2 has small capitals in place of
+→ 0xE0, ё = 0xF1 → 0x89 (the ë glyph). font2 has small capitals in place of
 lower case; font3 draws only `0`–`9` and a few signs.
+
+### The remap switch `DAT_0062c9c4`
+
+**CONFIRMED** (0x479d28–0x479d80, a2mgr Ordinal_81 = `0x10012c70`). At
+start-up the exe reads `data\main\id` (string `main\id` at 0x5fbbe0) and
+takes its **last character − `'0'`**. The shipped file is `russian 1`, so the
+value is 1. The instruction that stored the value was overwritten by
+`jmp [0x6de516]` → Ordinal_81, which writes the byte `1` to `0x62c9c4` instead
+(it then redoes the overwritten `push 0x10` and returns to 0x479d82). So in
+this build the remap is **always on**, whatever `main\id` says. The
+implementation therefore defaults to `cyrillic=True`. **INFERRED**: the
+original exe stored the digit (`mov [0x62c9c4], edx` fits the 6 bytes). The
+`.old` exe in the install is patched the same way, so this can't be checked.
+
+Three more routines test the flag. **CONFIRMED**:
+
+| Routine | Does |
+|---|---|
+| `FUN_0047a0f5` (+ a2mgr Ordinal_25 at 0x47a11e) | one typed character, Windows-1251 → cp866: `0xC0–0xEF − 0x40`, `0xF0–0xFF − 0x10`, a2mgr adds `0xA8 Ё → 0xF0`, `0xB8 ё → 0xF1`, `0x80` unchanged; other bytes unchanged. Used by the text-input fields (6 callers, e.g. the key filter at 0x43d664 that a2mgr Ordinal_24 jumps to for `c ≥ 0x20, c ≠ 0x7F`) |
+| `FUN_0047a169` | lower-case one cp866 byte: `0x80–0x8F + 0x20`, `0x90–0x9F + 0x50`, otherwise C `tolower` |
+| `FUN_00479f82` | the same on a whole string (used by the chat-input name completion `FUN_0043db33`) |
+
+a2mgr's own edit fields (`0x1002a740`) apply the same 1251 → 866 conversion.
+
+### 0xC1: the star
+
+**CONFIRMED** (a2mgr `FUN_1002c700`, reached through Ordinal_122 at
+0x43bce4). a2mgr rebuilds the start of the item description in the exe's
+text buffer `0x624fb0`. It writes an optional colour escape, then **N bytes
+0xC1**, then the item name, then `%[*]`. Through `map` these become N copies
+of glyph 0x80. In **font2** that glyph was redrawn as a five-pointed
+**star**, and it is one of the width exceptions above. In font1 and font4,
+glyph 0x80 is still Ç. This is patch 28: "Names of magical items are now
+highlighted with different color depending on item level".
+
+The item record has a property list at `+0xc` with a count at `+9`. Each
+entry is `id` (u8) and a value: 4 bytes for id 1, 3 bytes for ids 0x0d and
+0x2c–0x30 (the first byte is used; these entries also count twice
+against the count), otherwise 1 byte.
+
+- N = the value of property **0x27** (0 when absent or negative).
+- The escape is written only when property **0x33** is present and
+  `(u16 item+6) & 0xfe00 ≠ 0xe00`:
+
+| Condition | `%[R,G,B]` |
+|---|---|
+| N = 1 | (234, 102, 102) |
+| N = 2 | (79, 222, 93) |
+| N ≥ 3 | (207, 53, 196) |
+| N = 0 and some property 1 has value 2 | (216, 191, 0) |
+| N = 0 otherwise | (158, 158, 217) |
+
+**INFERRED**: 0x27 is the item level / star count and 0x33 marks a magic
+item. `stats.txt` has no labels for these ids, so they look like server
+additions. Ordinal_127 (`FUN_1002cba0`) likewise appends `#<name> +N%` for
+property 0x1a (patch 29, "Damage Bonus +%").
 
 A byte past the glyph table (any byte ≥ 0x60 in font3, or < 0x20 when drawn)
 reads past the sprite and width tables in the game. The implementation draws
@@ -202,6 +266,31 @@ No `~` or `%[...]` handling; both draw as glyphs. The glyph blit
 table when it is null, and calls the `.16a` blitter `FUN_0045db6b`. Callers
 pass a gradient shade-table row ([palettes §6](palettes.md)).
 
+## Drop shadow: `FUN_004627f6`
+
+**CONFIRMED.** Slot 6 of both font vtables returns the font's **shadow
+table**. For `.16` it is `FUN_00463a06` → `0x62afb8`, the constant (8, 8, 8)
+table ([palettes §6](palettes.md)). For `.16a` it is `FUN_00463d18`, a row
+of the black gradient. Most text in the game goes through the font method
+`FUN_004627f6`:
+
+```
+draw_shadowed(x, y, s, flags, colours, off):
+    draw(x + off, y + off, s, flags, shadow_table())   # slot 5
+    draw(x,       y,       s, flags, colours)
+```
+
+This is why the a2mgr escape parser leaves `0x62afb8` alone: the shadow pass
+keeps its colour while the second pass is recoloured.
+
+## Callers: colours and flags
+
+**CONFIRMED** (survey of all 152 `FUN_004627f6` call sites and every
+reference to the tables). Where the arguments are literals, `off` is 1
+almost everywhere, and `flags` is 0 (left), 1 (right) or 2 (centre); 8
+(vertical middle) is rare. Which table each kind of text uses is listed in
+[palettes §6](palettes.md#which-text-uses-which-table).
+
 ## Worked example
 
 font1, colours = grey ramp, text `~Ok` at (0, 0), remap off:
@@ -218,9 +307,6 @@ checks the same rules on synthetic fonts.)
 
 ## Open questions
 
-- What sets `DAT_0062c9c4` (the remap switch), and whether the English build
-  ever turns it on.
-- Why a2mgr maps cp866 0xC1 (box drawing `┴`) to glyph 0x80 (Ç).
-- Which callers pass which colour tables (`0x5fb97c…0x5fb990`,
-  [palettes §6](palettes.md)) and which flags.
-- What `font5.ttf` is used for (a2mgr's SDL_ttf path).
+- Where the cp1251 locale files (`data/locale/*/*.txt`, Russian text in
+  0xC0–0xFF) are converted to cp866 for the font map. The typed-input path
+  is `FUN_0047a0f5`; no conversion has been found in the loader yet.

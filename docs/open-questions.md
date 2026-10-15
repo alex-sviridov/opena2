@@ -11,21 +11,11 @@ Rules (also in CLAUDE.md):
   (and from the spec's list) in the same change. Don't keep "answered"
   entries; git history keeps them.
 
-## Graphics: sprites and palettes
-
-- Which widgets use which fixed text-colour table (§6), and the chat kinds
-  0–4 (`0x413e4d`). [palettes](formats/palettes.md#open-questions), [fonts](formats/fonts.md#open-questions)
-- Where the info-window portrait offset `k1`, `k2` comes from (`FUN_0041f2d4`,
-  types 0x40–0x66). [bitmaps](formats/bitmaps.md#open-questions)
-
 ## Fonts
 
-- What sets `DAT_0062c9c4` (cp866 remap) and whether the English build
-  turns it on. [fonts](formats/fonts.md#open-questions)
-- Why a2mgr maps 0xC1 to glyph 0x80 (`Ordinal_26`). [fonts](formats/fonts.md#open-questions)
-- Which callers pass which colour tables and alignment flags.
+- Where cp1251 locale `.txt` text is converted to cp866 for the font map
+  (typed input uses `FUN_0047a0f5`; loader not found).
   [fonts](formats/fonts.md#open-questions)
-- What `font5.ttf` is used for (a2mgr SDL_ttf). [fonts](formats/fonts.md#open-questions)
 
 ## PNG / paper doll (a2mgr)
 

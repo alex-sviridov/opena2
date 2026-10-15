@@ -96,18 +96,54 @@ matched each site's object against the fields and globals that
 `+0x18` / `+0x38` at `0x4e3d6e`…`0x4e3e46`):
 
 1. Allocate `panel` (88 × 108) and `pic` (160 × 240) canvases.
-2. Load `graphics\infowindow\<name><n>.bmp` into `pic` (`FUN_00427945`:
-   the same bottom-up load as the constructor) and **flip** it, so it is
-   top row first.
+2. Load `graphics\infowindow\<name><n>.bmp` into `pic`. `name` is the
+   type's `InfoPicture` (type record `+0xf8`, stored by the units.reg parser
+   at 0x47fd4e), `n` is `obj+0x28`, and for `n = 1` the digit is dropped
+   (`goblin.bmp`, `goblin2.bmp`, …). Objects with flags `+0x1b8 & 0x11` draw
+   themselves into `pic` instead (vtable `+0x88`). The bitmap is loaded
+   with `FUN_00427945` (the same bottom-up load as the constructor) and
+   **flipped**, so it is top row first.
 3. Make `panel` the render target and clear the 0x4a40 bytes at
    `DAT_0062571c` (the panel is 88·108·2 = 0x4a40 bytes).
 4. Flip `t_back.bmp` (`DAT_00630b8c`, loaded at `0x47d107`), blit its rect
    `+0x34` and then `pic`'s same rect `+0x38` (colour key) to `(8, 7)`, then
    flip `t_back.bmp` back. The rect is `(0x24, 0x8c)–(0x6c, 0xe8)`, or
-   `(k2, 0x90 − k1)–(k2 + 0x48, 0xf0 − k1)` when a per-type offset `k1 ≠ −1`
-   exists (types 0x40–0x66; **INFERRED** a crop table).
+   `(k2, 0x90 − k1)–(k2 + 0x48, 0xf0 − k1)` when the unit has a per-type
+   crop offset with `k1 ≠ −1` (table below).
 5. Draw `t_border.256` (`DAT_00630e58`) with the sprite blit `+0x18` at
    `(0, 0)`.
+
+### Portrait crop table
+
+**CONFIRMED** (`FUN_0041f2d4` at 0x41f52e). The rect starts as
+`(−1, −1, −1, −1)` (`FUN_00420330`). If `type = obj+0x24` (the units.reg
+`ID`) is in 0x40–0x66, its first two ints are set to the pair
+`(k2, k1) = (i32 [0x5fcd70 + 8·type], i32 [0x5fcd74 + 8·type])`. The code
+indexes from 0x5fcd70 (inside a string), but for these types the reads land
+in a 39-entry table at **`0x5fcf70` + 8·(type − 0x40)**. Then `k1 = −1`
+selects the default rect.
+
+| ID | Unit | k2, k1 | | ID | Unit | k2, k1 |
+|---|---|---|---|---|---|---|
+| 0x40 | goblin | 30, 72 | | 0x52–0x58 | zombies | 37, 28 |
+| 0x41 | orc | 26, 23 | | 0x59–0x5c | skeleton f1–f4 | 37, 24 |
+| 0x42 | ogre | 10, 44 | | 0x5d–0x60 | skeleton a1–a4 | 37, 15 |
+| 0x43 | — | −1, −1 | | 0x61, 0x62 | skeleton m3, m4 | 35, 15 |
+| 0x44 | troll | 15, 21 | | 0x63 | necromant | 35, 14 |
+| 0x45 | ghost | 32, 21 | | 0x64 | druid | 35, 21 |
+| 0x46 | bat | −1, −1 | | 0x65 | orc_good | 32, 18 |
+| 0x47 | dragon | 7, 49 | | 0x66 | troll_good | 15, 21 |
+| 0x48, 0x49 | mainnecro, bee | −1, −1 | | | | |
+| 0x4a | squirrel | 8, 72 | | | | |
+| 0x4b–0x4e | leg, turtle, … | −1, −1 | | | | |
+| 0x4f | goblin_s | 30, 72 | | | | |
+| 0x50 | orc_s | 23, 31 | | | | |
+| 0x51 | orc_sh | 43, 7 | | | | |
+
+Unit names are the units.reg `File` folders. Types outside 0x40–0x66
+(heroes, humans, and the later wolf 0x67 and spider 0x68) always use the
+default rect `(0x24, 0x8c)–(0x6c, 0xe8)`. Example: the goblin rect is
+`(30, 72)–(102, 168)`.
 
 The blitters read source row `h − 1 − sy` and write destination rows
 downward. With top-first sources (steps 2 and 4), the panel therefore ends
@@ -127,5 +163,4 @@ See [palettes](palettes.md).
 
 ## Open questions
 
-- Where the per-type portrait offset `k1`, `k2` comes from (`FUN_0041f2d4`,
-  types 0x40–0x66, near `FUN_004210f0`).
+None.

@@ -52,6 +52,13 @@ def test_char_map_cyrillic_cp866():
     assert (m(0x41), m(0xB0), m(0xFF)) == (0x41, 0xB0, 0xFF)
 
 
+def test_font_remap_on_by_default():
+    # a2mgr Ordinal_81 forces DAT_0062c9c4 = 1; 0xC1 = the star glyph 0x80
+    f = font16([0] * 224)
+    assert (f.glyph(0xC1), f.glyph(0x80), f.glyph(0x41)) == (0x60, 0x90, 0x21)
+    assert gfx.Font(f.sprites, f.widths, cyrillic=False).glyph(0xC1) == 0xA1
+
+
 # --- advance, space, spacing -------------------------------------------------
 
 def test_advance_is_dat_plus_spacing():

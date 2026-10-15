@@ -288,9 +288,53 @@ with a colour table and a lifetime in ms:
   `0x629c48` (`0x62aaf0` for the second). After one switch to Alternative
   and back, the four chat slots keep the Alternative colours.
 
-**INFERRED**: what the chat kinds 0–4 are (say, shout, …). Which widget uses
-which of the fixed tables is still open; they have 10–30 users each (for
-example, `0x62aaf0` has 28).
+**CONFIRMED**: the chat kinds. The client sends a line with
+`FUN_0041cb2c(text, kind, target)`. The in-game input (`0x48f167`…`0x48f2f1`,
+widget id 0x445) picks the kind from the first character; the lobby screen
+sends kind 4. a2mgr's `g_altchat` option (Ordinal_87, `0x100039a0`) prefixes
+kinds 1–3 with `patch.txt` lines 0xdf–0xe1:
+
+| Kind | Typed as (`help.txt`) | a2mgr tag | Sent by |
+|---|---|---|---|
+| 0 | `text`: everyone nearby | none | no prefix |
+| 1 | `-text`: all allies | `[ally] ` | `-` when `FUN_0049a950` (INFERRED: player-name match) returns −1 |
+| 2 | `-name text`: one player | `[private] ` | `-` + a player name; `target` = that player |
+| 3 | `=text`: all players | `[shout] ` | `=` |
+| 4 | the chat box of the "Create or Join Game" / map-select screen | none | `FUN_00454540` (Enter in the input built by `FUN_0044faad`, `dialogs.txt` 0x85) |
+
+Kind 4 is the only one that is shown even when the sender is "silent".
+
+### Which text uses which table
+
+**CONFIRMED** (every reference in allods2.exe outside the builder
+`FUN_00463d30` and `FUN_0047ab33`). Three pointers in `.data` are never
+written, so they are constants: `0x5fa5a0` → `0x62aaf0`, `0x5fa5a4` →
+`0x629c48`, `0x5fa5a8` → `0x62af58` (`0x5fa5ac` → `0x62afd8` has no reader).
+The routine lists are CONFIRMED. The roles ("normal", "highlighted", …) are
+**INFERRED** from the strings and `main.txt` / `dialogs.txt` lines each
+routine draws, except where the code shows them (shadow, tooltip,
+drop-down hover, flying damage).
+
+| Table | Routines (+ pointer reads) | Used for |
+|---|---:|---|
+| `0x62afb8` (8, 8, 8) | 1 | the `.16` drop shadow: font vtable slot 6 (`FUN_00463a06`), drawn under nearly all text by `FUN_004627f6` ([fonts](fonts.md#drop-shadow-fun_004627f6)) |
+| `0x62aaf0` grey 14i | 28 (+ 96 of `0x5fa5a0`) | the **normal** UI text colour: labels, buttons and lists of the dialog widgets (font1; Options, Save/Load, network and modem setup, lobby, Victory), input boxes, "Drop money", hero creation, message-log slot `0x5fb980`, the font3 hot-key numbers (`FUN_004cec31`, `F%d`), the quest list (`FUN_004e78fa`), inventory text (`FUN_0049fc52`) |
+| `0x629c48` grey 17i | 21 (+ 18 of `0x5fa5a4`) | the **bright / highlighted** variant in the same widgets (selected entry, hovered button), the system-message slot `0x5fb97c`, the FPS counter (`FUN_00406fea`), the in-game options panel (font2, `FUN_00450f0b`), the identify prompt (`FUN_004c353c`) |
+| `0x62af58` gold | 13 (+ 6 of `0x5fa5a8`) | in-game panel **labels** (font2): unit info (`FUN_0046fe90`: Body, Agility, …, Health, Mana), inventory and shop (`FUN_0049fc52`), quest panel (`FUN_004b746f`, `FUN_004b8b61`), kill statistics (`FUN_004316ad`), tips window (`FUN_004e6f45`), "No units selected"; menu and list items in widget classes (`FUN_004dfd32`, `FUN_004dd88a`, …) |
+| `0x62af38` sage | 3 | the **values** next to gold labels: unit info numbers (`%d/%d`, stats), quest panel numbers |
+| `0x62af18` orange | 3 | unit info section headers ("Skills" / "Resistance", `main.txt` 0x1b/0x1c); the **hovered** item of a drop-down list (`FUN_004dfd32`: gold → orange under the cursor) |
+| `0x62a2a8` tan | 1 | **tooltip** text (`FUN_0042a1e9`: brown frame, font2, one line per `#`-separated part) |
+| `0x629c68` inverted ramp | 2 | body text (font2) of the framed message box drawn by `FUN_00475245` / `FUN_00475c73` (three frame sprites, font4 title); **INFERRED** a sign or scroll window |
+| `0x62b068` red | 7 | "HIRED" in the taverns (`FUN_0049f25e`, `FUN_004a46a1`, `FUN_004a6be6`); also some inventory text (`FUN_0049fc52`), the quest list (`FUN_004e78fa`) and `FUN_004478af` |
+| `0x62afd8` yellow | 1 (+ `0x5fb984`) | chat kinds 0 and 4 with Alternative colours |
+| `0x62a6d0` green | 0 live | only the flying-damage quirk below |
+| `0x62af98`, `0x62b028`, `0x62b008` | 0 | built but never referenced |
+
+**Quirk** (CONFIRMED, `FUN_0040dac9` at 0x412f22–0x412f5e). When "Flying
+damage" is on (`view+0xabc`, `main.txt` 0x66/0x67), the HP-change handler
+picks green (HP ≥ max/2), yellow (≥ max/4) or red. It stores the choice in a
+local (`ebp−0x47c`) that is **never read**. The floating number itself
+(`FUN_004617aa`) is coloured with the player ramp `0x629c90 + 32·player`.
 
 ## 7. Palette effects
 
@@ -384,13 +428,11 @@ Implementation: `lighting.daylight(minutes)`, `daylight_tint(minutes)`,
 
 ## Open questions
 
-1. Which widgets use which static text-colour table (§6). The message-log
-   slots are resolved (§6), but the 14 fixed tables have 10–30 users each.
-   The chat-kind names (0–4) are also open.
+None.
 
 Resolved on 2026-10-15: the effect ids (§7, `2·spell + 8`), the all-zero palettes in smoothing overlays
 ([sprites](sprites.md): unused for heroes, but used by three projectile
 overlays, which draw as 50 % black), the low-memory flag `DAT_0062c9b8` (§5), row
 selection ([lighting](../mechanics/lighting.md)), the users of the code
 tables (§6), and the "second table" in the index-164 cache (§4: there is
-none).
+none). Later the same day: the chat kinds and which text uses which table (§6).

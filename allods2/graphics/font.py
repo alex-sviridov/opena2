@@ -1,9 +1,9 @@
 """Bitmap fonts: fontN.16 / fontN.16a glyph sprites + fontN.dat metrics.
 
-Spec: docs/formats/fonts.md.  Text is a byte string (cp1251, as the game
-stores it); layout follows the measure routine FUN_00461e19, the .16 draw
-0x4637f1 (with the a2mgr.dll hooks Ordinal_125/126) and the .16a draw
-FUN_00463bbd.
+Spec: docs/formats/fonts.md.  Text is a byte string (cp866 plus the a2mgr
+codes, see map_char); layout follows the measure routine FUN_00461e19,
+the .16 draw 0x4637f1 (with the a2mgr.dll hooks Ordinal_125/126) and the
+.16a draw FUN_00463bbd.
 """
 
 import os
@@ -36,7 +36,9 @@ def read_metrics(data):
 
 def map_char(c, cyrillic=False):
     """FUN_00461da1 + a2mgr Ordinal_26: byte -> font code.  Only active when
-    DAT_0062c9c4 == 1 (`cyrillic`)."""
+    DAT_0062c9c4 == 1 (`cyrillic`).  The exe sets that flag from the digit
+    in data/main/id; a2mgr (Ordinal_81) forces it to 1, so fonts default
+    to `cyrillic=True` (see Font)."""
     if not cyrillic:
         return c
     special = {0xC1: 0x80, 0xF0: 0xE0, 0xF1: 0x89}      # a2mgr, checked first
@@ -133,14 +135,14 @@ class Font:
     """A font object as built by FUN_0046365e (.16) / FUN_00463a16 (.16a):
     glyph sprites, the .dat table, spacing."""
 
-    def __init__(self, sprites, widths, spacing=SPACING, cyrillic=False):
+    def __init__(self, sprites, widths, spacing=SPACING, cyrillic=True):
         self.sprites = sprites
         self.widths = widths
         self.spacing = spacing
         self.cyrillic = cyrillic
 
     @classmethod
-    def load(cls, stem, cyrillic=False):
+    def load(cls, stem, cyrillic=True):
         """stem: path without extension, e.g. .../font1/font1."""
         for ext in (".16", ".16a"):
             if os.path.exists(stem + ext):
