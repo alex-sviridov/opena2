@@ -185,14 +185,20 @@ The company is legally entitled to recreate the game.
   ShootOffset = per-dir launch point, Selection = pick rect, Palette > 1 →
   palette obj+0x28-1 (server byte). Burning trees/bad object bytes all lie
   outside the loader window (never drawn).
-- Unit animation API: allods2/anim.py (AnimationSet, frame_at in ticks,
-  distance-driven move, once->idle / dying->corpse, events, mirrored
-  in place, placement/draw with b.256 overlay); previews allods2/
-  anim_preview.py via `python -m allods2 anim preview SPRITE DEST` (GIFs
-  per action x facing + out/contact/anim_<name>_grid.png). All 91 sets
-  (61 types + 30 hero folders) in range except Unit33. animation.md §4
+- Animation API: allods2/anim/ package (base.py shared Action/FrameRef/
+  Part/AnimationSet; units.py, structures.py, objects.py, projectiles.py,
+  lens.py); anim.load_set("<kind>:<id>") (unit/structure/object/
+  projectile, or a bare unit key). Units: frame_at in ticks, distance-
+  driven move, once->idle, dying->corpse, events. Structures: 32x32 piece
+  grid, anchor = footprint top-left; bridges ID 0x21 (9 pieces) / 0x25
+  (14, bottom edge 8+(clock&3)). Objects: anchor cell centre, option off
+  -> frame 0 not Index. Projectiles: age +1 before phase; unit-fired
+  start 0, message-spawned -1; ping-pong 4321012101234 (0x471fba); no
+  additive blend: .16a alpha / opaque+50% / projectiles.pal; ID 7 = screen
+  lens (atan/sin bulge, R 20 d 16, n 19). Previews allods2/anim_preview.py
+  via `python -m allods2 anim preview KEY DEST` (+ grid in out/contact).
+  animation.md §4
 - Not started: data.bin, saves, game layer.
 - Next (see docs/open-questions.md): sprite/animation open questions one
-  by one (user request), animation for structures/objects/projectiles
-  (units done), server hit timing, data.bin,
+  by one (user request), terrain/UI animation API, server hit timing, data.bin,
   .alm sections 0, 4-12.

@@ -47,7 +47,7 @@ def sprite_file(n, pixels=(0, 1, 2, 3)):
 
 def aset_of(t, **kw):
     sf = sprite_file(U.expected_frames(t))
-    return A.AnimationSet("synthetic", t, t, sprites={"main": sf, "death": sf}, **kw)
+    return A.UnitSet("synthetic", t, t, sprites={"main": sf, "death": sf}, **kw)
 
 
 # -- timing ----------------------------------------------------------------

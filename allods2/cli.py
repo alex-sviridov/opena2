@@ -13,8 +13,9 @@ the embedded palette.
 unit animation set and the 8 compass facings, at the game's tick period
 for --speed (0..8, default 4), plus a still grid (rows = actions, columns
 = facings; default out/contact/anim_<name>_grid.png). SPRITE is a
-units.reg ID, a hero folder (heroes/swordsman) or a unit file/folder
-under graphics/units (monsters/goblin). --data defaults to $ALLODS2_DATA,
+units.reg ID, a hero folder (heroes/swordsman), a unit file/folder
+under graphics/units (monsters/goblin), or <kind>:<id> for the other
+classes (structure:11, object:0, projectile:12). --data defaults to $ALLODS2_DATA,
 else samples/.../data under the current directory. Write into out/ or
 outside the repo, never samples/.
 """
@@ -54,14 +55,14 @@ def gfx_export(a):
 
 def anim_preview(a):
     from . import anim, anim_preview as P
-    aset = anim.load_animation_set(a.sprite, a.data)
-    pals = {s: aset.palette(s, a.player, a.variant) for s in ("main", "death") if s in aset.paths}
-    paths = P.write_gifs(aset, a.dest, a.speed, pals)
+    aset = anim.load_set(a.sprite, a.data)
+    aset.player, aset.variant = a.player, a.variant
+    paths = P.write_gifs(aset, a.dest, a.speed)
     grid = a.grid or os.path.join("out", "contact", "anim_%s_grid.png" % aset.name)
     os.makedirs(os.path.dirname(os.path.abspath(grid)), exist_ok=True)
-    P.grid(aset, pals).save(grid)
-    print("%s (type %d, %s): %d GIFs -> %s/, grid -> %s"
-          % (aset.name, aset.t.id, ", ".join(aset.actions), len(paths), a.dest, grid))
+    P.grid(aset).save(grid)
+    print("%s %s (%s): %d GIFs -> %s/, grid -> %s"
+          % (aset.kind, aset.name, ", ".join(aset.actions), len(paths), a.dest, grid))
     return 0
 
 

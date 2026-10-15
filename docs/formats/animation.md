@@ -234,7 +234,7 @@ clamped to 0..8 and rate from a jump table: **CONFIRMED**
 | Structure | `FUN_004676d2` (vtable `0x5d76d0` `+0x3c`) | `obj+0x74 = (obj+0x74 + 1) mod len` if the sequence is not empty and `FUN_004206c0() == 0` |
 | Object | none | from the view clock in the draw (§1.3) |
 | Unit | `FUN_0046b5ef` (vtable `0x5d7780` `+0x3c`) | see below |
-| Projectile | `FUN_00471643` (vtable `0x5d78a0` `+0x3c`) | `obj+0x9c += 1`; default `obj+0x74 = (obj+0x9c / 2) mod Phases`; ID 0x1c/0x1e: hard-coded ping-pong 4,3,2,1,0,1,2,3,2,1,0,…; 0x36: `obj+0x9c − 1`; 0x17 and the hit IDs (0x10, 0x14, 0x18, 0x22, 0x2c–0x32, 0x38, 0x3c, 0x3e–0x42): `obj+0x9c` |
+| Projectile | `FUN_00471643` (vtable `0x5d78a0` `+0x3c`) | `obj+0x9c += 1`; default `obj+0x74 = (obj+0x9c / 2) mod Phases`; ID 0x1c/0x1e: hard-coded ping-pong (§4.4); 0x36: `obj+0x9c − 1`; 0x17 and the hit IDs (0x10, 0x14, 0x18, 0x22, 0x2c–0x32, 0x38, 0x3c, 0x3e–0x42): `obj+0x9c` |
 
 **Unit tick** `FUN_0046b5ef`: `obj+0xa8` = ticks left in the current
 action, `obj+0x8c` (byte) = the action, copied to the draw state
@@ -655,9 +655,9 @@ registry sequence of the kind (one element per tick, §1.2).
 | Terrain water (sets 8–11) | set `8 + ((s + (x+1)·y + (clock >> 2)) & 3)`: one frame per **4 ticks**, 4 frames | loops (period 16 ticks) | `DAT_005fb974` (option "Object animations", [lighting §6](../mechanics/lighting.md#6-options)) | CONFIRMED ([terrain](terrain.md)) |
 | Structure | `k = seq[obj+0x74]`, `obj+0x74 = (obj+0x74 + 1) mod len` each tick | loops | visible (`obj+0x7c == 0`) and `DAT_005fb974`; else frozen | CONFIRMED `FUN_004676d2` |
 | VariableSize bridge | bottom edge `8 + (clock & 3)`: one frame per tick | loops (4 ticks) | — | CONFIRMED `FUN_00467bdb` |
-| Object (trees, …) | `Index + seq[(clock + X + X·Y) mod len]` | loops | cell bits `0xc000` both set, and `DAT_005fb974` (else phase 0, `0x408d33`) | CONFIRMED `0x408b24` |
+| Object (trees, …) | `Index + seq[(clock + X + X·Y) mod len]` | loops | cell bits `0xc000` both set (else frame `Index`); `DAT_005fb974` off: frame **0** of the file (`0x408d3c`) | CONFIRMED `0x408b24` |
 | Projectile (default) | `(age / 2) mod Phases`, `age` +1 per tick: one frame per **2 ticks** | loops for the flight | — | CONFIRMED `FUN_00471643` |
-| Projectile 0x1c/0x1e | ping-pong 4,3,2,1,0,1,2,3,2,1,0,… one per tick | loops | — | CONFIRMED |
+| Projectile 0x1c/0x1e | `age − 1` = 0…12 indexes 4 3 2 1 0 1 2 1 0 1 2 3 4 (table `0x471fba`), other ages keep the value | once (13 ticks) | — | CONFIRMED |
 | Projectile 0x17 and hit IDs | `age` (0x36: `age − 1`), one frame per tick | plays once (INFERRED: the object is removed when its time ends) | — | CONFIRMED phase rule |
 | Unit idle (`IdlePhases ≠ 0`) | `idleSeq[(++obj+0x9c) mod idleLen]` | loops | — | CONFIRMED `0x46b6ab` |
 | Unit stand (`IdlePhases = 0`) | stand frame, counter reset to 0 every tick | — | — | CONFIRMED `0x46b6db` |
@@ -919,21 +919,30 @@ after the swing starts (tick 8), after the clang (tick 4).
 
 ## 4. Implementation
 
-`allods2/anim.py` implements parts 2 and 3 for units, monsters and heroes
-with one code path: `load_animation_set(key, data_dir)` (key = units.reg
-ID, hero folder `heroes/swordsman`, or unit file/folder
-`monsters/goblin`) returns the actions the type has (`stand`, `idle`,
-`move`, `attack` shared by shoot and cast, `dying`, `corpse`,
-`bones1..3`), and `frame_at(action, facing, tick)` gives the frame,
-mirror flag and anchor, following the loop / once-then-idle / hold rules
-of §3.5. Time is in ticks (`tick_at_ms` converts at a game speed); `move`
-is distance-driven (§1.4) and takes the server's ticks per cell. Previews:
-`python -m allods2 anim preview SPRITE DEST` (`allods2/anim_preview.py`):
-one GIF per action and facing at the tick period, walk on a checkerboard
-scrolled by the real displacement, anchor cross red on the impact tick and
-yellow on the release tick, plus a still grid
-`out/contact/anim_<name>_grid.png`. Every set in the install is in range
-except Unit33 (§2.5).
+`allods2/anim/` gives every animated class the same API (`base.py`):
+`aset.actions` (name → `Action`: per-tick phases, loop / once / hold,
+events), `aset.frame_at(action, facing, tick)` → `FrameRef` (frame,
+mirror flag, anchor, or the pieces of a composite frame),
+`aset.draw(canvas, ref, x, y)` with the game's blit modes, and
+`aset.preview_clip`. `anim.load_set("<kind>:<id>", data_dir)` loads any
+of them. Time is in ticks (`tick_at_ms` converts at a game speed).
+Previews: `python -m allods2 anim preview KEY DEST` (`allods2/anim_preview.py`):
+one GIF per action and facing at the tick period on a checkerboard, a
+cross on the anchor, plus a still grid `out/contact/anim_<name>_grid.png`.
+Data check (**CONFIRMED**): every unit set, all 179 structures, all 31
+projectiles and 185 of 192 objects stay inside their files; the
+exceptions are Unit33 (§2.5) and the 7 burning trees whose files are
+missing (§1.7).
+
+### 4.1 Units, monsters, heroes
+
+`load_unit_set(key)` (key = units.reg ID, hero folder `heroes/swordsman`,
+or unit file/folder `monsters/goblin`) returns the actions the type has
+(`stand`, `idle`, `move`, `attack` shared by shoot and cast, `dying`,
+`corpse`, `bones1..3`); `frame_at` follows §3.5. `move` is
+distance-driven (§1.4) and takes the server's ticks per cell. The walk
+preview scrolls the checkerboard by the real displacement; the anchor
+cross turns red on the impact tick and yellow on the release tick.
 
 Choices the spec does not settle (INFERRED):
 
@@ -945,6 +954,145 @@ Choices the spec does not settle (INFERRED):
   ([palettes](palettes.md)); the loader that picks it is not traced.
 - Not modelled: the turn action (stand frame of a stepping facing, §2.2),
   the corpse re-hit twitch (§3.3), and the `obj+0x24 < 0` walk branch.
+
+### 4.2 Structures and bridges
+
+**Placement** (**CONFIRMED** `FUN_004669e8`): the view draw calls the
+structure once per screen cell with the cell's column and row. The local
+column is `c = cell x − obj+0x38`; the routine draws the pieces of that
+column bottom-up, 32 px apart, from row `(cell y − obj+0x3c) + FH − TH`
+(all rows when the local row is 0, one row otherwise), at
+`(32·x, 32·y − obj+0x10 − obj+0x6c)`. So the file is a picture of
+`W × FH` pieces of 32 × 32 whose bottom `TH` rows cover the footprint,
+and piece `(col, row)` sits at `(32·col, 32·(row − (FH − TH)))` from the
+footprint's top-left corner. Pieces use the file's own palette (`+0x18`),
+the `b.256` piece at 50 % with the main table when Smoothing is on.
+
+Frame of piece `cell = col + row·W` (§1.3): destroyed → `count − W·FH +
+cell`; `k = seq[obj+0x74] ≠ 0` and mask char not `-` → `W·FH + (k−1)·A +`
+rank of the cell among the animated ones; else `cell`. Worked example,
+Church (ID 11, `W = 4`, `FH = 5`, mask `--------++----------`, `A = 2`,
+6 phases of 4 ticks): cell 9 at `k = 3` draws `20 + 2·2 + 1 = 25`.
+
+`StructureSet.frame_at("intact", 0, t, start=0, animate=True)` uses
+`seq[(start + t) mod len]`; `animate=False` is the frozen state (not
+visible, or "Object animations" off). The 2-phase records without
+`AnimTime` (inns, towers, castle, …) have an empty sequence and never
+animate.
+
+**Bridges** (**CONFIRMED**): the map loader (`0x4abf1b`) builds structure
+ID `0x21` (vertical wooden bridge) as class `0x5d8c50` and ID `0x25`
+(horizontal) as `0x5d8ca8`, with the width and height in cells from the
+map record (`+0xa`, `+0xc`, stored at `obj+0x144`/`+0x148`). Piece by
+local cell `(x, y)`, `w × h`:
+
+| Cell | ID 0x21 (`FUN_004679f3`) | ID 0x25 (`FUN_00467bdb`) |
+|---|---|---|
+| top-left, top-right | 0, 2 | 0, 3 |
+| top edge | 1 | `1 + (x & 1)` |
+| bottom-left, bottom-right | 6, 8 | 7, 13 |
+| bottom edge | 7 | `x` odd: 12; even: `8 + (clock & 3)` |
+| left, right edge | 3, 5 | 4, 6 |
+| inside | 4 | 5 |
+
+Each piece is drawn at `(32·x, 32·y)` like a 1 × 1 structure. The ID 0x25
+bottom edge animates one frame per tick from the view clock, with no
+visibility or option gate.
+
+### 4.3 Objects
+
+**Placement** (**CONFIRMED** `0x40924f`–`0x4092d3`): the anchor is the cell
+centre, `left = 32·X + 16 − ((CenterX − Width/2) + w/2)`, `top = 32·Y +
+16 − ((CenterY − Height/2) + h/2) − relief`, with the object's own record
+even when its dead object's frame is drawn. Blit `+0x14` with the file's
+table, the `b.256` overlay at 50 % (`+0x34`) when Smoothing is on.
+
+**Frame** (**CONFIRMED** `0x408b24`–`0x408d46`), in order: cell fully
+visible and a sequence → `Index + seq[(clock + X + X·Y) mod len]`; tile bit
+`0x2000` and `DeadObject ≠ −1` → frame 0 of the dead object's `File`
+(its `Index` is ignored); else `Index`; finally, with "Object animations"
+off, frame **0** of the file whatever was chosen (quirk: an object with
+`Index ≠ 0` then shows another object's picture). Worked example, Pine 1
+(ID 0, 7 phases of 4 ticks) at cell (10, 3), clock 5: `(5 + 10 + 30) mod
+28 = 17` → `seq[17] = 4`.
+
+`ObjectSet` actions: `anim`, `still`, `dead`.
+
+### 4.4 Projectiles and spell effects
+
+**Placement** (**CONFIRMED** `FUN_00471fee`): `left = x − Width/2`, `top =
+y − Height/2 − z − obj+0x10`, with the record's `Width`/`Height` (default
+64), not the frame size.
+
+**Age** (**CONFIRMED**): `obj+0x9c` is incremented at the start of each
+tick (`0x47187f`), before the phase rule. Projectiles a unit fires
+(`FUN_0046c28b`, `FUN_0046c4f1`) start at 0 (`0x46c493`, `0x46c935`), so
+their first drawn tick has age 1; the ones server messages create (0x86
+`0x415911`, 0x8b `0x415e33`, 0x8c `0x41628c`) start at −1. The tick returns
+"remove" when `obj+0xa8` (ticks left) is 0 on entry (`0x4716bd`).
+
+**Phase by ID** (tick switch `0x4718c7`, table `0x471f84`):
+
+| IDs | Phase `obj+0x74` | Notes |
+|---|---|---|
+| default | `(age / 2) mod Phases` | moves toward the target each tick |
+| 0x0d (fire explosion) | default | on the 3 × 3 cells around it: at age 4 queues (list `view+0xa94`) each cell without bit `0x2000` that holds an object with a `DeadObject` or is water (sets 8–11); at age 8 sets bit `0x2000` (burnt ground) except on water cells without an object (`0x471a32`–`0x471ce4`) |
+| 0x17 (blizzard hail) | `age` | at age 8 plays sound `0x20b` |
+| 0x1c (lightning), 0x1e (prismatic) | `age − 1` = 0…12 → 4 3 2 1 0 1 2 1 0 1 2 3 4 (`0x471fba`); other ages keep the value | lifetime 13 |
+| 0x36 (teleport) | `age − 1` | lifetime 21 |
+| 0x10 0x14 0x18 0x22 0x2c 0x2e 0x30 0x32 0x3e 0x40 0x42 | `age` | follow the target; add effect `ID << 16 | 0xffff` to it |
+| 0x38, 0x3c | `age` | follow the target; set effect `ID << 16 | 0x20` |
+
+**Draw** (`FUN_00471fee`; switch on `ID − 7`, table `0x472530`): frame
+`phase + Phases·d` with `d = (facing − 8) & 15`, folded to `16 − d`
+mirrored when `Flip` and `d > 8`; just `phase` when `RotationPhases == 1`.
+Then by ID:
+
+| ID | Draw |
+|---|---|
+| 7 | the screen lens below, no sprite |
+| 0x17 | `phase < 8`: frame 8 at `top − (28 − 4·phase)` (a stone falling 4 px per tick); else frame `phase − 8` |
+| 0x1c | frame `phase` of its own sprite at every point of the list `obj+0x11c` (`(x − 8, y − 8)`) |
+| 0x1e | frame `phase + 5·colour` (point byte +6) at every list point |
+| 0x36 | frame `phase`, no direction |
+| 0x38 (heal) | nothing |
+| others, `A16 = 1` | `.16a` alpha blit (`+0x18`) with the file's palette: `src·(a+1)/16 + dst·(15−a)/16` ([sprites](sprites.md)) |
+| others, `Palette ≠ 0` | opaque (`+0x18`, own table), then the `b.256` overlay at 50 % with its own all-zero palette = darkens by half ([sprites](sprites.md)) |
+| others, `Palette = 0` | opaque `+0x14` with `projectiles.pal` |
+
+So spell effects use **no additive blending**: all of them are `.16a`
+alpha sprites, plus the lens and the 50 % shadow overlays. IDs 10 and 12
+(firebolt, fireball) also draw a trail of up to 6 points with
+`smoke0|1` frame = trail index (`0x4723a4`–`0x4724d5`).
+
+`ProjectileSet` has one action, `flight` (default rule, loops) or
+`effect` (the special rules, once). `frame_at(action, facing, t,
+age0=None)`: `age0` defaults to 0 for IDs below 8 and −1 for spell IDs
+(INFERRED default; the spawner decides). Previews play one cycle of
+`flight`, and `effect` for its fixed lifetime or `Phases` ticks (the
+server's lifetimes come from data, §3.4).
+
+### 4.5 The screen lens (projectile 7)
+
+**CONFIRMED** (`FUN_004adfc0(R = 20, d = 16)` at `0x479d9d`, table
+`FUN_004ae0df`, draw `FUN_004ae2cb`; global `0x62b61c`): bat and succubus
+missiles (unit `Projectile = 7`) bend the picture behind them. The CRT
+calls are `atan` (`0x58ede4`, `fpatan`) and `sin` (`0x58eb74`, `fsin`):
+
+```
+n    = trunc(sqrt(R² − (R − d)²))                 = trunc(sqrt(384)) = 19
+k(0) = 1;   k(r) = r / (R · sin(atan(r / (R − d))))  = sqrt(r² + 16) / 20
+T[i][j] = (trunc(i·k(r) + 0.5), trunc(j·k(r) + 0.5)),  r = trunc(sqrt(i² + j²) + 0.5),
+          or (i, j) when r ≥ n
+draw: for i = n−1 … 0, j = n−1 … 0, for (a, b) in (+,+), (+,−), (−,+), (−,−):
+          screen[y + b·j][x + a·i] = screen[y + b·T[i][j].y][x + a·T[i][j].x]
+          (in place; skipped when either pixel is outside the clip rectangle)
+```
+
+The anchor is `(x, y − z − obj+0x10)`. `k < 1`, so every pixel takes one
+nearer the centre: a magnifying bulge 19 px in radius. Worked example:
+`T[18][0]`: `r = 18`, `k = sqrt(340)/20 = 0.922`, `(17, 0)`; the pixel 18 px
+right of the centre shows the one 17 px right. `allods2/anim/lens.py`.
 
 ## Open questions
 
@@ -964,6 +1112,6 @@ Choices the spec does not settle (INFERRED):
   [§3.4](#34-where-the-speeds-come-from)
 - Which `human.pal` the hero draw uses: `heroes*/human.pal` (identical to
   each other) or `humans/human.pal` (`FUN_00473550`, `FUN_0046f688`).
-  [§4](#4-implementation)
+  [§4.1](#41-units-monsters-heroes)
 - What `weapon+0x4a` and `unit+0x86` are in the hero recovery delay
   (INFERRED: weapon speed and a hero stat; [§3.4](#34-where-the-speeds-come-from)).

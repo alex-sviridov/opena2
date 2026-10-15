@@ -56,7 +56,7 @@ Rules (also in CLAUDE.md):
 - Server map fill `FUN_0055e616`: input layers `+0x10`/`+0x14`; who sets
   cell flag `0x20` (`FUN_00564137`). [animation](formats/animation.md#34-where-the-speeds-come-from)
 - Which `human.pal` heroes are drawn with (`heroes*/` vs `humans/`;
-  `FUN_00473550`, `FUN_0046f688`). [animation](formats/animation.md#4-implementation)
+  `FUN_00473550`, `FUN_0046f688`). [animation](formats/animation.md#41-units-monsters-heroes)
 - Meaning of `weapon+0x4a` and `unit+0x86` in the hero attack recovery
   (`FUN_00518d2f`). [animation](formats/animation.md#34-where-the-speeds-come-from)
 

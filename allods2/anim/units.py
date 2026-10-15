@@ -1,4 +1,4 @@
-"""Unit, monster and hero animation: which frame to draw at a given tick.
+"""Units, monsters and heroes: which frame to draw at a given tick.
 
 Spec: docs/formats/animation.md (part 2 layout, part 3 timing) and
 docs/formats/units.md.  Frame indices come from the draw FUN_00468640
@@ -10,7 +10,7 @@ converts wall time at a game speed.  Walking is distance-driven: the walk
 cycle advances one element per 16 map units moved (256 units = one cell,
 8 units = one screen pixel), so `move` takes the ticks per cell.
 
-    aset = load_animation_set(64, data_dir)            # goblin
+    aset = load_unit_set(64, data_dir)                 # goblin
     ref = aset.frame_at("attack", 12, tick)            # facing 12 = left
     left, top = aset.placement(ref, x, y)
     aset.draw(canvas, ref, x, y)
@@ -21,30 +21,14 @@ are the ones the spec records (hero dying sprites, the Dying type).
 
 import math
 import os
-from dataclasses import dataclass, field
 
-from . import units as U
-from .graphics import SpriteFile, load_human_palettes, load_pal_file
+from .. import units as U
+from ..graphics import load_human_palettes, load_pal_file
+from .base import (CELL_UNITS, COMPASS, FACINGS, UNITS_PER_PIXEL, Action, AnimationSet,
+                   FrameRef)
 
-# FUN_00492068: ticks per second by game speed 0..8; period = 1000 // rate ms.
-TICK_RATES = (8, 10, 12, 14, 16, 20, 24, 28, 32)
-DEFAULT_SPEED = 4                       # FUN_0048750d
-FACINGS = range(16)                     # obj+0x70, clockwise from screen-up
-COMPASS = (8, 10, 12, 14, 0, 2, 4, 6)   # one facing per stored animated direction, front first
-CELL_UNITS = 256                        # map units per cell (pos >> 8)
-UNITS_PER_PIXEL = 8                     # units.md ShootOffset
 MOVE_UNITS_PER_ELEMENT = 16             # odometer / 16
 HERO_SPEED = 18                         # animation.md §3.4 worked example (+0x86 = 30)
-
-
-def period_ms(speed=DEFAULT_SPEED):
-    return 1000 // TICK_RATES[speed]
-
-
-def tick_at_ms(ms, speed=DEFAULT_SPEED):
-    """Ticks elapsed after `ms` milliseconds of the fixed-step loop
-    (FUN_0048e7d0), ignoring its 16-tick re-base jitter."""
-    return int(ms) // period_ms(speed)
 
 
 def walk_ticks_per_cell(v=HERO_SPEED, diagonal=False):
@@ -78,48 +62,8 @@ def walk_odometer(facing, tick, ticks_per_cell, start=0):
     return odo, (px, py)
 
 
-@dataclass
-class Action:
-    """One animation of a unit type.
-
-    phases: one element per tick (per 16 map units for `move`), each a phase
-        within the action's sprite block.
-    end: "loop"; "idle" (play once, then the idle state, animation.md §3.3);
-        "hold" (static, or the last phase held: corpse, bones).
-    clock: "tick" or "distance".
-    events: name -> tick (attack: AnimationSet.attack_events).
-    source: "main" or "death" (dying, corpse and bones are drawn from the
-        Dying type's file).
-    """
-    name: str
-    phases: list
-    end: str = "loop"
-    clock: str = "tick"
-    events: dict = field(default_factory=dict)
-    source: str = "main"
-
-    @property
-    def ticks(self):
-        return len(self.phases)
-
-
-@dataclass(frozen=True)
-class FrameRef:
-    """A frame to draw.  hotspot = the anchor (object position) inside the
-    frame box, the same whether mirrored or not (mirroring flips the frame
-    in place, animation.md §2.3).  action/phase = what is shown, which can
-    differ from the action asked for after a once-action has ended."""
-    source: str
-    index: int
-    mirrored: bool
-    hotspot: tuple
-    action: str
-    phase: int
-    events: tuple = ()
-
-
-class AnimationSet:
-    """Actions of a unit type and its frames.
+class UnitSet(AnimationSet):
+    """Actions of a unit, monster or hero type and its frames.
 
     t: the units.reg type of the main file; td: the type whose file and
     layout give dying, corpse and bones (None: no death frames).
@@ -127,13 +71,16 @@ class AnimationSet:
     through `paths`.
     """
 
+    kind = "units"
+    preview_facings = COMPASS
+
     def __init__(self, name, t, td=None, sprites=None, paths=None, palettes=None):
-        self.name = name
+        super().__init__(name, sprites, paths)
         self.t = t
         self.td = td
-        self.paths = dict(paths or {})
-        self._sprites = dict(sprites or {})
         self.palettes = dict(palettes or {})
+        self.player = 0          # human.pal colour for Palette = 0
+        self.variant = 0         # palette<N>.pal for Palette > 0
         self.actions = self._build_actions()
 
     # -- description ------------------------------------------------------
@@ -182,21 +129,6 @@ class AnimationSet:
             for k in range(max(td.BonePhases, 0)):
                 acts.append(Action("bones%d" % (k + 1), [k], end="hold", source="death"))
         return {a.name: a for a in acts}
-
-    # -- sprites ----------------------------------------------------------
-
-    def sprites(self, source="main"):
-        if source not in self._sprites:
-            self._sprites[source] = SpriteFile.load(self.paths[source])
-        return self._sprites[source]
-
-    def overlay(self, source="main"):
-        """The b.256 smoothing overlay, or None."""
-        key = source + "_b"
-        if key not in self._sprites:
-            p = self.paths.get(key)
-            self._sprites[key] = SpriteFile.load(p) if p and os.path.isfile(p) else None
-        return self._sprites[key]
 
     # -- frame selection --------------------------------------------------
 
@@ -269,9 +201,26 @@ class AnimationSet:
         for name in self.actions:
             for d in FACINGS:
                 for source, i, _ in self.frames(name, d):
-                    if i >= len(self.sprites(source)):
+                    if i >= self.count(source):
                         out.append((name, d, source, i))
         return out
+
+    def preview_clip(self, action, facing):
+        """One pass of an action; a walk covers whole cells and reports the
+        ground shift in pixels, once-actions add a short tail."""
+        a = self.actions[action]
+        if action == "move":
+            per_cell = CELL_UNITS * (1.41 if facing & 2 else 1)
+            cells = max(1, -(-a.ticks * MOVE_UNITS_PER_ELEMENT // int(per_cell)))
+            tpc = walk_ticks_per_cell(diagonal=bool(facing & 2))
+            out = []
+            for k in range(cells * tpc):
+                _, (px, py) = walk_odometer(facing, k, tpc)
+                out.append((self.frame_at("move", facing, k, ticks_per_cell=tpc),
+                            (px // UNITS_PER_PIXEL, py // UNITS_PER_PIXEL)))
+            return out
+        n = a.ticks + (6 if a.end == "idle" else 8 if action == "dying" else 0)
+        return [(self.frame_at(action, facing, k), (0, 0)) for k in range(n)]
 
     # -- placement and drawing --------------------------------------------
 
@@ -280,10 +229,8 @@ class AnimationSet:
         ((CenterX - Width/2) + w/2, (CenterY - Height/2) + h/2).  Uses the
         unit's own type T also for death frames; INFERRED, but every type
         and its Dying type share CenterX/Y, Width and Height in the data."""
-        sf = self.sprites(source)
-        if index >= len(sf):
-            return (0, 0)
-        return self.anchor(sf[index].width, sf[index].height)
+        wh = self.size(source, index)
+        return self.anchor(*wh) if wh else (0, 0)
 
     def anchor(self, w, h):
         """Hotspot of any w x h frame of this type (also b.256 overlays,
@@ -314,9 +261,9 @@ class AnimationSet:
         sprite (mirrored in place when ref.mirrored), then its b.256 overlay
         at 50 % with the main sprite's palette."""
         sf = self.sprites(ref.source)
-        if ref.index >= len(sf):
+        if sf is None or ref.index >= len(sf):
             return
-        pal = palette if palette is not None else self.palette(ref.source)
+        pal = palette if palette is not None else self.palette(ref.source, self.player, self.variant)
         left, top = self.placement(ref, x, y, z)
         canvas.draw_256(sf[ref.index], left, top, pal, mirror=ref.mirrored)
         ov = self.overlay(ref.source) if smoothing else None
@@ -343,8 +290,8 @@ def _norm(p):
     return p.replace("\\", "/").lower().strip("/")
 
 
-def load_animation_set(key, data_dir, types=None):
-    """AnimationSet for a units.reg ID (int or digits), a hero folder
+def load_unit_set(key, data_dir, types=None):
+    """UnitSet for a units.reg ID (int or digits), a hero folder
     ("heroes/swordsman", "heroes_l/archer") or a unit file / folder relative
     to graphics/units ("monsters/goblin", "humans/axeman/axeman").
 
@@ -368,7 +315,7 @@ def load_animation_set(key, data_dir, types=None):
             base = os.path.join(root, kind, f, "sprites")
             paths[src], paths[src + "_b"] = base + ".256", base + "b.256"
         paths["main_pal"] = paths["death_pal"] = _palette_spec(t, data_dir, kind)
-        return AnimationSet("%s_%s" % (kind, folder), t, td, paths=paths)
+        return UnitSet("%s_%s" % (kind, folder), t, td, paths=paths)
     if k.lstrip("-").isdigit():
         t = ids[int(k)]
     else:
@@ -390,7 +337,7 @@ def load_animation_set(key, data_dir, types=None):
         paths[src], paths[src + "_b"] = ty.sprite_paths(data_dir)
         paths[src + "_pal"] = _palette_spec(ty, data_dir)
     name = os.path.basename(os.path.dirname(t.file.replace("\\", "/"))) or t.file
-    return AnimationSet(name, t, td, paths=paths)
+    return UnitSet(name, t, td, paths=paths)
 
 
 def unit_keys(data_dir, types=None):
@@ -407,6 +354,5 @@ def unit_keys(data_dir, types=None):
     return keys
 
 
-__all__ = ["Action", "AnimationSet", "COMPASS", "DEFAULT_SPEED", "FACINGS",
-           "FrameRef", "TICK_RATES", "load_animation_set", "period_ms", "tick_at_ms",
-           "unit_keys", "walk_odometer", "walk_ticks_per_cell"]
+# the original name of the unit loader
+load_animation_set = load_unit_set
