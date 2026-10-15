@@ -71,12 +71,18 @@ The company is legally entitled to recreate the game.
 - Inventory + binary triage + reversing plan: docs/inventory.md (tools/inventory.py
   -> out/inventory.csv). This install has NO .res, music, .smk; a2mgr maps
   .res paths to loose data/ files (INFERRED). data/version = SHA-1 manifest.
-- .reg: header CONFIRMED (sig 0x31415926, FUN_004ed6cc); 32-byte entry layout
-  (5 types) INFERRED from all 17 files, not yet checked in exe. docs/inventory.md §5.1
+- .reg: CONFIRMED. Header = sig + root entry (type 0x11 sorted); 32-byte
+  entries; root lookup strcmp, sections strnicmp(15) -> names with trailing
+  spaces are unreachable (units.reg File0). allods2/reg.py, docs/formats/reg.md
+- Units: CONFIRMED. units.reg parser FUN_0047f108 (Parent = unit ID
+  inheritance), frames: stand 16|9, then (Begin+Move), Attack, Dying, bones/idle
+  x 8|5 dirs; Flip mirrors (FUN_0045a64d); Dying = ID of type whose frames die.
+  59/62 exact. allods2/units.py, docs/formats/units.md (tools/validate_units.py,
+  tools/unit_contact.py)
 - .alm maps: 216 from the allods2.eu maps pack in samples/.../maps/. Container
   (M7R header + 13 sections) walks to EOF on all; semantics open. docs/inventory.md §5.2
 - Graphics overview: docs/formats/graphics-overview.md (tools/gfx_survey.py ->
-  out/gfx/). Ranks 1-9 CONFIRMED (terrain flat only); #10 unit animation open.
+  out/gfx/). Ranks 1-10 CONFIRMED (terrain flat only).
 - Fonts: CONFIRMED. fontN.dat = u32 per glyph (char 0x20+g) = last ink column;
   advance = width + 2. Measure FUN_00461e19, .16 draw 0x4637f1 hooked by
   a2mgr Ordinal_125/126 (%[RGB] colour escapes), .16a draw FUN_00463bbd,
@@ -97,5 +103,5 @@ The company is legally entitled to recreate the game.
   (tools/validate_terrain.py, tools/terrain_contact.py). Open: FUN_0045c8ce
   height-displaced blit, altitude -> vertex y.
 - Not started: data.bin, saves, game layer.
-- Next: #10 unit animation (units.reg semantics, frame/direction mapping,
-  centre offsets T+0x2c..0x38), then terrain heights (FUN_0045c8ce).
+- Next: terrain heights (FUN_0045c8ce, altitudes -> vertex y), structures.reg
+  and objects.reg animation, unit states/tick timing, data.bin.

@@ -205,13 +205,13 @@ frame on an anchor themselves:
 
 ## Open questions
 
-- What the variant blitters selected by the last draw argument do
-  (`FUN_0045a64d`, `FUN_0045a8e7`, `FUN_0045dee0`). **INFERRED**: they
-  mirror the sprite. The unit draw FUN_00468640 sets that argument exactly
+- Variant blitters selected by the last draw argument: `FUN_0045a64d` is
+  CONFIRMED to be a horizontal mirror ([units](units.md)); `FUN_0045a8e7`
+  and `FUN_0045dee0` are INFERRED to be the same for the other modes. The unit draw FUN_00468640 sets that argument exactly
   when it folds a facing `d > 4` (8 directions) or `d > 8` (16) into `8 − d`
   / `16 − d`, and only for unit types with `+0x128 ≠ 0`.
 - Which objects use the darkening blit (vtable `+0x1c`, `FUN_00459d8c`).
 - Which effect id `0x20` is (`FUN_0046600b(0x20)` searches the unit's
   effect list); it makes heroes translucent. **INFERRED**: invisibility.
   See [palettes §7](palettes.md).
-- How frame indices map to animation phases and directions (`units.reg`).
+- Frame indices → phases and directions: answered in [units](units.md).

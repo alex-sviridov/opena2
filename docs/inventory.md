@@ -179,6 +179,9 @@ CONFIRMED via REA) reads from the save stream through a vtable `Read`
 
 ### 5.1 `.reg` registry (`&YA1`)
 
+**Superseded by [formats/reg.md](formats/reg.md)** (layout and lookup
+CONFIRMED in the exe). The notes below are the original survey.
+
 The header is CONFIRMED by FUN_004ed6cc (allods2.exe). The size equation
 also holds for all 17 files.
 

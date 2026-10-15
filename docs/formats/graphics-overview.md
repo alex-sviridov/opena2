@@ -70,7 +70,7 @@ on.
 | 7 | `b.256` | edge-smoothing overlays (not shadows) | 396 | as `.256`; the palette is usually all zero | same RLE as `.256` | medium | the main sprite's palette and frame index; 50 % blend; the Smoothing option | CONFIRMED, [sprites](sprites.md) |
 | 8 | `.16a` | icons, spell effects, UI, one font | 782 | 1,024-byte palette; frames; trailer | RLE over 16-bit words: `index << 1 | alpha << 9` | medium | the FADE16 shade table of its palette (alpha = row) | CONFIRMED, [sprites](sprites.md), [palettes §5](palettes.md) |
 | 9 | terrain (composite) | map ground | 52 tiles + `dirt.bmp` | `.alm` Tiles block (u16 per cell) → `tile<g>-<nn>.bmp` strips | 8-bit tiles × 96-row shade table | hard | `.alm` sections 1–2, tile flags, [lighting](../mechanics/lighting.md) | CONFIRMED flat (cell bits, strips, water, dirt, lit blit), [terrain](terrain.md); height-displaced blit open |
-| 10 | unit animation (composite) | units on the map | 90 sprite sets | `units.reg` (`Palette`, phases, directions) | `.256` + `b.256` + shadows | hard | `.reg` semantics, palettes, mirroring flag, shadow shear | partly CONFIRMED; frame/direction mapping open |
+| 10 | unit animation (composite) | units on the map | 90 sprite sets | `units.reg` (`Palette`, phases, directions) | `.256` + `b.256` + shadows | hard | `.reg` semantics, palettes, mirroring flag, shadow shear | CONFIRMED, [units](units.md) (frame blocks, facing, mirror, placement), [reg](reg.md) |
 
 Not graphics files in this install: `.smk` video (absent, standard Smacker)
 and `.res` archives (absent).
@@ -92,4 +92,4 @@ fontN.dat ──► text rendering ◄── .16 / .16a fonts + code colour tabl
   advance = width + 2; font3 covers 0x20–0x5F).
 - Terrain: answered in [terrain](terrain.md) (set/strip/row bits, water
   animation, dirt overlay); the height-displaced blit is still open.
-- Unit animation: how `units.reg` maps frames to phases and directions.
+- Unit animation: answered in [units](units.md).
