@@ -127,7 +127,7 @@ The company is legally entitled to recreate the game.
   2 private, 3 shout (=), 4 lobby. Portrait crop table 0x5fcf70 (bitmaps.md).
 - Sprite frames have no hotspot; FUN_00468640 centres on the anchor with
   unit-type offsets T+0x2c..0x38 (from units.reg, INFERRED). sprites.md
-- CLI: python -m allods2 gfx export FILE DEST [--palette P]. Contact sheets:
+- CLI: python -m allods2 gfx export FILE DEST [--palette P]; anim preview. Contact sheets:
   tools/sprite_contact.py, tools/font_contact.py, tools/palette_contact.py
   -> out/contact/.
 - PNG: CONFIRMED. a2mgr Ordinal_102/103 try data\<path>.png before .256 for
@@ -185,8 +185,14 @@ The company is legally entitled to recreate the game.
   ShootOffset = per-dir launch point, Selection = pick rect, Palette > 1 →
   palette obj+0x28-1 (server byte). Burning trees/bad object bytes all lie
   outside the loader window (never drawn).
+- Unit animation API: allods2/anim.py (AnimationSet, frame_at in ticks,
+  distance-driven move, once->idle / dying->corpse, events, mirrored
+  in place, placement/draw with b.256 overlay); previews allods2/
+  anim_preview.py via `python -m allods2 anim preview SPRITE DEST` (GIFs
+  per action x facing + out/contact/anim_<name>_grid.png). All 91 sets
+  (61 types + 30 hero folders) in range except Unit33. animation.md §4
 - Not started: data.bin, saves, game layer.
 - Next (see docs/open-questions.md): sprite/animation open questions one
-  by one (user request), implement animation (structures/objects/
-  projectiles/units), server hit timing, data.bin,
+  by one (user request), animation for structures/objects/projectiles
+  (units done), server hit timing, data.bin,
   .alm sections 0, 4-12.

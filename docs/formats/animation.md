@@ -917,6 +917,35 @@ after the swing starts (tick 8), after the clang (tick 4).
    and trees stop when Options → "Object animations" is off; "Dynamic
    lighting" switches off with it.
 
+## 4. Implementation
+
+`allods2/anim.py` implements parts 2 and 3 for units, monsters and heroes
+with one code path: `load_animation_set(key, data_dir)` (key = units.reg
+ID, hero folder `heroes/swordsman`, or unit file/folder
+`monsters/goblin`) returns the actions the type has (`stand`, `idle`,
+`move`, `attack` shared by shoot and cast, `dying`, `corpse`,
+`bones1..3`), and `frame_at(action, facing, tick)` gives the frame,
+mirror flag and anchor, following the loop / once-then-idle / hold rules
+of §3.5. Time is in ticks (`tick_at_ms` converts at a game speed); `move`
+is distance-driven (§1.4) and takes the server's ticks per cell. Previews:
+`python -m allods2 anim preview SPRITE DEST` (`allods2/anim_preview.py`):
+one GIF per action and facing at the tick period, walk on a checkerboard
+scrolled by the real displacement, anchor cross red on the impact tick and
+yellow on the release tick, plus a still grid
+`out/contact/anim_<name>_grid.png`. Every set in the install is in range
+except Unit33 (§2.5).
+
+Choices the spec does not settle (INFERRED):
+
+- Death frames are placed with the unit's own type `T`. Every type and its
+  `Dying` type have equal `CenterX/Y`, `Width`, `Height`, so this cannot
+  be observed.
+- Hero sprites (`Palette = 0`) are drawn with the `human.pal` of their own
+  `heroes*/` folder, which differs from `humans/human.pal`
+  ([palettes](palettes.md)); the loader that picks it is not traced.
+- Not modelled: the turn action (stand frame of a stepping facing, §2.2),
+  the corpse re-hit twitch (§3.3), and the `obj+0x24 < 0` walk branch.
+
 ## Open questions
 
 - The sight mask algorithm (line of sight, radius shape): a2mgr
@@ -933,5 +962,8 @@ after the swing starts (tick 8), after the clang (tick 4).
 - Server map fill `FUN_0055e616`: which layers its input `+0x10`/`+0x14`
   are, and who sets cell flag `0x20` (`FUN_00564137` path).
   [§3.4](#34-where-the-speeds-come-from)
+- Which `human.pal` the hero draw uses: `heroes*/human.pal` (identical to
+  each other) or `humans/human.pal` (`FUN_00473550`, `FUN_0046f688`).
+  [§4](#4-implementation)
 - What `weapon+0x4a` and `unit+0x86` are in the hero recovery delay
   (INFERRED: weapon speed and a hero stat; [§3.4](#34-where-the-speeds-come-from)).
