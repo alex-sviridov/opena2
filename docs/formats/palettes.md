@@ -111,7 +111,14 @@ red, orange, violet, yellow, teal and grey, then darker variants of the
 same eight for p = 8..15. The palettes differ only in 55–59 scattered
 indices between 4 and 225, so the player colour is **not** a contiguous
 palette range. `humans/human.pal` differs from the identical
-`heroes/human.pal` and `heroes_l/human.pal`.
+`heroes/human.pal` and `heroes_l/human.pal`. **CONFIRMED**: only
+`humans/human.pal` is used, by every unit and hero: the exe's one
+`human.pal` string (`0x5fc858`, `graphics\units\humans\human.pal`) is
+opened by the units.reg loader `FUN_0047f108` (`0x480380`) into the 16
+player tables (list `0x62cb28`); a2mgr.dll holds no palette path. The
+`heroes*/human.pal` and `heroes*/palette.pal` files are never opened
+(hero folders are not units.reg files, so the `palette%s.pal` lookup of
+the loader never sees them).
 
 The result is a **16-entry colour table per player**, in the format the
 4-bit `.16` font blitter takes ([sprites](sprites.md)). Slot `s` holds the

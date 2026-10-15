@@ -944,14 +944,14 @@ distance-driven (§1.4) and takes the server's ticks per cell. The walk
 preview scrolls the checkerboard by the real displacement; the anchor
 cross turns red on the impact tick and yellow on the release tick.
 
-Choices the spec does not settle (INFERRED):
+Choices and notes:
 
-- Death frames are placed with the unit's own type `T`. Every type and its
+- Death frames (INFERRED) are placed with the unit's own type `T`. Every type and its
   `Dying` type have equal `CenterX/Y`, `Width`, `Height`, so this cannot
   be observed.
-- Hero sprites (`Palette = 0`) are drawn with the `human.pal` of their own
-  `heroes*/` folder, which differs from `humans/human.pal`
-  ([palettes](palettes.md)); the loader that picks it is not traced.
+- Hero sprites use the player tables built from `humans/human.pal`, like
+  every `Palette = 0` type (**CONFIRMED**, [palettes §4](palettes.md)): the
+  `heroes*/human.pal` files are never opened.
 - Not modelled: the turn action (stand frame of a stepping facing, §2.2),
   the corpse re-hit twitch (§3.3), and the `obj+0x24 < 0` walk branch.
 
@@ -1094,6 +1094,26 @@ nearer the centre: a magnifying bulge 19 px in radius. Worked example:
 `T[18][0]`: `r = 18`, `k = sqrt(340)/20 = 0.922`, `(17, 0)`; the pixel 18 px
 right of the centre shows the one 17 px right. `allods2/anim/lens.py`.
 
+### 4.6 Burning cells
+
+**CONFIRMED** (list `view+0xa94`; update `FUN_0040c199`; draws `0x40892e`,
+`0x4094ad`; light [lighting §3](../mechanics/lighting.md#3-light-map-view--0xa8-confirmed)).
+Fire and steam on map cells are not objects or projectiles but entries
+`{cell x | y << 8, counter}` of one list:
+
+| Step | Rule |
+|---|---|
+| added | by the fire explosion (projectile 0x0d at age 4: the 3 × 3 cells with a burnable object or water, §4.4) and by the server message handled at `0x4155cd` (`FUN_0041dfd3`: cells whose object has a `DeadObject`) |
+| counter | +1 per call of `FUN_0040b35f`: once per view draw (`0x40aeaa`) and once per view message 0x40e / 0x40f (`0x40c3fe`, `0x40c477`); the entry is removed when it reaches 22 |
+| steam | water cell (tile set 8–11) with counter < 18: projectile 8 (`steam`, 9 frames `.16a`), frame `counter >> 1`, at `left = 32·X + 16 − Width/2`, `top = 32·Y + 16 − relief − Height/2` (record 64 × 96) |
+| fire | cell with an object, after the object: projectile 0x0f (`firewall`, 11 frames `.16a`), frame `counter >> 1`, same placement (record 128 × 128) |
+| light | radius 1 at the cell, value `36 24 12 0 12 0 12 0 20 28 36` by `counter >> 1` |
+
+INFERRED: with one view draw per game tick the fire burns 22 ticks
+(1.4 s at the default speed); mouse messages to the view make it burn
+faster. **VERIFY IN GAME**: a fireball on a forest; the flames should
+last about 1.4 s and look shorter while the mouse moves.
+
 ## Open questions
 
 - The sight mask algorithm (line of sight, radius shape): a2mgr
@@ -1110,8 +1130,5 @@ right of the centre shows the one 17 px right. `allods2/anim/lens.py`.
 - Server map fill `FUN_0055e616`: which layers its input `+0x10`/`+0x14`
   are, and who sets cell flag `0x20` (`FUN_00564137` path).
   [§3.4](#34-where-the-speeds-come-from)
-- Which `human.pal` the hero draw uses: `heroes*/human.pal` (identical to
-  each other) or `humans/human.pal` (`FUN_00473550`, `FUN_0046f688`).
-  [§4.1](#41-units-monsters-heroes)
 - What `weapon+0x4a` and `unit+0x86` are in the hero recovery delay
   (INFERRED: weapon speed and a hero stat; [§3.4](#34-where-the-speeds-come-from)).

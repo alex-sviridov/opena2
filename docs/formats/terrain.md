@@ -45,11 +45,15 @@ a 96-row BRIGHT32 shade table from the first strip's palette
   are read with the tile palette.
 - **CONFIRMED** (`FUN_004280d4`, [bitmaps](bitmaps.md)): rows are flipped
   after loading, so tile `r` is the r-th 32-row block from the **top**.
-- **INFERRED** (unused path): when `DAT_00625778 & 2`, the same sets are first
+- **CONFIRMED** (dead code): when `DAT_00625778 & 2`, the same sets are first
   loaded from `graphics\terrain.3d\` (strings 0x5fbc28…0x5fbc6c) and then
   released and replaced by the `graphics\terrain\` ones in the next loop.
   This install has no `terrain.3d` folder.
-- Who passes which mask was not traced (INFERRED: the sets the map uses).
+- Callers (**CONFIRMED**): `FUN_0041dd29` passes the map's `+0x28`, which the
+  map loader `FUN_004abc1c` sets to `0x1fff` (`0x4abd16`): every map loads all
+  13 sets. `FUN_0047be70` passes 0. `DAT_00625778` is written once, to 0
+  (`0x48695a`); its other three references only read it and a2mgr.dll never
+  touches it, so the `terrain.3d` path never runs.
 
 ## Cell value
 
@@ -154,8 +158,14 @@ for r in −3 … Hv+7, c in −3 … W+3:
 x is never displaced: a vertex's screen x is always `32·c`. The routine
 also fills `+0xb8` (per cell, min y of the top edge), `+0xbc` (max y of
 the bottom edge) and `+0xc0` (the mean height of the four cells around a
-vertex, `(a+b+c+d) / 4` truncated toward zero); their users were not
-traced (INFERRED: culling and object placement).
+vertex, `(a+b+c+d) / 4` truncated toward zero). Users (**CONFIRMED**):
+`+0xc0` is read for each cell by every layer of the view draw
+(`0x407d4d`, `0x407fe7`, `0x40832c`, `0x408637`, `0x408ac3`, `0x4098a1`,
+`0x409db0`, `0x409fd6`); for map objects it is the relief subtracted from
+the top (`0x408ac3` → `0x409276`, [animation §4.3](animation.md#43-objects)).
+`+0xb8`/`+0xbc` give the redraw rectangles of visible cells
+(`FUN_004040e2`, ± 0x60 px), the draw spans (`FUN_00406981`,
+`FUN_00406c9e`) and the view draw's culling (`0x409628`, `0x409b61`).
 
 So for a whole map, tile `(x, y)` has corners
 
@@ -269,8 +279,4 @@ Bottom edge flat: `bot(c) = 32`.
 
 ## Open questions
 
-- Who uses the per-cell edge extents `view+0xb8` / `+0xbc` and the vertex
-  mean heights `+0xc0` (`FUN_00406658`); INFERRED: culling and placing
-  objects on the ground.
-- Who calls `FUN_0047b899` and with which mask; what `DAT_00625778 & 2`
-  (the `terrain.3d` path) means.
+None at present.

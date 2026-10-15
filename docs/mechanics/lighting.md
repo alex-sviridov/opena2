@@ -87,13 +87,28 @@ One byte per map vertex in the visible window (stride `w + 7`, offset
 
 1. Copy the old map to `+0xac` (only when `DAT_00625778 == 2`), then fill
    `+0xa8` with 0xFF.
-2. Each object in the view list gets virtual calls `+0x38` and `+0x40`.
-   Light-emitting objects stamp into the map there.
-3. **Static map lights** (the list behind FUN_00422580 / FUN_004225a0,
-   whose entries are `{next, ?, cell x | y << 8, flags}`) stamp radius 1
-   with a value chosen by animation phase `flags >> 1`:
+2. Each object in the view list gets virtual calls `+0x38` and `+0x40`
+   (**CONFIRMED**, vtables `0x5d76d0`, `0x5d7780`, `0x5d7810`, `0x5d78a0`,
+   bridges `0x5d8c50`/`0x5d8ca8`). `+0x38` = `FUN_00465851(kind)` only
+   records the object in a per-cell array of the view (kind 1 structure,
+   2 ground unit, 3 flyer, 4 corpse or flag `0x80`); it writes no light.
+   `+0x40` is the light: **units and flyers emit none** (`FUN_00472cf0` is
+   empty), projectiles use FUN_00472562 (below), structures
+   `FUN_00467725` (below).
+3. **Burning cells** (the list `view+0xa94` behind FUN_00422580 /
+   FUN_004225a0, entries `{next, ?, cell x | y << 8, counter}`) stamp
+   radius 1 with a value chosen by phase `counter >> 1`:
    `36, 24, 12, 0, 12, 0, 12, 0, 20, 28, 36` for phases 0–10, and nothing
-   for other phases. This makes torches flicker.
+   for other phases (**CONFIRMED**). These are not static map lights:
+   cells are added by the fire explosion (projectile 0x0d at age 4,
+   [animation §4.4](../formats/animation.md#44-projectiles-and-spell-effects))
+   and by the server message handled at `0x4155cd` (`FUN_0041dfd3`, cells
+   with a burnable object). `FUN_0040c199` adds 1 to every counter and
+   drops the entry at 22; it is called from `FUN_0040b35f`, which runs on
+   every view draw (`0x40aeaa`) and on view messages 0x40e / 0x40f
+   (`0x40c3fe`, `0x40c477`). The view draw shows a fire (projectile 0x0f
+   sprite) or, on water, steam (projectile 8, while the counter is below
+   18) at frame `counter >> 1` ([animation §4.6](../formats/animation.md#46-burning-cells)).
 4. FUN_00404ad1 then derives the object rows (§4).
 
 **Stamp** (FUN_004063c5, only when the **Lighting** option `0x5fb978` is
@@ -101,6 +116,26 @@ on): `value` is written at every vertex `(cx + dx, cy + dy)` with
 `dx² + dy² < r·(r + 1)` (r = 0: the centre only). The squares come from a
 41×41 u16 table centred at `0x62ba88` (row stride 0x52) that the startup routine FUN_00479bc6 fills with `dx² + dy²` for |dx|, |dy| ≤ 20.
 Vertices outside the window are skipped.
+
+**Structure lights** (**CONFIRMED** `FUN_00467725`, only with the
+Lighting option, `LightRadius ≠ 0` and hit points `> 0`): with `(x0, y0)-(x1, y1)` the
+structure's view cell rectangle (`obj+0x40…+0x4c`, FUN_0046551d) and
+`R = LightRadius`, every vertex `x0 + R − 1 ≤ x ≤ x1 + R`, `y0 + R − 1 ≤ y
+≤ y1 + R` is set to
+
+```
+v = 0x20                                         if LightPulse P == 0
+m = clock mod 2P
+v = 0x20 − ((P − m) >> 1) + clock mod P          if m <  P
+v = 0x20 + ((P − m) >> 1) − clock mod P          if m >= P   (>> is arithmetic)
+```
+
+(`clock` = view clock `view+0xa88`). Every record has `R = 1`, so the
+written vertices are exactly the footprint's corners; for other `R` the
+range would shift instead of growing. Records: Tower 1/2 (`P = 8`), Well
+2 (no pulse), Well 3 (`P = 4`), Campfire (`P = 6`). Worked example, `P =
+8`: clock 0…15 gives 28 30 31 33 34 36 37 39 32 30 29 27 26 24 23 21.
+`structure_light_value`, `structure_light_vertices`.
 
 **Projectile lights** (FUN_00472562, by `projectiles.reg` ID at `+0x24`):
 
@@ -119,7 +154,17 @@ are redrawn with `corner = min(terrain_light, light)`, using the
 terrain light from §2 where the light map is 0xFF.
 
 Implementation: `stamp_light`, `projectile_light`,
-`STATIC_LIGHT_PHASES`, `lit_terrain_corner`.
+`BURNING_LIGHT_PHASES` (= `STATIC_LIGHT_PHASES`), `structure_light_value`,
+`lit_terrain_corner`.
+
+**Fog levels** (`view+0xa0`, **CONFIRMED** FUN_004040e2 `0x404279`–`0x404549`):
+one dword per view cell (window `w + 7` wide, from (−3, −3)), rebuilt
+every frame from the tile bits `0xc000`: 0 = in sight now (`0xc000`), 8 =
+explored (`0x8000` alone), 16 = never seen. The array is then copied to
+`view+0xa4` (the previous frame's levels). For cells in sight the same
+loop also adds a redraw rectangle from the column extents `view+0xb8` /
+`+0xbc` (± 0x60 px) when "Object animations" is on. The view draw reads
+the levels of each cell and its neighbours at `0x40a1b3`–`0x40a420`.
 
 ## 4. Object light rows (`FUN_00404ad1`), CONFIRMED
 
@@ -184,10 +229,5 @@ a2mgr Ordinal_3). All three default to 1 (`.data`). **CONFIRMED**:
 
 ## Open questions
 
-1. What the object virtuals `+0x38` / `+0x40` stamp for units and
-   structures (unit torches, burning buildings).
-2. Where static map lights come from (`.alm` sections or spells such as
-   Light), and what drives their phase.
-3. What `+0xa0` / `+0xa4` hold. FUN_004040e2 sets them from the cell flags
-   (0, 8 or 16; INFERRED: fog of war) and FUN_00406981 / FUN_00406c9e
-   build the draw spans from them.
+1. How the view draw (`0x40a1b3`–`0x40a420`) turns the fog levels of a
+   cell and its neighbours (with `view+0xb4`) into the drawn fog.

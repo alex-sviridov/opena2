@@ -105,6 +105,31 @@ NO_LIGHT = 0xFF
 
 # FUN_004040e2: static map light value by animation phase (flags >> 1), radius 1.
 STATIC_LIGHT_PHASES = (0x24, 0x18, 0x0C, 0, 0x0C, 0, 0x0C, 0, 0x14, 0x1C, 0x24)
+# The list view+0xa94 holds burning cells (fire explosion / server message
+# 0x4155cd), not static lights: the same table, by counter >> 1.
+BURNING_LIGHT_PHASES = STATIC_LIGHT_PHASES
+BURN_TICKS = 0x16           # FUN_0040c199 drops an entry when its counter reaches 22
+
+
+def structure_light_value(pulse, clock):
+    """Light-map value a structure with LightRadius writes (FUN_00467725):
+    0x20 without LightPulse, else a pulse of period 2 * pulse ticks of the
+    view clock."""
+    if not pulse:
+        return 0x20
+    m = clock % (2 * pulse)
+    if m >= pulse:
+        return 0x20 + ((pulse - m) >> 1) - clock % pulse
+    return 0x20 - ((pulse - m) >> 1) + clock % pulse
+
+
+def structure_light_vertices(x0, y0, x1, y1, radius):
+    """Light-map vertices FUN_00467725 writes for a structure whose view
+    cell rectangle is (x0, y0)-(x1, y1): x in [x0 + R - 1, x1 + R], y the
+    same.  With R = 1 (every record in the data) these are exactly the
+    footprint's corner vertices; the range is not centred for other R."""
+    return [(x, y) for y in range(y0 + radius - 1, y1 + radius + 1)
+            for x in range(x0 + radius - 1, x1 + radius + 1)]
 
 # FUN_00472562: projectile type (projectiles.reg ID) -> (radius, value).
 PROJECTILE_LIGHTS = {10: (0, 0x10), 18: (0, 0x10), 40: (0, 0x10), 12: (1, 0x10)}

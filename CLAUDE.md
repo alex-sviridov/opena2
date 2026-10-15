@@ -83,7 +83,13 @@ The company is legally entitled to recreate the game.
 - Lighting: CONFIRMED. Day/night (FUN_0047a208), terrain light map
   (FUN_004ad552), light map + stamps (FUN_004040e2/FUN_004063c5, projectile
   lights), object rows (FUN_00404ad1), shadows (FUN_0045a33f, shear from
-  sun). Open: what units stamp, fog map, .alm heights. docs/mechanics/lighting.md
+  sun). Units emit no light (+0x40 empty); structures LightRadius/Pulse
+  (FUN_00467725, pulse formula); "static lights" = burning cells list
+  view+0xa94 (fire/steam, 22 counts, animation.md §4.6); view+0xa0 fog
+  level 0/8/16 per cell (+0xa4 previous). Only humans/human.pal is ever
+  loaded (heroes too). Terrain: all maps load mask 0x1fff, terrain.3d dead
+  code; view+0xc0 = per-cell relief for every draw layer. Open: fog
+  overlay drawing (0x40a1b3). docs/mechanics/lighting.md
 - BMP: CONFIRMED. 8-bit class flips rows; 64k class (FUN_0042769b) doesn't
   (blits read h-1-sy), packs BGR with masks from GetPixelFormat
   (FUN_004584cc) = palette.pack16; +0x38 colour key 0, +0x3c 16-bit add,

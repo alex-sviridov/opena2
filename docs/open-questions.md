@@ -27,16 +27,8 @@ Rules (also in CLAUDE.md):
 
 ## Terrain and lighting
 
-- Users of the vertex-table side arrays `view+0xb8` / `+0xbc` / `+0xc0`
-  (`FUN_00406658`). [terrain](formats/terrain.md#open-questions)
-- Who calls `FUN_0047b899` and with which mask; `DAT_00625778 & 2`
-  (`terrain.3d`). [terrain](formats/terrain.md#open-questions)
-- What object virtuals `+0x38` / `+0x40` stamp as lights (torches, fires).
-  [lighting](mechanics/lighting.md#open-questions)
-- Where static map lights come from and what drives their phase.
-  [lighting](mechanics/lighting.md#open-questions)
-- What `+0xa0` / `+0xa4` hold (INFERRED fog of war; `FUN_004040e2`,
-  `FUN_00406981`). [lighting](mechanics/lighting.md#open-questions)
+- How the view draw turns fog levels (`view+0xa0`) into the drawn fog
+  (`0x40a1b3`–`0x40a420`). [lighting](mechanics/lighting.md#open-questions)
 
 ## Units and registries
 
@@ -55,8 +47,6 @@ Rules (also in CLAUDE.md):
   `FUN_00527122`). [animation](formats/animation.md#34-where-the-speeds-come-from)
 - Server map fill `FUN_0055e616`: input layers `+0x10`/`+0x14`; who sets
   cell flag `0x20` (`FUN_00564137`). [animation](formats/animation.md#34-where-the-speeds-come-from)
-- Which `human.pal` heroes are drawn with (`heroes*/` vs `humans/`;
-  `FUN_00473550`, `FUN_0046f688`). [animation](formats/animation.md#41-units-monsters-heroes)
 - Meaning of `weapon+0x4a` and `unit+0x86` in the hero attack recovery
   (`FUN_00518d2f`). [animation](formats/animation.md#34-where-the-speeds-come-from)
 

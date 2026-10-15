@@ -69,3 +69,13 @@ def test_shadow_pixel():
     day, night = gfx.daylight(12 * 60), gfx.daylight(0)
     assert gfx.shadow_pixel((160, 80, 16), day.shadow1) == (120, 60, 12)
     assert gfx.shadow_pixel((160, 80, 16), night.shadow1) == (80, 40, 8)
+
+
+def test_structure_light_pulse():
+    from allods2.graphics.lighting import structure_light_value, structure_light_vertices
+    assert structure_light_value(0, 123) == 32
+    assert [structure_light_value(8, c) for c in range(16)] == \
+        [28, 30, 31, 33, 34, 36, 37, 39, 32, 30, 29, 27, 26, 24, 23, 21]
+    assert structure_light_value(8, 16) == 28
+    assert structure_light_vertices(2, 3, 3, 4, 1) == [(2, 3), (3, 3), (4, 3), (2, 4), (3, 4),
+                                                       (4, 4), (2, 5), (3, 5), (4, 5)]

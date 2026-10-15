@@ -278,12 +278,12 @@ class UnitSet(AnimationSet):
 # Loading from the install
 # --------------------------------------------------------------------------
 
-def _palette_spec(t, data_dir, folder_kind=None):
+def _palette_spec(t, data_dir):
     if t.Palette > 0:
         return ("pal", t.palette_paths(data_dir))
-    # INFERRED for heroes: the hero folders carry their own human.pal.
-    sub = folder_kind or "humans"
-    return ("human", [os.path.join(data_dir, U.UNITS_DIR, sub, "human.pal")])
+    # The exe opens only graphics\\units\\humans\\human.pal (units.reg loader
+    # 0x480380), also for heroes; heroes*/human.pal is never read.
+    return ("human", [os.path.join(data_dir, U.UNITS_DIR, "humans", "human.pal")])
 
 
 def _norm(p):
@@ -314,7 +314,7 @@ def load_unit_set(key, data_dir, types=None):
         for src, f in (("main", folder), ("death", dfolder)):
             base = os.path.join(root, kind, f, "sprites")
             paths[src], paths[src + "_b"] = base + ".256", base + "b.256"
-        paths["main_pal"] = paths["death_pal"] = _palette_spec(t, data_dir, kind)
+        paths["main_pal"] = paths["death_pal"] = _palette_spec(t, data_dir)
         return UnitSet("%s_%s" % (kind, folder), t, td, paths=paths)
     if k.lstrip("-").isdigit():
         t = ids[int(k)]
