@@ -152,6 +152,29 @@ top  = obj.y − ((CenterY − Height/2) + frame_h/2) − obj[+0x6c] − obj[+0x
 `b.256` overlays use the same formula with their own frame size and are
 drawn with the 50 % blit when Smoothing is on ([sprites](sprites.md)).
 
+## Other fields
+
+All **CONFIRMED** in `allods2.exe` (every read of the field found by
+scanning for the type table `0x62cb40`), with data from this install's
+`units.reg`:
+
+| Field | Use | Data |
+|---|---|---|
+| `Index` | read into a local by the draw `FUN_00468640` (`0x4686e4`, `0x4698a1`, `0x46a7d3`) and never used; only otherwise read as a parent default | 0 in all 62 types |
+| `TileSize` | returned by the unit vtable `+0x20` and `+0x24` (`FUN_0046856d`, `FUN_00468591`) as the unit's width and height in cells; used e.g. to centre the sight stamp ([animation §1.6](animation.md#16-visibility-gates)) | 1; 2 for troll, troll_good, ogre, star; 3 for dragon |
+| `Z` | only tested `≠ 0`: such a type is created as a flying unit (`0x1e4`-byte object, constructor `FUN_00471419`, vtable `0x5d7810`) by the create message (`0x40fb9a`) and the save loader (`0x4ac7e3`); the value itself is not used | 96 for bat, dragon, succubus; 0 otherwise |
+| `ShootOffset` | 8 `(x, y)` pairs, one per animated direction `k = (d − 8) & 14`: a projectile starts at `x = unit.x − (CenterX − SO[k])·8`, `y = unit.y − (CenterY − SO[k+1])·8` (map units; 8 per sprite pixel; `FUN_0046c28b` `0x46c375`, `FUN_0046c4f1` `0x46c6e4`) | set in 26 `Unit<n>` sections (others inherit from `Parent` or have none); all 64 (sprite centre) for bat and succubus |
+| `SelectionX1/Y1/X2/Y2` | mouse-pick rectangle in sprite-box pixels: the view draw (`0x4087ba`–`0x408886`) offsets it by `(obj+0x64 − CenterX, obj+0x68 − CenterY − obj+0x6c − obj+0x10)` and registers it for the unit (`FUN_00404e40`) while the death stage is `< 2` | |
+| `Palette` | 0: owner's colour from `human.pal`; 1: the type's palette 0; `> 1`: palette `obj+0x28 − 1` (`0x468f4b`–`0x468fb5`, `FUN_00473010`) | 5 for most monsters; 2–7 for undead, necromant, druid, troll_good |
+
+`obj+0x28` for monsters (types `≥ 0x40`) is a byte sent by the server: the
+create message (`DAT_0060e4c8`, `0x40fc89`) and the full state
+(`msg+0x4b`, `0x46ee80`) both pass it to `FUN_0046f540`, which stores it
+as is (heroes use the same byte for their portrait/flags). So each
+monster's colour variant is chosen by the server (open: from map or
+data.bin). The unit constructor (`FUN_0046838e`) first sets it to the
+type ID.
+
 ## Worked example
 
 Unit1 (ID 4, Human Swordsman with shield; Parent 3) inherits B = 2, M = 8,
@@ -163,5 +186,5 @@ frame = 16 + 1·10 + 2 + 3 = 31. Its corpse at d = 10: 16 + 17·8 + 1·4 + 3
 
 ## Open questions
 
-- `Index`, `TileSize`, `Z`, `ShootOffset`, the selection rectangle and how
-  `Palette > 1` picks a palette (`FUN_00473010` argument).
+- Where the server takes a monster's palette variant byte (`obj+0x28`,
+  sent in the create message): map unit records or `data.bin`.

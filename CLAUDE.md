@@ -161,7 +161,8 @@ The company is legally entitled to recreate the game.
   stage from HP (<=0,-10,-20,-40,-600). Default speed 4 (16 ticks/s),
   profile GameOptions/Speed. Dying heroes use unarmed/mage_st sprites.
   .alm section 3 = object layer (byte = object index + 1, CONFIRMED); tile
-  bits 0xc000 = run-time visibility gating animation (INFERRED fog).
+  bits 0xc000 = fog (CONFIRMED: FUN_0040c212 every 32 ticks clears 0x4000,
+  sight stamp FUN_00465e36 ORs 0xc000; mask from a2mgr Ordinal_93).
   docs/formats/animation.md
 - Animation timing (part 3): CONFIRMED. One timeGetTime fixed-step loop
   FUN_0048e7d0: server step FUN_004f967a, client msgs, client tick, all
@@ -172,6 +173,18 @@ The company is legally entitled to recreate the game.
   ceil(256/v), diag x0.707; turn FUN_00560444 ceil(diff/8); attack cadence
   +0x134 + +0x135 (hero 8+4, weapon params 12/13). Hero speed FUN_0051d2a7;
   speed effect kind 17 FUN_00527122. VERIFY IN GAME list in animation.md §3.6
+- Options (CONFIRMED, lighting.md §6): 0x5fb970 Shadows, 0x5fb978 Dynamic
+  lighting, 0x5fb974 Object animations (labels: a2mgr patch\patch.txt
+  table 0x62ba40); registry DWORDs Shadows/Lighting/Animation, default 1.
+- Server combat timing (CONFIRMED FUN_00518d2f): send 0x71/0x72 → windup
+  +0x134 (+ arrow flight (dist*256+128)/200) → hit FUN_0052085b → recovery
+  +0x135 + rand(0..3) + hero delay. Spell flight msg+0xf = dist/param7
+  (FUN_0052365f; lightning 5). Server cost map FUN_0055e616/0055e93d.
+- units.reg extras (CONFIRMED, units.md "Other fields"): Index unused,
+  TileSize = cells (vtable +0x20/+0x24), Z != 0 → flying class 0x5d7810,
+  ShootOffset = per-dir launch point, Selection = pick rect, Palette > 1 →
+  palette obj+0x28-1 (server byte). Burning trees/bad object bytes all lie
+  outside the loader window (never drawn).
 - Not started: data.bin, saves, game layer.
 - Next (see docs/open-questions.md): sprite/animation open questions one
   by one (user request), implement animation (structures/objects/

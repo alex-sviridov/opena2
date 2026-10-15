@@ -61,7 +61,7 @@ a 96-row BRIGHT32 shade table from the first strip's palette
 | 4–5 | `0x0030` | strip `j` (0..3) |
 | 6–12 | `0x1fc0` | set `t` |
 | 13 | `0x2000` | dirt overlay (ignored on water sets) |
-| 14–15 | `0xc000` | masked off by the terrain draw (`& 0x1fff` / `& 0xffff1fff`); run-time visibility read by structures/objects ([animation §1.6](animation.md#16-visibility-gates)) |
+| 14–15 | `0xc000` | masked off by the terrain draw (`& 0x1fff` / `& 0xffff1fff`); run-time fog of war: `0x8000` explored, `0x4000` visible now, set from unit/structure sight every 32 ticks by `FUN_0040c212` → `FUN_00465e36` (CONFIRMED, [animation §1.6](animation.md#16-visibility-gates)) |
 
 ```
 tile(v, x, y):                       # x, y = map cell
@@ -81,8 +81,12 @@ tile(v, x, y):                       # x, y = map cell
 
 `anim` is the view's counter at `+0xa88`, incremented once per game tick by
 `FUN_0040bdc1` (CONFIRMED; tick rate in [animation](animation.md#14-timing)).
-`DAT_005fb974` is a display option that also switches off structure
-animation (`FUN_004669e8`, CONFIRMED); INFERRED: the "animation" option. The water test uses the set **before**
+`DAT_005fb974` is the **Object animations** option (CONFIRMED: options
+dialog `0x44524b` labels its checkbox with line `0x36` of a2mgr's
+`patch\patch.txt` table `0x62ba40`, "Object animations"; default 1; saved
+as the DWORD registry value `Animation` by `FUN_00444790`, read by
+`FUN_004449f2`). It also freezes structures, objects and projectile
+lights ([animation §3.2](animation.md#32-what-advances-each-kind-of-animation)). The water test uses the set **before**
 animation, so the frame also depends on which of 8–11 the map stored.
 
 **CONFIRMED** (data, `tools/validate_terrain.py`): all 216 maps walk
@@ -270,9 +274,3 @@ Bottom edge flat: `bot(c) = 32`.
   objects on the ground.
 - Who calls `FUN_0047b899` and with which mask; what `DAT_00625778 & 2`
   (the `terrain.3d` path) means.
-- Which settings control `DAT_005fb974` (gates water and structure
-  animation).
-- Who sets bits 14–15 (`0xc000`) at run time; they are never set in the
-  shipped maps. Structures and objects read them as visibility (`0xc000`
-  visible, `0x8000` explored, INFERRED fog of war;
-  [animation §1.6](animation.md#16-visibility-gates)).

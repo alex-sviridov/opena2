@@ -169,13 +169,17 @@ Implementation: `shadow_angle`, `shadow_shear`, `shadow_row_offsets`,
 
 ## 6. Options
 
-The registry values are written by FUN_00444xxx under these names:
+The registry values are written as DWORDs by `FUN_00444790`
+(`RegSetValueExA`) and read by `FUN_004449f2` under these names. The
+options dialog (`FUN_00444c18`) labels the checkboxes with lines
+`0x34`–`0x36` of a2mgr's `patch\patch.txt` (table `0x62ba40`, loaded by
+a2mgr Ordinal_3). All three default to 1 (`.data`). **CONFIRMED**:
 
-| Name | Flag | Effect |
-|---|---|---|
-| `Shadows` | `0x5fb970` | draw shadows (§5) |
-| `Lighting` | `0x5fb978` | stamp lights into the light map (§3) |
-| `Animation` | `0x5fb974` | when 0, light changes also invalidate screen rectangles (FUN_00420330/390). INFERRED: redraw for non-animated mode |
+| Name | Flag | Dialog label | Effect |
+|---|---|---|---|
+| `Shadows` | `0x5fb970` | Shadows | draw shadows (§5) |
+| `Lighting` | `0x5fb978` | Dynamic lighting | stamp lights into the light map (§3) |
+| `Animation` | `0x5fb974` | Object animations | water, structure, object animation ([animation §3.2](../formats/animation.md#32-what-advances-each-kind-of-animation)); when 0, light changes also invalidate screen rectangles (FUN_00420330/390). Turning it off also clears `Lighting` (`0x4463de`) |
 | day/night | `0x62c938` | §1 (toggled by key handler FUN_0040c989) |
 
 ## Open questions

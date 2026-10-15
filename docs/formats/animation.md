@@ -348,10 +348,32 @@ recomputed by `FUN_004667ff` from the tile bits `0xc000` under its
 cells: 0 if any cell has `0xc000`, else 1 if one has `0x8000`, else 2.
 **CONFIRMED**. Structures animate only at 0 (`FUN_004676d2`), flat
 structures are drawn only below 2 (`0x408011`), and objects animate
-only on cells with `0xc000` (`0x408ba3`). **INFERRED**: `0xc000` =
-visible now, `0x8000` = explored, 0 = never seen (fog of war); these are
-the "never set in shipped maps" bits 14–15 of [terrain](terrain.md),
-set at run time.
+only on cells with `0xc000` (`0x408ba3`).
+
+**Fog update** (**CONFIRMED**). These are the bits 14–15 of
+[terrain](terrain.md), never set in the shipped maps. The client tick
+`FUN_0040bdc1` calls `FUN_0040c212` when `clock & 0x1f == 0` (every 32
+ticks, `0x40be20`). It clears bit `0x4000` on every tile, then calls
+vtable `+0x48` on every object in the view list `view+0x9d0`.
+
+- Structures (`0x5d76d0`) use `FUN_00465e36` directly. Ground and flying
+  units (`0x5d7780`, `0x5d7810`) use `FUN_00472f70`, which calls it only while
+  the death stage `obj+0x184 < 3`.
+- `FUN_00465e36` does nothing unless the sight `s16 obj+0x10a ≠ 0` and
+  `FUN_00420610(owner)` accepts the owner (INFERRED: me, or a player who
+  shares vision with me).
+- It then fills a 41 × 41 mask at `view+0x17e4` through a2mgr
+  Ordinal_93. That export calls `FUN_10023720(cellX obj+0x38, cellY
+  obj+0x3c, sight, callbacks 0x10033cc0/0x10033c60)` and copies 0x1a44
+  bytes.
+- For every mask entry `> 0` at `(i, j)` it ORs `0xc000` into the 2 × 2
+  tiles at column `x + w/2 − 20 + i` and row `y + h/2 − 20 + j`
+  (`w`, `h` = vtable `+0x20`/`+0x24`).
+
+So `0xc000` = seen in the last refresh. `0x8000` alone = seen before,
+because the fog update never clears it (explored). 0 = never seen. Animation
+therefore freezes for structures and objects outside current sight, and
+the frozen state can last up to 32 ticks after a unit leaves.
 
 ### 1.7 Map placement of objects
 
@@ -360,15 +382,25 @@ The objects draw reads its cell byte from the map's `+0x14` layer
 ([terrain](terrain.md)). Byte 0 = no object, byte `b` = object list
 index `b − 1` (= its `ID`; IDs equal their `Object<n>` index for all
 192). **CONFIRMED**. Data: in the 216 maps, 83 cells in 9 maps hold
-bytes 193–255, past the list (INFERRED: map-pack errors; the game would
-read past the array).
+bytes 193–255, past the list. All 83 lie outside the window the loader
+copies into the layer (rows `8 … h−5`, columns `8 … w−9`,
+[terrain](terrain.md)), so the game never reads them. **CONFIRMED**
+(loader window + data check over all maps).
 
 Burning trees: 7 objects (`Object1, 4, 7, 10, 13, 16, 19`, files
 `<tree>ire<tree>`) are absent from the install and from the
 `data/version` manifest, yet 11 of the 216 maps place them (e.g.
 `sb_an_waterfall_1_3.alm`, 62 cells). Their file would be loaded by
 `FUN_0047edf3` → `FUN_00426da9`, which stops with `FATAL ERROR: can't
-load` for a missing file (CONFIRMED for that routine). The 7 matching
+load` for a missing file: `AfxMessageBox` then abort (`0x426e0b`–`0x426e42`,
+CONFIRMED). a2mgr hooks the file open (`FUN_004ebe03`, `0x4ebeda` →
+Ordinal_1, `0x100339be`): it tries `data\patch\<path>`, then
+`data\<path>`, then the original lookup, with no substitute for a
+missing file. The game survives because all 206 placed cells lie
+**outside** the copied window (rows `8 … h−5`, columns `8 … w−9`): the
+object layer holds 0 there, so the sprite is never requested
+(`FUN_00420720`/`FUN_00420750` load lazily on first draw). **CONFIRMED**
+(loader window + data check). The 7 matching
 dead trees have `FireObject = −2`, which the ambient-sound scan
 `FUN_0041d158` counts as burning (INFERRED: fire crackle).
 
@@ -503,7 +535,8 @@ Damage is not applied here: hit points arrive from the server in
 messages (§1.5), and the server code (`0x4f0000` up) never reads the
 `units.reg` table `0x62cb40` or these fields. So `AttackDelay` /
 `ShootDelay` are the client's impact-sound and projectile-release frames;
-the server's own hit timing is not known yet (open question).
+the server applies the hit `+0x134` ticks after it sends the attack
+([§3.4](#34-where-the-speeds-come-from)).
 
 Event phases per type (`phase = AttackAnim[delay]`, from `units.reg`;
 **CONFIRMED** arithmetic). "Len" = attack sequence length = action
@@ -619,10 +652,10 @@ registry sequence of the kind (one element per tick, §1.2).
 
 | Kind | Phase rule | Loops? | Gate | Status |
 |---|---|---|---|---|
-| Terrain water (sets 8–11) | set `8 + ((s + (x+1)·y + (clock >> 2)) & 3)`: one frame per **4 ticks**, 4 frames | loops (period 16 ticks) | `DAT_005fb974` | CONFIRMED ([terrain](terrain.md)) |
+| Terrain water (sets 8–11) | set `8 + ((s + (x+1)·y + (clock >> 2)) & 3)`: one frame per **4 ticks**, 4 frames | loops (period 16 ticks) | `DAT_005fb974` (option "Object animations", [lighting §6](../mechanics/lighting.md#6-options)) | CONFIRMED ([terrain](terrain.md)) |
 | Structure | `k = seq[obj+0x74]`, `obj+0x74 = (obj+0x74 + 1) mod len` each tick | loops | visible (`obj+0x7c == 0`) and `DAT_005fb974`; else frozen | CONFIRMED `FUN_004676d2` |
 | VariableSize bridge | bottom edge `8 + (clock & 3)`: one frame per tick | loops (4 ticks) | — | CONFIRMED `FUN_00467bdb` |
-| Object (trees, …) | `Index + seq[(clock + X + X·Y) mod len]` | loops | cell bits `0xc000` both set | CONFIRMED `0x408b24` |
+| Object (trees, …) | `Index + seq[(clock + X + X·Y) mod len]` | loops | cell bits `0xc000` both set, and `DAT_005fb974` (else phase 0, `0x408d33`) | CONFIRMED `0x408b24` |
 | Projectile (default) | `(age / 2) mod Phases`, `age` +1 per tick: one frame per **2 ticks** | loops for the flight | — | CONFIRMED `FUN_00471643` |
 | Projectile 0x1c/0x1e | ping-pong 4,3,2,1,0,1,2,3,2,1,0,… one per tick | loops | — | CONFIRMED |
 | Projectile 0x17 and hit IDs | `age` (0x36: `age − 1`), one frame per tick | plays once (INFERRED: the object is removed when its time ends) | — | CONFIRMED phase rule |
@@ -717,11 +750,47 @@ defaults, into `map+0x54147…`; values are this install's file):
 | default in code | 8 | 8 | 9 | 14 | 6 | 12 | 11 | 16 | 8 | 6 |
 
 `SpeedMultiplier` (`Path Finding`, default 8) = 8 in the file. With cost 8
-the multiplier cancels: on flat grass `v = base`. INFERRED: the per-cell
-cost array (`map+0`, read by `FUN_00564137`/`FUN_00569a40`) is filled
-from this table by each cell's terrain type; the fill routine was not
-traced. Cells with flag `0x20` (`map+0x10000`) take another path (INFERRED
-bridges/structures).
+the multiplier cancels: on flat grass `v = base`.
+
+**Per-cell cost** (**CONFIRMED** `FUN_0055e616` → `FUN_0055e93d`). At map
+load the server fills three 256 × 256 byte arrays, indexed `(y << 8) + x`:
+`cost` (`map+0`, read by `FUN_00564137`/`FUN_00569a40`), `flags`
+(`map+0x10000`) and a per-cell signed byte at `map+0x944f4` (the one the
+slope term reads). From the tile word `v` (terrain [tiles](terrain.md),
+`v & 0x3ff`):
+
+```
+if (v & 0x300) == 0x200:                 # sets 8–11, water
+    cost = 8
+    type = 9 water if row < 8, except row 4 strip 1 → 1 land; row ≥ 8 → 0xff
+elif row < 14:
+    (A, B) = pair[set]                   # map+0x54126 + 2·set
+    m = blend[strip][row]                # map+0x540a6 + 16·strip + row
+    cost = B, (A + 3B)>>2, (A + B)>>1, (3A + B)>>2, A   for m = 1..5   # costs from map.reg
+    type = A if m > 2 else B
+else:
+    type = 0xff, cost = 8
+cost[cell] = cost if type < 13 else Cost[0] (= 0xff, impassable)
+flags[cell] = 1 if v & 0x2000 (dirt overlay), type == 8 (mountain) or water; 5 if the map's +0x10 byte ≠ 0
+```
+
+Terrain pairs `(A, B)` per tile set (`FUN_0055dd41`): 0 Grass/Land,
+1 Cracked/Land, 2 Sand/Land, 3 Savanna/Land, 4 Stones/Land,
+5 Cracked/Stones, 6 Flowers/Savanna, 7 Mountain/Stones, 12 Road/Land
+(type numbers 1 Land … 10 Road as in the cost table). Blend codes:
+
+| strip \ row | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0 | 2 | 3 | 2 | 4 | 3 | 4 | 2 | 2 | 2 | 2 | 4 | 4 | 4 | 4 |
+| 1 | 3 | 5 | 3 | 3 | 1 | 3 | 2 | 4 | 2 | 2 | 4 | 2 | 4 | 4 |
+| 2 | 2 | 3 | 2 | 4 | 3 | 4 | 2 | 4 | 2 | 2 | 4 | 2 | 4 | 4 |
+| 3 | 5 | 5 | 5 | 5 | 5 | 5 | 2 | 2 | 2 | 2 | 4 | 4 | 4 | 4 |
+
+INFERRED: the map object passed in has the client layout's `+0xc` tiles
+but its `+0x10` byte marks blocked cells (flag 5, e.g. objects) and its
+`+0x14` byte is the height copied to `map+0x944f4` (the slope term
+clamps differences to ±32, as for heights). Flag `0x20` (tested by
+`FUN_00564137`) is set elsewhere (not traced).
 
 Worked example (flat grass, `base` 18 = a hero with the default `+0x86 = 30`: `12 + 30/5`): orthogonal `v = 18`,
 `ceil(256/18) = 15` ticks per cell = 0.93 s at 16.13 ticks/s; diagonal
@@ -743,6 +812,28 @@ cycles. **CONFIRMED** arithmetic from the two formulas.
 | monsters | written through the stat block virtual `FUN_0051aed6` (`+0x8c = block+4`) | CONFIRMED write; values from `world/data/data.bin` (not decoded) |
 | effects (Haste/Slow, …) | effect kind 17 (`FUN_00527122` case 0x11, `0x527757`): `delta = strength · effect+0x40`; heroes add it to the modifier `+0xd8` (recomputed), others to `+0x8c` directly | CONFIRMED path; which spells use kind 17 and their magnitudes are data (open) |
 
+**Spell projectile flight time** (**CONFIRMED** `FUN_0052365f` →
+`FUN_0050ce4e`/`FUN_0050cf32`, message `0x86` with a target object or
+`0x8b` with a target point). The server writes `msg[+0xc] = 2·spell + 8`
+(projectile ID), `msg[+0xd]` = the target's object ID (u16), and
+`msg[+0xf]` = flight ticks (u16), which the client copies to the new
+projectile's `obj+0xa8` (§1.5):
+
+```
+if spell.param[5] == 2:                     // missile-type spell
+    ticks = trunc(sqrt(dx² + dy²)) / spell.param[7]   // FUN_005206ea; positions = cell·256 + fraction
+    if spell == 10 (lightning): ticks = 5      // the code also tests 11, which never gets here
+else:
+    ticks = 0
+```
+
+`spell.param[k]` is the spell template's parameter array (`FUN_00421110(k)`
+on `template+0x3c+8`), loaded from `world/data/data.bin` (not decoded), so
+`param[7]` is a missile speed in 1/256 cell per tick. Spell 11 (the
+`spell+8` byte `0x0b`) takes another path (`FUN_005238cb`) and sends no
+`0x86`. Arrows and catapult shots are timed by the client (`dist / 200`,
+§1.4), not by this message.
+
 **Turn: ticks** (**CONFIRMED** `FUN_00560444`, sender `FUN_00519b30`
 with type `0x6d`, `msg[+0xd] = mover+0xa4`): angles are bytes (256 = full
 circle). `diff = |target − current|`, folded to `≤ 128`. If the first
@@ -753,19 +844,50 @@ turning 180° takes `128 / 8 = 16` ticks ≈ 1 s. The client spreads the
 change evenly: `facing256 += (target − facing256) / ticks_left` per tick
 (§2.2).
 
-**Attack cadence** (**CONFIRMED** `FUN_0050d730`, `FUN_0050cd3c`,
-`FUN_0050cdcd`): units with `unit+0x12c < 2` send melee `0x71`, others
-shoot `0x72`. The server keeps the attacker busy for `+0x134 + +0x135`
-ticks (`unit+0x138 = tick + …`); for a melee attack that sum is also put
-in `msg[+0xd]`, which the client ignores (it uses the `AttackAnim`
-length). Heroes' bytes come from the equipped weapon (`FUN_00532dee`:
-item parameters 12 and 13, kept when −1); defaults 8 + 4 = 12.
-INFERRED: if the server cadence is longer than the client animation the
-unit stands for the difference between swings; if shorter, the next
-`0x71` restarts the animation at phase 0 (the handler zeroes `+0x9c`).
-**VERIFY IN GAME:** a swordsman hero (`AttackAnim` 11 ticks, default
-cadence 12) should show one stand frame between swings; swap to a
-weapon with other timing and count frames.
+**Attack cadence and hit time** (**CONFIRMED** `FUN_00518d2f`, the
+server unit update; order `unit+0x54` = 3 attack, `0xd` cast at a unit,
+`0xe` cast at a point; phase `unit+0x58`, countdown byte `unit+0x6c`):
+
+```
+phase 0 (start):  attack: FUN_0052076b → FUN_0050d730 sends 0x71 (unit+0x12c < 2, melee)
+                          or 0x72 (shoot); extra = (dist·256 + 128) / 200 if dist > 1
+                  cast:   FUN_0052365f sends 0x86/0x8b (mana is checked and spent there)
+                  countdown = +0x134 (+ extra); phase = 5
+phase 5 (windup): countdown −= 1; at 0:
+                  attack → FUN_0052085b: the HIT (FUN_00520927 on units,
+                           FUN_00520b16 on structures)
+                  cast   → FUN_00523a46 (unit) / FUN_00523a7f (point): the spell effect
+                  countdown = +0x135 + rand(0..3) + hero_delay [+ spell param[0] for
+                              a weapon's spell]; phase = 7
+phase 7 (recovery): countdown −= 1; at 0: phase = 0, ready flag +0x136 = 1
+hero_delay = clamp((weapon+0x4a + (30 − unit+0x86)·5) / 12, 0, 12)   // heroes with a weapon (+0x74)
+rand(n) = rand()·(n+1) >> 15                                        // FUN_005296f6
+```
+
+So the server applies melee damage `+0x134` ticks after it sends `0x71`.
+A ranged hit lands later by the arrow's flight time `(dist·256 + 128)/200`,
+which matches the client's own arrow flight `dist / 200` (§1.4). Spell
+effects land `+0x134` ticks after the cast message. One attack takes
+`+0x134 + extra + +0x135 + rand(0..3) + hero_delay` ticks, plus one tick
+for the phase-0 pass. INFERRED: one call per server tick.
+
+The `0x71`/`0x72` message also sets `unit+0x138 = tick + +0x134 +
++0x135` (`FUN_0050cd3c`/`FUN_0050cdcd`). For melee that sum is also in
+`msg[+0xd]`, which the client ignores: it plays the `AttackAnim` length
+(§1.5). Heroes' `+0x134`/`+0x135` come from the equipped weapon
+(`FUN_00532dee`: item parameters 12 and 13, kept when −1); defaults are
+8 and 4 (`FUN_00518863`). Monsters' values come from data (open). With
+the client's `AttackDelay` sound and the server's hit on different ticks,
+the impact sound can come before or after the HP change. For example, a
+hero swordsman's sound plays at tick 4 and the damage lands at tick 8.
+
+INFERRED: if the cycle is longer than the client animation the unit
+stands for the difference between swings; if shorter, the next `0x71`
+restarts the animation at phase 0 (the handler zeroes `+0x9c`).
+**VERIFY IN GAME:** a hero swordsman (`AttackAnim` 11 ticks, default
+cycle 8 + 4 + 0..3 + 1 = 13–16 ticks, plus `hero_delay`) should show at
+least 2–5 stand frames between swings. The target's HP bar should drop about half a second
+after the swing starts (tick 8), after the clang (tick 4).
 
 ### 3.5 Summary of loop, once and hold
 
@@ -785,34 +907,31 @@ weapon with other timing and count frames.
    speed 8 given the system timer.
 2. One stand frame or none at cell borders on a long walk (§3.3).
 3. Corpse "twitch" when a fresh corpse is hit again (§3.3).
-4. A hero swordsman shows one stand frame between swings (§3.4).
+4. A hero swordsman shows at least 2–5 stand frames between swings, and the
+   target's HP drops after the clang (§3.4).
 5. Walk times: a hero crossing 10 grass cells vs 10 road cells should
    take about `15 : 11` (with base 18; measure the hero's speed stat first).
 6. Haste/Slow change walk time but not the attack animation length
    (client `AttackAnim` is fixed; only the server cadence could change).
-7. Water ripples every ~¼ s at the default speed, and stop when the
-   animation option is off (`DAT_005fb974`).
+7. Water ripples every ~¼ s at the default speed, and water, buildings
+   and trees stop when Options → "Object animations" is off; "Dynamic
+   lighting" switches off with it.
 
 ## Open questions
 
-- Who writes the tile visibility bits `0xc000` at run time (fog update).
+- The sight mask algorithm (line of sight, radius shape): a2mgr
+  Ordinal_93 → `FUN_10023720` with callbacks `0x10033cc0`/`0x10033c60`;
+  and what the original exe did before a2mgr replaced it.
   [§1.6](#16-visibility-gates)
-- How this install avoids the `FATAL ERROR` for the 11 maps that place
-  burning trees (a2mgr redirect, or the files lived in a `.res`).
-  [§1.7](#17-map-placement-of-objects)
-- How the server derives the projectile flight time `msg[+0xf]`
-  (messages `0x86`/`0x8b`; move and turn are answered in
-  [§3.4](#34-where-the-speeds-come-from)).
 - Data-driven speed values: monster speed `+0x8c`, turn rate
   `mover+0xa`, attack bytes `+0x134/+0x135` for monsters, the
-  `template+0x44` speed override, and which spells create effect kind 17
+  `template+0x44` speed override, spell `param[5]`/`param[7]` (missile
+  type and speed for flight time), and which spells create effect kind 17
   (Haste/Slow) with what strength; all from `world/data/data.bin`
   ([§3.4](#34-where-the-speeds-come-from); `FUN_0051aed6`,
   `FUN_00527122`).
-- Which routine fills the per-cell terrain cost array (`map+0`) from the
-  `map.reg` costs, and what the cell flag `0x20` path does
-  (`FUN_00564137`). [§3.4](#34-where-the-speeds-come-from)
-- When the server applies melee damage and launches projectiles: it does
-  not read `units.reg` (`AttackDelay`/`ShootDelay` are client-only,
-  [§2.4](#24-attack-events-hit-and-release-frames)); start from the server
-  sender of message `0x71`/`0x72` and `world/data/data.bin`.
+- Server map fill `FUN_0055e616`: which layers its input `+0x10`/`+0x14`
+  are, and who sets cell flag `0x20` (`FUN_00564137` path).
+  [§3.4](#34-where-the-speeds-come-from)
+- What `weapon+0x4a` and `unit+0x86` are in the hero recovery delay
+  (INFERRED: weapon speed and a hero stat; [§3.4](#34-where-the-speeds-come-from)).
