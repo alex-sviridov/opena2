@@ -76,8 +76,7 @@ The company is legally entitled to recreate the game.
 - .alm maps: 216 from the allods2.eu maps pack in samples/.../maps/. Container
   (M7R header + 13 sections) walks to EOF on all; semantics open. docs/inventory.md §5.2
 - Graphics overview: docs/formats/graphics-overview.md (tools/gfx_survey.py ->
-  out/gfx/). Ranks 1-8 CONFIRMED; #9 terrain and #10 unit animation are
-  composites still open.
+  out/gfx/). Ranks 1-9 CONFIRMED (terrain flat only); #10 unit animation open.
 - Fonts: CONFIRMED. fontN.dat = u32 per glyph (char 0x20+g) = last ink column;
   advance = width + 2. Measure FUN_00461e19, .16 draw 0x4637f1 hooked by
   a2mgr Ordinal_125/126 (%[RGB] colour escapes), .16a draw FUN_00463bbd,
@@ -91,6 +90,12 @@ The company is legally entitled to recreate the game.
 - PNG: CONFIRMED. a2mgr Ordinal_102/103 try data\<path>.png before .256 for
   paper-doll layers; FUN_10010d70 draws only 160x240, float alpha blend into
   RGB565, channels >= 1. docs/formats/png.md (tools/validate_png.py)
+- Terrain: CONFIRMED flat. Tiles u16: row v&0xf, strip (v>>4)&3, set
+  (v&0x1fff)>>6 (0-12), 0x2000 dirt overlay; sets 8-11 = animated water.
+  Loader FUN_0047b899, draw FUN_00404eb5, flat lit blit FUN_0045c757.
+  allods2/alm.py reads the M7R container. docs/formats/terrain.md
+  (tools/validate_terrain.py, tools/terrain_contact.py). Open: FUN_0045c8ce
+  height-displaced blit, altitude -> vertex y.
 - Not started: data.bin, saves, game layer.
-- Next: #9 terrain (.alm Tiles) and #10 unit animation (units.reg); both
-  need .reg/.alm semantics first.
+- Next: #10 unit animation (units.reg semantics, frame/direction mapping,
+  centre offsets T+0x2c..0x38), then terrain heights (FUN_0045c8ce).

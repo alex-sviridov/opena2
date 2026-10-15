@@ -35,5 +35,5 @@ See [palettes](palettes.md).
 
 ## Open questions
 
-- How the terrain strips are indexed by the map format (tile → strip row).
+- Terrain strip indexing: answered in [terrain](terrain.md).
 - The 24 → 16-bit conversion used by the "64k" class.
