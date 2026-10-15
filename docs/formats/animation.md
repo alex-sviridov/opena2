@@ -10,8 +10,12 @@ Part 1 ("Sources") records **where** each piece of animation information
 comes from. Part 2 ("Layout") maps every frame index of a unit, monster
 or hero sprite to (action, direction, phase), with the facing convention,
 mirroring and the attack event frames. The draw formulas themselves are
-in [units](units.md). Per-kind timing for structures, objects and
-projectiles is still to be written as a spec.
+in [units](units.md). Part 3 ("Timing") states how fast every kind of
+animation plays as rules and formulas: the game tick, what advances each
+phase counter, where the speeds come from (including the in-process
+server's walk and turn times), and which actions loop, hold or return to
+idle. Items marked **VERIFY IN GAME** need a check in the running
+original.
 
 ## 1. Sources
 
@@ -24,7 +28,7 @@ projectiles is still to be written as a spec.
 | Which phase is current | per-object counters advanced by the class's tick routine (vtable `+0x3c`) | CONFIRMED |
 | Tick rate | game-speed setting → table in `FUN_00492068` | CONFIRMED |
 | Hero sprite folder → unit type | hard-coded string table in `FUN_0046f688` | CONFIRMED |
-| Action durations (move, attack, cast, …) | `obj+0xa8` remaining ticks, set when an action starts; projectiles: hard-coded switch | CONFIRMED (projectiles); units INFERRED from server messages |
+| Action durations (move, attack, cast, …) | `obj+0xa8` remaining ticks, set when an action starts; projectiles: hard-coded switch; move/turn ticks computed by the in-process server (§3.4) | CONFIRMED |
 | Per-sprite headers | carry **no** animation data: only `w`, `h`, `size` per frame ([sprites](sprites.md)) | CONFIRMED (`FUN_00426da9`) |
 
 Searched and **not** a source:
@@ -564,6 +568,231 @@ bones (stride `IdlePhases = 0`, so direction 0 only) are frames
 112–114, which are whole bodies of direction 6, not bones. The game is
 reproduced as is ([CLAUDE.md](../../CLAUDE.md): match quirks).
 
+## 3. Timing
+
+Everything in this part is in ticks. §1.4–§1.5 hold the derivations;
+this part gives the rules a reimplementation follows.
+
+### 3.1 The game tick
+
+**Clock** (**CONFIRMED** `FUN_0048e7d0`, `0x48e7e4`–`0x48e89f`). The game
+has one fixed-step loop driven by `timeGetTime` (import `0x6dc0b0`).
+`QueryPerformanceCounter` (`0x5692cb`, `0x584f1e`) and `GetTickCount` are
+not used for it; the in-process server (`FUN_004f967a`) reads
+`GetTickCount` only to measure its own run time (`+0x1b8`). Each pass:
+
+```
+loop:
+    due = base + period · (n + 1)          // app+0x42c, app+0x430, app+0x424
+    if timeGetTime() < due: stop
+    if n == 0: base = timeGetTime()        // re-base once per 16 ticks
+    n = (n + 1) & 15
+    server.step()                          // FUN_004f967a (DAT_0060e684)
+    client.read_messages(100)              // FUN_0040dac9: actions, durations
+    post 0x401 → FUN_0040bdc1               // view clock +0xa88 ++, every object's tick
+```
+
+| Rule | Value |
+|---|---|
+| period | `1000 / rate` ms, integer division (`FUN_00492068`) |
+| rate (ticks/s) by speed 0..8 | 8, 10, 12, 14, **16**, 20, 24, 28, 32 (default speed 4) |
+| actual rate | `1000 / period`: 8, 10, 12.05, 14.08, 16.13, 20, 24.39, 28.57, 32.26 |
+| server ↔ client | the server steps exactly once per client tick, in the same loop: one tick for both |
+| catch-up | late ticks run back to back in the same pass, but only until `n` wraps to 0: the re-base drops any older backlog (at most 15 extra ticks after a stall) |
+| jitter | the re-base makes each block of 16 ticks run at `X, X+2P, X+3P, …, X+16P`, then tick 0 of the next block runs immediately after (gap 0). The average stays one tick per period |
+
+Changing the speed (`FUN_00492068`; also the network message `0x417b97`)
+resets `n = 0` and `base = GetTickCount()` (`0x49213a`–`0x492152`).
+INFERRED: `GetTickCount` and `timeGetTime` count the same milliseconds
+since boot on Windows, so mixing them only shifts the first tick.
+
+**VERIFY IN GAME:** the speed 0..8 options in the menu map to 8…32
+ticks/s (stopwatch a 10-cell walk at two speeds; the ratio should be
+`rate₁ / rate₂`). The exe never calls `timeBeginPeriod`, so the tick may
+be quantised by the system timer (≈1 or ≈15.6 ms); measure whether speed 8
+really gives 32 ticks/s.
+
+### 3.2 What advances each kind of animation
+
+`clock` = view counter `view+0xa88` (+1 per tick). `seq` = the
+registry sequence of the kind (one element per tick, §1.2).
+
+| Kind | Phase rule | Loops? | Gate | Status |
+|---|---|---|---|---|
+| Terrain water (sets 8–11) | set `8 + ((s + (x+1)·y + (clock >> 2)) & 3)`: one frame per **4 ticks**, 4 frames | loops (period 16 ticks) | `DAT_005fb974` | CONFIRMED ([terrain](terrain.md)) |
+| Structure | `k = seq[obj+0x74]`, `obj+0x74 = (obj+0x74 + 1) mod len` each tick | loops | visible (`obj+0x7c == 0`) and `DAT_005fb974`; else frozen | CONFIRMED `FUN_004676d2` |
+| VariableSize bridge | bottom edge `8 + (clock & 3)`: one frame per tick | loops (4 ticks) | — | CONFIRMED `FUN_00467bdb` |
+| Object (trees, …) | `Index + seq[(clock + X + X·Y) mod len]` | loops | cell bits `0xc000` both set | CONFIRMED `0x408b24` |
+| Projectile (default) | `(age / 2) mod Phases`, `age` +1 per tick: one frame per **2 ticks** | loops for the flight | — | CONFIRMED `FUN_00471643` |
+| Projectile 0x1c/0x1e | ping-pong 4,3,2,1,0,1,2,3,2,1,0,… one per tick | loops | — | CONFIRMED |
+| Projectile 0x17 and hit IDs | `age` (0x36: `age − 1`), one frame per tick | plays once (INFERRED: the object is removed when its time ends) | — | CONFIRMED phase rule |
+| Unit idle (`IdlePhases ≠ 0`) | `idleSeq[(++obj+0x9c) mod idleLen]` | loops | — | CONFIRMED `0x46b6ab` |
+| Unit stand (`IdlePhases = 0`) | stand frame, counter reset to 0 every tick | — | — | CONFIRMED `0x46b6db` |
+| Unit move | `moveSeq[(odometer / 16) mod moveLen]`, distance-driven (§3.3) | loops | — | CONFIRMED |
+| Unit attack / shoot / cast | `attackSeq[t]`, `t` = 0, 1, … one per tick | once, then idle | — | CONFIRMED |
+| Unit turn | stand frame of the current facing, facing stepped per tick | once, then idle | — | CONFIRMED |
+| Unit dying | dying phase `t / 2`, `t` = 0 … `2D − 1`: one frame per **2 ticks** | once, then **holds** the corpse | — | CONFIRMED |
+
+Worked examples at the default 16.13 ticks/s: water changes frame every
+248 ms (a 4-frame cycle ≈ 1 s); a projectile with 6 phases loops every
+12 ticks ≈ 0.74 s; a 6-phase death takes 12 ticks ≈ 0.74 s; the goblin's
+attack (`Len` 10) takes 0.62 s.
+
+### 3.3 Unit actions: duration, then back to idle
+
+**Rule** (**CONFIRMED** `FUN_0046b5ef`, `0x46b647`–`0x46b724` and
+`0x46c1c5`–`0x46c1e4`): a message sets the action `obj+0x8c` and its
+length `obj+0xa8` (§1.5) during `read_messages`, before the tick of the
+same pass. Each tick with `obj+0xa8 > 0` runs the action's case, copies
+the action to the draw state `obj+0x78` and decrements `obj+0xa8`. So an
+action of length `N` is drawn on exactly `N` ticks. On the first tick
+with `obj+0xa8 == 0` the state becomes **0 (idle)** whatever the action
+was. No action repeats by itself: walking, attacking or casting again
+needs a new server message.
+
+| Action | Length `N` (ticks) | Phases shown | After the last tick |
+|---|---|---|---|
+| 0 idle | — | idle loop or stand | — |
+| 1 move | `msg[+0xd]` = server ticks for one cell (§3.4) | distance-driven walk cycle | idle, unless the next `0x6b` arrives in the same pass |
+| 5 turn | `msg[+0xd]` = server turn ticks (§3.4) | stand frame of the stepping facing | idle |
+| 3 attack, 7 shoot, 8 cast | `AttackAnim` sequence length (`T+0x68`) | `AttackAnim[0 … N−1]`, events at `AttackDelay`/`ShootDelay` (§2.4) | idle |
+| 6 dying | `2 · DyingPhases` of the `Dying` type | dying `0 … D−1`, two ticks each | idle state + death stage 1 = **corpse** frame `D − 1` (held); later bones by HP (§1.5) |
+
+Idle after an action: with `IdlePhases ≠ 0` (dragon, bat, bee, ghost,
+succubus, star) the idle counter continues from the action's last value
+(`obj+0x9c` is not reset), so the idle loop starts at an arbitrary
+phase; otherwise the stand frame is shown and the counter is zeroed each
+tick. **CONFIRMED** (`0x46b6ab`–`0x46b6f2`).
+
+Walk continuity: the server sends one `0x6b` per cell (§3.4). The
+odometer `obj+0x9c` is not reset between cells, so a unit that keeps
+walking continues its cycle. **CONFIRMED** (no write to `+0x9c` on
+`0x6b`). INFERRED: when the server's next step arrives one pass late, the
+unit shows one tick of stand/idle between cells. **VERIFY IN GAME:**
+watch a long straight walk for a one-frame "stand" flicker at cell
+borders.
+
+Corpse re-hit quirk (**CONFIRMED** code path, `0x410c67`): a death-stage
+message that leaves the stage at 1 sets action 6 for 4 ticks **without**
+resetting `obj+0x9c`. For a type without an idle animation the counter
+was zeroed by the idle ticks, so the unit replays dying phases 0, 0, 1, 1
+and then lies down again (a "twitch"). With an idle animation the counter
+is arbitrary and the draw (`0x468e8f`, no clamp) indexes past the dying
+block. **VERIFY IN GAME:** hit a fresh corpse (HP between 0 and −10)
+with an area spell and watch for the twitch.
+
+### 3.4 Where the speeds come from
+
+The client never computes a walk or turn speed: it plays what the server
+sends. The server's numbers are:
+
+**Walk: ticks per cell** (**CONFIRMED** `FUN_00563185`, sender
+`FUN_00519b30` → `FUN_0050cd3c` writes `msg[+0xd] = mover+0xaa`, and the
+server marks the unit busy until `tick + msg[+0xd]`, `unit+0x138`):
+
+```
+base  = template_speed (unit+0x70 → +0x3c → byte +0x44) if non-zero,
+        else unit speed stat (s16 unit+0x8c)                 // FUN_0056314a
+dir8  = (angle + 16) >> 5                                    // 8 compass steps
+if ground unit (vtable +0x20 == 1):
+    v = base · SpeedMultiplier                               // map.reg, 8
+    δ = clamp(h[from] − h[to], −32, 32)                      // signed cell heights, map+0x944f4
+    v = v + v·δ/64  (downhill faster, uphill slower; v·|δ| >> 6)
+    c = (cost[from] + cost[to]) >> 1, or 8 if 0               // per-cell terrain cost
+    v = v / c
+else:
+    v = base                                                 // (base·8)/8, fliers ignore terrain
+v = clamp(v, 1, 63)                                          // units per tick (1/256 cell)
+step_x, step_y = v·dx, v·dy, each × 0.707 (truncated) when diagonal
+ticks_per_cell = ceil(256 / |step_x or, if 0, step_y|)      // mover+0xaa
+```
+
+Terrain costs (**CONFIRMED** `FUN_0055dd41` reads
+`world/data/map.reg`, section `Terrain`, keys `Cost<name>` with
+defaults, into `map+0x54147…`; values are this install's file):
+
+| Terrain | Land | Grass | Flowers | Sand | Cracked | Stones | Savanna | Mountain | Water | Road |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `Cost` (file) | 8 | 8 | 8 | 14 | 6 | 12 | 8 | 16 | 8 | 6 |
+| default in code | 8 | 8 | 9 | 14 | 6 | 12 | 11 | 16 | 8 | 6 |
+
+`SpeedMultiplier` (`Path Finding`, default 8) = 8 in the file. With cost 8
+the multiplier cancels: on flat grass `v = base`. INFERRED: the per-cell
+cost array (`map+0`, read by `FUN_00564137`/`FUN_00569a40`) is filled
+from this table by each cell's terrain type; the fill routine was not
+traced. Cells with flag `0x20` (`map+0x10000`) take another path (INFERRED
+bridges/structures).
+
+Worked example (flat grass, `base` 18 = a hero with the default `+0x86 = 30`: `12 + 30/5`): orthogonal `v = 18`,
+`ceil(256/18) = 15` ticks per cell = 0.93 s at 16.13 ticks/s; diagonal
+`step = trunc(18 · 0.707) = 12`, `ceil(256/12) = 22` ticks. On road
+(cost 6): `v = 18·8/6 = 24`, 11 ticks. On sand (14): `v = 10`, 26 ticks.
+
+**Walk animation speed** follows from §1.4: one sequence element per 16
+units moved, so the common `MoveAnimTime` 8 × 2 (16 elements) plays one
+full cycle per orthogonal cell, whatever `v` is. Frames per second =
+`rate · v / 32` for those types; a diagonal cell (362 units) plays 1.41
+cycles. **CONFIRMED** arithmetic from the two formulas.
+
+**Speed stat** `unit+0x8c` (server):
+
+| Source | Rule | Status |
+|---|---|---|
+| hero defaults | `FUN_00518863`: `+0x8c = 10`, turn rate `mover+0xa = 8`, attack bytes `+0x134 = 8`, `+0x135 = 4` | CONFIRMED |
+| hero recompute | `FUN_0051d2a7` (`0x51d6b4`–`0x51d7fa`): `s = A` if `A < 12` else `12 + A/5`, with `A = s16 +0x86`; `+10` when `+0xe` is 0x13 or 0x15; when load `+0x90 ≥` capacity `+0x92`: `s −= load / capacity`, minimum 6; then the effect block `+0xd4` adds its speed delta (`FUN_0051b023`) | CONFIRMED code; INFERRED: `+0x86` is the hero's Reaction/Dexterity stat, `+0xe` a mount/class id |
+| monsters | written through the stat block virtual `FUN_0051aed6` (`+0x8c = block+4`) | CONFIRMED write; values from `world/data/data.bin` (not decoded) |
+| effects (Haste/Slow, …) | effect kind 17 (`FUN_00527122` case 0x11, `0x527757`): `delta = strength · effect+0x40`; heroes add it to the modifier `+0xd8` (recomputed), others to `+0x8c` directly | CONFIRMED path; which spells use kind 17 and their magnitudes are data (open) |
+
+**Turn: ticks** (**CONFIRMED** `FUN_00560444`, sender `FUN_00519b30`
+with type `0x6d`, `msg[+0xd] = mover+0xa4`): angles are bytes (256 = full
+circle). `diff = |target − current|`, folded to `≤ 128`. If the first
+check finds `diff < 33` (or `256 − diff < 33`, within ~45°) the facing
+snaps and the turn lasts **1** tick; otherwise `ticks = ceil(diff /
+turn_rate)` with `turn_rate = mover+0xa` (8 for heroes). Example: a hero
+turning 180° takes `128 / 8 = 16` ticks ≈ 1 s. The client spreads the
+change evenly: `facing256 += (target − facing256) / ticks_left` per tick
+(§2.2).
+
+**Attack cadence** (**CONFIRMED** `FUN_0050d730`, `FUN_0050cd3c`,
+`FUN_0050cdcd`): units with `unit+0x12c < 2` send melee `0x71`, others
+shoot `0x72`. The server keeps the attacker busy for `+0x134 + +0x135`
+ticks (`unit+0x138 = tick + …`); for a melee attack that sum is also put
+in `msg[+0xd]`, which the client ignores (it uses the `AttackAnim`
+length). Heroes' bytes come from the equipped weapon (`FUN_00532dee`:
+item parameters 12 and 13, kept when −1); defaults 8 + 4 = 12.
+INFERRED: if the server cadence is longer than the client animation the
+unit stands for the difference between swings; if shorter, the next
+`0x71` restarts the animation at phase 0 (the handler zeroes `+0x9c`).
+**VERIFY IN GAME:** a swordsman hero (`AttackAnim` 11 ticks, default
+cadence 12) should show one stand frame between swings; swap to a
+weapon with other timing and count frames.
+
+### 3.5 Summary of loop, once and hold
+
+| Animation | Behaviour |
+|---|---|
+| unit idle animation, stand | loops forever while idle |
+| unit walk | loops (by distance) while move messages keep coming; stand when they stop |
+| unit attack, shoot, cast, turn | play once (one pass of the sequence or the turn), then idle |
+| unit dying | plays once (2 ticks per frame), then holds the corpse frame; bones frames replace it as HP falls (death stage 2–4), nothing at stage 5 |
+| structure, object, water, bridge edge | loop forever (while visible / animation on) |
+| projectile in flight | loops `Phases` (2 ticks per frame) until the flight time ends |
+| projectile hit effects (0x17, hit IDs) | play once, one frame per tick |
+
+### 3.6 VERIFY IN GAME (collected)
+
+1. Speed setting → ticks/s table (§3.1), and the effective rate at
+   speed 8 given the system timer.
+2. One stand frame or none at cell borders on a long walk (§3.3).
+3. Corpse "twitch" when a fresh corpse is hit again (§3.3).
+4. A hero swordsman shows one stand frame between swings (§3.4).
+5. Walk times: a hero crossing 10 grass cells vs 10 road cells should
+   take about `15 : 11` (with base 18; measure the hero's speed stat first).
+6. Haste/Slow change walk time but not the attack animation length
+   (client `AttackAnim` is fixed; only the server cadence could change).
+7. Water ripples every ~¼ s at the default speed, and stop when the
+   animation option is off (`DAT_005fb974`).
+
 ## Open questions
 
 - Who writes the tile visibility bits `0xc000` at run time (fog update).
@@ -571,8 +800,18 @@ reproduced as is ([CLAUDE.md](../../CLAUDE.md): match quirks).
 - How this install avoids the `FATAL ERROR` for the 11 maps that place
   burning trees (a2mgr redirect, or the files lived in a `.res`).
   [§1.7](#17-map-placement-of-objects)
-- Meaning of the `msg[+0xd]`/`msg[+0xf]` durations on the server side
-  (how the server derives move time from unit speed).
+- How the server derives the projectile flight time `msg[+0xf]`
+  (messages `0x86`/`0x8b`; move and turn are answered in
+  [§3.4](#34-where-the-speeds-come-from)).
+- Data-driven speed values: monster speed `+0x8c`, turn rate
+  `mover+0xa`, attack bytes `+0x134/+0x135` for monsters, the
+  `template+0x44` speed override, and which spells create effect kind 17
+  (Haste/Slow) with what strength; all from `world/data/data.bin`
+  ([§3.4](#34-where-the-speeds-come-from); `FUN_0051aed6`,
+  `FUN_00527122`).
+- Which routine fills the per-cell terrain cost array (`map+0`) from the
+  `map.reg` costs, and what the cell flag `0x20` path does
+  (`FUN_00564137`). [§3.4](#34-where-the-speeds-come-from)
 - When the server applies melee damage and launches projectiles: it does
   not read `units.reg` (`AttackDelay`/`ShootDelay` are client-only,
   [§2.4](#24-attack-events-hit-and-release-frames)); start from the server

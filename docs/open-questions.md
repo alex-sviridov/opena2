@@ -55,8 +55,13 @@ Rules (also in CLAUDE.md):
 - How this install avoids `FATAL ERROR` on the 11 maps that place burning
   trees (`FUN_0047edf3`; a2mgr redirect or a former `.res`).
   [animation](formats/animation.md#open-questions)
-- How the server derives move/turn/projectile durations (`msg[+0xd]`,
-  `msg[+0xf]` in `FUN_0040dac9`). [animation](formats/animation.md#open-questions)
+- How the server derives projectile flight time `msg[+0xf]` (msgs
+  `0x86`/`0x8b`). [animation](formats/animation.md#open-questions)
+- Data-driven speeds: monster speed, turn rate, monster attack bytes,
+  Haste/Slow (effect kind 17) strengths — data.bin (`FUN_0051aed6`,
+  `FUN_00527122`). [animation](formats/animation.md#34-where-the-speeds-come-from)
+- Per-cell terrain cost fill from map.reg and the cell-flag `0x20` path
+  (`FUN_00564137`). [animation](formats/animation.md#34-where-the-speeds-come-from)
 - When the server applies melee damage / launches projectiles (it never
   reads units.reg; sender of msg `0x71`/`0x72`, data.bin).
   [animation](formats/animation.md#24-attack-events-hit-and-release-frames)

@@ -163,7 +163,17 @@ The company is legally entitled to recreate the game.
   .alm section 3 = object layer (byte = object index + 1, CONFIRMED); tile
   bits 0xc000 = run-time visibility gating animation (INFERRED fog).
   docs/formats/animation.md
+- Animation timing (part 3): CONFIRMED. One timeGetTime fixed-step loop
+  FUN_0048e7d0: server step FUN_004f967a, client msgs, client tick, all
+  once per tick (re-base every 16 ticks). Rules: water clock>>2, projectile
+  age/2, dying 2 ticks/frame then corpse held; every unit action runs
+  obj+0xa8 ticks then idle. Server walk FUN_00563185: v = speed *
+  SpeedMultiplier(8) +-slope / avg terrain Cost (map.reg), ticks/cell =
+  ceil(256/v), diag x0.707; turn FUN_00560444 ceil(diff/8); attack cadence
+  +0x134 + +0x135 (hero 8+4, weapon params 12/13). Hero speed FUN_0051d2a7;
+  speed effect kind 17 FUN_00527122. VERIFY IN GAME list in animation.md §3.6
 - Not started: data.bin, saves, game layer.
-- Next (see docs/open-questions.md): animation timing spec + implement
-  (structures/objects/projectiles/units), server hit timing, data.bin,
+- Next (see docs/open-questions.md): sprite/animation open questions one
+  by one (user request), implement animation (structures/objects/
+  projectiles/units), server hit timing, data.bin,
   .alm sections 0, 4-12.

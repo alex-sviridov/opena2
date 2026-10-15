@@ -16,7 +16,7 @@ re-checked against the binary.
 | `fontN.dat` + `.16`/`.16a` fonts: metrics, char map, text layout, `~` hotkeys, a2mgr `%[...]` colours | [fonts.md](fonts.md) | CONFIRMED: all 4 fonts; FUN_00461e19, 0x4637f1 + a2mgr Ordinal_125/126, FUN_00463bbd |
 | `.reg` registry: layout, entry types, lookup rules | [reg.md](reg.md) | CONFIRMED: FUN_004ed6cc, FUN_004f1f4e; all 17 files |
 | Unit animation: `units.reg` fields, frame blocks, facing/mirroring, placement | [units.md](units.md) | CONFIRMED: FUN_0047f108, FUN_00468640; 59/62 units + 30/30 hero files exact |
-| Animation: sources (part 1: registries, draw inputs, phase counters, tick rate); layout (part 2: unit/monster/hero frame index → action, direction, phase; facing clockwise from up; mirroring; attack event frames; per-file exceptions) | [animation.md](animation.md) | CONFIRMED: loaders FUN_00482e99, FUN_0047e4a0, FUN_004824cc; ticks FUN_0040bdc1, FUN_00492068; step tables 0x6023b0/0x6023f0; all 179 structures, all 90 unit sprite files checked |
+| Animation: sources (part 1: registries, draw inputs, phase counters, tick rate); layout (part 2: unit/monster/hero frame index → action, direction, phase; facing clockwise from up; mirroring; attack event frames; per-file exceptions); timing (part 3: tick loop, phase rules per kind, loop/once/hold, server walk/turn/attack times, VERIFY IN GAME list) | [animation.md](animation.md) | CONFIRMED: loaders FUN_00482e99, FUN_0047e4a0, FUN_004824cc; ticks FUN_0048e7d0, FUN_0040bdc1, FUN_00492068; server walk FUN_00563185, turn FUN_00560444; step tables 0x6023b0/0x6023f0; all 179 structures, all 90 unit sprite files checked |
 
 All open questions, across specs: [../open-questions.md](../open-questions.md).
 
