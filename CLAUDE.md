@@ -99,8 +99,15 @@ The company is legally entitled to recreate the game.
 - Units: CONFIRMED. units.reg parser FUN_0047f108 (Parent = unit ID
   inheritance), frames: stand 16|9, then (Begin+Move), Attack, Dying, bones/idle
   x 8|5 dirs; Flip mirrors (FUN_0045a64d); Dying = ID of type whose frames die.
-  59/62 exact. allods2/units.py, docs/formats/units.md (tools/validate_units.py,
-  tools/unit_contact.py)
+  59/62 exact + 30/30 hero files (no dying blocks except unarmed/mage_st).
+  Facing d clockwise from screen-up (0 up, 4 right, 8 down; step tables
+  0x6023b0/0x6023f0, CONFIRMED); sprite dir 0 = d 8 = front view. Flip
+  mirrors in place (hotspot not negated; all Flip types CenterX=Width/2).
+  Events: AttackDelay/ShootDelay tick -> phase AttackAnim[delay]; client
+  only (sound +0x64/+0x60, projectile +0x58/+0x5c); server ignores
+  units.reg. Exceptions: Unit0 key, Unit33 file, sheep 5-phase dying.
+  allods2/units.py, docs/formats/units.md, animation.md §2
+  (tools/validate_units.py, tools/unit_contact.py, tools/anim_contact.py)
 - .alm maps: 216 from the allods2.eu maps pack in samples/.../maps/. Container
   (M7R header + 13 sections) walks to EOF on all; semantics open. docs/inventory.md §5.2
 - Graphics overview: docs/formats/graphics-overview.md (tools/gfx_survey.py ->
@@ -157,5 +164,6 @@ The company is legally entitled to recreate the game.
   bits 0xc000 = run-time visibility gating animation (INFERRED fog).
   docs/formats/animation.md
 - Not started: data.bin, saves, game layer.
-- Next (see docs/open-questions.md): animation part 2 (spec + implement
-  structures/objects/projectiles/units), data.bin, .alm sections 0, 4-12.
+- Next (see docs/open-questions.md): animation timing spec + implement
+  (structures/objects/projectiles/units), server hit timing, data.bin,
+  .alm sections 0, 4-12.

@@ -5,7 +5,8 @@ Binary: `allods2.exe` English 1.30, sha256
 Addresses were read in REA (Ghidra 12.1.4) and in the x86 listing.
 Implementation: `allods2/units.py` (on `allods2/reg.py`, [reg](reg.md)).
 Validation: `tools/validate_units.py`. Contact sheet:
-`tools/unit_contact.py` → `out/contact/units.png`.
+`tools/unit_contact.py` → `out/contact/units.png`; per-file labelled sheets:
+`tools/anim_contact.py` → `out/contact/anim_<name>_{raw,layout}.png`.
 
 Each unit type names one sprite file (`.256` + `b.256` smoothing overlay,
 [sprites](sprites.md)). Its frames are laid out in fixed blocks; the draw
@@ -87,8 +88,10 @@ the 62 types have exactly this many frames. The three others:
 - Unit33 (ID 2) uses the 129-frame `humans\unarmed` file without `Flip`,
   while Unit21 uses it with `Flip = 1` (and matches). Without Flip the
   formulas index up to 207, past the file. A data bug in the game.
-- Unit60 (sheep): 144 frames where 136 are used; the last 8 are never
-  indexed.
+- Unit60 (sheep): 144 frames; the file's dying block has 5 phases per
+  direction where `DyingPhases = 4`, so the game's dying and bones
+  indices are misaligned (INFERRED from the art,
+  [animation §2.5](animation.md#25-check-against-every-file)).
 
 ## Facing
 
@@ -103,9 +106,12 @@ animated: i = ((d − 8) & 14) >> 1;  if Flip and i > 4: i = 8 − i,  mirrored
 Mirrored frames are drawn by the variant blitter `FUN_0045a64d`, which
 writes each row from `x + w − 1` leftward, i.e. a horizontal flip at the
 same position (**CONFIRMED**; so do `FUN_0045a8e7` (50 %), `FUN_0045dee0`
-(`.16a`) and `FUN_0045ad81` (darken), [sprites](sprites.md)). **INFERRED** (contact sheet):
-sprite direction 0 (d = 8) shows the unit from behind, walking up the
-screen.
+(`.16a`) and `FUN_0045ad81` (darken), [sprites](sprites.md)).
+**CONFIRMED** (move step tables `0x6023b0`/`0x6023f0`): `d` counts
+clockwise from screen-up (0 up, 4 right, 8 down, 12 left), so sprite
+direction 0 (`d = 8`) faces down the screen, toward the viewer, and
+sprite directions run clockwise. Diagram, hotspot under mirroring and
+the per-file check: [animation §2](animation.md#2-layout-unit-monster-and-hero-sprites).
 
 ## Frame per state: `FUN_00468640`
 
@@ -159,5 +165,3 @@ frame = 16 + 1·10 + 2 + 3 = 31. Its corpse at d = 10: 16 + 17·8 + 1·4 + 3
 
 - `Index`, `TileSize`, `Z`, `ShootOffset`, the selection rectangle and how
   `Palette > 1` picks a palette (`FUN_00473010` argument).
-- The facing sense: whether `d` increases clockwise. Only "sprite direction
-  0 is seen from behind" is INFERRED.

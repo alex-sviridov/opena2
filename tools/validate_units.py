@@ -5,7 +5,10 @@
 For each Unit<n>: the sprite file and b.256 exist, the frame count equals
 the block layout (stand | move | attack | dying | bones-or-idle), and every
 frame index the draw formulas can produce (all 16 facings, all sequence
-values, death stages 1..4) is inside the file.
+values, death stages 1..4) is inside the file. Then every hero file
+heroes*/<weapon>/sprites.256 against the type its folder maps to
+(FUN_0046f688): stand + (move + attack + idle) per direction, plus the
+dying and bones blocks only for unarmed / mage_st.
 """
 
 import os
@@ -73,6 +76,19 @@ def main(argv=None):
                 problems.append("Unit%d: frame %d past %s (%d frames)" % (t.index, idx, src.file, m))
                 break
     print("%d unit types, %d with the exact block layout" % (len(types), exact))
+    heroes = hero_exact = 0
+    for kind in ("heroes", "heroes_l"):
+        base = os.path.join(data, U.UNITS_DIR, kind)
+        for folder in sorted(os.listdir(base)):
+            p = os.path.join(base, folder, "sprites.256")
+            if not os.path.isfile(p):
+                continue
+            heroes += 1
+            n, want = len(gfx.SpriteFile.load(p)), U.hero_expected_frames(ids[U.HERO_TYPES[folder]], folder)
+            hero_exact += n == want
+            if n != want:
+                problems.append("%s/%s: %d frames, layout expects %d" % (kind, folder, n, want))
+    print("%d hero files, %d with the exact block layout" % (heroes, hero_exact))
     for p in problems:
         print(p)
     return 0

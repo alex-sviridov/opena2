@@ -109,6 +109,25 @@ def test_sequence_and_placement():
     assert U.placement(t, 100, 100, 40, 60) == (100 - (0 + 20), 100 - (14 + 30))
 
 
+def test_facing_is_clockwise_from_north():
+    assert U.step(0) == (0, -1) and U.step(4) == (1, 0)
+    assert U.step(8) == (0, 1) and U.step(12) == (-1, 0)
+    assert U.step(2) == (1, -1) and U.step(3) == (0, 0)      # odd facings never move
+    assert U.dir16(8, False) == (0, False)                   # sprite direction 0 = facing down
+
+
+def test_hero_files_without_death_blocks():
+    t = unit(Dying=1)
+    assert U.hero_expected_frames(t, "swordsman_") == 16 + 8 * (10 + 7)
+    assert U.hero_expected_frames(t, "unarmed") == U.expected_frames(t)
+
+
+def test_event_phase():
+    t = unit(AttackAnimTime=[2, 3, 1], AttackAnimFrame=[0, 1, 2])  # 0 0 1 1 1 2
+    assert U.event_phase(t, 0) == 0 and U.event_phase(t, 4) == 1
+    assert U.event_phase(t, 5) == 2 and U.event_phase(t, 6) is None
+
+
 @pytest.mark.skipif(not os.path.exists(UNITS_REG), reason="game files not available")
 def test_game_units_reg():
     types = U.load_unit_types(UNITS_REG)

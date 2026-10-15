@@ -7,9 +7,11 @@ Data checks use the English install in `samples/` (paths compared
 case-insensitively, as on Windows).
 
 Part 1 ("Sources") records **where** each piece of animation information
-comes from. Part 2 (the per-kind frame and timing rules, written as a
-spec to implement) is not written yet. Unit frame layout and draw are
-already specified in [units](units.md).
+comes from. Part 2 ("Layout") maps every frame index of a unit, monster
+or hero sprite to (action, direction, phase), with the facing convention,
+mirroring and the attack event frames. The draw formulas themselves are
+in [units](units.md). Per-kind timing for structures, objects and
+projectiles is still to be written as a spec.
 
 ## 1. Sources
 
@@ -366,6 +368,202 @@ load` for a missing file (CONFIRMED for that routine). The 7 matching
 dead trees have `FireObject = −2`, which the ambient-sound scan
 `FUN_0041d158` counts as burning (INFERRED: fire crackle).
 
+## 2. Layout: unit, monster and hero sprites
+
+Tools: `tools/anim_contact.py` writes `out/contact/anim_<name>_raw.png`
+(every frame in file order, index under it, coloured by the block the
+layout assigns) and `anim_<name>_layout.png` (one row per block and
+direction, labelled with the facings that use it). Specimens:
+`hero_swordsman` (`heroes/swordsman`, type 3), `goblin` (type 64),
+`dragon` (type 71, `Flip`). Check: `tools/validate_units.py`.
+
+### 2.1 Block order
+
+A file is **action-major, then direction-major**: the stand block, then
+for each action block all phases of sprite direction 0, then all of
+direction 1, and so on. With `S` stand frames and `R` directions (`S, R`
+= 16, 8 without `Flip`, 9, 5 with it), and `B M A D Bn I` = the type's
+`MoveBeginPhases`, `MovePhases`, `AttackPhases`, `DyingPhases`,
+`BonePhases`, `IdlePhases` (**CONFIRMED**, `FUN_00468640` formulas in
+[units](units.md#frame-per-state-fun_00468640); every file checked, §2.5):
+
+| Block | Frames | Index of (direction `i`, phase `p`) | Drawn for |
+|---|---|---|---|
+| stand | `S` | `i16` (one per stand direction, no phases) | idle without `IdlePhases`, turn (action 5), frozen units |
+| move | `(B+M)·R` | `S + i·(B+M) + p` | action 1 with `p = B + MoveAnim[…]`; the `B` begin phases are stored but never drawn |
+| attack | `A·R` | `S + (B+M)·R + i·A + p` | actions 3 attack, 7 shoot **and** 8 cast (one shared block), `p = AttackAnim[obj+0x74]` |
+| dying | `D·R` | `S + (B+M+A)·R + i·D + p` | action 6, `p = obj+0x74 / 2`; corpse = `p = D − 1` |
+| tail | `Bn·R` or `I·R` | `S + (B+M+A+D)·R + i·I + p` | `I ≠ 0`: idle animation; else bones, `p` = death stage − 2 |
+
+The dying and tail (bones) blocks exist only in a file whose type names
+itself in `Dying`; other types draw their death from the `Dying` type's
+file. With `I ≠ 0` the tail block is an idle animation (dragon, bat,
+bee, ghost, succubus, star) and the type has no bones frames.
+
+Specimens (**CONFIRMED** frame counts; block contents checked by eye on
+the contact sheets: each block's direction 0 faces the viewer, direction
+`R/2` (or 4 with `Flip`) shows the back, every row repeats the same pose
+sequence):
+
+| Specimen | Type | S | R | stand | move (B+M) | attack | dying | tail | total |
+|---|---|---|---|---|---|---|---|---|---|
+| `heroes/swordsman` | 3 | 16 | 8 | 0–15 | 16–95 (2+8) | 96–151 (7) | — | — | 152 |
+| `monsters/goblin` | 64 | 16 | 8 | 0–15 | 16–95 (2+8) | 96–175 (10) | 176–223 (6) | 224–247 (3 bones) | 248 |
+| `monsters/dragon` | 71 | 9 | 5 | 0–8 | 9–63 (3+8) | 64–98 (7) | 99–128 (6) | 129–163 (7 idle) | 164 |
+
+Worked example (goblin, facing `d = 12`, left): stand frame `(12 − 8) & 15
+= 4`; animated direction `((12 − 8) & 14) >> 1 = 2`; attack phase 4 =
+`16 + 80 + 2·10 + 4 = 120`; corpse = `176 + 2·6 + 5 = 193`; bones stage 2
+(bones stride `IdlePhases = 0`, quirk in [units](units.md)) = `224`.
+
+### 2.2 Directions
+
+The facing `d` (`obj+0x70`, 0..15) counts **clockwise from screen-up**.
+**CONFIRMED**: the move message `0x6b` copies its direction byte
+(`msg+0xc`) into `obj+0x8d` and takes the step from the tables
+`0x6023b0` (dx) / `0x6023f0` (dy), 16 ints each, non-zero only at even
+`d`: `d = 0 → (0, −1)`, `2 → (1, −1)`, `4 → (1, 0)`, `6 → (1, 1)`,
+`8 → (0, 1)`, `10 → (−1, 1)`, `12 → (−1, 0)`, `14 → (−1, −1)` (map y grows
+down the screen). The unit tick sets `obj+0x70 = obj+0x8d` for move,
+attack, shoot and cast (`0x46b837`, `0x46bfc4`, `0x46c05f`); a turn
+(action 5) steps `obj+0xc4` (0..255) toward `obj+0x8d · 16` by
+`diff / ticks left` and sets `obj+0x70 = obj+0xc4 >> 4` (`0x46c0a3`).
+
+```
+                       d 0  up / north            stand i16   anim i8
+              d 14      |      d 2                 d 8  -> 0    d 8,9   -> 0
+                   \    |    /                     d 10 -> 2    d 10,11 -> 1
+        d 12 ------- [unit] ------- d 4            d 12 -> 4    d 12,13 -> 2
+        left       /    |    \      right          d 14 -> 6    d 14,15 -> 3
+              d 10      |      d 6                 d 0  -> 8    d 0,1   -> 4
+                       d 8  down / south           d 2  -> 10   d 2,3   -> 5
+                            (faces the viewer)     d 4  -> 12   d 4,5   -> 6
+                                                   d 6  -> 14   d 6,7   -> 7
+   i16 = (d - 8) & 15           i8 = ((d - 8) & 14) >> 1
+```
+
+Sprite direction 0 is therefore `d = 8`: the unit faces **down the
+screen, toward the viewer** (front view), and sprite directions run
+clockwise on screen: 0 down, 2 (i8 1) down-left, 4 (i8 2) left, 8 (i8 4)
+up/back, 12 (i8 6) right. **CONFIRMED** (tables above) and matching the
+art on all three specimens (stand 0 front, 4 facing left, 8 back, 12
+facing right). This corrects the earlier INFERRED "direction 0 seen from
+behind" in [units](units.md#facing). Odd facings occur only through
+turns; animated states round them down to the even facing.
+
+### 2.3 Mirroring (`Flip = 1`)
+
+Files with `Flip` store only the left half of the circle plus the two
+poles: stand `i16` 0..8 (down → left → up) and animated `i8` 0..4.
+**CONFIRMED** (`FUN_00468640`, also `0x468f0c`–`0x468f35` for the frozen
+case):
+
+| Facings `d` | Stand frame | Animated direction |
+|---|---|---|
+| 8 (down) … 0 (up) through 12 (left) | `i16` 0..8 as stored | `d` 8–15, 0–1: `i8` 0..4 as stored |
+| 1..7 (up-right … down-right) | `16 − i16` (= 7..1), **mirrored** | `d` 2–7: `8 − i8` (= 3..1), **mirrored** |
+
+The draw sets a mirror flag (`[ebp-0x48]`) and passes it as the last
+argument to the sprite blit (vtable `+0x14`/`+0x34`, `0x4691c8`,
+`0x469215`, `0x469333`), which uses the leftward blitter `FUN_0045a64d`
+([sprites](sprites.md)). **Hotspot**: the position does not depend on
+the flag: `left = obj.x − ((CenterX − Width/2) + frame_w/2)` is computed
+before the flag is read (`0x469136`), so a mirrored frame is flipped in
+place inside the same box, about its own centre column; the
+`CenterX − Width/2` offset is not negated. **CONFIRMED**. In the data
+every `Flip` type has `CenterX = Width/2` (offset 0), so no unit is
+shifted by this; the only non-zero x offsets (−1: mainnecro, skeletons,
+necromant, druid) are on non-`Flip` types. 11 of 62 types use `Flip`:
+unarmed 1, troll 68, troll_good 102, ghost 69, bat 70, dragon 71, bee 73,
+squirrel 74, legg 75, turtle 76, star 108.
+
+Projectiles use the same rule with `i16` and 9 stored directions
+(§1.3).
+
+### 2.4 Attack events: hit and release frames
+
+The attack, shoot and cast messages set `obj+0x9c = 0` (e.g. `0x41374d`).
+Each tick `FUN_0046b5ef` compares `obj+0x9c` with the type's delays
+**before** taking the phase from it (`obj+0x74 = obj+0x9c`, then `+1`),
+so an event fires on tick `delay` and is drawn on attack phase
+`AttackAnim[delay]`. Delays at or past the sequence length never fire.
+**CONFIRMED**:
+
+| Action | `ShootDelay` (`T+0x11c`) | `AttackDelay` (`T+0x120`) |
+|---|---|---|
+| 3 attack (melee) | — | vtable `+0x64` = `FUN_0046d145`: play `Sound[0]` at the unit (volume by distance) |
+| 7 shoot | if `Projectile ≠ 0`: `+0x58` = `FUN_0046c28b`, spawn projectile `T.Projectile` (release) | `+0x64`, sound |
+| 8 cast | `+0x5c` = `FUN_0046c4f1`, spawn the spell's projectile (`obj+0xac`); spell `0x36` at tick 0 instead | `+0x60` = `FUN_0046d21b`: play sound `500 + obj+0xac` |
+
+Damage is not applied here: hit points arrive from the server in
+messages (§1.5), and the server code (`0x4f0000` up) never reads the
+`units.reg` table `0x62cb40` or these fields. So `AttackDelay` /
+`ShootDelay` are the client's impact-sound and projectile-release frames;
+the server's own hit timing is not known yet (open question).
+
+Event phases per type (`phase = AttackAnim[delay]`, from `units.reg`;
+**CONFIRMED** arithmetic). "Len" = attack sequence length = action
+duration in ticks:
+
+| Types (ID) | Len | AttackDelay → phase | ShootDelay → phase | Projectile |
+|---|---|---|---|---|
+| swordsman 3, 4; clubman 10, 11 | 11 | 4 → 2 | — | 0 |
+| swordsman2 5; axeman_2hd 9; troll 68, 102; ogre 66 | 14 | 6 → 3 | — | 0 |
+| axeman 7, 8 | 12 | 5 → 2 | — | 0 |
+| pikeman 12, 13; cavalrypike 21 | 10 | 4 → 2 | — | 0 |
+| cavalrysword 19; zombie_f3/f4 84, 85; skeleton_f1–f4 89–92 | 14 | 4 → 2 | — | 0 |
+| zombie_f1/f2 82, 83 | 12 | 4 → 2 | — | 0 |
+| archer 14; skeleton_a1–a4 93–96 | 25 | 19 → 6 | 21 → 7 | 1 |
+| xbowman 15; zombie_a2–a4 86–88 | 24 | 7 → 1 | 9 → 2 | 2 |
+| orc 65, orc_good 101 | 28 | 20 → 6 | 22 → 7 | 3 |
+| goblin 64 | 10 | 4 → 4 | — | 0 |
+| goblin_s 79 | 14 | 6 → 3 | 10 → 5 | 4 |
+| orc_s 80 | 15 | 4 → 1 | — | 0 |
+| orc_sh 81 | 24 | 4 → 1 | 6 → 2 | 0 |
+| bat 70 | 8 | 2 → 1 | 2 → 1 | 7 |
+| succubus 105 | 16 | 6 → 3 | 6 → 3 | 7 |
+| legg 75 | 14 | 2 → 1 | — | 0 |
+| bee 73 | 8 | 2 → 1 | — | 0 |
+| mage 23, mage_st 24 | 12 | 8 → 4 | 8 → 4 | 0, 10 |
+| dragon 71 | 14 | 8 → 4 | 8 → 4 | 12 |
+| mainnecro 72, skeleton_m3/m4 97, 98, necromant 99, druid 100 | 14 | 6 → 3 | 6 → 3 | 0 |
+| catapult1 26 / catapult2 27 | 18 / 16 | 4 → 2 | 0 → 0 | 5 / 6 |
+| unarmed 1, 2; squirrel 74; ghost 69; turtle 76; wolf 103; spider 104; dino 106; star 108 | 14, 11, 10, 12, 10, 12, 6, 14, 14 | 0 → 0 | 0 → 0 | 0 |
+| sheep 107 | 0 | (no attack) | | 0 |
+
+Delay 0 fires on the first tick. The catapults have `ShootDelay = 0` with
+a projectile, so a shoot action releases on its first tick. Casters with
+`Projectile = 0` still spawn the spell projectile on cast (the cast path
+does not test `Projectile`).
+
+### 2.5 Check against every file
+
+`tools/validate_units.py` compares each file's frame count with the
+layout (**CONFIRMED** on the install): all 90 unit sprite files are
+covered: 60 named by `units.reg` types and 30 hero files
+(`heroes*/<weapon>/sprites.256`, type from `FUN_0046f688`'s folder
+table). Hero files hold `S + (B+M+A+I)·R` frames (no dying or bones:
+dying heroes switch to `unarmed`/`mage_st`), except `unarmed` and
+`mage_st`, which also hold their dying and bones blocks. Result: 59 of
+62 types and 30 of 30 hero files exact. Exceptions:
+
+| File | Frames | Layout | Cause |
+|---|---|---|---|
+| `humans/swordsman/swordsman` (Unit0, ID 3) | 152 | 152 | matches, but `units.reg` key `File0 ` has a trailing space, so the game never finds it ([reg](reg.md)) |
+| `humans/unarmed/sprites` as Unit33 (ID 2, no `Flip`) | 129 | 152 | the file is the `Flip` layout of Unit21 (ID 1); Unit33 indexes up to 207. The non-`Flip` 152-frame body exists only as `heroes*/unarmed_`. Data bug in the game. |
+| `monsters/sheep/sprites` (ID 107) | 144 | 136 | see below |
+
+**Sheep** (INFERRED from the art, `_layout` sheet): stand 0–15 and move
+16–79 (8 × 8) match. Frames 80–119 are 8 directions × **5** phases
+(direction `k` starts at `80 + 5k`: 80 front, 90 left, 100 back, 110
+right), and 120–143 are 8 × 3 bones (each starts with a bloody body).
+`units.reg` says `DyingPhases = 4`, so the game indexes the dying block
+with stride 4: from direction 1 on, dying frames drift into the
+neighbouring direction's phases; the corpse is `80 + 4i + 3`; and the
+bones (stride `IdlePhases = 0`, so direction 0 only) are frames
+112–114, which are whole bodies of direction 6, not bones. The game is
+reproduced as is ([CLAUDE.md](../../CLAUDE.md): match quirks).
+
 ## Open questions
 
 - Who writes the tile visibility bits `0xc000` at run time (fog update).
@@ -375,3 +573,7 @@ dead trees have `FireObject = −2`, which the ambient-sound scan
   [§1.7](#17-map-placement-of-objects)
 - Meaning of the `msg[+0xd]`/`msg[+0xf]` durations on the server side
   (how the server derives move time from unit speed).
+- When the server applies melee damage and launches projectiles: it does
+  not read `units.reg` (`AttackDelay`/`ShootDelay` are client-only,
+  [§2.4](#24-attack-events-hit-and-release-frames)); start from the server
+  sender of message `0x71`/`0x72` and `world/data/data.bin`.

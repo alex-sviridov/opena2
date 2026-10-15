@@ -109,9 +109,20 @@ def by_id(types):
 
 
 # --------------------------------------------------------------------------
-# Directions.  The object's facing d (+0x70) is 0..15; the sprite order
-# starts at d = 8.  FUN_00468640.
+# Directions.  The object's facing d (+0x70) is 0..15, clockwise from
+# north (screen up): 0 up, 4 right, 8 down, 12 left.  Move steps per facing
+# from the tables 0x6023b0 / 0x6023f0 (used by msg 0x6b): even d only.
+# The sprite order starts at d = 8 (front view).  FUN_00468640.
 # --------------------------------------------------------------------------
+
+STEP = {0: (0, -1), 2: (1, -1), 4: (1, 0), 6: (1, 1),
+        8: (0, 1), 10: (-1, 1), 12: (-1, 0), 14: (-1, -1)}
+
+
+def step(d):
+    """(dx, dy) in cells of a move with facing d; odd d give (0, 0)."""
+    return STEP.get(d & 0xF, (0, 0))
+
 
 def dir16(d, flip):
     """Stand frames: (index, mirrored).  With Flip, 9..15 mirror 7..1."""
@@ -197,3 +208,36 @@ def placement(t, x, y, frame_w, frame_h, z=0):
     left = x - ((t.CenterX - t.Width // 2) + frame_w // 2)
     top = y - ((t.CenterY - t.Height // 2) + frame_h // 2) - z
     return left, top
+
+
+# --------------------------------------------------------------------------
+# Heroes.  FUN_0046f688 picks graphics/units/<heroes|heroes_l>/<weapon>/
+# sprites.256 and the units.reg type from the folder name.  Hero files carry
+# no dying/bones blocks: dying heroes switch to unarmed / mage_st.
+# --------------------------------------------------------------------------
+
+HERO_TYPES = {"unarmed": 1, "unarmed_": 2, "swordsman": 3, "swordsman_": 4,
+              "swordsman2h": 5, "axeman": 7, "axeman_": 8, "axeman2h": 9,
+              "clubman": 10, "clubman_": 11, "pikeman": 12, "pikeman_": 13,
+              "archer": 14, "bowman": 14, "xbowman": 15, "mage": 23, "mage_st": 24}
+HERO_DYING = ("unarmed", "mage_st")
+
+
+def hero_expected_frames(t, folder):
+    """Frames in heroes*/<folder>/sprites.256 for its type t (data rule)."""
+    if folder in HERO_DYING:
+        return expected_frames(t)
+    return t.stand_frames + (_mb(t) + t.AttackPhases + t.IdlePhases) * t.dirs
+
+
+# --------------------------------------------------------------------------
+# Action events, FUN_0046b5ef.  The action counter obj+0x9c is 0 at the
+# start of an attack/shoot/cast and is compared with the delays before the
+# phase is taken from it, so an event shows on attack phase seq[delay].
+# --------------------------------------------------------------------------
+
+def event_phase(t, delay):
+    """AttackAnim phase drawn on the tick an event with this delay fires,
+    or None when the delay is past the sequence (the event never fires)."""
+    seq = t.sequence("Attack")
+    return seq[delay] if 0 <= delay < len(seq) else None

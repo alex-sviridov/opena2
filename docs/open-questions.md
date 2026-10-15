@@ -46,8 +46,6 @@ Rules (also in CLAUDE.md):
 
 - Meaning of `Index`, `TileSize`, `Z`, `ShootOffset`, the selection rect;
   how `Palette > 1` picks a palette (`FUN_00473010`). [units](formats/units.md#open-questions)
-- Facing direction sense (clockwise or not); only "sprite direction 0 =
-  seen from behind" is INFERRED. [units](formats/units.md#facing)
 - `.reg` writers (`FUN_004eae80`, `FUN_004ed9f0`, `FUN_004edd03`); whether
   `.res` uses the same container. [reg](formats/reg.md#open-questions)
 - `.reg` header `+0x14` and entry `+0`. [reg](formats/reg.md#open-questions)
@@ -59,6 +57,9 @@ Rules (also in CLAUDE.md):
   [animation](formats/animation.md#open-questions)
 - How the server derives move/turn/projectile durations (`msg[+0xd]`,
   `msg[+0xf]` in `FUN_0040dac9`). [animation](formats/animation.md#open-questions)
+- When the server applies melee damage / launches projectiles (it never
+  reads units.reg; sender of msg `0x71`/`0x72`, data.bin).
+  [animation](formats/animation.md#24-attack-events-hit-and-release-frames)
 
 ## Not started (from the reversing plan)
 
