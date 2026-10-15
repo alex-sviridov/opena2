@@ -76,7 +76,18 @@ The company is legally entitled to recreate the game.
 - .alm maps: 216 from the allods2.eu maps pack in samples/.../maps/. Container
   (M7R header + 13 sections) walks to EOF on all; semantics open. docs/inventory.md §5.2
 - Graphics overview: docs/formats/graphics-overview.md (tools/gfx_survey.py ->
-  out/gfx/). Ranked #1 is .pal, already CONFIRMED, like ranks 2 and 5-8.
-- Not started: data.bin, fonts .dat, saves, game layer.
-- Next: C3 with the first not-yet-decoded rank, #4 fontN.dat (glyph metrics),
-  since #1 .pal is done.
+  out/gfx/). Ranks 1, 2, 4-8 CONFIRMED; #3 .png is standard (item-id mapping
+  INFERRED); #9 terrain and #10 unit animation are composites still open.
+- Fonts: CONFIRMED. fontN.dat = u32 per glyph (char 0x20+g) = last ink column;
+  advance = width + 2. Measure FUN_00461e19, .16 draw 0x4637f1 hooked by
+  a2mgr Ordinal_125/126 (%[RGB] colour escapes), .16a draw FUN_00463bbd,
+  '~' = hotkey underline, cp866 remap when DAT_0062c9c4 == 1.
+  docs/formats/fonts.md (tools/validate_fonts.py, tools/font_contact.py)
+- Sprite frames have no hotspot; FUN_00468640 centres on the anchor with
+  unit-type offsets T+0x2c..0x38 (from units.reg, INFERRED). sprites.md
+- CLI: python -m allods2 gfx export FILE DEST [--palette P]. Contact sheets:
+  tools/sprite_contact.py, tools/font_contact.py, tools/palette_contact.py
+  -> out/contact/.
+- Not started: data.bin, saves, game layer.
+- Next: #3 .png item-id mapping in a2mgr, then #9 terrain (.alm Tiles) and
+  #10 unit animation (units.reg); both need .reg/.alm semantics first.

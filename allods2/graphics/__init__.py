@@ -5,6 +5,8 @@ Specs: docs/formats/.
 
 from .bmp import Bitmap, load_bmp
 from .canvas import Canvas
+from .font import (ALIGN_BOTTOM, ALIGN_CENTER, ALIGN_MIDDLE, ALIGN_RIGHT, Font,
+                   escape_ramp, last_ink_columns, map_char, parse_escape, read_metrics)
 from .lighting import (Daylight, daylight, daylight_tint, lit_terrain_corner,
                        object_light_row, object_light_row_lit, projectile_light,
                        shadow_angle, shadow_pixel, shadow_row_offsets, shadow_shear,
@@ -20,6 +22,8 @@ from .sprites import (PALETTE_FLAG, Decoded, Sprite, SpriteFile, alpha_coverage,
                       decode_smooth, guess_kind, to_rgba)
 
 __all__ = [
+    "ALIGN_BOTTOM", "ALIGN_CENTER", "ALIGN_MIDDLE", "ALIGN_RIGHT", "Font",
+    "escape_ramp", "last_ink_columns", "map_char", "parse_escape", "read_metrics",
     "Bitmap", "Canvas", "Daylight", "Decoded", "PALETTE_FLAG", "Palette", "Sprite", "SpriteFile",
     "alpha_coverage", "check_sprite", "code_palettes", "code_ramps16",
     "daylight", "daylight_tint", "decode", "decode_16", "decode_16a", "decode_256",

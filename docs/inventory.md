@@ -257,7 +257,7 @@ Section IDs always appear in the order 0, 1, 2, 3, 5, 11, 4, 9, 8, 6, 7, 10, 12.
 
 | File | Observations |
 |---|---|
-| `fontN.dat` (font1/2/4: 896 B; font3: 256 B) | 224 × u32 (chars 0x20–0xFF) and 64 × u32: per-glyph widths for `.16`/`.16a` fonts |
+| `fontN.dat` (font1/2/4: 896 B; font3: 256 B) | Decoded: CONFIRMED in [formats/fonts.md](formats/fonts.md) |
 | `world/data/data.bin` (153,528 B) | Starts `00 00 07 00 00 00 06 "Common"`: length-prefixed names (`Common`, `Uncommon`, `Rare`, …) followed by f64 multipliers (1.0, 0.2, …). The compiled item/material/class/spell/unit database. Most depended-on game data |
 | `world/data/itemname.bin` (1,402 B) | u16 pairs (`02 01 03 01 …`), which look like (id, class) keys |
 | `world/data/itemname.pkt` (10,629 B) | Starts `00 00 00 bd 02 00 00 7c 29 …`: packed item-name records with repeated `0d 0X 0e 0X 0c` tags |
