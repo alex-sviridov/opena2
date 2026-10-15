@@ -175,3 +175,20 @@ def test_canvas_clipping():
     c = gfx.Canvas(1, 1)
     c.draw_256(gfx.Sprite(2, 1, bytes((0x02, 1, 2))), -1, 0, [(i, i, i) for i in range(256)])
     assert c.pix[0, 0].tolist() == [2, 2, 2]
+
+
+def test_canvas_mirror_256():
+    # Row [1, 2, ·] mirrored in place: the run starts at x + w - 1 going left.
+    c = gfx.Canvas(3, 1)
+    c.draw_256(gfx.Sprite(3, 1, bytes((0x02, 1, 2, 0x81))), 0, 0,
+               [(i, i, i) for i in range(256)], mirror=True)
+    assert c.pix[0, :, 0].tolist() == [0, 2, 1]
+
+
+def test_canvas_mirror_16a_and_darken():
+    c = gfx.Canvas(2, 1, (160, 160, 160))
+    c.draw_16a(gfx.Sprite(2, 1, words(0x0001, px16a(0, 15), 0x8001)), 0, 0,
+               [(0, 0, 0)] * 256, mirror=True)
+    assert c.pix[0, :, 0].tolist() == [160, 0]
+    c.draw_darken(gfx.Sprite(2, 1, bytes((0x81, 0x01, 0))), 0, 0, level=8, mirror=True)
+    assert c.pix[0, :, 0].tolist() == [80, 0]

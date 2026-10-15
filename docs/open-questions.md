@@ -13,12 +13,10 @@ Rules (also in CLAUDE.md):
 
 ## Graphics: sprites and palettes
 
-- Blitters `FUN_0045a8e7` / `FUN_0045dee0`: assumed to be horizontal
-  mirrors like `FUN_0045a64d`, not checked. [sprites](formats/sprites.md#open-questions)
-- Which objects use the darkening blit (vtable `+0x1c`, `FUN_00459d8c`).
-  [sprites](formats/sprites.md#open-questions)
-- Which effect id `0x20` is (`FUN_0046600b(0x20)`, makes heroes
-  translucent; INFERRED invisibility). [sprites](formats/sprites.md#open-questions)
+- What bit `8` of the per-player relation word means (`FUN_00420660`);
+  gates drawing units with effect `0x20`. [sprites](formats/sprites.md#open-questions)
+- Which sprite list the inventory indicator with the level-8 drop shadow
+  comes from (`FUN_004b9a42`). [sprites](formats/sprites.md#open-questions)
 - Effect id → spell mapping (0x20, 0x2c); needs `data.bin`.
   [palettes](formats/palettes.md#open-questions)
 - Which UI elements use which text-colour table (`0x5fb97c…0x5fb990`, §6).

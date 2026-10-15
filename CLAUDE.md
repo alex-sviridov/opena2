@@ -60,7 +60,10 @@ The company is legally entitled to recreate the game.
 ## Known so far
 - Sprites (.256, .16, .16a, *b.256): CONFIRMED, all 43,051 sprites decode
   exactly. *b.256 = edge-smoothing overlays (50 % blend, "Smoothing" option),
-  NOT shadows. Open: mirror variants, darkening blit's users. docs/formats/sprites.md
+  NOT shadows. Draw vtables 0x5d53a8/.16a 0x5d5488: every blit has a mirrored
+  twin (x+w-1 leftward, CONFIRMED; Canvas mirror=). Darken (+0x1c) = UI drop
+  shadows only (lm/scrlbars/radiob.256). Effect 0x20 = unit hidden unless
+  viewer relation bit 8, else 50 % (INFERRED Invisibility). docs/formats/sprites.md
 - Palettes: CONFIRMED. BGR0 8-bit entries, 4th byte ignored. 2,973
   palettes in 2,928 files (tools/validate_palettes.py; contact sheet via
   tools/palette_contact.py). FUN_00425bee turns palettes into 16-bit shade

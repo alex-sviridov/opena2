@@ -102,8 +102,8 @@ animated: i = ((d − 8) & 14) >> 1;  if Flip and i > 4: i = 8 − i,  mirrored
 
 Mirrored frames are drawn by the variant blitter `FUN_0045a64d`, which
 writes each row from `x + w − 1` leftward, i.e. a horizontal flip at the
-same position (**CONFIRMED**; also `FUN_0045a8e7`/`FUN_0045dee0` for the
-other blit modes, INFERRED by analogy). **INFERRED** (contact sheet):
+same position (**CONFIRMED**; so do `FUN_0045a8e7` (50 %), `FUN_0045dee0`
+(`.16a`) and `FUN_0045ad81` (darken), [sprites](sprites.md)). **INFERRED** (contact sheet):
 sprite direction 0 (d = 8) shows the unit from behind, walking up the
 screen.
 

@@ -311,8 +311,9 @@ Implementation: `lighting.daylight(minutes)`, `daylight_tint(minutes)`,
   table of its palette when it has **effect 0x2c**. FUN_0046600b looks up
   an effect id in the unit's list of u32 entries, where the id is in the
   high 16 bits. **CONFIRMED.** **INFERRED**: 0x2c is Stone Curse.
-- **Effect 0x20** makes the draw first check FUN_00420610 (whether the
-  viewer can see the unit), then draw it with the 50 % translucent blit
+- **Effect 0x20** makes the draw first check FUN_00420610 (bit 8 of the
+  viewer's relation word for the owner; if clear the unit is not drawn at
+  all, [sprites](sprites.md)), then draw it with the 50 % translucent blit
   (`+0x34`, FUN_004271d0 → FUN_00459926: `dst = (dst >> 1 & m) +
   (src >> 1 & m)`, where `m = 0x62c9c0` is each channel's mask without its
   top bit, 0x7BEF for 5-6-5). Its shadow uses the lighter level `0x62c898`.

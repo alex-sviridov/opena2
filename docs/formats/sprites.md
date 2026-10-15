@@ -58,18 +58,62 @@ Control byte `b`, `n = b & 0x3F`:
 | `0x40` | skip `n` rows |
 | `0x80`, `0xC0` | skip `n` transparent pixels |
 
-- **CONFIRMED** (`FUN_00459614`): the opaque blit. The variant `FUN_0045a64d` is
-  selected by the last draw argument.
+**CONFIRMED** (vtables `0x5d53a8` for `.256`, `0x5d5488` for `.16a`; set by
+`FUN_00426da9` / `FUN_0042a71b`): each draw method takes
+`(x, y, frame, palette-or-level, …, mirror)` and picks the normal or the
+mirrored blitter from its last argument:
+
+| Slot | Method | Normal | Mirrored |
+|---|---|---|---|
+| `+0x18` (`.256`) | `FUN_00427014` opaque | `FUN_00459614` | `FUN_0045a64d` |
+| `+0x18` (`.16a`) | `FUN_0042a740` alpha | `FUN_0045db6b` | `FUN_0045dee0` |
+| `+0x1c` (both) | `FUN_00427260` darken | `FUN_00459d8c` | `FUN_0045ad81` |
+| `+0x34`, `+0x38` | `FUN_004271d0`, `FUN_004270aa` 50 % | `FUN_00459926` | `FUN_0045a8e7` |
+
+(`+0x14` `FUN_00427140` is another opaque entry; the darken pair has
+low-memory twins `FUN_00459b5c` / `FUN_0045ab38`, not reproduced.)
+
+- **CONFIRMED** (`FUN_00459614`): the opaque blit.
 - **CONFIRMED** (`FUN_00459926`): the 50 % translucent blit, per channel
   `dst = (src >> 1) + (dst >> 1)` (done as masked shifts on 16-bit pixels).
   The hero draw (`FUN_00468640`) uses it instead of the opaque blit when the
-  unit has state flag `0x20`.
-- **INFERRED** (shape of code): the last draw argument (`local_4c`) is set when a
-  direction index past the midpoint is folded back (`8 - dir`, `16 - dir`), so the
-  variant blitters are probably horizontal mirrors.
-- **CONFIRMED** (`FUN_00459d8c`, low-memory variant `FUN_00459b5c`; vtable `+0x1c`):
-  a darkening blit that skips the pixel bytes and scales the destination by
-  `(16 − level) / 16`. **Open:** which objects the game draws this way.
+  unit has effect `0x20`.
+- **CONFIRMED** (map object loop, `0x408763`–`0x4088e3`): effect `0x20` also
+  hides the unit. `FUN_0046600b(0x20)` searches the unit's effect list
+  (u32 entries, id in the high 16 bits; −1 if absent). When the effect is
+  present, the loop calls `FUN_00420610(owner)` on the viewing player
+  (`view+0x9cc`; owner = `obj+0x14 → +4`), which returns bit `8` of the
+  viewer's u16 relation word for that player (`FUN_00420660`). If the bit
+  is clear, the unit's shadow (`+0x2c`, drawn when `DAT_005fb970`) and body
+  (`+0x28`) are both skipped. So players with the bit see the unit at 50 %;
+  everyone else sees nothing. **INFERRED**: this is the Invisibility spell,
+  and bit 8 means "allied / shares vision". The spell name needs `data.bin`
+  ([palettes §7](palettes.md)).
+- **CONFIRMED** (`FUN_0045a64d`, `FUN_0045a8e7`, `FUN_0045dee0`): every mirrored
+  blitter is its normal twin with the row written from `x + w − 1` leftward
+  (pointer starts at `dst + 2·(x + w) − 2`, steps −2 bytes per pixel; skips
+  subtract too). The stream, the cursor model and the blend are unchanged, so
+  the result is a horizontal flip at the same `(x, y, w, h)`. Callers set
+  `mirror` when they fold a direction past the midpoint ([units](units.md)).
+- **CONFIRMED** (`FUN_00459d8c`; vtable `+0x1c`): a darkening blit that skips
+  the pixel bytes and scales the destination by `(16 − level) / 16`. It is a
+  **UI drop shadow**. All call sites found, each with mirror = 0:
+
+  | Sprite | Level | Sites |
+  |---|---|---|
+  | `graphics\interface\lm.256` (`DAT_00630e4c`) | 6 | 20, `0x4e412f`…`0x4e89af` |
+  | `graphics\interface\scrlbars.256` (`DAT_00630e50`) | 4 | 12, `0x4e2bb1`…`0x4e2fb0` |
+  | `graphics\interface\radiob.256` (`DAT_00630e54`) | 4 | 6, e.g. `FUN_004df77d` |
+  | inventory-cell indicator (list at `+0x20ac` `+0xdc`/`+0xf0`) | 8 | 1, `FUN_004b9a42` |
+
+  Pattern (`FUN_004df77d`): shadow at `(x + 5, y + 4)`, then the same frame
+  opaque at `(x + 1, y)`, i.e. the shadow sits 4 px right and 4 px down.
+  The inventory one draws the shadow at `(x − 3, y + 2)` and the sprite
+  through `+0x38` (50 %). The three globals are loaded in `FUN_0047bedd`
+  (`FUN_00426da9("graphics\interface\….256")`).
+  Search bound: the 163 `call [reg+0x1c]` sites in `.text`, kept when the
+  object is one of these globals or the five-argument push pattern matches;
+  a site whose pushes are split by another call would be missed.
 
 ### Example
 
@@ -205,9 +249,7 @@ frame on an anchor themselves:
 
 ## Open questions
 
-- Whether `FUN_0045a8e7` and `FUN_0045dee0` mirror like `FUN_0045a64d`
-  (CONFIRMED horizontal mirror, [units](units.md)). INFERRED: yes.
-- Which objects use the darkening blit (vtable `+0x1c`, `FUN_00459d8c`).
-- Which effect id `0x20` is (`FUN_0046600b(0x20)` searches the unit's
-  effect list); it makes heroes translucent. **INFERRED**: invisibility.
-  See [palettes §7](palettes.md).
+- What bit `8` of the per-player relation word means (`FUN_00420660`);
+  INFERRED "allied / shares vision". Decides who sees units with effect `0x20`.
+- Which sprite list the inventory indicator comes from (`FUN_004b9a42`,
+  `+0x20ac` `+0xdc` / `+0xf0`, indexed by `FUN_004be7e0`).
