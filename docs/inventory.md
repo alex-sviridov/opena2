@@ -277,8 +277,9 @@ already done.
 9. **`.a2c` characters / `game*.sav` saves** (including the scenario.dll save
    chunk from §3). These depend on the data.bin item and unit model, and on
    `.alm` for missions. a2c path built at 0x4f30b9.
-10. **`human.pal` remap** (open item from palettes.md, FUN_00425bee). It can
-    run in parallel at any point.
+10. ~~`human.pal` remap~~ Done: FUN_00425bee is the shade-table builder,
+    and `human.pal` holds 16 player-colour palettes. See
+    [palettes.md](formats/palettes.md).
 
 Not planned as formats:
 
