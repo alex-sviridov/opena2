@@ -17,6 +17,8 @@ re-checked against the binary.
 | `.reg` registry: layout, entry types, lookup rules | [reg.md](reg.md) | CONFIRMED: FUN_004ed6cc, FUN_004f1f4e; all 17 files |
 | Unit animation: `units.reg` fields, frame blocks, facing/mirroring, placement | [units.md](units.md) | CONFIRMED: FUN_0047f108, FUN_00468640; 59/62 units exact |
 
+All open questions, across specs: [../open-questions.md](../open-questions.md).
+
 Game mechanics (lighting, …): [../mechanics/](../mechanics/README.md).
 
 Install survey, binary triage and the reversing plan: [../inventory.md](../inventory.md).

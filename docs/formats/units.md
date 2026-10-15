@@ -162,3 +162,5 @@ frame = 16 + 1·10 + 2 + 3 = 31. Its corpse at d = 10: 16 + 17·8 + 1·4 + 3
   `Palette > 1` picks a palette (`FUN_00473010` argument).
 - Structures and objects (`structures.reg`, `objects.reg`) use their own
   loaders, not read yet.
+- The facing sense: whether `d` increases clockwise. Only "sprite direction
+  0 is seen from behind" is INFERRED.

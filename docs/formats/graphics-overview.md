@@ -88,8 +88,6 @@ fontN.dat ──► text rendering ◄── .16 / .16a fonts + code colour tabl
 
 ## Open questions
 
-- `fontN.dat`: answered in [fonts](fonts.md) (width = last ink column,
-  advance = width + 2; font3 covers 0x20–0x5F).
-- Terrain: answered in [terrain](terrain.md) (set/strip/row bits, water
-  animation, dirt overlay); the height-displaced blit is still open.
-- Unit animation: answered in [units](units.md).
+- Terrain relief: the height-displaced blit ([terrain](terrain.md)).
+
+All open questions: [../open-questions.md](../open-questions.md).

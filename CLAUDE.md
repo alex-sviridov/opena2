@@ -35,6 +35,11 @@ The company is legally entitled to recreate the game.
   - **INFERRED**: anything else (patterns in data, the shape of code, analogy).
   Never present a guess as a fact.
 - Match the game exactly, including quirks; any "clean" API is a separate layer.
+- Open questions: each spec ends with an "Open questions" section, and every
+  item is also listed in docs/open-questions.md (one line, link to the spec,
+  starting routine). Add the line when the question is raised; when it is
+  answered, update the spec and delete the line from both places in the same
+  change. Check that list when choosing the next task.
 
 ## Code and tests
 - Library code is written from the specs, never pasted from decompiler output.
@@ -103,5 +108,5 @@ The company is legally entitled to recreate the game.
   (tools/validate_terrain.py, tools/terrain_contact.py). Open: FUN_0045c8ce
   height-displaced blit, altitude -> vertex y.
 - Not started: data.bin, saves, game layer.
-- Next: terrain heights (FUN_0045c8ce, altitudes -> vertex y), structures.reg
+- Next (see docs/open-questions.md): terrain heights (FUN_0045c8ce, altitudes -> vertex y), structures.reg
   and objects.reg animation, unit states/tick timing, data.bin.

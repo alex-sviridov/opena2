@@ -35,5 +35,4 @@ See [palettes](palettes.md).
 
 ## Open questions
 
-- Terrain strip indexing: answered in [terrain](terrain.md).
 - The 24 → 16-bit conversion used by the "64k" class.
