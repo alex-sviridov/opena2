@@ -61,7 +61,7 @@ a 96-row BRIGHT32 shade table from the first strip's palette
 | 4–5 | `0x0030` | strip `j` (0..3) |
 | 6–12 | `0x1fc0` | set `t` |
 | 13 | `0x2000` | dirt overlay (ignored on water sets) |
-| 14–15 | `0xc000` | masked off by the terrain draw (`& 0x1fff` / `& 0xffff1fff`) |
+| 14–15 | `0xc000` | masked off by the terrain draw (`& 0x1fff` / `& 0xffff1fff`); run-time visibility read by structures/objects ([animation §1.6](animation.md#16-visibility-gates)) |
 
 ```
 tile(v, x, y):                       # x, y = map cell
@@ -128,7 +128,7 @@ builder, `0x4abd2c`–`0x4abea3`):
 | `+0x04`, `+0x08` | width, height |
 | `+0x0c` | section 1 (Tiles), copied |
 | `+0x10` | section 2 (Altitudes), `w·h` bytes copied **verbatim** |
-| `+0x14` | zeros, then section 3 copied only for rows `8 … h−5`, columns `8 … w−9` |
+| `+0x14` | zeros, then section 3 copied only for rows `8 … h−5`, columns `8 … w−9`: the object layer, byte = object index + 1 (CONFIRMED, [animation §1.7](animation.md#17-map-placement-of-objects)) |
 | `+0x18` | zeros (filled later with the terrain light map) |
 
 `FUN_00420280` returns `+0x10`. Both readers, the vertex builder
@@ -265,9 +265,6 @@ Bottom edge flat: `bot(c) = 32`.
 
 ## Open questions
 
-- What `.alm` section 3 holds (runtime map `+0x14`, copied only inside an
-  8-cell border by `FUN_004abc1c`); [inventory](../inventory.md) calls it
-  the object layer (INFERRED).
 - Who uses the per-cell edge extents `view+0xb8` / `+0xbc` and the vertex
   mean heights `+0xc0` (`FUN_00406658`); INFERRED: culling and placing
   objects on the ground.
@@ -275,5 +272,7 @@ Bottom edge flat: `bot(c) = 32`.
   (the `terrain.3d` path) means.
 - Which settings control `DAT_005fb974` (gates water and structure
   animation).
-- Bits 14–15 (`0xc000`) are masked by the draw code but never set in the
-  shipped maps (INFERRED: fog or editor flags).
+- Who sets bits 14–15 (`0xc000`) at run time; they are never set in the
+  shipped maps. Structures and objects read them as visibility (`0xc000`
+  visible, `0x8000` explored, INFERRED fog of war;
+  [animation §1.6](animation.md#16-visibility-gates)).

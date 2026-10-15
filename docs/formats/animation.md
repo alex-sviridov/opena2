@@ -167,7 +167,10 @@ frame `W·FH + (k − 1)·A + (number of non-`-` chars before it)` when
 frame `count − W·FH + cell` (the file's last `W·FH` frames). Files hold
 `W·FH + (Phases − 1)·A` frames (60 structures) or that plus `W·FH`
 destroyed frames (117); the two VariableSize bridges have exactly 9 and
-14 pieces.
+14 pieces. The nine destructible structures without a destroyed block
+(Cave, Pyramids 1–4, Dragon's nest, Plagat Inn 3, Towers 1–2) therefore
+look unchanged when destroyed, except the towers, which freeze on their
+last animation phase. CONFIRMED (draw formula + frame counts).
 
 **Object** (**CONFIRMED** `0x408b24`–`0x408d33`; data: every object's
 `Index + max(AnimationFrame)` is inside its file, and for all 135
@@ -234,7 +237,7 @@ action, `obj+0x8c` (byte) = the action, copied to the draw state
 | `obj+0xa8` / action | Phase index `obj+0x74` | Events |
 |---|---|---|
 | 0 (idle) | `T.IdlePhases = 0`: 0; else `(++obj+0x9c) mod T+0x80` (idle sequence length) | |
-| 1 move | from the step distance; formula not yet read in full (`FUN_0046b5ef` case 1) | |
+| 1 move | distance-driven, see *Move phase* below | |
 | 3 attack | `obj+0x9c`, then `+1` | at `obj+0x9c == T.AttackDelay` → vtable `+0x64` |
 | 5 turn | (stand frame) facing steps toward `obj+0x8d·16` over the remaining ticks | |
 | 6 dying | `obj+0x9c − 1` after `+1` (draw uses `/2`) | |
@@ -247,24 +250,128 @@ action, `obj+0x8c` (byte) = the action, copied to the draw state
 for 0x36, 1 for 0x38/0x3c, else 0, with `dist = √(dx² + dy² + c)` in
 map units (`c` = `_DAT_005d7618`). **CONFIRMED** (hard-coded switch).
 
-**INFERRED**: unit action lengths (`obj+0xa8` for units) arrive from the
-server with each action (written by the message handlers around
-`FUN_00464f02`); not traced yet.
+Actions 2 and 4 are never set: the only writers of the action byte
+`obj+0x8c` are the message handler `FUN_0040dac9` (values 0, 1, 3, 5, 6,
+7, 8), the projectile spawners (1), the object initialisers (0) and the
+save-game restore `FUN_00492961` (a stored byte). The tick has no case
+for them. **CONFIRMED** (every `mov byte [reg+0x8c]` in the exe).
+
+**Move phase** (`FUN_0046b5ef` case 1, assembly `0x46b760`–`0x46b8c5`;
+**CONFIRMED**). `obj+0x90/+0x94/+0x98` hold the distance still to go
+(x, y, z); each tick moves `step = remaining / obj+0xa8` (integer
+division) and subtracts it. Then
+
+```
+odometer = ftol(odometer + sqrt(step_x² + step_y² + 0.0))   // obj+0x9c
+phase    = odometer / 16                                    // obj+0x74
+```
+
+and the draw takes `moveSeq[phase mod moveLen]` (`0x468cef`:
+`idiv [T+0x50]`). So the walk cycle advances one sequence element per 16
+map units moved, not per tick: a unit walks in step whatever its speed.
+`obj+0x9c` is not reset when a move starts (the move message `0x6b` does
+not write it): it carries over from the idle counter, which is 0 only for
+types without an idle animation, so the first move phase can vary. Positions are in 1/256
+of a cell (`cell = pos >> 8`, `FUN_004674dd`), so the common
+`MoveAnimTime` of 8 × 2 (33 of 62 types, 16 elements) covers exactly one
+cell per cycle (INFERRED, arithmetic). The other branch, taken when
+`obj+0x24 < 0`, picks 8 phases from the accumulated |x| (`obj+0xa0`) or
+|y| (`obj+0xa4`) movement per 25, 26 or 32 units, with ±8 jitter on the
+draw position `obj+0x2c/+0x30`. No unit can take it from the network:
+`FUN_0046dd6a` loads the type as an unsigned 16-bit value, and heroes
+get fixed IDs from `FUN_0046f688`. **INFERRED**: unreachable leftover.
+
+### 1.5 Action durations from server messages
+
+The message loop `FUN_0040dac9` (called before each tick by
+`FUN_0048e7d0`; message type = byte `msg+9`, switch tables `0x417d45`
+→ `0x417c39`, case = type − 3) sets the action and its length in ticks.
+**CONFIRMED**:
+
+| Msg | Action `obj+0x8c` | Duration `obj+0xa8` | Site |
+|---|---|---|---|
+| 0x6b | 1 move | `msg[+0xd]` (u8, from the server) | `0x41333a` |
+| 0x6d | 5 turn | `msg[+0xd]` (u8) | `0x4135ad` |
+| 0x71 | 3 attack | `T+0x68` = AttackAnim sequence length | `0x41371f` |
+| 0x72 | 7 shoot | `T+0x68` | `0x4139a3` |
+| 0x86, 0x8a | 8 cast (caster) | `T+0x68` | `0x415b65`, `0x41604b` |
+| 0x86, 0x8b | 1 (new projectile) | `msg[+0xf]` (u16) | `0x415942`, `0x415e64` |
+| 0x8c | 1 (new projectile) | 13 | `0x4162b1` |
+| 0x6c, 0x6e–0x70 | 6 dying / 0 | see death stage | `0x410ba8`, `0x410c67` |
+| speed msg | — | game speed = `msg[+0xa]` → `FUN_00492068` | `0x417b97` |
+
+Attack, shoot and cast therefore last exactly one pass of the attack
+sequence; move and turn lengths come from the server.
+
+**Death stage** (`obj+0x184`, case at `0x40f422`; **CONFIRMED**) is
+recomputed from hit points `obj+0x104` (signed 16-bit) on these
+messages:
+
+| HP | > 0 | ≤ 0 | < −10 | < −20 | < −40 | < −600 |
+|---|---|---|---|---|---|---|
+| stage | 0 alive | 1 corpse | 2 | 3 | 4 | 5 (not drawn) |
+
+Stages 2–4 are the three bones frames (`stage − 2`, [units](units.md)).
+On a change to stage 1 from 0: action 6 for `2 × DyingPhases` ticks of
+the `Dying` type (`0x410ba8`), which plays each dying frame for 2 ticks
+(the draw uses `obj+0x74 / 2`). Staying at stage 1: action 6 for 4 ticks
+(`0x410c67`). Back to stage 0: action 0 (revived). Heroes reload their
+sprite (`FUN_0046f688`) on both changes.
+
+**Hero dying** (**CONFIRMED** `FUN_0046f688`, `0x46904b`–`0x469081`):
+with action 6 a hero's sprite folder becomes `unarmed` (type 1, `Flip`,
+129 frames) or, for flag `obj+0x1b8 & 2` heroes, `mage_st` (type 24,
+216 frames). The hero draw always indexes its own sprite `obj+0x1c0`
+with the `T`/`T2` formulas and draws nothing when the index is past the
+file's end (`0x469070`). Data check: the largest dying/corpse/bones
+index is 116 for type 1 and 194 for type 24, inside both files, so
+heroes die with the unarmed (or staff-mage) body.
+
+**Default game speed** (**CONFIRMED**): `FUN_0048750d` sets
+`app+0x434 = 4` (16 ticks/s, 62 ms); the profile loaders `FUN_004923a7`
+and `FUN_00492961` read `GameOptions/Speed` from the profile
+`game%d.sav` (`app+0x248`, built by `FUN_0048a922` as `9999 − n`) with
+the current value as default; `FUN_004f8233` keeps `DAT_0069d010` in
+0..8, else 4. The +/− hotkeys (`FUN_0048a097`, `FUN_00499d05`,
+`FUN_00499d2f`) step it by one.
+
+### 1.6 Visibility gates
+
+`obj+0x7c` (`FUN_004206c0` returns it) is a structure's visibility,
+recomputed by `FUN_004667ff` from the tile bits `0xc000` under its
+cells: 0 if any cell has `0xc000`, else 1 if one has `0x8000`, else 2.
+**CONFIRMED**. Structures animate only at 0 (`FUN_004676d2`), flat
+structures are drawn only below 2 (`0x408011`), and objects animate
+only on cells with `0xc000` (`0x408ba3`). **INFERRED**: `0xc000` =
+visible now, `0x8000` = explored, 0 = never seen (fog of war); these are
+the "never set in shipped maps" bits 14–15 of [terrain](terrain.md),
+set at run time.
+
+### 1.7 Map placement of objects
+
+The objects draw reads its cell byte from the map's `+0x14` layer
+(`FUN_00420680` on `view+0x80`, `0x407b0d`), which is `.alm` section 3
+([terrain](terrain.md)). Byte 0 = no object, byte `b` = object list
+index `b − 1` (= its `ID`; IDs equal their `Object<n>` index for all
+192). **CONFIRMED**. Data: in the 216 maps, 83 cells in 9 maps hold
+bytes 193–255, past the list (INFERRED: map-pack errors; the game would
+read past the array).
+
+Burning trees: 7 objects (`Object1, 4, 7, 10, 13, 16, 19`, files
+`<tree>ire<tree>`) are absent from the install and from the
+`data/version` manifest, yet 11 of the 216 maps place them (e.g.
+`sb_an_waterfall_1_3.alm`, 62 cells). Their file would be loaded by
+`FUN_0047edf3` → `FUN_00426da9`, which stops with `FATAL ERROR: can't
+load` for a missing file (CONFIRMED for that routine). The 7 matching
+dead trees have `FireObject = −2`, which the ambient-sound scan
+`FUN_0041d158` counts as burning (INFERRED: fire crackle).
 
 ## Open questions
 
-- The move-phase formula in `FUN_0046b5ef` case 1: the `obj+0x24 < 0`
-  branch steps 8 phases per 25/26/32 map units with y jitter; the other
-  branch uses `obj+0x9c >> 4`. Which objects take which branch.
-- Where unit action durations (`obj+0xa8`) come from (server messages,
-  `FUN_00464f02`), and the default game speed.
-- Nine destructible structures have no destroyed block; destroyed, they
-  would show their last `W·FH` frames. Whether the game ever lets their
-  HP reach 0.
-- Hero dying/bones frames: hero files (e.g. `swordsman_`, 152 frames)
-  lack the dying block of the matching unit type (208); which file the
-  hero draw uses for `T2`.
-- What `FUN_004206c0` (structure tick guard, also tested before drawing
-  flat structures) returns.
-- Seven burning-tree objects (`<tree>\fire\f<tree>`) reference files
-  absent from this install.
+- Who writes the tile visibility bits `0xc000` at run time (fog update).
+  [§1.6](#16-visibility-gates)
+- How this install avoids the `FATAL ERROR` for the 11 maps that place
+  burning trees (a2mgr redirect, or the files lived in a `.res`).
+  [§1.7](#17-map-placement-of-objects)
+- Meaning of the `msg[+0xd]`/`msg[+0xf]` durations on the server side
+  (how the server derives move time from unit speed).

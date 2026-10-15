@@ -125,6 +125,7 @@ the state, `obj+0x184` the death stage (nothing is drawn at ≥ 5),
 | 5 | — | stand `i16` |
 | 6 | — | `T2`: `S + (B+M+A)·R + i·D + obj[+0x74]/2` (dying) |
 
+States 2 and 4 are never set by any code path ([animation](animation.md#14-timing)).
 (B = MoveBeginPhases, M = MovePhases, A = AttackPhases, D = DyingPhases,
 all of the type named; the begin phases are skipped by state 1.) Quirk:
 the bones stride is `IdlePhases` (the assembly at 0x468bd9 / 0x468c34
@@ -156,9 +157,6 @@ frame = 16 + 1·10 + 2 + 3 = 31. Its corpse at d = 10: 16 + 17·8 + 1·4 + 3
 
 ## Open questions
 
-- What the states 2 and 4 are (no frame computed). States 1 move, 3 attack,
-  5 turn, 6 dying, 7 shoot, 8 cast are set by the unit tick `FUN_0046b5ef`
-  ([animation](animation.md#14-timing)).
 - `Index`, `TileSize`, `Z`, `ShootOffset`, the selection rectangle and how
   `Palette > 1` picks a palette (`FUN_00473010` argument).
 - The facing sense: whether `d` increases clockwise. Only "sprite direction

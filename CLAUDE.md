@@ -147,7 +147,15 @@ The company is legally entitled to recreate the game.
   Heroes: FUN_0046f688 maps sprite folder name -> units.reg ID. Tick:
   msg 0x401 -> FUN_0040bdc1 (view clock +0xa88 ++, every object's vtable
   +0x3c); period 1000/rate, rate 8..32 by speed 0..8 (FUN_00492068).
-  Unit tick FUN_0046b5ef sets state/phase/events. docs/formats/animation.md
+  Unit tick FUN_0046b5ef sets state/phase/events. Move phase is
+  distance-driven: odometer += sqrt(step^2), seq[(odo/16) % len]. Action
+  durations: msg loop FUN_0040dac9 (0x6b move/0x6d turn = server byte,
+  attack/shoot/cast = AttackAnim seq length, dying = 2*DyingPhases); death
+  stage from HP (<=0,-10,-20,-40,-600). Default speed 4 (16 ticks/s),
+  profile GameOptions/Speed. Dying heroes use unarmed/mage_st sprites.
+  .alm section 3 = object layer (byte = object index + 1, CONFIRMED); tile
+  bits 0xc000 = run-time visibility gating animation (INFERRED fog).
+  docs/formats/animation.md
 - Not started: data.bin, saves, game layer.
 - Next (see docs/open-questions.md): animation part 2 (spec + implement
-  structures/objects/projectiles, unit move phase), data.bin, .alm sections 3-12.
+  structures/objects/projectiles/units), data.bin, .alm sections 0, 4-12.

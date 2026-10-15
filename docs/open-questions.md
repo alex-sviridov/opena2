@@ -27,15 +27,14 @@ Rules (also in CLAUDE.md):
 
 ## Terrain and lighting
 
-- What `.alm` section 3 holds (runtime `+0x14`, copied inside an 8-cell
-  border by `FUN_004abc1c`). [terrain](formats/terrain.md#open-questions)
 - Users of the vertex-table side arrays `view+0xb8` / `+0xbc` / `+0xc0`
   (`FUN_00406658`). [terrain](formats/terrain.md#open-questions)
 - Who calls `FUN_0047b899` and with which mask; `DAT_00625778 & 2`
   (`terrain.3d`). [terrain](formats/terrain.md#open-questions)
 - Which setting controls `DAT_005fb974` (gates water and structure animation).
   [terrain](formats/terrain.md#open-questions)
-- Tiles bits 14–15 (`0xc000`), masked but never set. [terrain](formats/terrain.md#open-questions)
+- Who sets tile bits 14–15 (`0xc000`, run-time visibility) — fog update routine.
+  [terrain](formats/terrain.md#open-questions), [animation](formats/animation.md#16-visibility-gates)
 - What object virtuals `+0x38` / `+0x40` stamp as lights (torches, fires).
   [lighting](mechanics/lighting.md#open-questions)
 - Where static map lights come from and what drives their phase.
@@ -45,8 +44,6 @@ Rules (also in CLAUDE.md):
 
 ## Units and registries
 
-- Unit states 2 and 4 (`obj+0x78`; others known from `FUN_0046b5ef`).
-  [units](formats/units.md#open-questions)
 - Meaning of `Index`, `TileSize`, `Z`, `ShootOffset`, the selection rect;
   how `Palette > 1` picks a palette (`FUN_00473010`). [units](formats/units.md#open-questions)
 - Facing direction sense (clockwise or not); only "sprite direction 0 =
@@ -57,17 +54,11 @@ Rules (also in CLAUDE.md):
 
 ## Animation
 
-- Unit move-phase formula (`FUN_0046b5ef` case 1, `obj+0x24 < 0` branch).
+- How this install avoids `FATAL ERROR` on the 11 maps that place burning
+  trees (`FUN_0047edf3`; a2mgr redirect or a former `.res`).
   [animation](formats/animation.md#open-questions)
-- Source of unit action durations `obj+0xa8` (server messages, `FUN_00464f02`);
-  default game speed (`FUN_00492068`). [animation](formats/animation.md#open-questions)
-- Nine destructible structures without a destroyed block (`FUN_004669e8`).
-  [animation](formats/animation.md#open-questions)
-- Hero dying/bones frames: which file the hero draw uses for `T2` (`FUN_00468640`).
-  [animation](formats/animation.md#open-questions)
-- `FUN_004206c0` (structure tick guard). [animation](formats/animation.md#open-questions)
-- Seven burning-tree objects reference files absent from this install.
-  [animation](formats/animation.md#open-questions)
+- How the server derives move/turn/projectile durations (`msg[+0xd]`,
+  `msg[+0xf]` in `FUN_0040dac9`). [animation](formats/animation.md#open-questions)
 
 ## Not started (from the reversing plan)
 
