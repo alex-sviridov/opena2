@@ -4,8 +4,12 @@ Binary: `allods2.exe` English 1.30, sha256
 `2a8bdf9dc69276cc8d4fee561a7473a6b0f709cf9758abddaf2cd3b1fdfdfe43`.
 Addresses were read in REA (Ghidra 12.1.4) and in the x86 listing.
 Implementation: `allods2/alm.py` (container), `allods2/graphics/terrain.py`.
-Validation: `tools/validate_terrain.py`. Contact sheet:
-`tools/terrain_contact.py` → `out/contact/terrain.png`.
+Validation: `tools/validate_terrain.py`. Contact sheets:
+`tools/terrain_contact.py` → `out/contact/terrain.png` (all strips, map
+thumbnails); `tools/tile_contact.py` → `out/contact/tiles_<set>.png` (one
+grid per set, each tile labelled with the cell value a map stores for it,
+`tr.cell_value(set, strip, row)`; add `0x2000` for dirt). One tile as RGBA:
+`TerrainSet.tile_rgba(set, strip, row, light=None)`.
 
 The ground is a grid of 32 × 32 8-bit tiles. Each map cell holds a u16 in
 the `.alm` Tiles block (section 1, [inventory §5.2](../inventory.md)); the

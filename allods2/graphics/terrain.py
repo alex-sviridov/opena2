@@ -28,6 +28,11 @@ class Cell:
     dirt: bool             # v & 0x2000 (ignored on water sets)
 
 
+def cell_value(set_, strip, row, dirt=False):
+    """Inverse of decode_cell: the u16 a map stores for this tile."""
+    return (set_ << 6) | (strip << 4) | row | (DIRT_FLAG if dirt else 0)
+
+
 def decode_cell(v):
     v = int(v)
     return Cell((v & 0x1FFF) >> 6, (v >> 4) & 3, v & 0xF, bool(v & DIRT_FLAG))
@@ -83,6 +88,23 @@ class TerrainSet:
         if a is None or row >= a.shape[0] // TILE:
             return None
         return a[row * TILE:(row + 1) * TILE]
+
+    def tile_rgba(self, set_, strip, row, light=None, tint=(0, 0, 0)):
+        """(32, 32, 4) uint8 RGBA of one tile, or None (see tile()).
+
+        light: a row of the set's 96-row BRIGHT32 table, applied to the whole
+        tile (64 = x1, 46 = flat ground in daylight); None = plain palette."""
+        t = self.tile(set_, strip, row)
+        if t is None:
+            return None
+        if light is None:
+            rgb = self.palette[t]
+        else:
+            rgb = shade_table(self.palette, LIGHT_ROWS, BRIGHT32, tint)[light][t]
+        out = np.empty((TILE, TILE, 4), np.uint8)
+        out[..., :3] = rgb
+        out[..., 3] = 255
+        return out
 
     def cell_tile(self, v, x, y, anim=0, animate=True):
         """Indices the game blits for map value v at cell (x, y)."""

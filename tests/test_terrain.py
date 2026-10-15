@@ -80,6 +80,24 @@ def test_cell_tile_picks_set_strip_row():
     assert t[0, 1] == 6 * 4 + 1 and t[0, 0] == 3
 
 
+def test_cell_value_inverts_decode_cell():
+    v = tr.cell_value(9, 2, 5, dirt=True)
+    assert v == 0x2265
+    c = tr.decode_cell(v)
+    assert (c.set, c.strip, c.row, c.dirt) == (9, 2, 5, True)
+
+
+def test_tile_rgba_palette_and_light():
+    T = synthetic_terrain()
+    T.palette = np.zeros((256, 3), np.uint8)
+    T.palette[6 * 4 + 1] = (100, 50, 10)
+    px = T.tile_rgba(6, 1, 3)
+    assert px.shape == (32, 32, 4) and px[0, 1].tolist() == [100, 50, 10, 255]
+    lit = T.tile_rgba(6, 1, 3, light=tr.LIGHT_ROWS - 32)      # row 64 = x1
+    assert lit[0, 1].tolist() == [100, 50, 10, 255]
+    assert T.tile_rgba(9, 0, 8) is None
+
+
 def test_row_past_strip_is_none():
     assert synthetic_terrain().cell_tile((9 << 6) | 8, 0, 0, animate=False) is None
 

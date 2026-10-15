@@ -108,7 +108,8 @@ The company is legally entitled to recreate the game.
   (v&0x1fff)>>6 (0-12), 0x2000 dirt overlay; sets 8-11 = animated water.
   Loader FUN_0047b899, draw FUN_00404eb5, flat lit blit FUN_0045c757.
   allods2/alm.py reads the M7R container. docs/formats/terrain.md
-  (tools/validate_terrain.py, tools/terrain_contact.py). Open: FUN_0045c8ce
+  (tools/validate_terrain.py, tools/terrain_contact.py; per-set indexed grids
+  tools/tile_contact.py -> out/contact/tiles_<set>.png). Open: FUN_0045c8ce
   height-displaced blit, altitude -> vertex y.
 - Not started: data.bin, saves, game layer.
 - Next (see docs/open-questions.md): terrain heights (FUN_0045c8ce, altitudes -> vertex y), structures.reg
