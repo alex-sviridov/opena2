@@ -1,0 +1,32 @@
+# Original game files (copyrighted) - never commit
+/samples/
+
+# Generated output (exports, renders)
+/out/
+
+# Python environment and build artifacts
+/.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+/build/
+/dist/
+
+# Test and tooling caches
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Analysis databases and snapshots (may contain decompiled game code)
+*.gpr
+*.rep/
+*.rea-snapshot
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

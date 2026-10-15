@@ -1,0 +1,13 @@
+# Allods 2 file formats
+
+Reverse-engineered from the shipped `allods2.exe` (English 1.30 build).
+Each fact is marked CONFIRMED (exe routine via REA, or decodes every file)
+or INFERRED, with the routines it was derived from, so claims can be
+re-checked against the binary.
+
+| Format | Document | Status |
+|---|---|---|
+| `.256`, `*b.256` (smoothing), `.16a`, `.16` sprites | [sprites.md](sprites.md) | Decoding CONFIRMED on all game files; some draw variants open |
+| Palettes (embedded, `.pal`, `human.pal`) | [palettes.md](palettes.md) | Layout verified; `human.pal` remap open |
+| `.bmp` | [bitmaps.md](bitmaps.md) | Verified |
+| `.reg` (unit/structure metadata) | — | Not yet documented |
