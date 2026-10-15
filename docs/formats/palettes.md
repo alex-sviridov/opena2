@@ -99,10 +99,11 @@ human sprite palette for **player colour p**:
 - Each palette becomes a 16-level `BRIGHT2` shade table *with* the day/night
   tint (`FUN_00425bee(pal + p·0x400, 0x10, 2, 1)`).
 - Palette 0 also becomes a 16-level `GRAY` table (`…, 0x10, 5, 0`).
-- For rows `15 − k` (k = 0..7) of each table, the game caches the 16-bit
-  value at byte 0x148, i.e. **index 164**, in `0x629c90 + p·0x20 + k·4`.
-  It stores the value twice: once from a second table returned by
-  FUN_00473550(p), and once from the default table.
+- For rows `15 − k` (k = 0..7) of the new table, the game copies the
+  16-bit value at byte 0x148, i.e. **index 164**, into both
+  `0x629c90 + p·0x20 + k·4` and `+ k·4 + 2`. **CONFIRMED** (asm at
+  0x480446–0x4804d2): both copies come from the same table and row. The
+  decompiler's extra argument there is spurious.
 
 **CONFIRMED** (data): in all three `human.pal` files, index 164 has a
 different colour in each of the 16 palettes: blue (87, 120, 228), green,
@@ -112,9 +113,11 @@ indices between 4 and 225, so the player colour is **not** a contiguous
 palette range. `humans/human.pal` differs from the identical
 `heroes/human.pal` and `heroes_l/human.pal`.
 
-**INFERRED**: the cached index-164 colours are the player colour at 8
-brightness levels (rows 15..8 = 1/8 .. 8/8), probably for minimap dots or
-selection marks.
+The result is a **16-entry colour table per player**, in the format the
+4-bit `.16` font blitter takes ([sprites](sprites.md)). Slot `s` holds the
+player colour × `(s // 2 + 1) / 8`. FUN_0047ab33 installs `0x629c90` as one
+of the current text-colour tables (§6). Implementation:
+`player_text_ramp(rgb)`.
 
 ## 5. Conversion: shade tables (`FUN_00425bee`)
 
@@ -141,7 +144,7 @@ truncates, and every result is clamped to 0..255:
 | 1 `PLAIN` | 1 | `min(c + t, 255)` | |
 | 2 `BRIGHT2` | N | `(c + t)·k·2 / N`, k = N − r | units, human.pal, projectiles; N = 16 → row 0 = ×2, row 8 = ×1, row 15 = ×1/8 |
 | 3 `BRIGHT32` | N | `(c + t)·k >> 5`, k = N − r | terrain, N = 0x60 → row 0 = ×3, row 64 = ×1 |
-| 4 `FADE16` | 16 | `c·k >> 4` (or `c·k / 18` when `DAT_0062c9b8 ≠ 0`), k = r + 1, no tint | code ramps, smoke; row 15 = ×1 |
+| 4 `FADE16` | 16 | `c·k >> 4`, k = r + 1, no tint | every `.16a` sprite and font, code gradients, smoke; row 15 = ×1 |
 | 5 `GRAY` | N | `((r+g+b)·k·2 / 3) / N`, all channels, k = N − r, no tint | grey-out of human palette 0 and unit palettes |
 
 Then `pack16`: `px = (R >> (8 − Rbits)) << Rshift | (G >> (8 − Gbits)) <<
@@ -151,6 +154,23 @@ the DirectDraw surface's pixel format, so they are 5-6-5 or 5-5-5.
 
 Note the **row order**: in modes 2, 3 and 5 the brightest row comes first,
 while in mode 4 the darkest comes first.
+
+**Low-memory variant, not reproduced.** When physical RAM is under
+24,000,000 bytes, FUN_0045752b sets `DAT_0062c9b8 = 1` from
+`GlobalMemoryStatus().dwTotalPhys`. Mode 4 then divides by 18 instead of
+16, the blend tables shrink from 0x10000 to 0x2000 entries, FUN_00487a00
+allocates a half-size buffer, and the shadow blitters switch variants.
+**CONFIRMED**. This is a legacy 1999 memory saver and is deliberately left
+out of the implementation.
+
+**FADE16 is the `.16a` alpha table. CONFIRMED.** Each `.16a` sprite
+palette is converted in mode 4, by FUN_004313db (chrgen cube),
+FUN_004364c3 (chrgen), FUN_00474320 (global map), FUN_00463a16 (fonts
+`fontN.16a`) and others. The blitter adds the pixel word
+`a << 9 | index << 1` to row 0 as a byte offset, which lands on row `a`,
+column `index`: `colour·(a + 1)/16`, with the destination scaled by
+`(15 − a)/16`. This confirms the premultiplied term that
+[sprites](sprites.md) marked INFERRED.
 
 ### Worked example
 
@@ -171,9 +191,11 @@ Row 8 in 5-6-5 is `(100>>3)<<11 | (200>>2)<<5 | 3>>3` = `0x6640`.
 | FUN_0047b899 / FUN_0048392f | terrain: the palette of the first tile of each of 32 tile slots | 0x60, BRIGHT32, yes |
 | FUN_004824cc | `projectiles.pal`, `projectile_.pal` | 16, BRIGHT2, no |
 | FUN_004824cc | `projectiles\smoke%d\sprites.256` (×2) | 16, FADE16, no |
-| FUN_00463d30 | 5 code ramps (§6) | 16, FADE16, no |
+| FUN_00463d30 | 5 code gradients (§6) | 16, FADE16, no |
+| `.16a` loaders (FUN_004313db, FUN_004364c3, FUN_00463a16, FUN_00474320, …) | embedded `.16a` palettes, including fonts | 16, FADE16, no |
+| interface and equipment loaders (FUN_004478af `subobj.256`, FUN_0046dd6a, FUN_0047bedd, …) | embedded `.256`/BMP palettes | 1, PLAIN |
 | FUN_00473010 | a unit's palette when no table exists yet | 16, BRIGHT2, yes |
-| FUN_00468640 (unit draw) | the unit's palette, under some unit state | 16, GRAY, no |
+| FUN_00468640 (unit draw) | the unit's palette, when the unit has effect 0x2c | 16, GRAY, no |
 
 Terrain slot *s* (0..31) holds `tile{s/4 + 1}-{v + 4·(s mod 4)}.bmp` for v =
 0..3. **CONFIRMED** (data): all 52 `tile*.bmp` share one palette, so a
@@ -224,9 +246,24 @@ for i = 0..15 (`/` truncates):
 | `0x62b008` | (255 − 175i/15, 252i/15, 98i/15) |
 | `0x629c68` | ((15−i)·160/15 + 32, (15−i)·148/15 + 32, (15−i)·88/15 + 32) |
 
-**Open:** what draws with these tables. **INFERRED**: the gradient
-palettes are effect tints (glows, fire, magic) for 8-bit sprites drawn as
-intensity, and the 16-entry ramps are UI bars or minimap colours.
+**CONFIRMED: they are text colours.**
+
+- The gradient tables colour **`.16a` fonts**: glyph index → position on
+  the gradient, alpha → FADE16 row. For example, FUN_0042bc1b formats a
+  number, then calls the font object `DAT_0062af90` with
+  `DAT_0062b088.row(0)`, the gold gradient. FUN_004627f6 draws the string
+  twice, the first time offset by its last argument (INFERRED: a drop
+  shadow). The brown table (`DAT_0062b048`) is used the same way by
+  FUN_00461429 and FUN_004affc1, and the black one by FUN_00463d18.
+- The 16-entry tables colour **`.16` fonts**, whose 4-bit pixels index a
+  16-entry table (FUN_004593a1). FUN_0047ab33 writes the current
+  text-colour pointers `0x5fb97c…0x5fb990`. Its argument selects between
+  a set built from `0x629cd0`, `0x629d70`, `0x62afd8`, `0x629cb0`,
+  `0x629d10` and `0x629c90` (player colours, §4), and a set built from
+  `0x629c48` and `0x62aaf0` (greys).
+
+**INFERRED**: which UI element uses which colour. The tables have 10–30
+users each (for example, `0x62aaf0` has 28).
 
 ## 7. Palette effects
 
@@ -251,21 +288,32 @@ routine sets terrain lighting parameters (`0x62c88c`, `0x62c890`,
 `0x62c894`, `0x62c898`, and a light angle `0x62c8a0` = ±π/4 or a sweep).
 These are not palette data. When disabled, the tint is (0, 0, 0).
 
-FUN_0041f200 re-evaluates this every 20 game minutes and then calls
-**FUN_0048392f**, which rebuilds every tinted shade table: human, unit,
-terrain, structure and object. The time of day is therefore a palette
-effect applied at conversion time, not a per-pixel blend.
+FUN_0041f200 re-evaluates this every 20 game minutes. It then calls
+FUN_004ad552, which rebuilds the terrain light map, and **FUN_0048392f**,
+which rebuilds every tinted shade table: human, unit, terrain, structure
+and object. The time of day is therefore a palette effect applied at
+conversion time, not a per-pixel blend. The full parameter table is in
+[lighting](../mechanics/lighting.md).
 
-Implementation: `daylight_tint(minutes)`, `shade_table(rgb, levels, mode, tint)`.
+Implementation: `lighting.daylight(minutes)`, `daylight_tint(minutes)`,
+`shade_table(rgb, levels, mode, tint)`.
 
 ### Others
 
-- **Brightness levels** (modes 2/3) replace per-pixel lighting. Which row
-  is drawn (terrain height and slope shading, fog of war) is chosen by
-  the renderer. **Open.**
-- **Grey-out** (mode 5): FUN_00468640 draws a unit through a GRAY table when
-  `FUN_0046600b(…) ≥ 0`, which is some unit state. **INFERRED**: petrified,
-  or a similar effect.
+- **Brightness levels** (modes 2/3) replace per-pixel lighting. The
+  renderer picks the row from light maps; see
+  [lighting](../mechanics/lighting.md). **CONFIRMED.**
+- **Hover highlight**: FUN_00468640 forces row 0 (×2 brightness) when the
+  unit is the one stored at `+0x994` of the view object and a flag at
+  `+0x40c` is 0. **CONFIRMED** code. **INFERRED**: this is the unit under
+  the mouse cursor.
+- **Grey-out** (mode 5): FUN_00468640 draws a unit through a 16-level GRAY
+  table of its palette when it has **effect 0x2c**. FUN_0046600b looks up
+  an effect id in the unit's list of u32 entries, where the id is in the
+  high 16 bits. **CONFIRMED.** **INFERRED**: 0x2c is Stone Curse.
+- **Effect 0x20** makes the draw first check FUN_00420610 (whether the
+  viewer can see the unit), then use the sprite's alternate draw (`+0x34`,
+  FUN_004271d0 → FUN_00459926). **INFERRED**: invisibility.
 - No team-colour **range swap**: player colours are whole alternate
   palettes (§4).
 - No palette fades of the screen were found in the palette code. Fades
@@ -273,15 +321,17 @@ Implementation: `daylight_tint(minutes)`, `shade_table(rgb, levels, mode, tint)`
 
 ## Open questions
 
-1. What `DAT_0062c9b8` is. It switches FADE16 to `/18`, halves the buffer
-   allocated in FUN_00487a00, and is read by the blend-table builder
-   FUN_0045752b. Possibly a 15- vs 16-bit display flag.
-2. The draw-time row selection for BRIGHT2 / BRIGHT32 tables (lighting).
-3. The users of the code gradient palettes and the 16-entry ramps (§6).
-4. The second table from FUN_00473550(p) in the index-164 cache (§4).
-5. Which unit state triggers the GRAY draw in FUN_00468640.
-6. Why 391 smoothing overlays embed an all-zero palette. **INFERRED**: the
+1. Which UI elements use which text-colour table (§6).
+2. The effect-id → spell mapping (0x20, 0x2c), which needs `data.bin`.
+3. What the alternate sprite draw FUN_00459926 does (translucency?); see
+   [sprites](sprites.md).
+4. Why 391 smoothing overlays embed an all-zero palette. **INFERRED**: the
    overlay draw uses the main sprite's palette ([sprites](sprites.md)), so
    the embedded palette is never used. The three non-zero ones are
    `interface/radiob.256` (not an overlay), `projectiles/firebolt/spritesb.256`
    and `units/monsters/star/spritesb.256`.
+
+Resolved on 2026-10-15: the low-memory flag `DAT_0062c9b8` (§5), row
+selection ([lighting](../mechanics/lighting.md)), the users of the code
+tables (§6), and the "second table" in the index-164 cache (§4: there is
+none).

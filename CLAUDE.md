@@ -56,13 +56,16 @@ The company is legally entitled to recreate the game.
 - Sprites (.256, .16, .16a, *b.256): CONFIRMED, all 43,051 sprites decode
   exactly. *b.256 = edge-smoothing overlays (50 % blend, "Smoothing" option),
   NOT shadows. Open: mirror variants, darkening blit's users. docs/formats/sprites.md
-- Palettes: CONFIRMED. BGR0 8-bit entries, 4th byte ignored, no 6-bit VGA
-  and no raw 768/1024 files. 2,973 palettes in 2,928 files parse
-  (tools/validate_palettes.py; out/contact/palettes.png via
-  tools/palette_contact.py). human.pal = 16 player colours (index 164).
-  FUN_00425bee turns palettes into 16-bit shade tables (6 modes), and the
-  day/night tint is FUN_0047a208. Open: lighting row selection,
-  DAT_0062c9b8. docs/formats/palettes.md
+- Palettes: CONFIRMED. BGR0 8-bit entries, 4th byte ignored. 2,973
+  palettes in 2,928 files (tools/validate_palettes.py; contact sheet via
+  tools/palette_contact.py). FUN_00425bee turns palettes into 16-bit shade
+  tables (6 modes; FADE16 = the .16a alpha table). human.pal = 16 player
+  colours (index 164 → per-player .16 text ramp). The code gradients and
+  ramps are font colours. The low-memory flag DAT_0062c9b8 is legacy and
+  not reproduced (user decision). docs/formats/palettes.md
+- Lighting: CONFIRMED. Day/night (FUN_0047a208), terrain light map
+  (FUN_004ad552, 96-row tables), object rows (FUN_00404ad1). Open:
+  vision/fog map, light sources. docs/mechanics/lighting.md
 - BMP: CONFIRMED. docs/formats/bitmaps.md
 - Inventory + binary triage + reversing plan: docs/inventory.md (tools/inventory.py
   -> out/inventory.csv). This install has NO .res, music, .smk; a2mgr maps

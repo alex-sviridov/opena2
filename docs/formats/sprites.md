@@ -159,10 +159,14 @@ table[k][x] = x * (16 - k) / 16      per channel, 17 tables, k = 0..16
 
 So the destination is scaled by `(15 − a)/16`.
 
-**INFERRED**: `premul` comes from `a2mgr.dll` `Ordinal_37` and is not analysed
-yet. Assuming it holds `colour · (a + 1)/16`, the blend is
-`src·(a+1)/16 + dst·(15−a)/16`. In that case `a = 15` is opaque and `a = 0` has
-coverage 1/16. `alpha_coverage()` and `Canvas.draw_16a` use this assumption.
+**CONFIRMED**: `premul` is the sprite palette's FADE16 shade table
+([palettes §5](palettes.md)). The draw passes `row(0)`, which a2mgr
+`Ordinal_37` returns. The pixel word is a byte offset into it, so it
+selects row `a` and column `index`, giving `colour · (a + 1)/16`. The blend
+is therefore `src·(a+1)/16 + dst·(15−a)/16`: `a = 15` is opaque and `a = 0`
+has coverage 1/16. This is what `alpha_coverage()` and `Canvas.draw_16a`
+implement. (The legacy low-memory mode divides by 18; it is not
+reproduced.)
 
 ### Example
 
@@ -173,8 +177,12 @@ done → skip 2 pixels → row done. Result row 0 = `[·, (255, 15)]`, row 1 emp
 ## Open questions
 
 - What the variant blitters selected by the last draw argument do
-  (`FUN_0045a64d`, `FUN_0045a8e7`, `FUN_0045dee0`); probably mirrors.
+  (`FUN_0045a64d`, `FUN_0045a8e7`, `FUN_0045dee0`). **INFERRED**: they
+  mirror the sprite. The unit draw FUN_00468640 sets that argument exactly
+  when it folds a facing `d > 4` (8 directions) or `d > 8` (16) into `8 − d`
+  / `16 − d`, and only for unit types with `+0x128 ≠ 0`.
 - Which objects use the darkening blit (vtable `+0x1c`, `FUN_00459d8c`).
-- What state flag `0x20` (`FUN_0046600b(0x20)`) is; it makes heroes translucent.
-- The contents of the `premul` table from `a2mgr.dll` `Ordinal_37`.
+- Which effect id `0x20` is (`FUN_0046600b(0x20)` searches the unit's
+  effect list); it makes heroes translucent. **INFERRED**: invisibility.
+  See [palettes §7](palettes.md).
 - How frame indices map to animation phases and directions (`units.reg`).

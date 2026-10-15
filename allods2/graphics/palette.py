@@ -146,14 +146,16 @@ def load_palettes(path):
 MASK, PLAIN, BRIGHT2, BRIGHT32, FADE16, GRAY = range(6)
 
 
-def shade_table(rgb, levels, mode, tint=(0, 0, 0), fade_div18=False):
+def shade_table(rgb, levels, mode, tint=(0, 0, 0)):
     """RGB888 rows the game converts to 16-bit, as an (n, 256, 3) uint8 array.
 
     tint is the day/night (R, G, B) bias the game passes when the 4th
     argument is 1 (FUN_0047a208); pass (0, 0, 0) for argument 0.  Row r of
     BRIGHT2 / BRIGHT32 / GRAY is level k = levels - r (row 0 brightest);
     row r of FADE16 is k = r + 1 (row 15 = full colour).
-    MASK and PLAIN fill one row; FADE16 always fills 16.
+    MASK and PLAIN fill one row; FADE16 always fills 16.  The game's
+    low-memory variant of FADE16 (/18 instead of /16 when physical RAM is
+    under 24,000,000 bytes) is legacy and not reproduced.
     """
     c = np.asarray(rgb, np.int64).reshape(256, 3)
     t = np.asarray(tint, np.int64).reshape(1, 3)
@@ -165,7 +167,7 @@ def shade_table(rgb, levels, mode, tint=(0, 0, 0), fade_div18=False):
         return np.minimum(c + t, 255)[None].astype(np.uint8)
     if mode == FADE16:
         ks = np.arange(1, 17).reshape(-1, 1, 1)
-        out = c[None] * ks // (18 if fade_div18 else 16)
+        out = c[None] * ks >> 4
     else:
         ks = np.arange(levels, 0, -1).reshape(-1, 1, 1)
         if mode == BRIGHT2:
@@ -250,23 +252,9 @@ def code_ramps16():
     return {a: np.stack(t, 1).astype(np.uint8) for a, t in tables.items()}
 
 
-# --- day/night tint (FUN_0047a208) -------------------------------------------
-
-def daylight_tint(minutes, enabled=True):
-    """(R, G, B) bias added to palettes at game time `minutes` (0 = midnight).
-    Disabled (DAT_0062c938 == 0) gives (0, 0, 0)."""
-    if not enabled:
-        return (0, 0, 0)
-    hour = (minutes // 60) % 24
-    m = minutes % 120
-    if 6 <= hour <= 17:
-        return (0, 0, 0)
-    if hour < 2 or hour > 21:
-        return (0, 12, 48)
-    if hour < 4:
-        return (m * 24 // 120, 12, 48 - m * 48 // 120)
-    if hour < 6:
-        return (24 - m * 24 // 120, 12 - m * 12 // 120, 0)
-    if hour < 20:
-        return (m * 24 // 120, 0, m * 8 // 120)
-    return (24 - m * 24 // 120, m * 12 // 120, m * 40 // 120 + 8)
+def player_text_ramp(rgb, tint=(0, 0, 0)):
+    """16-entry colour table for player colour palette `rgb` (a human.pal
+    entry), as FUN_0048392f builds at 0x629c90 + p * 0x20: slot s is
+    index 164 of BRIGHT2 row 15 - s // 2, i.e. the colour x (s // 2 + 1) / 8."""
+    rows = shade_table(rgb, 16, BRIGHT2, tint)
+    return np.stack([rows[15 - s // 2, TEAM_COLOR_INDEX] for s in range(16)])

@@ -4,6 +4,7 @@ checks against every palette in the install (skipped when it is absent)."""
 import os
 import struct
 import sys
+from dataclasses import astuple
 
 import numpy as np
 import pytest
@@ -147,8 +148,14 @@ def test_shade_fade16_rows_ascend():
     t = gfx.shade_table(one(160, 16, 255), 16, FADE16)
     assert t[0, 1].tolist() == [10, 1, 15]
     assert t[15, 1].tolist() == [160, 16, 255]
-    t18 = gfx.shade_table(one(160, 16, 255), 16, FADE16, fade_div18=True)
-    assert t18[15, 1].tolist() == [142, 14, 226]
+
+
+def test_fade16_row_is_16a_alpha_premultiply():
+    # .16a word (alpha << 9 | index << 1) is a byte offset into the table:
+    # row a, column index -> colour * (a + 1) / 16
+    t = gfx.shade_table(one(160, 16, 255), 16, FADE16)
+    word = (7 << 9) | (1 << 1)
+    assert t.reshape(-1, 3)[word // 2].tolist() == [160 * 8 // 16, 16 * 8 // 16, 255 * 8 // 16]
 
 
 def test_shade_gray_ignores_tint():
@@ -199,6 +206,58 @@ def test_daylight_tint_is_continuous_and_disableable():
         after = gfx.daylight_tint(h * 60)
         assert max(abs(a - b) for a, b in zip(before, after)) <= 1
     assert gfx.daylight_tint(0, enabled=False) == (0, 0, 0)
+
+
+def test_player_text_ramp_pairs_levels():
+    rgb = np.zeros((256, 3), np.uint8)
+    rgb[TEAM_COLOR_INDEX] = (80, 160, 240)
+    ramp = gfx.player_text_ramp(rgb)
+    assert ramp.shape == (16, 3)
+    assert ramp[0].tolist() == ramp[1].tolist() == [10, 20, 30]      # x 1/8
+    assert ramp[15].tolist() == [80, 160, 240]                       # x 8/8
+
+
+# --- lighting ---------------------------------------------------------------
+
+def test_daylight_params_continuous():
+    prev = gfx.daylight(0)
+    for t in range(1, 24 * 60):
+        cur = gfx.daylight(t)
+        assert abs(cur.ambient - prev.ambient) <= 1 and abs(cur.diffuse - prev.diffuse) <= 1, t
+        prev = cur
+
+
+def test_daylight_fixed_points():
+    assert astuple(gfx.daylight(12 * 60))[1:5] == (14, 32, 4, 2)
+    assert astuple(gfx.daylight(0))[1:5] == (32, 8, 8, 4)
+    assert astuple(gfx.daylight(3 * 60))[1:5] == (30, 14, 6, 3)
+    assert astuple(gfx.daylight(0, enabled=False))[1:5] == (14, 32, 4, 2)
+    assert gfx.daylight(6 * 60).angle == pytest.approx(-0.78539815)
+    assert gfx.daylight(18 * 60 - 1).angle == pytest.approx(0.78539815, abs=0.003)
+
+
+def test_terrain_light_flat_ground():
+    day, night = gfx.daylight(12 * 60), gfx.daylight(0)
+    flat = np.zeros((4, 4), np.int8)
+    assert gfx.terrain_light(flat, day.angle, day.ambient, day.diffuse)[1, 1] == 46
+    assert gfx.terrain_light(flat, night.angle, night.ambient, night.diffuse)[1, 1] == 64
+    assert gfx.terrain_light(flat, 0.0, 14, 32)[0, 0] == 0          # border untouched
+
+
+def test_terrain_light_slope_and_clamp():
+    # ground rising toward +y (down the screen) is darker (higher row) than
+    # flat ground, and ground falling toward +y is brighter
+    rise = np.repeat(np.arange(0, 40, 10)[:, None], 4, 1).astype(np.int8)
+    assert gfx.terrain_light(rise, 0.0, 14, 32)[1, 1] > 46
+    assert gfx.terrain_light(rise[::-1], 0.0, 14, 32)[1, 1] < 46
+    cliff = np.zeros((3, 3), np.int8)
+    cliff[0, :] = 127
+    assert gfx.terrain_light(cliff, 0.0, 255, 255)[1, 1] == 94      # clamped to 94
+
+
+def test_object_light_row():
+    assert gfx.object_light_row(gfx.daylight(12 * 60).ambient) == 3
+    assert gfx.object_light_row(gfx.daylight(0).ambient) == 8
 
 
 # --- game files ---------------------------------------------------------------
