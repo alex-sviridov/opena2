@@ -312,8 +312,11 @@ Implementation: `lighting.daylight(minutes)`, `daylight_tint(minutes)`,
   an effect id in the unit's list of u32 entries, where the id is in the
   high 16 bits. **CONFIRMED.** **INFERRED**: 0x2c is Stone Curse.
 - **Effect 0x20** makes the draw first check FUN_00420610 (whether the
-  viewer can see the unit), then use the sprite's alternate draw (`+0x34`,
-  FUN_004271d0 → FUN_00459926). **INFERRED**: invisibility.
+  viewer can see the unit), then draw it with the 50 % translucent blit
+  (`+0x34`, FUN_004271d0 → FUN_00459926: `dst = (dst >> 1 & m) +
+  (src >> 1 & m)`, where `m = 0x62c9c0` is each channel's mask without its
+  top bit, 0x7BEF for 5-6-5). Its shadow uses the lighter level `0x62c898`.
+  **INFERRED**: invisibility.
 - No team-colour **range swap**: player colours are whole alternate
   palettes (§4).
 - No palette fades of the screen were found in the palette code. Fades
@@ -323,9 +326,7 @@ Implementation: `lighting.daylight(minutes)`, `daylight_tint(minutes)`,
 
 1. Which UI elements use which text-colour table (§6).
 2. The effect-id → spell mapping (0x20, 0x2c), which needs `data.bin`.
-3. What the alternate sprite draw FUN_00459926 does (translucency?); see
-   [sprites](sprites.md).
-4. Why 391 smoothing overlays embed an all-zero palette. **INFERRED**: the
+3. Why 391 smoothing overlays embed an all-zero palette. **INFERRED**: the
    overlay draw uses the main sprite's palette ([sprites](sprites.md)), so
    the embedded palette is never used. The three non-zero ones are
    `interface/radiob.256` (not an overlay), `projectiles/firebolt/spritesb.256`

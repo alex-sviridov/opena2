@@ -1,0 +1,71 @@
+"""Synthetic tests, one per rule in docs/mechanics/lighting.md (sections 3-5)."""
+
+import numpy as np
+
+from allods2 import graphics as gfx
+from allods2.graphics.lighting import NO_LIGHT, STATIC_LIGHT_PHASES
+
+
+def test_stamp_light_disk():
+    m = np.full((9, 9), NO_LIGHT, np.uint8)
+    gfx.stamp_light(m, 4, 4, 2, 7)            # dx^2 + dy^2 < 6
+    lit = {(x - 4, y - 4) for y, x in zip(*np.nonzero(m == 7))}
+    assert (2, 1) in lit and (0, 2) in lit
+    assert (2, 2) not in lit                   # 8 >= 6
+    assert len(lit) == 21
+
+
+def test_stamp_light_radius_zero_and_clipping():
+    m = np.full((3, 3), NO_LIGHT, np.uint8)
+    gfx.stamp_light(m, 0, 0, 0, 5)
+    assert m[0, 0] == 5 and (m == 5).sum() == 1
+    gfx.stamp_light(m, 0, 0, 1, 6)            # partly outside: skipped, no error
+    assert (m == 6).sum() == 3
+
+
+def test_static_light_flicker_cycle():
+    assert STATIC_LIGHT_PHASES == (36, 24, 12, 0, 12, 0, 12, 0, 20, 28, 36)
+
+
+def test_projectile_lights():
+    assert gfx.projectile_light(10) == (0, 16)            # firebolt
+    assert gfx.projectile_light(12) == (1, 16)            # fireball
+    assert gfx.projectile_light(13, 1) == (2, 8)          # fire explosion
+    assert gfx.projectile_light(13, 2) == (3, 0)
+    assert gfx.projectile_light(13, 10) == (3, 46)
+    assert gfx.projectile_light(1) is None                # arrows: no light
+
+
+def test_lit_terrain_corner():
+    assert gfx.lit_terrain_corner(46, NO_LIGHT) == 46
+    assert gfx.lit_terrain_corner(46, 16) == 16
+    assert gfx.lit_terrain_corner(10, 16) == 10
+
+
+def test_object_light_row_lit():
+    assert gfx.object_light_row_lit([255] * 4, 32) is None
+    assert gfx.object_light_row_lit([0, 0, 0, 0], 32) == 0        # torch: x2
+    assert gfx.object_light_row_lit([46] * 4, 32) == 3             # 4 * 14 >> 4
+    assert gfx.object_light_row_lit([0, 255, 255, 255], 32) == 6   # 3 * 32 >> 4
+    assert gfx.object_light_row_lit([0, 255, 255, 255], 14) == 2   # 3 * 14 >> 4 = 2 < 14 >> 2
+
+
+def test_shadow_angle_snaps_small_angles():
+    assert gfx.shadow_angle(0.0) == 0.0
+    assert gfx.shadow_angle(0.01) == 0.05 and gfx.shadow_angle(-0.01) == -0.05
+    assert gfx.shadow_angle(0.6) == 0.6 / 1.5
+
+
+def test_shadow_shear_and_rows():
+    shear = gfx.shadow_shear(0.78539815)       # tan(pi/6) * 65536
+    assert shear == int(np.tan(0.78539815 / 1.5) * 65536)
+    rows = gfx.shadow_row_offsets(4, 0x8000)   # half a pixel per row
+    assert rows == [2, 2, 1, 1]
+    rows = gfx.shadow_row_offsets(3, -0x10000)
+    assert rows == [-3, -2, -1]
+
+
+def test_shadow_pixel():
+    day, night = gfx.daylight(12 * 60), gfx.daylight(0)
+    assert gfx.shadow_pixel((160, 80, 16), day.shadow1) == (120, 60, 12)
+    assert gfx.shadow_pixel((160, 80, 16), night.shadow1) == (80, 40, 8)

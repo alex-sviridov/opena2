@@ -79,35 +79,113 @@ Implementation: `terrain_light(heights, angle, ambient, diffuse)`.
 lands exactly on an integer could truncate differently. INFERRED to be
 rare.
 
-## 3. Object light map (`FUN_00404ad1`), CONFIRMED
+## 3. Light map (`view + 0xa8`), CONFIRMED
 
-A byte per visible cell at `view + 0xb0`, which the object renderer
-(FUN_00406fea) passes as the row to each object's draw method (vtable
-`+0x28`):
+One byte per map vertex in the visible window (stride `w + 7`, offset
+(+3, +3)), using the terrain row scale: 0 is the brightest, and **0xFF is
+"no light"**. It is rebuilt every frame by FUN_004040e2:
+
+1. Copy the old map to `+0xac` (only when `DAT_00625778 == 2`), then fill
+   `+0xa8` with 0xFF.
+2. Each object in the view list gets virtual calls `+0x38` and `+0x40`.
+   Light-emitting objects stamp into the map there.
+3. **Static map lights** (the list behind FUN_00422580 / FUN_004225a0,
+   whose entries are `{next, ?, cell x | y << 8, flags}`) stamp radius 1
+   with a value chosen by animation phase `flags >> 1`:
+   `36, 24, 12, 0, 12, 0, 12, 0, 20, 28, 36` for phases 0–10, and nothing
+   for other phases. This makes torches flicker.
+4. FUN_00404ad1 then derives the object rows (§4).
+
+**Stamp** (FUN_004063c5, only when the **Lighting** option `0x5fb978` is
+on): `value` is written at every vertex `(cx + dx, cy + dy)` with
+`dx² + dy² < r·(r + 1)` (r = 0: the centre only). The squares come from a
+41×41 u16 table centred at `0x62ba88` (row stride 0x52) that the startup routine FUN_00479bc6 fills with `dx² + dy²` for |dx|, |dy| ≤ 20.
+Vertices outside the window are skipped.
+
+**Projectile lights** (FUN_00472562, by `projectiles.reg` ID at `+0x24`):
+
+| ID | `File` | Radius, value |
+|---|---|---|
+| 10 firebolt, 18 icemissile, 40 meteorit | | 0, 16 |
+| 12 fireball | | 1, 16 |
+| 13 fireexpl, phase `+0x74` | | 0: (1, 16); 1: (2, 8); 2–3: (3, 0); 4: (3, 8); 5: (3, 16); 6: (3, 24); 7: (3, 32); 8: (3, 40); 9–10: (3, 46) |
+| 28 lightnin, 30 chain | | each segment writes `phase·10` to its 2×2 vertices directly |
+
+The ID → file names are **CONFIRMED** (data): `projectiles.reg`
+sections `ProjectileN` hold `ID`, `File`, `Phases`, … .
+
+**Terrain under lights** (FUN_00405d9b): tiles with any corner ≠ 0xFF
+are redrawn with `corner = min(terrain_light, light)`, using the
+terrain light from §2 where the light map is 0xFF.
+
+Implementation: `stamp_light`, `projectile_light`,
+`STATIC_LIGHT_PHASES`, `lit_terrain_corner`.
+
+## 4. Object light rows (`FUN_00404ad1`), CONFIRMED
+
+A byte per visible cell at `view + 0xb0` (stride `w + 6`), which the
+object renderer FUN_00406fea passes as the row to each object's draw method
+(vtable `+0x28`):
 
 1. Fill with `A >> 2`: row 3 (×1.625) by day, row 8 (×1) at night.
-2. For each entry in the list returned by FUN_00422580 (a cell `x | y<<8`
-   and flags): flag 0x8000 sets the cell to 0 (×2), and flag 0x4000 sets
-   it to 12 (×0.5). Flag 8 calls FUN_004063c5 with 0 or 12, chosen by a
-   hash of the position and `+0xa88`. **INFERRED**: light sources, with
-   flag 8 flickering.
-3. For each cell, sum the four corners of the map at `view + 0xa8`, each
-   taken as `max(v − 32, 0)`. If the sum is not 4·223, any corner equal
-   to 223 is replaced by `A`, and the cell gets `min(A >> 2, sum >> 4)`.
-   **INFERRED**: `+0xa8` is the vision or fog map, and fully dark cells
-   keep the step 1–2 value.
+2. Map light entries with flag 0x8000 force their cell to 0 (×2), and
+   flag 0x4000 forces it to 12 (×0.5). Flag 8 stamps radius 1 into the
+   light map with 0 or 12, chosen by `hash(x·y + view[0xa88]/2) mod 5`
+   being odd.
+3. For each cell, take the four light-map corners as `max(v − 32, 0)`. If
+   all four are 223 (unlit), the cell keeps its value. Otherwise corners
+   equal to 223 count as `A`, and the cell gets `min(A >> 2, sum >> 4)`.
+
+So a light brightens nearby objects down to row 0 (×2). Values above 32
+fade the effect out.
 
 The unit draw (FUN_00468640) overrides the row with 0 for the hovered
 unit (see [palettes §7](../formats/palettes.md)).
 
-Implementation: `object_light_row(ambient)` gives the step 1 default.
+Implementation: `object_light_row(ambient)` (step 1),
+`object_light_row_lit(corners, ambient)` (step 3).
+
+## 5. Shadows, CONFIRMED
+
+Drawn only when the **Shadows** option (`0x5fb970`) is on. The blitter
+FUN_0045a33f walks the sprite's RLE stream for its shape, ignores the
+pixel values, and replaces each covered destination pixel through blend
+table `k`: `dst·(16 − k)/16` per channel (the tables from FUN_0045752b).
+
+- **Darkness** `k`: `0x62c894` (4 by day, 6 at dusk/dawn, 8 at night,
+  i.e. ×0.75 / ×0.625 / ×0.5). The lighter `0x62c898` (2 / 3 / 4) is used
+  for a second set of objects (`0x630e7c`) and for translucent units.
+- **Shear**: `trunc(tan(β)·65536)` in 16.16, with `β = α / 1.5`, except
+  that `−0.05 < α < 0` gives β = −0.05 and `0 < α < 0.05` gives β = 0.05
+  (FUN_004abba9, constants `0x5d8c10/18/20`). The top row starts
+  `trunc(shear·h / 65536)` pixels to the right. After each row (row skips
+  count too) the 16.16 accumulator gains `shear`, and the row moves left
+  by its whole part. The bottom row ends up under the sprite.
+- FUN_0045a027 / FUN_0045afc0 are the low-memory variants (not
+  reproduced), and FUN_0045b2f1 is the mirrored variant.
+
+Implementation: `shadow_angle`, `shadow_shear`, `shadow_row_offsets`,
+`shadow_pixel`.
+
+## 6. Options
+
+The registry values are written by FUN_00444xxx under these names:
+
+| Name | Flag | Effect |
+|---|---|---|
+| `Shadows` | `0x5fb970` | draw shadows (§5) |
+| `Lighting` | `0x5fb978` | stamp lights into the light map (§3) |
+| `Animation` | `0x5fb974` | when 0, light changes also invalidate screen rectangles (FUN_00420330/390). INFERRED: redraw for non-animated mode |
+| day/night | `0x62c938` | §1 (toggled by key handler FUN_0040c989) |
 
 ## Open questions
 
-1. What `view + 0xa8` holds and how it is built (vision/fog); FUN_00406981
-   and FUN_00406c9e build the visibility spans from it and `+0xac`.
-2. The light-source list behind FUN_00422580 / FUN_004225a0, and
-   FUN_004063c5.
-3. How `0x62c894` / `0x62c898` shape shadows (FUN_0045a33f / FUN_0045b2f1).
-4. How `.alm` section 2 heights map to the runtime signed height map at
+1. What the object virtuals `+0x38` / `+0x40` stamp for units and
+   structures (unit torches, burning buildings).
+2. Where static map lights come from (`.alm` sections or spells such as
+   Light), and what drives their phase.
+3. How `.alm` section 2 heights map to the runtime signed height map at
    `+0x10`.
+4. What `+0xa0` / `+0xa4` hold. FUN_004040e2 sets them from the cell flags
+   (0, 8 or 16; INFERRED: fog of war) and FUN_00406981 / FUN_00406c9e
+   build the draw spans from them.

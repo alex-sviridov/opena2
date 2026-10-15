@@ -64,13 +64,15 @@ The company is legally entitled to recreate the game.
   ramps are font colours. The low-memory flag DAT_0062c9b8 is legacy and
   not reproduced (user decision). docs/formats/palettes.md
 - Lighting: CONFIRMED. Day/night (FUN_0047a208), terrain light map
-  (FUN_004ad552, 96-row tables), object rows (FUN_00404ad1). Open:
-  vision/fog map, light sources. docs/mechanics/lighting.md
+  (FUN_004ad552), light map + stamps (FUN_004040e2/FUN_004063c5, projectile
+  lights), object rows (FUN_00404ad1), shadows (FUN_0045a33f, shear from
+  sun). Open: what units stamp, fog map, .alm heights. docs/mechanics/lighting.md
 - BMP: CONFIRMED. docs/formats/bitmaps.md
 - Inventory + binary triage + reversing plan: docs/inventory.md (tools/inventory.py
   -> out/inventory.csv). This install has NO .res, music, .smk; a2mgr maps
   .res paths to loose data/ files (INFERRED). data/version = SHA-1 manifest.
-- .reg: header CONFIRMED (sig 0x31415926, FUN_004ed6cc); entry semantics open.
+- .reg: header CONFIRMED (sig 0x31415926, FUN_004ed6cc); 32-byte entry layout
+  (5 types) INFERRED from all 17 files, not yet checked in exe. docs/inventory.md §5.1
 - .alm maps: 216 from the allods2.eu maps pack in samples/.../maps/. Container
   (M7R header + 13 sections) walks to EOF on all; semantics open. docs/inventory.md §5.2
 - Not started: data.bin, fonts .dat, saves, game layer.

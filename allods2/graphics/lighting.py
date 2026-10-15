@@ -24,8 +24,8 @@ class Daylight:
     tint: tuple        # 0x62c888..a, (R, G, B) added before palette conversion
     ambient: int       # 0x62c88c
     diffuse: int       # 0x62c890
-    shadow1: int       # 0x62c894, passed to sprite shadow draws (meaning open)
-    shadow2: int       # 0x62c898
+    shadow1: int       # 0x62c894, shadow darkness level (dst * (16 - k) / 16)
+    shadow2: int       # 0x62c898, lighter shadow level
     angle: float       # 0x62c8a0, sun azimuth in radians
 
 
@@ -97,3 +97,94 @@ def object_light_row(ambient):
     """Default 16-row shade level for units and objects in an unlit cell
     (FUN_00404ad1): ambient >> 2."""
     return ambient >> 2
+
+
+# --- light map (view + 0xa8): 0 = brightest, 0xFF = no light ----------------
+
+NO_LIGHT = 0xFF
+
+# FUN_004040e2: static map light value by animation phase (flags >> 1), radius 1.
+STATIC_LIGHT_PHASES = (0x24, 0x18, 0x0C, 0, 0x0C, 0, 0x0C, 0, 0x14, 0x1C, 0x24)
+
+# FUN_00472562: projectile type (projectiles.reg ID) -> (radius, value).
+PROJECTILE_LIGHTS = {10: (0, 0x10), 18: (0, 0x10), 40: (0, 0x10), 12: (1, 0x10)}
+# Type 13 (fireexpl): (radius, value) by phase; phases 2, 3 keep (3, 0).
+_FIREEXPL = {0: (1, 0x10), 1: (2, 8), 4: (3, 8), 5: (3, 0x10), 6: (3, 0x18),
+             7: (3, 0x20), 8: (3, 0x28), 9: (3, 0x2E), 10: (3, 0x2E)}
+
+
+def projectile_light(type_id, phase=0):
+    """(radius, value) a projectile stamps, or None.  Types 28 and 30
+    (lightning, chain) instead write phase * 10 at each segment's 2x2
+    vertices."""
+    if type_id == 13:
+        return _FIREEXPL.get(phase, (3, 0))
+    return PROJECTILE_LIGHTS.get(type_id)
+
+
+def stamp_light(light, cx, cy, radius, value):
+    """FUN_004063c5: write `value` at every vertex (cx+dx, cy+dy) with
+    dx^2 + dy^2 < r(r+1) (r = 0: just the centre).  Out-of-range vertices
+    are skipped.  `light` is a (h, w) uint8 array indexed [y, x]."""
+    limit = radius * (radius + 1) or 1
+    h, w = light.shape
+    for dx in range(-radius, radius + 1):
+        for dy in range(-radius, radius + 1):
+            x, y = cx + dx, cy + dy
+            if dx * dx + dy * dy < limit and 0 <= x < w and 0 <= y < h:
+                light[y, x] = value
+
+
+def lit_terrain_corner(terrain, light):
+    """FUN_00405d9b: a lit vertex uses the brighter of the terrain light
+    and the light map."""
+    return terrain if light == NO_LIGHT else min(terrain, light)
+
+
+def object_light_row_lit(corners, ambient):
+    """FUN_00404ad1 step 3: row for a cell from its four light-map corners,
+    or None when all four are 0xFF (the cell keeps its default)."""
+    vals = [max(v - 32, 0) for v in corners]
+    if sum(vals) == 4 * 223:
+        return None
+    total = sum(ambient if v == 223 else v for v in vals)
+    return min(ambient >> 2, total >> 4)
+
+
+# --- shadows (FUN_0045a33f, FUN_004abba9) ------------------------------------
+
+def shadow_angle(angle):
+    """Shadow lean from the sun angle: angle / 1.5, except that small
+    non-zero angles snap to +-0.05."""
+    if -0.05 < angle < 0.0:
+        return -0.05
+    if 0.0 < angle < 0.05:
+        return 0.05
+    return angle / 1.5
+
+
+def shadow_shear(angle):
+    """16.16 per-row horizontal shear passed to the shadow blitter."""
+    return int(math.tan(shadow_angle(angle)) * 65536.0)
+
+
+def shadow_row_offsets(height, shear):
+    """Horizontal pixel offset of each sprite row in the shadow: the top row
+    starts at trunc(shear * h / 65536) and each later row moves left by the
+    whole part of an accumulating 16.16 sum."""
+    p = shear * height
+    off = -((-p) >> 16) if p < 0 else p >> 16
+    acc, out = 0, []
+    for _ in range(height):
+        out.append(off)
+        acc += shear
+        off -= acc >> 16
+        acc &= 0xFFFF
+    return out
+
+
+def shadow_pixel(dst_rgb, level):
+    """Shadow darkening: blend table `level` scales the destination by
+    (16 - level) / 16 per channel.  `level` is Daylight.shadow1 (or
+    shadow2 for the lighter variant)."""
+    return tuple(c * (16 - level) // 16 for c in dst_rgb)

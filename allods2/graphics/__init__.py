@@ -5,7 +5,10 @@ Specs: docs/formats/.
 
 from .bmp import Bitmap, load_bmp
 from .canvas import Canvas
-from .lighting import Daylight, daylight, daylight_tint, object_light_row, terrain_light
+from .lighting import (Daylight, daylight, daylight_tint, lit_terrain_corner,
+                       object_light_row, object_light_row_lit, projectile_light,
+                       shadow_angle, shadow_pixel, shadow_row_offsets, shadow_shear,
+                       stamp_light, terrain_light)
 from .palette import (Palette, code_palettes, code_ramps16,
                       grayscale_palette, load_human, load_human_palettes, load_pal,
                       load_pal_file, load_palettes, pack16, player_text_ramp,
@@ -22,7 +25,9 @@ __all__ = [
     "daylight", "daylight_tint", "decode", "decode_16", "decode_16a", "decode_256",
     "decode_smooth", "grayscale_palette", "guess_kind", "load_bmp",
     "load_human", "load_human_palettes", "load_pal", "load_pal_file",
-    "load_palettes", "object_light_row", "pack16", "player_text_ramp",
+    "lit_terrain_corner", "load_palettes", "object_light_row",
+    "object_light_row_lit", "projectile_light", "shadow_angle", "shadow_pixel",
+    "shadow_row_offsets", "shadow_shear", "stamp_light", "pack16", "player_text_ramp",
     "read_palette", "shade_table", "terrain_light", "to_rgba",
     "unpack16", "write_png",
 ]

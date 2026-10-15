@@ -5,4 +5,4 @@ marked CONFIRMED or INFERRED, with the routines it came from.
 
 | Mechanism | Document | Status |
 |---|---|---|
-| Time of day, terrain and object lighting | [lighting.md](lighting.md) | CONFIRMED formulas; light-source and visibility map semantics open |
+| Time of day, terrain and object lighting | [lighting.md](lighting.md) | CONFIRMED: time of day, terrain light, light map and stamps, object rows, shadows. Open: what units stamp, fog map |

@@ -189,11 +189,34 @@ also holds for all 17 files.
 | 0x0c | u32 | ? (always 0x11) |
 | 0x10 | u32 | N = number of 32-byte directory entries |
 | 0x14 | u32 | ? (0 in all files) |
-| 0x18 | N × 32 | directory: entries look like `{u32, u32 type, u32, char name[16], u32/f64 value}` (INFERRED) |
+| 0x18 | N × 32 | directory entries, see below |
 | … | u32 | D = data blob size |
 | … | D | data blob (strings / arrays referenced by entries, INFERRED) |
 
-The check is `0x18 + 32·N + 4 + D == file size` for all 17 files. The value
+The check is `0x18 + 32·N + 4 + D == file size` for all 17 files.
+
+Directory entry, 32 bytes. Found while reading `projectiles.reg` for
+[lighting](mechanics/lighting.md). The layout is INFERRED, but consistent on
+all 17 files (every section and blob range is in bounds) and gives
+meaningful values; it has not been checked in the exe yet:
+
+| Offset | Size | Field |
+|---|---|---|
+| +0 | u32 | 0 |
+| +4 | 8 | value: a union by type (below) |
+| +12 | u32 | type |
+| +16 | char[16] | name, NUL-padded |
+
+| Type | Count (all files) | Value at +4 / +8 |
+|---|---:|---|
+| 1 section | 513 | first child entry index, child count |
+| 2 int | 5,025 | i32 value |
+| 0 string | 1,770 | blob offset, length (cp1251, NUL-terminated) |
+| 4 float | 22 | f64 (e.g. `startfade`, `endfade` in `video/*/NN.reg`) |
+| 6 int array | 444 | blob offset, byte length of u32s (e.g. `AnimationTime`, `AnimationFrame`) |
+
+The first `header[0x08]` entries are the top-level sections: 32 in
+`projectiles.reg`, namely `Global` and `Projectile0`–`Projectile30`. The value
 0x31415926 also appears in FUN_004eae80, FUN_004ed9f0 and FUN_004edd03
 (writers or other readers, INFERRED). The same container probably backs
 `.res` archives as well (INFERRED, unverified).
