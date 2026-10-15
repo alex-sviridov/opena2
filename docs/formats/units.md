@@ -35,9 +35,9 @@ first use `FUN_004807fd` loads `<path>.256` and `<path>b.256`. Then
 | `Width`, `Height` | +0x2c, +0x30 | −1 |
 | `CenterX`, `CenterY` | +0x34, +0x38 | −1 |
 | `SelectionX1/Y1/X2/Y2` | rect objects | −1 |
-| `MoveAnimTime/Frame` | sequence at +0x50 | from parent if empty |
-| `AttackAnimTime/Frame` | sequence at +0x68 | from parent if empty |
-| `IdleAnimTime/Frame` | sequence at +0x80 | from parent if empty |
+| `MoveAnimTime/Frame` | sequence +0x3c, length +0x50 | from parent if empty |
+| `AttackAnimTime/Frame` | sequence +0x54, length +0x68 | from parent if empty |
+| `IdleAnimTime/Frame` | sequence +0x6c, length +0x80 | from parent if empty |
 | `Dying` | +0x94 (unit **ID** whose frames are used for dying and bones) | 0 |
 | `Palette` | +0x98 (count) | 0 |
 | `Sound` | +0xdc (array) | from parent if empty |
@@ -156,11 +156,10 @@ frame = 16 + 1·10 + 2 + 3 = 31. Its corpse at d = 10: 16 + 17·8 + 1·4 + 3
 
 ## Open questions
 
-- What the states 2 and 4 are (no frame computed) and the full state list.
-- The tick rate of the sequences and `obj+0x74` during dying.
+- What the states 2 and 4 are (no frame computed). States 1 move, 3 attack,
+  5 turn, 6 dying, 7 shoot, 8 cast are set by the unit tick `FUN_0046b5ef`
+  ([animation](animation.md#14-timing)).
 - `Index`, `TileSize`, `Z`, `ShootOffset`, the selection rectangle and how
   `Palette > 1` picks a palette (`FUN_00473010` argument).
-- Structures and objects (`structures.reg`, `objects.reg`) use their own
-  loaders, not read yet.
 - The facing sense: whether `d` increases clockwise. Only "sprite direction
   0 is seen from behind" is INFERRED.

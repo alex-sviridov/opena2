@@ -136,6 +136,18 @@ The company is legally entitled to recreate the game.
   allods2/alm.py, allods2/graphics/terrain.py (render, render_3d),
   docs/formats/terrain.md. Tools: validate_terrain, terrain_contact,
   tile_contact (out/contact/tiles_<set>.png), terrain_render (out/terrain3d/).
+- Animation sources (part 1): CONFIRMED. All timing/phase data is in the
+  .reg files (no text configs, no sprite-header fields). Loaders: structures
+  FUN_00482e99 (table 0x62caf8; grid W*FullHeight pieces + (Phases-1)*A
+  AnimMask cells [+ W*FH destroyed], all 179 exact), objects FUN_0047e4a0
+  (list 0x630d90; frame = Index + seq[(clock+X+X*Y) % len]), projectiles
+  FUN_004824cc (table 0x62cb10; frame = phase + Phases*dir, 16|9 dirs, no
+  time array: phase = tick/2 % Phases, flight time hard-coded FUN_0046c4f1).
+  Units' sequences are at T+0x3c/0x54/0x6c (lengths +0x50/0x68/0x80).
+  Heroes: FUN_0046f688 maps sprite folder name -> units.reg ID. Tick:
+  msg 0x401 -> FUN_0040bdc1 (view clock +0xa88 ++, every object's vtable
+  +0x3c); period 1000/rate, rate 8..32 by speed 0..8 (FUN_00492068).
+  Unit tick FUN_0046b5ef sets state/phase/events. docs/formats/animation.md
 - Not started: data.bin, saves, game layer.
-- Next (see docs/open-questions.md): structures.reg and objects.reg
-  animation, unit states/tick timing, data.bin, .alm sections 3-12.
+- Next (see docs/open-questions.md): animation part 2 (spec + implement
+  structures/objects/projectiles, unit move phase), data.bin, .alm sections 3-12.

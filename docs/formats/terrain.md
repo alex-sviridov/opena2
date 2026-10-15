@@ -79,8 +79,10 @@ tile(v, x, y):                       # x, y = map cell
     return pixels                    # 32 × 32 indices, row-major
 ```
 
-`anim` is the view's counter at `+0xa88`; `DAT_005fb974` is a display option
-(INFERRED: "animated water"). The water test uses the set **before**
+`anim` is the view's counter at `+0xa88`, incremented once per game tick by
+`FUN_0040bdc1` (CONFIRMED; tick rate in [animation](animation.md#14-timing)).
+`DAT_005fb974` is a display option that also switches off structure
+animation (`FUN_004669e8`, CONFIRMED); INFERRED: the "animation" option. The water test uses the set **before**
 animation, so the frame also depends on which of 8–11 the map stored.
 
 **CONFIRMED** (data, `tools/validate_terrain.py`): all 216 maps walk
@@ -271,7 +273,7 @@ Bottom edge flat: `bot(c) = 32`.
   objects on the ground.
 - Who calls `FUN_0047b899` and with which mask; what `DAT_00625778 & 2`
   (the `terrain.3d` path) means.
-- The meaning of `DAT_005fb974` (water animation option) and how fast
-  `view+0xa88` advances.
+- Which settings control `DAT_005fb974` (gates water and structure
+  animation).
 - Bits 14–15 (`0xc000`) are masked by the draw code but never set in the
   shipped maps (INFERRED: fog or editor flags).
