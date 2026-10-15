@@ -95,7 +95,7 @@ low-memory twins `FUN_00459b5c` / `FUN_0045ab38`, not reproduced.)
   viewer's u16 relation word for that player (`FUN_00420660`). If the bit
   is clear, the unit's shadow (`+0x2c`, drawn when `DAT_005fb970`) and body
   (`+0x28`) are both skipped. So players with the bit see the unit at 50 %;
-  everyone else sees nothing. **INFERRED**: this is the Invisibility spell
+  everyone else sees nothing. **CONFIRMED**: this is the Invisibility spell, `0x20 = 2·12 + 8`
   ([palettes §7](palettes.md)).
 - **CONFIRMED** (relation word): the viewer's u16 word for player `p` lives
   at `player+0x38 → +4`, `+2·p` (`FUN_00420640` / `FUN_00420660`). Bit `8`
@@ -191,9 +191,24 @@ Same stream as `.256`. Files: `units/*/*/spritesb.256` and structures'
 - **CONFIRMED** (data): overlay pixels are sparse dots along edges and thin
   details (bow strings, arrows). They render plausibly with the main sprite's
   palette; with their own embedded palette they come out dark.
-- **CONFIRMED** (heroes): the hero overlay is drawn through `+0x34`, which
-  takes the main sprite's external table, and `FUN_00426be0` is never called
-  on `+0x1c4`. So the overlay's embedded palette is never read for heroes.
+- **CONFIRMED** (heroes, structures, objects, backpack): the overlay is
+  drawn through `+0x34` with the **main sprite's** table, and
+  `FUN_00426be0` is never called on the overlay, so its embedded palette
+  is never read. Each case is gated by `DAT_0062c930`:
+
+  | Owner | Main / overlay | Main draw | Overlay table | Site |
+  |---|---|---|---|---|
+  | hero | `obj+0x1c0` / `+0x1c4` | `+0x34` | unit palette table | `FUN_00468640` (`0x469333`) |
+  | other unit (type list `0x62cb40`, lazy `FUN_004807fd`) | `def+4` / `+8` (`FUN_00473090` / `FUN_004730c0`) | | unit palette table (`FUN_00473010`, or GRAY with effect `0x2c`) | `FUN_00468640` (`0x469670`) |
+  | structure (`0x62caf8`, lazy `FUN_00482c92`) | `def+4` / `+8` (`FUN_00472e00` / `FUN_00472e30`) | `+0x18` own | `main+0x14` (`FUN_004205d0`) | `FUN_004669e8`, `0x467b93`, `0x467da1` |
+  | object (`0x62cb60`, lazy `FUN_0047edf3`) | `def+4` / `+8` (`FUN_00420720` / `FUN_00420750`) | `+0x14`, table `main+0x14` | `main+0x14` | `0x4092d3`, `0x40946f` |
+  | backpack (`DAT_00630e78` / `0x630e7c`) | globals | `+0x18` own | `main+0x14` | `0x4665e8` |
+
+  Structures and objects also draw the overlay's **shadow** (`+0x3c`, at
+  the lighter level `0x62c898`, while the main sprite uses `0x62c894`) when
+  Smoothing is on. For objects this also needs shadows on (`DAT_005fb970`;
+  `0x4090e7`, structures `0x466e7b`). Units draw the overlay's shadow with
+  the darken blit `+0x1c` at level `0x62c898` (`0x46a6df`).
 - **CONFIRMED** (projectiles, `FUN_00482125` loader, `FUN_00471fee` draw):
   projectile overlays are different. For a `projectiles.reg` entry with
   `A16 = 0`, the loader reads `<File>.256` into `def+4` and `<File>b.256`
@@ -317,7 +332,4 @@ frame on an anchor themselves:
 
 ## Open questions
 
-- How structures and objects draw their `*b.256` overlays. Their loaders
-  (`0x47eec1`, `0x4808cb`) store the overlay at `entry+8`, but
-  `FUN_00426be0` is only called on `entry+4`, so presumably they use an
-  external table (`+0x34`).
+None at present.

@@ -337,29 +337,46 @@ Implementation: `lighting.daylight(minutes)`, `daylight_tint(minutes)`,
 - **Grey-out** (mode 5): FUN_00468640 draws a unit through a 16-level GRAY
   table of its palette when it has **effect 0x2c**. FUN_0046600b looks up
   an effect id in the unit's list of u32 entries, where the id is in the
-  high 16 bits. **CONFIRMED.** **INFERRED**: 0x2c is Stone Curse.
+  high 16 bits. **CONFIRMED.** 0x2c is Stone Curse (**CONFIRMED**, "Effect ids" below).
 - **Effect 0x20** makes the draw first check FUN_00420610 (bit 8 of the
   viewer's relation word for the owner; if clear the unit is not drawn at
   all, [sprites](sprites.md)), then draw it with the 50 % translucent blit
   (`+0x34`, FUN_004271d0 → FUN_00459926: `dst = (dst >> 1 & m) +
   (src >> 1 & m)`, where `m = 0x62c9c0` is each channel's mask without its
   top bit, 0x7BEF for 5-6-5). Its shadow uses the lighter level `0x62c898`.
-  **INFERRED**: invisibility.
+  0x20 is Invisibility (**CONFIRMED**, below).
 - **Effect ids** use the projectile type ids, the `ID` values in
-  `graphics/projectiles/projectiles.reg`. **CONFIRMED** (`FUN_00471643`,
-  the projectile tick): when projectile types `0x10, 0x14, 0x18, 0x22,
-  0x2c, 0x2e, 0x30, 0x32, 0x3e, 0x40, 0x42` reach their target, the tick
-  appends `type << 16 | 0xffff` to the target's effect list (`unit+0x130`).
-  Types `0x38` and `0x3c` set `type << 16 | 0x20`, replacing an existing
-  entry. The network handler `FUN_0040dac9` (`0x415643`) sets entries from
-  a message byte (`msg+0xc`). The client never builds `0x20` as a constant;
-  it arrives from the server. **CONFIRMED** (data): `projectiles.reg` has
-  no entry with ID 32 (`0x20`) or 44 (`0x2c`), so neither has a projectile
-  sprite. **INFERRED**: the reg IDs are grouped by school. Air has 28
-  lightning, 30 chain (prismatic spray) and 34 `p_air`, which puts 32 in the
-  Air block (Invisibility). Earth has 40 `meteorit`, 43 wall and 46
-  `p_earth`, which puts 44 in the Earth block (Stone Curse). This fits the
-  draw effects above.
+  `graphics/projectiles/projectiles.reg`, and both are derived from the
+  spell number. **CONFIRMED**:
+  - Spell numbers come from the exe's name table at `0x603190`, entries
+    `0x32 + n`: 0 `unused_spell_0`, 1 `fire_arrow`, 2 `fire_ball`, …,
+    12 `invisibility`, …, 18 `stone_curse`, …, 29 `slow`. This is the
+    `spell.txt` order plus one.
+  - The server's spell-effect builder `FUN_00523a7f` switches on the spell
+    number (`0x523ea0`, table `0x525bb8`, 30 cases). For an effect object
+    (vtable `0x5db3c8`) it sets `+0xc = n` and `+0xe = 2n + 8`. A
+    secondary projectile uses `2n + 9` (for example `0x523e73`).
+    Invisibility (case 12, `0x525613`) gets `0x20`; Stone Curse (case 18,
+    `0x52539a`) gets `0x2c`.
+  - `FUN_00526afe` attaches the effect to the unit. The bit `1 << n` goes
+    into `unit+0x144`, and bless (20) and curse (28) cancel each other.
+    The effect is announced with `FUN_0050d132`, which sends message
+    `0x88` carrying the unit id (`msg+0xa`) and `effect+0xe` (`msg+0xc`).
+  - The client handler (`FUN_0040dac9`, case `0x88` at `0x4155f6`) adds or
+    replaces `id << 16 | 0xffff` in the unit's effect list (`unit+0x130`).
+    It also sets `unit+0x114 = 1`. Separately, the projectile tick
+    `FUN_00471643` adds the same entry when a homing projectile of type
+    `0x10 … 0x42` reaches its target.
+
+  So `effect id = 2·spell + 8 (+1)`. **CONFIRMED** (data): every
+  `projectiles.reg` ID ≥ 10 fits this formula, e.g. 10 `firebolt` =
+  fire_arrow, 12/13 `fireball`/`fireexpl` = fire_ball, 15 `firewall`,
+  20/21 `poison_d`/`poison` = poison_cloud, 23 `Meteor` = blizzard,
+  30 `chain` = prismatic_spray, 40 `meteorit` = diamond_dust, 43 `wall` =
+  wall_of_earth, 56 `healing` = heal, 64 `Curse`. IDs 1–8 are arrows,
+  catapult shots and steam, which are not spells. Invisibility (32) and
+  Stone Curse (44) have no projectile sprite. Implementation:
+  `allods2.spells`.
 - No team-colour **range swap**: player colours are whole alternate
   palettes (§4).
 - No palette fades of the screen were found in the palette code. Fades
@@ -370,12 +387,8 @@ Implementation: `lighting.daylight(minutes)`, `daylight_tint(minutes)`,
 1. Which widgets use which static text-colour table (§6). The message-log
    slots are resolved (§6), but the 14 fixed tables have 10–30 users each.
    The chat-kind names (0–4) are also open.
-2. Which spell sends effect `0x20` / `0x2c` (§7, "Effect ids"). The ids
-   come from the server side (spell cast → projectile type), which is not
-   in the client paths read so far. Start at `FUN_0040dac9` (`0x415643`),
-   or at whoever fills the effect message.
 
-Resolved on 2026-10-15: the all-zero palettes in smoothing overlays
+Resolved on 2026-10-15: the effect ids (§7, `2·spell + 8`), the all-zero palettes in smoothing overlays
 ([sprites](sprites.md): unused for heroes, but used by three projectile
 overlays, which draw as 50 % black), the low-memory flag `DAT_0062c9b8` (§5), row
 selection ([lighting](../mechanics/lighting.md)), the users of the code

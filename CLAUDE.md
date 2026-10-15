@@ -63,13 +63,16 @@ The company is legally entitled to recreate the game.
   NOT shadows. Draw vtables 0x5d53a8/.16a 0x5d5488: every blit has a mirrored
   twin (x+w-1 leftward, CONFIRMED; Canvas mirror=). Darken (+0x1c) = UI drop
   shadows only (lm/scrlbars/radiob.256). Effect 0x20 = unit hidden unless
-  viewer relation bit 8, else 50 % (INFERRED Invisibility). Relation word
+  viewer relation bit 8, else 50 % (Invisibility, CONFIRMED). Relation word
   CONFIRMED: 8 = p shares vision with me, 0x20 alliance, 0x40 war (received);
   1 enemy, 2 ally, 0x10 visible, 4 silent (own choices); self = 0x3a.
   Draw slots +0x18/+0x38 use the sprite's own table, +0x14/+0x34 an external
   one. Projectile overlays (A16=0, Palette=1: goblin arrow, catap1/2) are
   drawn with their own all-zero palette = 50 % black, without the Smoothing check.
-  Effect ids = projectiles.reg IDs (0x20/0x2c have no sprite). docs/formats/sprites.md
+  Overlays of heroes/units/structures/objects use the main sprite's table.
+  Effect id = projectile ID = 2*spell+8 (+9 secondary), spell n from the exe
+  name table (spell.txt+1); server FUN_00523a7f, msg 0x88. allods2/spells.py.
+  docs/formats/sprites.md, palettes.md §7
 - Palettes: CONFIRMED. BGR0 8-bit entries, 4th byte ignored. 2,973
   palettes in 2,928 files (tools/validate_palettes.py; contact sheet via
   tools/palette_contact.py). FUN_00425bee turns palettes into 16-bit shade
@@ -85,7 +88,8 @@ The company is legally entitled to recreate the game.
   (blits read h-1-sy), packs BGR with masks from GetPixelFormat
   (FUN_004584cc) = palette.pack16; +0x38 colour key 0, +0x3c 16-bit add,
   +0x1c no-op. Shop price bar = costs/costm1-7.bmp, frame = log10(price).
-  Message-log colours 0x5fb97c..990 (palettes §6). docs/formats/bitmaps.md
+  Message-log colours 0x5fb97c..990 (palettes §6). +0x2c flip used by
+  FUN_0041f2d4 (info-window portrait canvas). docs/formats/bitmaps.md
 - Inventory + binary triage + reversing plan: docs/inventory.md (tools/inventory.py
   -> out/inventory.csv). This install has NO .res, music, .smk; a2mgr maps
   .res paths to loose data/ files (INFERRED). data/version = SHA-1 manifest.

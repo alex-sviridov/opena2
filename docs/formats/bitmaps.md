@@ -21,8 +21,8 @@ Standard Windows DIB:
 - **CONFIRMED** (vtable `0x5d53f0` "Bitmap 64k colors", constructor
   `FUN_0042769b`): the 24-bit class does **not** flip. Its blitters read
   source row `h − 1 − sy` instead (below), so the picture still comes out
-  top row first. Its `+0x2c` flip method (`FUN_00427c09`) has no direct
-  callers.
+  top row first. Its `+0x2c` method (`FUN_00427c09`) flips the rows in
+  place (see "Off-screen canvases" below).
 - **CONFIRMED** (data): all 841 `.bmp` files under `data/graphics` are
   uncompressed and bottom-up: 778 are 24-bit, 63 are 8-bit.
 
@@ -82,6 +82,44 @@ nothing. One example is the shop price bar ([sprites](sprites.md)).
 24-bit pixel `B, G, R = 0x40, 0x80, 0xff` on a 5-6-5 surface:
 `(0xff >> 3) << 11 | (0x80 >> 2) << 5 | (0x40 >> 3) = 0xf800 | 0x0400 | 0x0008 = 0xfc08`.
 
+## Off-screen canvases (info-window portrait)
+
+**CONFIRMED** (`FUN_004278ac`): `new Bitmap64k(w, h)` allocates a blank
+canvas with the same layout. Making it the render target is vtable `+0x28`
+(`FUN_00426c87`): it sets `DAT_0062571c` to the pixels, `0x625704` /
+`0x625700` to the size, and the pitch `DAT_00625708` to `w·2`.
+
+**CONFIRMED** (`FUN_0041f2d4`). A heuristic scan of the 42
+`call [reg+0x2c]` sites found no other that involves a 64k bitmap: it
+matched each site's object against the fields and globals that
+`FUN_0042769b` / `FUN_004278ac` results are stored in. The result goes to the widget at `0x4e52a6`, `widget+0x5c`, and is drawn with
+`+0x18` / `+0x38` at `0x4e3d6e`…`0x4e3e46`):
+
+1. Allocate `panel` (88 × 108) and `pic` (160 × 240) canvases.
+2. Load `graphics\infowindow\<name><n>.bmp` into `pic` (`FUN_00427945`:
+   the same bottom-up load as the constructor) and **flip** it, so it is
+   top row first.
+3. Make `panel` the render target and clear the 0x4a40 bytes at
+   `DAT_0062571c` (the panel is 88·108·2 = 0x4a40 bytes).
+4. Flip `t_back.bmp` (`DAT_00630b8c`, loaded at `0x47d107`), blit its rect
+   `+0x34` and then `pic`'s same rect `+0x38` (colour key) to `(8, 7)`, then
+   flip `t_back.bmp` back. The rect is `(0x24, 0x8c)–(0x6c, 0xe8)`, or
+   `(k2, 0x90 − k1)–(k2 + 0x48, 0xf0 − k1)` when a per-type offset `k1 ≠ −1`
+   exists (types 0x40–0x66; **INFERRED** a crop table).
+5. Draw `t_border.256` (`DAT_00630e58`) with the sprite blit `+0x18` at
+   `(0, 0)`.
+
+The blitters read source row `h − 1 − sy` and write destination rows
+downward. With top-first sources (steps 2 and 4), the panel therefore ends
+up **bottom-up**, like a loaded bitmap, and the later `+0x18` / `+0x38`
+draws show it upright. With the default rect, the panel shows `pic` rows
+8–99 and columns 36–107.
+
+**Quirk** (follows from the code): the sprite blitter in step 5 writes top
+row first, so `t_border.256` appears **vertically mirrored** on screen. The
+frame is nearly symmetric (672 of 9,504 mask pixels differ from the mirror
+image), so this is hard to see.
+
 ## Related
 
 Unit `.pal` files are also 8-bit BMPs; the game reads only their colour table.
@@ -89,6 +127,5 @@ See [palettes](palettes.md).
 
 ## Open questions
 
-- Who calls the 64k class's `+0x2c` row flip (`FUN_00427c09`). It has no
-  direct callers, and a virtual caller would turn the image upside down
-  for the `h − 1 − sy` blitters.
+- Where the per-type portrait offset `k1`, `k2` comes from (`FUN_0041f2d4`,
+  types 0x40–0x66, near `FUN_004210f0`).
