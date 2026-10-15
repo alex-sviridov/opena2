@@ -75,4 +75,8 @@ The company is legally entitled to recreate the game.
   (5 types) INFERRED from all 17 files, not yet checked in exe. docs/inventory.md §5.1
 - .alm maps: 216 from the allods2.eu maps pack in samples/.../maps/. Container
   (M7R header + 13 sections) walks to EOF on all; semantics open. docs/inventory.md §5.2
+- Graphics overview: docs/formats/graphics-overview.md (tools/gfx_survey.py ->
+  out/gfx/). Ranked #1 is .pal, already CONFIRMED, like ranks 2 and 5-8.
 - Not started: data.bin, fonts .dat, saves, game layer.
+- Next: C3 with the first not-yet-decoded rank, #4 fontN.dat (glyph metrics),
+  since #1 .pal is done.
