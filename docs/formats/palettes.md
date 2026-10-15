@@ -190,6 +190,7 @@ Row 8 in 5-6-5 is `(100>>3)<<11 | (200>>2)<<5 | 3>>3` = `0x6640`.
 | FUN_0048392f via FUN_00426be0 | the palettes of three object registries (FUN_00422f70 / FUN_00422ff0 / FUN_00423030 lists) and one global; INFERRED: units, structures, objects | 16, BRIGHT2, yes |
 | FUN_0047b899 / FUN_0048392f | terrain: the palette of the first tile of each of 32 tile slots | 0x60, BRIGHT32, yes |
 | FUN_004824cc | `projectiles.pal`, `projectile_.pal` | 16, BRIGHT2, no |
+| FUN_00482125 (projectile type, lazy) | the type's own `.256` and `b.256` palettes when `Palette ≠ 0` and `A16 = 0`; the `.16a` palette when `A16 = 1` | 16, BRIGHT2, yes; `.16a`: 16, FADE16, no |
 | FUN_004824cc | `projectiles\smoke%d\sprites.256` (×2) | 16, FADE16, no |
 | FUN_00463d30 | 5 code gradients (§6) | 16, FADE16, no |
 | `.16a` loaders (FUN_004313db, FUN_004364c3, FUN_00463a16, FUN_00474320, …) | embedded `.16a` palettes, including fonts | 16, FADE16, no |
@@ -262,8 +263,34 @@ for i = 0..15 (`/` truncates):
   `0x629d10` and `0x629c90` (player colours, §4), and a set built from
   `0x629c48` and `0x62aaf0` (greys).
 
-**INFERRED**: which UI element uses which colour. The tables have 10–30
-users each (for example, `0x62aaf0` has 28).
+**CONFIRMED** (`FUN_0047ab33`, `FUN_0040dac9`, key handler `0x40d2a5`): the
+six pointers are the **message-log colours**. A modified key toggles
+`DAT_0062c9e0`, calls `FUN_0047ab33(new state)`, and shows `patch.txt` line
+`0x55 + state`: "Standard message colors" (0) or "Alternative message
+colors" (1). Each message goes to the log (`view+0xa28`, `FUN_004021fe`)
+with a colour table and a lifetime in ms:
+
+| Slot | Standard (0) | Alternative (1) | Used for |
+|---|---|---|---|
+| `0x5fb97c` | `0x629c48` grey 17i | `0x629cd0` | system and status messages, e.g. the option toggles (2000 ms); 42 users |
+| `0x5fb980` | `0x62aaf0` grey 14i | `0x629d70` | "Picked up N pieces / N gold" (`main.txt` `0x55`–`0x59`; 3000 ms) |
+| `0x5fb984` | unchanged | `0x62afd8` | chat kinds 0 and 4 (10000 ms) |
+| `0x5fb98c` | unchanged | `0x629cb0` | chat kind 1 |
+| `0x5fb988` | unchanged | `0x629d10` | chat kind 2 |
+| `0x5fb990` | unchanged | `0x629c90` | chat kind 3 |
+
+- The chat path (`0x413cd8`) uses these four slots only when the state is 1
+  and the sender's flag `+0x41c & 1` is set. Otherwise the line is drawn
+  with the sender's player ramp, `0x629c90 + 32·player[+0xc]` (§4).
+- A chat line of kind ≠ 4 is dropped when the viewer has bit 4 ("silent")
+  set for the sender ([sprites](sprites.md), relation word).
+- **Quirk**: state 0 resets only the first two slots. All six start as
+  `0x629c48` (`0x62aaf0` for the second). After one switch to Alternative
+  and back, the four chat slots keep the Alternative colours.
+
+**INFERRED**: what the chat kinds 0–4 are (say, shout, …). Which widget uses
+which of the fixed tables is still open; they have 10–30 users each (for
+example, `0x62aaf0` has 28).
 
 ## 7. Palette effects
 
@@ -318,6 +345,21 @@ Implementation: `lighting.daylight(minutes)`, `daylight_tint(minutes)`,
   (src >> 1 & m)`, where `m = 0x62c9c0` is each channel's mask without its
   top bit, 0x7BEF for 5-6-5). Its shadow uses the lighter level `0x62c898`.
   **INFERRED**: invisibility.
+- **Effect ids** use the projectile type ids, the `ID` values in
+  `graphics/projectiles/projectiles.reg`. **CONFIRMED** (`FUN_00471643`,
+  the projectile tick): when projectile types `0x10, 0x14, 0x18, 0x22,
+  0x2c, 0x2e, 0x30, 0x32, 0x3e, 0x40, 0x42` reach their target, the tick
+  appends `type << 16 | 0xffff` to the target's effect list (`unit+0x130`).
+  Types `0x38` and `0x3c` set `type << 16 | 0x20`, replacing an existing
+  entry. The network handler `FUN_0040dac9` (`0x415643`) sets entries from
+  a message byte (`msg+0xc`). The client never builds `0x20` as a constant;
+  it arrives from the server. **CONFIRMED** (data): `projectiles.reg` has
+  no entry with ID 32 (`0x20`) or 44 (`0x2c`), so neither has a projectile
+  sprite. **INFERRED**: the reg IDs are grouped by school. Air has 28
+  lightning, 30 chain (prismatic spray) and 34 `p_air`, which puts 32 in the
+  Air block (Invisibility). Earth has 40 `meteorit`, 43 wall and 46
+  `p_earth`, which puts 44 in the Earth block (Stone Curse). This fits the
+  draw effects above.
 - No team-colour **range swap**: player colours are whole alternate
   palettes (§4).
 - No palette fades of the screen were found in the palette code. Fades
@@ -325,15 +367,17 @@ Implementation: `lighting.daylight(minutes)`, `daylight_tint(minutes)`,
 
 ## Open questions
 
-1. Which UI elements use which text-colour table (§6).
-2. The effect-id → spell mapping (0x20, 0x2c), which needs `data.bin`.
-3. Why 391 smoothing overlays embed an all-zero palette. **INFERRED**: the
-   overlay draw uses the main sprite's palette ([sprites](sprites.md)), so
-   the embedded palette is never used. The three non-zero ones are
-   `interface/radiob.256` (not an overlay), `projectiles/firebolt/spritesb.256`
-   and `units/monsters/star/spritesb.256`.
+1. Which widgets use which static text-colour table (§6). The message-log
+   slots are resolved (§6), but the 14 fixed tables have 10–30 users each.
+   The chat-kind names (0–4) are also open.
+2. Which spell sends effect `0x20` / `0x2c` (§7, "Effect ids"). The ids
+   come from the server side (spell cast → projectile type), which is not
+   in the client paths read so far. Start at `FUN_0040dac9` (`0x415643`),
+   or at whoever fills the effect message.
 
-Resolved on 2026-10-15: the low-memory flag `DAT_0062c9b8` (§5), row
+Resolved on 2026-10-15: the all-zero palettes in smoothing overlays
+([sprites](sprites.md): unused for heroes, but used by three projectile
+overlays, which draw as 50 % black), the low-memory flag `DAT_0062c9b8` (§5), row
 selection ([lighting](../mechanics/lighting.md)), the users of the code
 tables (§6), and the "second table" in the index-164 cache (§4: there is
 none).

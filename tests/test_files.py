@@ -85,3 +85,19 @@ def test_human_pal():
 def test_terrain_bmp_is_tile_strip():
     bmp = gfx.load_bmp(os.path.join(GRAPHICS, "terrain", "tile1-00.bmp"))
     assert bmp.width == 32 and bmp.height % 32 == 0
+
+
+def test_bmp64k_pack16_bgr_order(tmp_path):
+    img = np.array([[[0xff, 0x80, 0x40]]], np.uint8)       # R, G, B
+    p = tmp_path / "t.bmp"
+    Image.fromarray(img).save(p)
+    bmp = gfx.load_bmp(str(p))
+    assert bmp.rgb16().tolist() == [[0xfc08]]
+    assert bmp.rgb16((5, 5, 5)).tolist() == [[0x7e08]]
+
+
+def test_bmp64k_colour_key_drops_near_black(tmp_path):
+    img = np.array([[[7, 3, 7], [8, 0, 0], [0, 4, 0]]], np.uint8)
+    p = tmp_path / "t.bmp"
+    Image.fromarray(img).save(p)
+    assert gfx.load_bmp(str(p)).key_mask().tolist() == [[False, True, True]]

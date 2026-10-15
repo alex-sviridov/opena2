@@ -73,6 +73,15 @@ mirrored blitter from its last argument:
 (`+0x14` `FUN_00427140` is another opaque entry; the darken pair has
 low-memory twins `FUN_00459b5c` / `FUN_0045ab38`, not reproduced.)
 
+- **CONFIRMED** (`FUN_00427014`, `FUN_00427140`, `FUN_004270aa`,
+  `FUN_004271d0`; `FUN_00420440` = `table + row·0x100`, via a2mgr): the
+  methods differ in where the 16-bit shade table comes from. `+0x18` (opaque)
+  and `+0x38` (50 %) use the sprite's **own** table at `this+0x14`, which
+  `FUN_00426be0(levels, mode, tint)` builds from the embedded palette
+  (`this+0x20`). `+0x14` (opaque) and `+0x34` (50 %) take an **external**
+  table as the argument after the row, `(x, y, frame, row, table, mirror)`.
+  In both cases the "palette" argument is a row index.
+
 - **CONFIRMED** (`FUN_00459614`): the opaque blit.
 - **CONFIRMED** (`FUN_00459926`): the 50 % translucent blit, per channel
   `dst = (src >> 1) + (dst >> 1)` (done as masked shifts on 16-bit pixels).
@@ -86,9 +95,23 @@ low-memory twins `FUN_00459b5c` / `FUN_0045ab38`, not reproduced.)
   viewer's u16 relation word for that player (`FUN_00420660`). If the bit
   is clear, the unit's shadow (`+0x2c`, drawn when `DAT_005fb970`) and body
   (`+0x28`) are both skipped. So players with the bit see the unit at 50 %;
-  everyone else sees nothing. **INFERRED**: this is the Invisibility spell,
-  and bit 8 means "allied / shares vision". The spell name needs `data.bin`
+  everyone else sees nothing. **INFERRED**: this is the Invisibility spell
   ([palettes §7](palettes.md)).
+- **CONFIRMED** (relation word): the viewer's u16 word for player `p` lives
+  at `player+0x38 → +4`, `+2·p` (`FUN_00420640` / `FUN_00420660`). Bit `8`
+  means **`p` shares its vision with the viewer**. When a network update
+  changes the word, the message handler `FUN_0040dac9` (around `0x4149e6`)
+  prints `patch.txt` lines `0x46`/`0x47`, "Player … shows to you his area of
+  vision", when bit 8 turns on, and `0x48`/`0x49`, "… hides from you his area
+  of vision", when it turns off. In the same handler, bit `0x20` is
+  alliance (`main.txt` `0x8e`–`0x91`, "is now / is no longer in alliance
+  with you") and bit `0x40` is war (`0x92`–`0x95`). The diplomacy dialog
+  (`FUN_0048f03f`, `0x490720`) keeps those three received bits (`& 0x68`)
+  and sets the viewer's own choices from its four checkboxes, which are
+  labelled in `dialogs.txt` `0x4f` "enemy alliance visible silent": `1`
+  enemy, `2` alliance, `0x10` visible, `4` silent (`FUN_00420c00` tests bit 4
+  to mute chat). The word for the viewer's own slot is set to `0x3a`, which
+  includes bit 8, so players always see their own invisible units at 50 %.
 - **CONFIRMED** (`FUN_0045a64d`, `FUN_0045a8e7`, `FUN_0045dee0`): every mirrored
   blitter is its normal twin with the row written from `x + w − 1` leftward
   (pointer starts at `dst + 2·(x + w) − 2`, steps −2 bytes per pixel; skips
@@ -104,13 +127,32 @@ low-memory twins `FUN_00459b5c` / `FUN_0045ab38`, not reproduced.)
   | `graphics\interface\lm.256` (`DAT_00630e4c`) | 6 | 20, `0x4e412f`…`0x4e89af` |
   | `graphics\interface\scrlbars.256` (`DAT_00630e50`) | 4 | 12, `0x4e2bb1`…`0x4e2fb0` |
   | `graphics\interface\radiob.256` (`DAT_00630e54`) | 4 | 6, e.g. `FUN_004df77d` |
-  | inventory-cell indicator (list at `+0x20ac` `+0xdc`/`+0xf0`) | 8 | 1, `FUN_004b9a42` |
 
   Pattern (`FUN_004df77d`): shadow at `(x + 5, y + 4)`, then the same frame
   opaque at `(x + 1, y)`, i.e. the shadow sits 4 px right and 4 px down.
-  The inventory one draws the shadow at `(x − 3, y + 2)` and the sprite
-  through `+0x38` (50 %). The three globals are loaded in `FUN_0047bedd`
+  The three globals are loaded in `FUN_0047bedd`
   (`FUN_00426da9("graphics\interface\….256")`).
+- **CONFIRMED** (`FUN_004b9a42`, loader `0x4bfc0f`): a fourth `+0x1c` call
+  with level 8 is **not a sprite**. It is the shop price bar, a "Bitmap
+  64k" (`FUN_0042769b`, [bitmaps](bitmaps.md)) from the lists at
+  `+0x20ac` `+0xdc` (`graphics\interface\costm1…7.bmp`) and `+0xf0`
+  (`costs1…7.bmp`), 60 × 10 each. On that class `+0x1c` is a no-op
+  (`FUN_0042a830`, `ret 0x14`), so the bar has **no shadow**. The bar is then
+  drawn through `+0x38`, the colour-keyed blit (pixel 0 transparent), at
+  `(x, y)`. The shadow call would have gone at `(x − 3, y + 2)`. Frame and
+  text:
+
+  ```
+  price = item attribute 1 (FUN_004be7e0 → FUN_0043bafa(1), u32)
+  list  = costm if cell+0x18 == 2 else costs
+  frame = min(trunc(log10(price)), count − 1)       # count = 7
+  text  = (price + 1) / 2 if cell+0x18 == 2 else price
+  ```
+
+  So 1–9 gold → frame 0, 10–99 → 1, …, ≥ 10⁶ → 6. **INFERRED**: `+0x18 == 2`
+  marks the player's own items (sell price = half, rounded up). With price 0,
+  `log10` gives −∞ and `__ftol` gives `0x80000000`; the game would then
+  index out of range. Not seen in data.
   Search bound: the 163 `call [reg+0x1c]` sites in `.text`, kept when the
   object is one of these globals or the five-argument push pattern matches;
   a site whose pushes are split by another call would be missed.
@@ -149,8 +191,34 @@ Same stream as `.256`. Files: `units/*/*/spritesb.256` and structures'
 - **CONFIRMED** (data): overlay pixels are sparse dots along edges and thin
   details (bow strings, arrows). They render plausibly with the main sprite's
   palette; with their own embedded palette they come out dark.
-- **INFERRED**: the overlay's embedded palette is unused when drawn this way.
-  It may matter for draws that pass no palette.
+- **CONFIRMED** (heroes): the hero overlay is drawn through `+0x34`, which
+  takes the main sprite's external table, and `FUN_00426be0` is never called
+  on `+0x1c4`. So the overlay's embedded palette is never read for heroes.
+- **CONFIRMED** (projectiles, `FUN_00482125` loader, `FUN_00471fee` draw):
+  projectile overlays are different. For a `projectiles.reg` entry with
+  `A16 = 0`, the loader reads `<File>.256` into `def+4` and `<File>b.256`
+  into `def+8`. With `A16 = 1` it reads `<File>.16a` and sets `def+8 = 0`.
+  When `Palette ≠ 0` (`def+0x28`), it builds **both** sprites' own tables from
+  their own embedded palettes (`FUN_00426be0(16, BRIGHT2, 1)`). The draw then
+  calls `+0x18` on the main sprite and `+0x38` (50 %, own table) on the
+  overlay. It does **not** check `DAT_0062c930`. With `Palette = 0` it draws
+  only the main sprite, through `+0x14` with `projectiles.pal`
+  (`DAT_00630efc`).
+
+  | Projectile (`A16 = 0`) | `Palette` | Overlay palette | Overlay drawn |
+  |---|---|---|---|
+  | `archer`, `xbowman`, `orc` `\arrow` | 0 | none | no |
+  | `goblin\arrow` | 1 | all zero | yes, as 50 % black |
+  | `catap1`, `catap2` `\sprites` | 1 | all zero | yes, as 50 % black |
+
+  So in these three cases the all-zero palette **is** used. With `c = 0`,
+  BRIGHT2 leaves only the tint, `t·k·2 / 16`, and the tint is the one in
+  effect when the projectile type is first loaded. The day/night rebuild
+  (`FUN_0048392f`, `0x483d7e`) only refreshes `def+4`. By day the tint is 0,
+  so every overlay pixel is black and halves the destination, whether or not
+  Smoothing is on. The one non-zero projectile overlay,
+  `firebolt\spritesb.256`, is never loaded, because firebolt has `A16 = 1`.
+  (CONFIRMED data: `projectiles.reg`, the six files.)
 
 `to_rgba(kind="smooth")` gives these pixels alpha 128 to match the 50 % blend.
 
@@ -249,7 +317,7 @@ frame on an anchor themselves:
 
 ## Open questions
 
-- What bit `8` of the per-player relation word means (`FUN_00420660`);
-  INFERRED "allied / shares vision". Decides who sees units with effect `0x20`.
-- Which sprite list the inventory indicator comes from (`FUN_004b9a42`,
-  `+0x20ac` `+0xdc` / `+0xf0`, indexed by `FUN_004be7e0`).
+- How structures and objects draw their `*b.256` overlays. Their loaders
+  (`0x47eec1`, `0x4808cb`) store the overlay at `entry+8`, but
+  `FUN_00426be0` is only called on `entry+4`, so presumably they use an
+  external table (`+0x34`).

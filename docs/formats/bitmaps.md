@@ -1,6 +1,7 @@
 # Bitmaps: `.bmp`
 
-Implementation: `allods2/graphics/bmp.py`. Binary references are to
+Implementation: `allods2/graphics/bmp.py` (`load_bmp`; `Bitmap.rgb16(bits)` and
+`Bitmap.key_mask(bits)` for the 64k class). Binary references are to
 `allods2.exe` English 1.30 (sha256 `2a8bdf9d…fe43`).
 
 ## Layout
@@ -14,19 +15,72 @@ Standard Windows DIB:
 | 54 | 1024 | colour table (8-bit only), RGBQUAD `B, G, R, 0` |
 | offset | … | rows, bottom row first, each padded to 4 bytes |
 
-- **CONFIRMED** (vtables `0x5d53f0` "Bitmap 64k colors", `0x5d5430` "Bitmap
-  256 colors"): after loading, the bitmap classes flip the rows in place
-  (`FUN_00427c09` for 16-bit, `FUN_004280d4` for 8-bit). This matches
-  bottom-up storage.
+- **CONFIRMED** (vtable `0x5d5430` "Bitmap 256 colors", `FUN_004280d4`):
+  the 8-bit class flips the rows in place after loading (called at
+  `0x428074`), so its memory is top row first.
+- **CONFIRMED** (vtable `0x5d53f0` "Bitmap 64k colors", constructor
+  `FUN_0042769b`): the 24-bit class does **not** flip. Its blitters read
+  source row `h − 1 − sy` instead (below), so the picture still comes out
+  top row first. Its `+0x2c` flip method (`FUN_00427c09`) has no direct
+  callers.
 - **CONFIRMED** (data): all 841 `.bmp` files under `data/graphics` are
   uncompressed and bottom-up: 778 are 24-bit, 63 are 8-bit.
-- **INFERRED**: the "64k" class converts 24-bit files to the 16-bit screen
-  format at load. The loader body has not been read yet.
+
+## The "Bitmap 64k" class (24-bit files)
+
+**CONFIRMED** (`FUN_0042769b`): the loader reads the 14-byte file header and
+the 40-byte info header, then exactly `w·h·3` pixel bytes in chunks of up
+to `0x16800`. It converts each chunk with `FUN_004274d4` into
+`u16 pixels[w·h]` at `this+0x10 → +8`, after a `u32 w, u32 h` prefix. It
+ignores `bfOffBits` and row padding. **CONFIRMED** (data): all 778 24-bit
+files have `bfOffBits = 54` and `3w ≡ 0 (mod 4)`, so the quirk never shows.
+
+Per pixel, the bytes are `B, G, R` (`FUN_004274d4`):
+
+```
+px = (R >> (8 − Rbits)) << Rshift
+   | (G >> (8 − Gbits)) << Gshift
+   | (B >> (8 − Bbits)) << Bshift
+```
+
+This is `pack16` in [palettes §5](palettes.md), the same formula the shade
+tables use.
+
+**CONFIRMED** (`FUN_004584cc`): the six values come from the primary
+surface. `IDirectDrawSurface::GetPixelFormat` (vtable `+0x54`) fills a
+`DDPIXELFORMAT`. With `mask` = the low 16 bits of `dwRBitMask`,
+`dwGBitMask` or `dwBBitMask`, the code sets `shift = lowest set bit`
+(`FUN_00457b9c`) and `bits = highest set bit − shift + 1`
+(`FUN_00457bd4`). The results go to `0x5fb958 / 95c / 62c9bc` (shifts)
+and `0x5fb960 / 964 / 968` (widths). The step is skipped when the R mask
+is 0. It then rebuilds the shade tables (`FUN_00457939`, `FUN_0045752b`,
+`FUN_00463d30`). **INFERRED**: on current systems, and with a2mgr, the
+format is 5-6-5, giving `(11, 5, 0)` and `(5, 6, 5)`.
+
+Draw methods (vtable `0x5d53f0`). All of them clip to `0x625768…774`,
+write to `DAT_0062571c` with pitch `DAT_00625708`, and read source row
+`(h − 1 − sy)`:
+
+| Slot | Method | Blit | Effect |
+|---|---|---|---|
+| `+0x18` | `FUN_00427d3a` | `FUN_00458bad` | opaque, whole bitmap |
+| `+0x34` | `FUN_00427d8b` | `FUN_00458bad` | opaque, source rect `(sx0, sy0, sx1, sy1)` |
+| `+0x38` | `FUN_00427dd5` | `FUN_00458e9a` | colour key: pixels equal to `0x0000` are skipped. In 5-6-5 that is every source colour with R < 8, G < 4, B < 8 |
+| `+0x3c` | `FUN_00427e1f` | `FUN_00458d28` | additive, `dst = (dst + src) & 0xFFFF`: a plain 16-bit add, so channel overflow carries into the next field |
+| `+0x14`, `+0x1c` | `FUN_0042a820`, `FUN_0042a830` | none | no-ops (`ret 0x18`, `ret 0x14`) |
+| `+0x20`, `+0x24` | `FUN_00427e8f`, `FUN_00427ea4` | | width, height |
+
+The arguments are `(x, y, sx0, sy0, sx1, sy1)` for the rect forms. The
+sprite classes put their darken blit at `+0x1c`; here that slot does
+nothing. One example is the shop price bar ([sprites](sprites.md)).
 
 ### Example
 
-`terrain/tile1-00.bmp` is 32 × 448: a vertical strip of 14 tiles of 32 × 32,
-top tile first after flipping.
+`terrain/tile1-00.bmp` (8-bit) is 32 × 448: a vertical strip of 14 tiles of
+32 × 32, top tile first after flipping.
+
+24-bit pixel `B, G, R = 0x40, 0x80, 0xff` on a 5-6-5 surface:
+`(0xff >> 3) << 11 | (0x80 >> 2) << 5 | (0x40 >> 3) = 0xf800 | 0x0400 | 0x0008 = 0xfc08`.
 
 ## Related
 
@@ -35,4 +89,6 @@ See [palettes](palettes.md).
 
 ## Open questions
 
-- The 24 → 16-bit conversion used by the "64k" class.
+- Who calls the 64k class's `+0x2c` row flip (`FUN_00427c09`). It has no
+  direct callers, and a virtual caller would turn the image upside down
+  for the `h − 1 − sy` blitters.

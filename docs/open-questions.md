@@ -13,18 +13,15 @@ Rules (also in CLAUDE.md):
 
 ## Graphics: sprites and palettes
 
-- What bit `8` of the per-player relation word means (`FUN_00420660`);
-  gates drawing units with effect `0x20`. [sprites](formats/sprites.md#open-questions)
-- Which sprite list the inventory indicator with the level-8 drop shadow
-  comes from (`FUN_004b9a42`). [sprites](formats/sprites.md#open-questions)
-- Effect id → spell mapping (0x20, 0x2c); needs `data.bin`.
+- How structures and objects draw their `*b.256` overlays (loaders
+  `0x47eec1`, `0x4808cb`, overlay at `entry+8`). [sprites](formats/sprites.md#open-questions)
+- Which spell sends effect `0x20` / `0x2c`. The ids are projectile type ids
+  and come from the server (`FUN_0040dac9` `0x415643`).
   [palettes](formats/palettes.md#open-questions)
-- Which UI elements use which text-colour table (`0x5fb97c…0x5fb990`, §6).
-  [palettes](formats/palettes.md#open-questions), [fonts](formats/fonts.md#open-questions)
-- Why 391 smoothing overlays embed an all-zero palette (INFERRED unused).
-  [palettes](formats/palettes.md#open-questions)
-- The 24 → 16-bit conversion of the "Bitmap 64k" class (`0x5d53f0`).
-  [bitmaps](formats/bitmaps.md#open-questions)
+- Which widgets use which fixed text-colour table (§6), and the chat kinds
+  0–4 (`0x413e4d`). [palettes](formats/palettes.md#open-questions), [fonts](formats/fonts.md#open-questions)
+- Who calls the 64k bitmap row flip `FUN_00427c09` (vtable `0x5d53f0`
+  `+0x2c`). [bitmaps](formats/bitmaps.md#open-questions)
 
 ## Fonts
 

@@ -6,6 +6,8 @@ from dataclasses import dataclass
 import numpy as np
 from PIL import Image
 
+from .palette import pack16
+
 
 @dataclass
 class Bitmap:
@@ -22,6 +24,16 @@ class Bitmap:
     @property
     def height(self):
         return self.rgb.shape[0]
+
+    def rgb16(self, bits=(5, 6, 5)):
+        """The "Bitmap 64k" class's pixels: each B, G, R triple packed with
+        the surface's channel widths (FUN_004274d4), top row first."""
+        return pack16(self.rgb, bits)
+
+    def key_mask(self, bits=(5, 6, 5)):
+        """Pixels the colour-keyed 64k blit (vtable +0x38) draws: packed
+        value != 0, so near-black colours are transparent too."""
+        return self.rgb16(bits) != 0
 
 
 def load_bmp(path):
