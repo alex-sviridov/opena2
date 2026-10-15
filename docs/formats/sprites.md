@@ -174,6 +174,35 @@ Width 2, height 2, words `8001 0001 1FFE 8002`:
 skip 1 pixel → literal 1 word `0x1FFE` = index 255, alpha 15 → c = 2, row
 done → skip 2 pixels → row done. Result row 0 = `[·, (255, 15)]`, row 1 empty.
 
+## Placement: no hotspot in the file
+
+The container stores only `w`, `h`, `size` per frame: there is no hotspot or
+offset field (CONFIRMED, `FUN_00426da9` and all files). Callers centre each
+frame on an anchor themselves:
+
+- **CONFIRMED** (`FUN_00468640`, hero draw): with `T` the unit-type record and
+  `width(f)` / `height(f)` the frame size (class vtable slots `+0x20` /
+  `+0x24`, `FUN_00426c16` / `FUN_00426c41`):
+
+  ```
+  x = obj[+0x64] − ((T[+0x34] − T[+0x2c] / 2) + width(f) / 2)
+  y = obj[+0x68] − ((T[+0x38] − T[+0x30] / 2) + height(f) / 2) − obj[+0x6c] − obj[+0x10]
+  ```
+
+  The `*b.256` overlay uses the same formula with its own frame size.
+  **INFERRED**: `T[+0x2c..+0x38]` come from the unit's `units.reg` entry (a
+  per-type centre offset), `obj[+0x6c]` is height above ground. This
+  belongs to the unit-animation work (overview rank 10).
+
+## Tools
+
+- `python -m allods2 gfx export FILE DEST [--palette P]`: one PNG per frame
+  (`DEST/<stem>_NNN.png`). `P` is a unit `.pal`, a `.bmp`, or
+  `human.pal:N` for player N.
+- `tools/sprite_contact.py` → `out/contact/{256,b.256,16a,16}.png`: the first
+  frame of ~100 files per type, labelled, on a checkerboard.
+- `tools/validate_sprites.py`: stream consumption over the whole install.
+
 ## Open questions
 
 - What the variant blitters selected by the last draw argument do
