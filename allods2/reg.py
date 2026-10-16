@@ -5,9 +5,12 @@ contiguous run of child entries; leaves are strings, ints, floats or int
 arrays whose payload lives in a data blob after the directory.
 """
 
-import os
 import struct
 from dataclasses import dataclass, field
+
+from a2res import basename
+
+from .common import read
 
 SIGNATURE = 0x31415926
 HEADER = 0x18
@@ -46,7 +49,7 @@ class Registry:
     def value(self, e):
         if e.is_section:
             return Section(self, e)
-        if e.type & 0xE == T_INT:                  # FUN_004efddf accepts 2 and 3
+        if e.type & 0xE == T_INT:                  # FUN_004e6f9f accepts 2 and 3
             return struct.unpack("<i", e.raw[:4])[0]
         if e.type == T_FLOAT:
             return struct.unpack("<d", e.raw)[0]
@@ -96,7 +99,7 @@ class Section:
         return [c.name for c in self.children()]
 
     def _find(self, name):
-        """FUN_004f1f4e: sorted sections compare with strcmp on the key cut
+        """FUN_004e918e: sorted sections compare with strcmp on the key cut
         to 15 characters; others with _strnicmp(key, name, 15).  A name with
         trailing spaces therefore never matches."""
         key = name[:NAME_MAX]
@@ -134,6 +137,7 @@ class Section:
 
 
 def parse_reg(data, name=""):
+    data = bytes(data)                      # small files; bytes methods below
     if len(data) < HEADER:
         raise ValueError("file too short")
     sig, first, roots, rtype, count, _ = struct.unpack_from("<6I", data, 0)
@@ -155,6 +159,6 @@ def parse_reg(data, name=""):
     return Registry(entries, Entry("", rtype, first, roots, data[4:12]), blob, name)
 
 
-def load_reg(path):
-    with open(path, "rb") as f:
-        return parse_reg(f.read(), os.path.basename(path))
+def load_reg(path, fs=None):
+    """path in `fs` (a2res FS; None = OS path)."""
+    return parse_reg(read(path, fs), basename(path))

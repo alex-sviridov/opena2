@@ -9,6 +9,7 @@ record's Width/Height halves.  The light it stamps is
 graphics.lighting.BURNING_LIGHT_PHASES[counter >> 1].
 """
 
+from ..common import as_fs
 from ..graphics.lighting import BURN_TICKS, BURNING_LIGHT_PHASES
 from .base import Action, AnimationSet, FrameRef
 from .projectiles import load_projectile_records, projectile_paths
@@ -24,8 +25,8 @@ class BurningSet(AnimationSet):
     kind = "effects"
     blit_mode = "alpha"
 
-    def __init__(self, fire, steam, sprites=None, paths=None):
-        super().__init__("burning_cells", sprites, paths)
+    def __init__(self, fire, steam, sprites=None, paths=None, fs=None):
+        super().__init__("burning_cells", sprites, paths, fs)
         self.recs = {"fire": fire, "steam": steam}
         self.actions = {name: Action(name, [k >> 1 for k in range(n)], end="once", source=name)
                         for name, n in (("fire", BURN_TICKS), ("steam", STEAM_TICKS))}
@@ -41,9 +42,10 @@ class BurningSet(AnimationSet):
                         events=("light=%d" % light,) if light is not None else ())
 
 
-def load_burning_set(key, data_dir):
-    recs = load_projectile_records(data_dir)
+def load_burning_set(key, fs=None):
+    fs = as_fs(fs)
+    recs = load_projectile_records(fs)
     fire, steam = recs[FIRE_ID], recs[STEAM_ID]
-    paths = {"fire": projectile_paths(fire, data_dir)["main"],
-             "steam": projectile_paths(steam, data_dir)["main"]}
-    return BurningSet(fire, steam, paths=paths)
+    paths = {"fire": projectile_paths(fire, fs)["main"],
+             "steam": projectile_paths(steam, fs)["main"]}
+    return BurningSet(fire, steam, paths=paths, fs=fs)

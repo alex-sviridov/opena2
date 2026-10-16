@@ -1,9 +1,9 @@
 """Render a map's terrain with heights and lighting, as the game draws it.
 
-    python tools/terrain_render.py MAP.alm [-o out/terrain3d/NAME.png]
+    python tools/terrain_render.py MAP [-o out/terrain3d/NAME.png] [--base INSTALL_DIR]
         [--rect X Y W H] [--time MINUTES] [--flat] [--fog CX CY R]
 
-MAP may be a path or a name in INSTALL_DIR/maps. --rect picks cells (default:
+MAP is a campaign map name (10.alm) or a game path (scenario/10.alm). --rect picks cells (default:
 the whole map; a 256x256 map takes about two minutes). --time is game time in
 minutes for the day/night tint and sun (default: day/night off). --flat draws
 without heights for comparison. --fog overlays the fog pass for a made-up
@@ -20,7 +20,7 @@ import numpy as np
 from PIL import Image
 
 from allods2.alm import load_alm
-from allods2.common import INSTALL, OUT
+from allods2.common import INSTALL, OUT, as_fs
 from allods2.graphics import lighting as lt, palette as pal, terrain as tr
 
 
@@ -46,9 +46,10 @@ def main(argv=None):
     ap.add_argument("--flat", action="store_true")
     ap.add_argument("--fog", type=int, nargs=3, metavar=("CX", "CY", "R"))
     a = ap.parse_args(argv)
-    path = a.map if os.path.exists(a.map) else os.path.join(a.base, "maps", a.map)
-    m = load_alm(path)
-    terrain = tr.TerrainSet.load(os.path.join(a.base, "data", "graphics", "terrain"))
+    fs = as_fs(a.base)
+    path = a.map if "/" in a.map.replace("\\", "/") else "scenario/" + a.map
+    m = load_alm(path, fs)
+    terrain = tr.TerrainSet.load(fs)
     day = lt.daylight(a.time or 0, a.time is not None)
     heights = m.heights.astype(np.int8)
     light = lt.terrain_light(heights, day.angle, day.ambient, day.diffuse)
@@ -60,7 +61,7 @@ def main(argv=None):
         img, top = tr.render_3d(m.tiles[sub], heights[sub], terrain, light[sub], tint=day.tint)
         if a.fog:
             img = add_fog(img, top, heights[sub], *a.fog)
-    stem = os.path.splitext(os.path.basename(path))[0]
+    stem = os.path.splitext(path.rpartition("/")[2])[0]
     out = a.out or os.path.join(OUT, "terrain3d", stem + ("_flat" if a.flat else "") + ".png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     Image.fromarray(img).save(out)

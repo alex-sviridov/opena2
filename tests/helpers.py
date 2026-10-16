@@ -1,6 +1,5 @@
 """Builders and skip markers shared by the tests."""
 
-import os
 import struct
 
 import pytest
@@ -8,14 +7,18 @@ import pytest
 from allods2 import units as U
 from allods2.anim import UnitSet
 from allods2.anim.projectiles import ProjectileSet
-from allods2.common import DATA
+from allods2.common import INSTALL, game_fs, have_install, join
 from allods2.graphics import PALETTE_FLAG, SpriteFile
 
+# The game's file system (the install's .res archives), None without one.
+GFS = game_fs() if have_install() else None
 
-def needs(*rel, base=DATA):
-    """Skip unless <base>/<rel> exists (base defaults to the install's data/)."""
-    path = os.path.join(base, *rel)
-    return pytest.mark.skipif(not os.path.exists(path), reason="game files not present: " + path)
+
+def needs(*rel):
+    """Skip unless game path <rel> exists in the install's archives."""
+    path = join(*rel)
+    ok = GFS is not None and GFS.exists(path)
+    return pytest.mark.skipif(not ok, reason="game files not present: %s in %s" % (path, INSTALL))
 
 
 needs_data = needs("graphics", "units", "units.reg")

@@ -1,18 +1,16 @@
 """Synthetic tests for docs/formats/reg.md and docs/formats/units.md."""
 
-import os
 import struct
 
 import pytest
 
 from allods2 import units as U
-from allods2.common import DATA
 from allods2.graphics import SpriteFile
 from allods2.reg import load_reg, parse_reg
 
-from helpers import needs_data, unit_type
+from helpers import GFS, needs_data, unit_type
 
-UNITS_REG = os.path.join(DATA, U.UNITS_DIR, "units.reg")
+UNITS_REG = U.UNITS_REG
 
 
 def entry(name, typ, a=0, b=0, raw=None):
@@ -84,7 +82,7 @@ def test_block_offsets():
     assert U.attack_frame(t, 8, 0)[0] == 16 + 80
     assert U.dying_frame(t, 10, 1)[0] == 16 + 80 + 56 + 4 + 1
     assert U.corpse_frame(t, 8)[0] == 16 + 80 + 56 + 3
-    assert U.bones_frame(t, 10, 2)[0] == 16 + 80 + 56 + 32      # idle 0: direction ignored
+    assert U.bones_frame(t, 10, 2)[0] == 16 + 80 + 56 + 32 + 3  # stride BonePhases (3)
     assert U.expected_frames(t) == 16 + 8 * (10 + 7 + 4 + 3)
 
 
@@ -127,10 +125,10 @@ def test_event_phase():
 
 @needs_data
 def test_game_units_reg():
-    types = U.load_unit_types(UNITS_REG)
-    assert len(types) == load_reg(UNITS_REG)["Global/UnitCount"] == 62
-    assert types[0].file == ""                               # "File0 " is not found
+    types = U.unit_types(GFS)
+    assert len(types) == load_reg(UNITS_REG, GFS)["Global/UnitCount"] == 61
+    assert types[0].file == "humans\\swordsman\\swordsman"     # key "File0", no trailing space
     assert types[1].MovePhases == 8                          # inherited from Parent 3
-    ok = sum(bool(t.file) and os.path.isfile(t.sprite_paths(DATA)[0]) and
-             len(SpriteFile.load(t.sprite_paths(DATA)[0])) == U.expected_frames(t) for t in types)
+    ok = sum(bool(t.file) and GFS.isfile(t.sprite_paths()[0]) and
+             len(SpriteFile.load(t.sprite_paths()[0], GFS)) == U.expected_frames(t) for t in types)
     assert ok == 59

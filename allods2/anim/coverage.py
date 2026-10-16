@@ -1,6 +1,6 @@
 """Whole-install check of the animation API (animation.md §5.1).
 
-verify(data_dir) loads every set anim.all_keys names, asks every action
+verify(fs) loads every set anim.all_keys names, asks every action
 for every facing and tick (one pass plus a tail past the end), checks each
 FrameRef and draws it, then compares the sprite files the sets read with
 every multi-frame sprite file under graphics/.  A file no set reads must
@@ -9,10 +9,12 @@ so the list cannot go stale.
 """
 
 import fnmatch
-import os
+
+from a2res import norm
 from dataclasses import dataclass, field
 
-from ..graphics import Canvas, SpriteFile
+from ..common import as_fs
+from ..graphics import Canvas, SpriteFile, guess_kind
 from . import all_keys, load_set
 from .base import FACINGS
 
@@ -24,34 +26,38 @@ TAIL = 8                     # ticks asked past the end of each action, except
 # Multi-frame sprite files no set reads: (glob under graphics/, lower case,
 # category, reason).  Categories: "not animated" (sheets whose frame is
 # picked by something other than time), "never loaded" (the game opens no
-# such path), "empty" (0-byte files).
+# such path), "empty" (0-byte files), "open" (animated, not modelled yet).
 EXCLUSIONS = (
     ("font[1-4]/font[1-4].16", "not animated", "glyph sheets (fonts.md)"),
     ("font4/font4.16a", "not animated", "glyph sheet (fonts.md)"),
     ("interface/lm.256", "not animated", "UI widget sheet, drop-shadow blits (sprites.md)"),
     ("interface/radiob.256", "not animated", "UI widget sheet: radio button states (sprites.md)"),
     ("interface/scrlbars.256", "not animated", "UI widget sheet: scroll bar parts (sprites.md)"),
-    ("interface/subobj.256", "not animated", "UI widget sheet, FUN_004478af (palettes.md §5)"),
+    ("interface/subobj.256", "not animated", "UI widget sheet, FUN_00444393 (palettes.md §5)"),
     ("backpack/sprites.256", "not animated",
-     "dropped sack: frame = obj+0x24 (0-5), no clock read; draw 0x46647f (animation.md §5.1)"),
+     "dropped sack: frame = obj+0x24 (0-5), no clock read; draw 0x4611d6 (animation.md §5.1)"),
     ("backpack/spritesb.256", "not animated", "its smoothing overlay"),
-    ("cursors/attack.256", "never loaded", "not in the cursor table FUN_00480f17 (animation.md §4.8)"),
-    ("cursors/pickup.256", "never loaded", "not in the cursor table FUN_00480f17 (animation.md §4.8)"),
+    ("cursors/attack.256", "never loaded", "not in the cursor table FUN_0047b92d (animation.md §4.8)"),
+    ("cursors/pickup.256", "never loaded", "not in the cursor table FUN_0047b92d (animation.md §4.8)"),
     ("projectiles/firebolt/sprites.256", "never loaded", "firebolt has A16 = 1, the .16a is read (sprites.md)"),
     ("projectiles/firebolt/spritesb.256", "never loaded", "same (sprites.md)"),
     ("projectiles/diamonddust/sprites.16a", "never loaded",
      "no projectiles.reg record; the name is in no binary (animation.md §5.1)"),
     ("projectiles/freeze/sprites.16a", "never loaded", "same"),
     ("projectiles/smallxpl/sprites.16a", "never loaded", "same"),
-    ("units/humans/swordsman/swordsman.256", "never loaded",
-     "Unit0 key 'File0 ' has a trailing space (units.md, animation.md §2.5)"),
-    ("units/humans/swordsman/swordsmanb.256", "never loaded", "same"),
     ("cursors/move.256", "empty", "0 bytes (sprites.md)"),
     ("cursors/patrol.256", "empty", "0 bytes (sprites.md)"),
     ("cursors/cast.256", "empty", "0 bytes (sprites.md)"),
     ("cursors/defend.256", "empty", "0 bytes (sprites.md)"),
     ("equipment/[fm]fighter/primary/0[01]05002.256", "empty", "0 bytes (sprites.md)"),
+    # Town scenes and the world map: animated, draw code not reversed yet
+    # (animation.md open questions).
+    ("interface/townbirds/*", "open", "town scene animation, timing not reversed"),
+    ("interface/town_druid/*", "open", "same"),
+    ("global.map/cross/sprites.16a", "open", "world-map Cross: own state +0x12c / +0x134, not traced"),
 )
+
+
 
 # Sets that ask for frames past the end of their file (the game draws nothing).
 KNOWN_OUT_OF_RANGE = {
@@ -77,26 +83,26 @@ class Report:
         return not (self.errors or self.unreached or self.stale)
 
 
-def _rel(path, gdir):
-    return os.path.relpath(os.path.realpath(path), os.path.realpath(gdir)).replace(os.sep, "/").lower()
+def _rel(path):
+    """Game path -> lower-case path under graphics/."""
+    return norm(path).lower().partition("/")[2]
 
 
-def sprite_files(data_dir):
+def sprite_files(fs=None):
     """[(rel, frames)] of every sprite file under graphics/ with more than
     one frame, plus 0-byte ones (frames = 0); rel lower case."""
-    gdir = os.path.join(data_dir, "graphics")
+    fs = as_fs(fs)
     out = []
-    for root, _, files in os.walk(gdir):
-        for f in files:
-            if not f.lower().endswith((".256", ".16", ".16a")):
-                continue
-            p = os.path.join(root, f)
-            if os.path.getsize(p) == 0:
-                out.append((_rel(p, gdir), 0))
-                continue
-            n = len(SpriteFile.load(p))
-            if n > 1:
-                out.append((_rel(p, gdir), n))
+    for p in fs.files("graphics"):
+        if not p.lower().endswith((".256", ".16", ".16a")):
+            continue
+        data = fs.read(p)
+        if len(data) == 0:
+            out.append((_rel(p), 0))
+            continue
+        n = len(SpriteFile.parse(data, guess_kind(p)))
+        if n > 1:
+            out.append((_rel(p), n))
     return sorted(out)
 
 
@@ -150,30 +156,31 @@ def check_set(aset, key, report, draw=True):
             report.drawn += len(pts)
 
 
-def verify(data_dir, draw=True):
+def verify(fs=None, draw=True):
+    fs = as_fs(fs)
     report = Report()
-    gdir = os.path.join(data_dir, "graphics")
-    for cls, keys in all_keys(data_dir).items():
+    for cls, keys in all_keys(fs).items():
         for key in keys:
             try:
-                aset = load_set(key, data_dir)
+                aset = load_set(key, fs)
                 report.sets += 1
                 for src, p in aset.paths.items():
-                    if isinstance(p, str) and os.path.isfile(p) and aset.sprites(src) is not None:
-                        report.reached.add(_rel(p, gdir))
+                    if isinstance(p, str) and fs.isfile(p) and aset.sprites(src) is not None:
+                        report.reached.add(_rel(p))
                 check_set(aset, key, report, draw)
             except Exception as e:                    # noqa: BLE001 - reported, not hidden
                 report.errors.append((key, "%s: %s" % (type(e).__name__, e)))
     used = set()
-    for rel, n in sprite_files(data_dir):
+    exclusions = EXCLUSIONS
+    for rel, n in sprite_files(fs):
         report.multi += 1
         if rel in report.reached:
             continue
-        hit = next((x for x in EXCLUSIONS if fnmatch.fnmatchcase(rel, x[0])), None)
+        hit = next((x for x in exclusions if fnmatch.fnmatchcase(rel, x[0])), None)
         if hit is None:
             report.unreached.append((rel, n))
         else:
             used.add(hit[0])
             report.excluded.append((rel, n, hit[1], hit[2]))
-    report.stale = [x[0] for x in EXCLUSIONS if x[0] not in used]
+    report.stale = [x[0] for x in exclusions if x[0] not in used]
     return report

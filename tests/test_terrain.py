@@ -1,17 +1,17 @@
 """Synthetic tests for docs/formats/terrain.md and the .alm container."""
 
-import glob
-import os
 import struct
 
 import numpy as np
 import pytest
 
 from allods2.alm import load_alm, parse_alm
-from allods2.common import INSTALL
+from allods2.common import campaign_maps
 from allods2.graphics import terrain as tr
 
-MAPS = sorted(glob.glob(os.path.join(INSTALL, "maps", "*.alm")))
+from helpers import GFS
+
+MAPS = campaign_maps(GFS) if GFS else []
 
 
 # --- .alm container ----------------------------------------------------------
@@ -138,10 +138,10 @@ def test_render_uses_palette_and_light():
 
 @pytest.mark.skipif(not MAPS, reason="game files not available")
 def test_game_maps_tiles_name_existing_sets():
-    T = tr.TerrainSet.load(os.path.join(INSTALL, "data", "graphics", "terrain"))
-    assert len(T.strips) == 52
+    T = tr.TerrainSet.load(GFS)
+    assert len(T.strips) == 52 and len(MAPS) == 46
     for p in MAPS:
-        t = load_alm(p).tiles.astype(int)
+        t = load_alm(p, GFS).tiles.astype(int)
         assert ((t & 0x1FFF) >> 6).max() < tr.SETS
         assert not (t & 0xC000).any()
 

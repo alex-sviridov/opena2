@@ -6,6 +6,8 @@ from dataclasses import dataclass
 import numpy as np
 from PIL import Image
 
+from a2res import OS
+
 from .palette import pack16
 
 
@@ -27,7 +29,7 @@ class Bitmap:
 
     def rgb16(self, bits=(5, 6, 5)):
         """The "Bitmap 64k" class's pixels: each B, G, R triple packed with
-        the surface's channel widths (FUN_004274d4), top row first."""
+        the surface's channel widths (FUN_00424c84), top row first."""
         return pack16(self.rgb, bits)
 
     def key_mask(self, bits=(5, 6, 5)):
@@ -36,8 +38,9 @@ class Bitmap:
         return self.rgb16(bits) != 0
 
 
-def load_bmp(path):
-    with Image.open(path) as im:
+def load_bmp(path, fs=None):
+    """path in `fs` (a2res FS; None = OS path)."""
+    with Image.open((fs or OS).open(path)) as im:
         if im.format != "BMP":
             raise ValueError("not a BMP: %s" % path)
         if im.mode == "P":

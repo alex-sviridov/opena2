@@ -1,6 +1,6 @@
 """Animated terrain: water (tile sets 8-11).
 
-Spec: docs/formats/terrain.md (water_set, FUN_00404eb5) and
+Spec: docs/formats/terrain.md (water_set, FUN_00404e0e) and
 docs/formats/animation.md §3.2 / §4.7.  A water cell of set s at absolute
 cell (x, y) draws set 8 + ((s + (x+1) y + (clock >> 2)) & 3): one frame per
 4 ticks, a 16-tick loop, out of step from cell to cell; frozen at set 8
@@ -8,11 +8,13 @@ when "Object animations" is off.  Lava does not exist in Allods 2; no other
 terrain animates.
 """
 
-import os
 
 import numpy as np
 
 from ..alm import load_alm
+from a2res import basename, splitext
+
+from ..common import as_fs, campaign_maps
 from ..graphics.terrain import TILE, WATER, TerrainSet, decode_cell, water_set
 from .base import Action, AnimationSet, FrameRef
 
@@ -61,38 +63,40 @@ class WaterSet(AnimationSet):
                     canvas.pix[py:py + TILE, px:px + TILE] = self.terrain.palette[t]
 
 
-def find_water_window(data_dir, w=12, h=8, maps_dir=None):
-    """(map path, x0, y0): the first map window (in name order, 4-cell
-    steps, inside the loader's copied area) whose cells are 40-70 % water,
-    so both shore and open water show."""
-    maps_dir = maps_dir or os.path.join(os.path.dirname(os.path.normpath(data_dir)), "maps")
-    for name in sorted(os.listdir(maps_dir)):
-        if not name.lower().endswith(".alm"):
-            continue
-        tiles = load_alm(os.path.join(maps_dir, name)).tiles
+def find_water_window(fs=None, w=12, h=8):
+    """(map path, x0, y0): the first campaign-map window (maps in mission
+    order, 4-cell steps, inside the loader's copied area) whose cells are
+    40-70 % water, so both shore and open water show."""
+    fs = as_fs(fs)
+    for path in campaign_maps(fs):
+        tiles = load_alm(path, fs).tiles
         sets = (tiles & 0x1FFF) >> 6
         m = (sets >= WATER.start) & (sets < WATER.stop)
         for y0 in range(8, tiles.shape[0] - h - 5, 4):
             for x0 in range(8, tiles.shape[1] - w - 9, 4):
                 f = m[y0:y0 + h, x0:x0 + w].mean()
                 if 0.4 <= f <= 0.7:
-                    return os.path.join(maps_dir, name), x0, y0
+                    return path, x0, y0
     return None
 
 
-def load_water_set(key, data_dir, w=12, h=8):
+def load_water_set(key, fs=None, w=12, h=8):
     """key "" / "auto": a window found by find_water_window; or
-    "<map file>,<x0>,<y0>" (map file under the install's maps/)."""
+    "<map>,<x0>,<y0>" with <map> a campaign map name ("10.alm")."""
+    fs = as_fs(fs)
     if key in ("", "auto", "water"):
-        found = find_water_window(data_dir, w, h)
+        found = find_water_window(fs, w, h)
         if found is None:
             raise FileNotFoundError("no map with a water window")
         path, x0, y0 = found
     else:
         name, x0, y0 = key.split(",")
-        path = os.path.join(os.path.dirname(os.path.normpath(data_dir)), "maps", name)
+        path = next((p for p in campaign_maps(fs)
+                     if basename(p).lower() == name.lower()), None)
+        if path is None:
+            raise FileNotFoundError("no map %r" % name)
         x0, y0 = int(x0), int(y0)
-    tiles = load_alm(path).tiles[y0:y0 + h, x0:x0 + w]
-    terrain = TerrainSet.load(os.path.join(data_dir, TERRAIN_DIR))
-    stem = os.path.splitext(os.path.basename(path))[0]
+    tiles = load_alm(path, fs).tiles[y0:y0 + h, x0:x0 + w]
+    terrain = TerrainSet.load(fs, TERRAIN_DIR)
+    stem = splitext(basename(path))[0]
     return WaterSet("water_%s_%d_%d" % (stem, x0, y0), terrain, tiles, x0, y0)

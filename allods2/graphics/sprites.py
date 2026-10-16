@@ -4,12 +4,12 @@ Spec: docs/formats/sprites.md.  Decoders follow the cursor model described
 there; the game routine each one corresponds to is noted per function.
 """
 
-import os
 import struct
 from dataclasses import dataclass
 
 import numpy as np
 
+from ..common import read
 from .palette import PALETTE_BYTES, grayscale_palette, read_palette
 
 PALETTE_FLAG = 0x80000000
@@ -46,7 +46,7 @@ class Decoded:
 
 
 class SpriteFile:
-    """Container shared by .256 / b.256 / .16a / .16 (loader 0x426da9)."""
+    """Container shared by .256 / b.256 / .16a / .16 (loader 0x424559)."""
 
     def __init__(self, sprites, palette=None, kind="256"):
         if kind not in KINDS:
@@ -56,10 +56,10 @@ class SpriteFile:
         self.kind = kind
 
     @classmethod
-    def load(cls, path, kind=None):
-        with open(path, "rb") as f:
-            data = f.read()
-        return cls.parse(data, kind or guess_kind(path))
+    def load(cls, path, fs=None, kind=None):
+        """path in `fs` (a2res FS; None = OS path).  Sprite data are views
+        of the file (no copy)."""
+        return cls.parse(read(path, fs), kind or guess_kind(path))
 
     @classmethod
     def parse(cls, data, kind="256"):
@@ -105,7 +105,7 @@ class SpriteFile:
 
 
 def guess_kind(path):
-    name = os.path.basename(path).lower()
+    name = path.replace("\\", "/").rpartition("/")[2].lower()
     if name.endswith(".16a"):
         return "16a"
     if name.endswith(".16"):
@@ -166,13 +166,13 @@ def _walk_bytes(data, w, h, literal):
 
 
 def decode_256(data, w, h):
-    """.256 (blitter 0x459614): 00nnnnnn literal indices, 01nnnnnn skip rows,
+    """.256 (blitter 0x454344): 00nnnnnn literal indices, 01nnnnnn skip rows,
     1xnnnnnn skip transparent pixels."""
     index = bytearray(w * h)
     mask = bytearray(w * h)
 
     def literal(i, n, p):
-        run = data[i:i + n].ljust(n, b"\0")      # truncated stream: pad with zeros
+        run = bytes(data[i:i + n]).ljust(n, b"\0")      # truncated stream: pad with zeros
         _store(index, p, run)
         _store(mask, p, b"\1" * n)
         return i + n, n, n
@@ -183,13 +183,13 @@ def decode_256(data, w, h):
 
 def decode_smooth(data, w, h):
     """*b.256 edge-smoothing overlay: same stream as .256.  Drawn with the 50 %
-    translucent blitter (0x459926) over the main sprite when the "Smoothing"
-    option is on (hero draw 0x468640)."""
+    translucent blitter (0x454656) over the main sprite when the "Smoothing"
+    option is on (hero draw 0x4632a1)."""
     return decode_256(data, w, h)
 
 
 def decode_16(data, w, h):
-    """.16 (0x4593a1): control bytes as .256; a literal run of n bytes holds
+    """.16 (0x4540d1): control bytes as .256; a literal run of n bytes holds
     up to 2n nibble pixels, low nibble first.  A zero high nibble ends the
     run: the counter advances 2n-1 and the rest of the run is re-read as
     control bytes."""
@@ -215,7 +215,7 @@ def decode_16(data, w, h):
 
 
 def decode_16a(data, w, h):
-    """.16a (0x45db6b): 16-bit words.  v & 0x4000 skip rows (tested first),
+    """.16a (0x45889b): 16-bit words.  v & 0x4000 skip rows (tested first),
     v & 0x8000 skip pixels, else v literal pixel words.  Pixel word: bits
     9..12 alpha level, bits 1..8 palette index."""
     index = np.zeros(w * h, np.uint8)

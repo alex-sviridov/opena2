@@ -1,18 +1,22 @@
 """Unit types (graphics/units/units.reg) and unit animation frame indices.
 
-Spec: docs/formats/units.md.  Parser FUN_0047f108, sprite files FUN_00480717
-/ FUN_004807fd, frame selection and placement in the unit draw FUN_00468640.
+Spec: docs/formats/units.md.  Parser FUN_00479b1e, sprite files FUN_0047b12d
+/ FUN_0047b213, frame selection and placement in the unit draw FUN_004632a1.
 """
 
-import os
 from dataclasses import dataclass, field
 
+from a2res import dirname, join
+
 from .graphics import load_human_palettes, load_pal_file
+from .common import as_fs
 from .reg import load_reg
 
 UNITS_DIR = "graphics/units"
+UNITS_REG = UNITS_DIR + "/units.reg"
+HUMAN_PAL = UNITS_DIR + "/humans/human.pal"     # the only human.pal the exe opens
 
-# key -> (record offset, default when the unit has no Parent), FUN_0047f108
+# key -> (record offset, default when the unit has no Parent), FUN_00479b1e
 INT_FIELDS = [
     ("File", 0x0C, -1), ("Index", 0x10, -1),
     ("MovePhases", 0x14, -1), ("MoveBeginPhases", 0x18, -1),
@@ -57,52 +61,51 @@ class UnitType:
         """Per-tick frame list of Move/Idle/Attack (see expand_sequence)."""
         return expand_sequence(self.values[name + "AnimTime"], self.values[name + "AnimFrame"])
 
-    def sprite_paths(self, data_dir):
-        base = os.path.join(data_dir, UNITS_DIR, self.file.replace("\\", "/"))
+    def sprite_paths(self):
+        """Game paths of the .256 and b.256 files."""
+        base = join(UNITS_DIR, self.file)
         return base + ".256", base + "b.256"
 
-    def palette_paths(self, data_dir):
+    def palette_paths(self):
         """palette.pal, palette2.pal, ... in the sprite's folder (Palette > 0)."""
-        folder = os.path.dirname(self.sprite_paths(data_dir)[0])
-        return [os.path.join(folder, "palette%s.pal" % ("" if k == 0 else k + 1))
+        folder = dirname(self.sprite_paths()[0])
+        return [join(folder, "palette%s.pal" % ("" if k == 0 else k + 1))
                 for k in range(self.Palette)]
 
-    def palette_spec(self, data_dir):
+    def palette_spec(self):
         """("pal", [palette<N>.pal]) when Palette > 0, else ("human",
         [human.pal]).  The exe opens only graphics\\units\\humans\\human.pal
-        (units.reg loader 0x480380), also for heroes; heroes*/human.pal is
+        (units.reg loader 0x47ad96), also for heroes; heroes*/human.pal is
         never read."""
         if self.Palette > 0:
-            return "pal", self.palette_paths(data_dir)
-        return "human", [human_pal_path(data_dir)]
+            return "pal", self.palette_paths()
+        return "human", [HUMAN_PAL]
 
-    def palette(self, data_dir, player=0, variant=0):
+    def palette(self, fs=None, player=0, variant=0):
         """RGB palette per units.md: human.pal player colour (Palette = 0),
         else palette<variant>.pal of the type's folder."""
-        return load_palette_spec(self.palette_spec(data_dir), player, variant)
+        return load_palette_spec(self.palette_spec(), player, variant, fs)
 
 
-def human_pal_path(data_dir):
-    return os.path.join(data_dir, UNITS_DIR, "humans", "human.pal")
-
-
-def load_palette_spec(spec, player=0, variant=0):
+def load_palette_spec(spec, player=0, variant=0, fs=None):
+    """RGB of a palette_spec() in `fs` (None = the game's)."""
+    fs = as_fs(fs)
     kind, files = spec
     if kind == "pal":
-        return load_pal_file(files[min(variant, len(files) - 1)])
-    return load_human_palettes(files[0])[player]
+        return load_pal_file(files[min(variant, len(files) - 1)], fs)
+    return load_human_palettes(files[0], fs)[player]
 
 
 def expand_sequence(times, frames):
-    """FUN_0047f108: each (time, frame) pair adds `frame` `time` times."""
+    """FUN_00479b1e: each (time, frame) pair adds `frame` `time` times."""
     return [f for t, f in zip(times or [], frames or []) for _ in range(t)]
 
 
-def load_unit_types(path):
+def load_unit_types(path=None, fs=None):
     """All Unit<n> records with Parent inheritance as the game builds them.
     Parent is a unit ID; ints default to the parent's value, arrays and
     strings are taken from the parent only when the child has none."""
-    reg = load_reg(path)
+    reg = load_reg(path or UNITS_REG, as_fs(fs) if path is None or fs is not None else None)
     count = reg.get("Global/UnitCount", 0)
     files = reg["Files"]
     types, by_id = [], {}
@@ -127,9 +130,9 @@ def load_unit_types(path):
     return types
 
 
-def unit_types(data_dir):
-    """load_unit_types of the install's graphics/units/units.reg."""
-    return load_unit_types(os.path.join(data_dir, UNITS_DIR, "units.reg"))
+def unit_types(fs=None):
+    """load_unit_types of the game's graphics/units/units.reg."""
+    return load_unit_types(UNITS_REG, as_fs(fs))
 
 
 def by_id(types):
@@ -139,8 +142,8 @@ def by_id(types):
 # --------------------------------------------------------------------------
 # Directions.  The object's facing d (+0x70) is 0..15, clockwise from
 # north (screen up): 0 up, 4 right, 8 down, 12 left.  Move steps per facing
-# from the tables 0x6023b0 / 0x6023f0 (used by msg 0x6b): even d only.
-# The sprite order starts at d = 8 (front view).  FUN_00468640.
+# from the tables 0x5f81c0 / 0x5f8200 (used by msg 0x6b): even d only.
+# The sprite order starts at d = 8 (front view).  FUN_004632a1.
 # --------------------------------------------------------------------------
 
 STEP = {0: (0, -1), 2: (1, -1), 4: (1, 0), 6: (1, 1),
@@ -169,7 +172,7 @@ def dir8(d, flip):
 
 
 # --------------------------------------------------------------------------
-# Frame index per state, FUN_00468640.  Block order in the file:
+# Frame index per state, FUN_004632a1.  Block order in the file:
 #   stand (16 | 9) | move (Begin+Move)·dirs | attack·dirs | dying·dirs |
 #   bones / idle ·dirs
 # --------------------------------------------------------------------------
@@ -213,11 +216,11 @@ def corpse_frame(td, d):
 
 
 def bones_frame(td, d, stage):
-    """State 0, death stage 2..4.  The game uses IdlePhases as the direction
-    stride, so with IdlePhases = 0 every direction shows direction 0."""
+    """State 0, death stage 2..4: the bones block, BonePhases frames per
+    direction (stride read from type +0x24 at 0x46383a / 0x463895)."""
     i, m = dir8(d, td.Flip)
     base = td.stand_frames + (_mb(td) + td.AttackPhases + td.DyingPhases) * td.dirs
-    return base + i * td.IdlePhases + stage - 2, m
+    return base + i * td.BonePhases + stage - 2, m
 
 
 def expected_frames(t):
@@ -238,13 +241,13 @@ def center_anchor(cx, cy, width, height, w, h):
 
 
 def placement(t, x, y, frame_w, frame_h, z=0):
-    """Top-left of a frame for an object at screen (x, y), FUN_00468640."""
+    """Top-left of a frame for an object at screen (x, y), FUN_004632a1."""
     ax, ay = center_anchor(t.CenterX, t.CenterY, t.Width, t.Height, frame_w, frame_h)
     return x - ax, y - ay - z
 
 
 # --------------------------------------------------------------------------
-# Heroes.  FUN_0046f688 picks graphics/units/<heroes|heroes_l>/<weapon>/
+# Heroes.  FUN_0046a215 picks graphics/units/<heroes|heroes_l>/<weapon>/
 # sprites.256 and the units.reg type from the folder name.  Hero files carry
 # no dying/bones blocks: dying heroes switch to unarmed / mage_st.
 # --------------------------------------------------------------------------
@@ -264,7 +267,7 @@ def hero_expected_frames(t, folder):
 
 
 # --------------------------------------------------------------------------
-# Action events, FUN_0046b5ef.  The action counter obj+0x9c is 0 at the
+# Action events, FUN_0046617c.  The action counter obj+0x9c is 0 at the
 # start of an attack/shoot/cast and is compared with the delays before the
 # phase is taken from it, so an event shows on attack phase seq[delay].
 # --------------------------------------------------------------------------

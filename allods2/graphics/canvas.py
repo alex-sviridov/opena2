@@ -71,21 +71,21 @@ class Canvas:
         dst[m] = fn(dst[m].astype(np.uint16), src, m).astype(np.uint8)
 
     def draw_256(self, sprite, x, y, palette, mirror=False):
-        """Opaque palette sprite (0x459614; mirrored 0x45a64d)."""
+        """Opaque palette sprite (0x454344; mirrored 0x45537d)."""
         d = _decode(decode_256, sprite, mirror)
         pal = np.asarray(palette, np.uint8)
         self._apply(x, y, d, lambda dst, s, m: pal[d.index[s][m]])
 
     def draw_256_translucent(self, sprite, x, y, palette, mirror=False):
-        """50 % blend, (src >> 1) + (dst >> 1) per channel (0x459926; mirrored
-        0x45a8e7).  Used for *b.256 smoothing overlays and for units with
+        """50 % blend, (src >> 1) + (dst >> 1) per channel (0x454656; mirrored
+        0x455617).  Used for *b.256 smoothing overlays and for units with
         effect 0x20."""
         d = _decode(decode_256, sprite, mirror)
         pal = np.asarray(palette, np.uint16)
         self._apply(x, y, d, lambda dst, s, m: (pal[d.index[s][m]] >> 1) + (dst >> 1))
 
     def draw_darken(self, sprite, x, y, level=8, mirror=False):
-        """Darken the sprite's area (0x459d8c; mirrored 0x45ad81; sprite vtable
+        """Darken the sprite's area (0x454abc; mirrored 0x455ab1; sprite vtable
         +0x1c): the pixel values are skipped, dst = dst * (16 - level) / 16.
         The game uses it for UI drop shadows (lm.256 level 6, scrlbars.256
         and radiob.256 level 4, an inventory indicator level 8)."""
@@ -93,7 +93,7 @@ class Canvas:
         self._apply(x, y, d, lambda dst, s, m: (dst * (16 - level)) >> 4)
 
     def draw_16a(self, sprite, x, y, palette, mirror=False):
-        """Alpha sprite (0x45db6b; mirrored 0x45dee0):
+        """Alpha sprite (0x45889b; mirrored 0x458c10):
         src * (a + 1) / 16 + dst * (15 - a) / 16."""
         d = _decode(decode_16a, sprite, mirror)
         pal = np.asarray(palette, np.uint16)
@@ -105,7 +105,7 @@ class Canvas:
         self._apply(x, y, d, blend)
 
     def draw_16(self, sprite, x, y, colors):
-        """4-bit glyph (0x4593a1); colors: 16 RGB entries (the text colour table)."""
+        """4-bit glyph (0x4540d1); colors: 16 RGB entries (the text colour table)."""
         d = _decode(decode_16, sprite)
         cols = np.asarray(colors, np.uint8)
         self._apply(x, y, d, lambda dst, s, m: cols[d.index[s][m]])

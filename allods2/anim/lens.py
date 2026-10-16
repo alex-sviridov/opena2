@@ -1,8 +1,8 @@
 """The screen lens of projectile 7 (bat and succubus missiles).
 
 Spec: docs/formats/animation.md §4.4 (CONFIRMED).  Projectile ID 7 draws no
-sprite: FUN_004ae2cb moves screen pixels around its anchor through a table
-built once (global 0x62b61c, FUN_004adfc0(R = 20, d = 16) -> FUN_004ae0df):
+sprite: FUN_004a6b4b moves screen pixels around its anchor through a table
+built once (global 0x621454, FUN_004a6840(R = 20, d = 16) -> FUN_004a695f):
 
     n    = trunc(sqrt(R^2 - (R - d)^2))                     = 19
     k(0) = 1;  k(r) = r / (R * sin(atan(r / (R - d))))       r = 1 .. n-1

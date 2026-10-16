@@ -14,7 +14,7 @@ import os
 
 from PIL import Image, ImageDraw, ImageFont
 
-from allods2.common import INSTALL, OUT
+from allods2.common import INSTALL, OUT, as_fs
 from allods2.graphics import terrain as tr
 
 PAD = 4
@@ -48,7 +48,7 @@ def main(argv=None):
     ap.add_argument("-o", "--out", default=os.path.join(OUT, "contact"))
     ap.add_argument("--scale", type=int, default=2)
     a = ap.parse_args(argv)
-    terrain = tr.TerrainSet.load(os.path.join(a.base, "data", "graphics", "terrain"))
+    terrain = tr.TerrainSet.load(as_fs(a.base))
     font = ImageFont.load_default(10)
     os.makedirs(a.out, exist_ok=True)
     for s in range(tr.SETS):

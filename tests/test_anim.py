@@ -9,10 +9,10 @@ import pytest
 from allods2 import anim as A
 from allods2 import cli
 from allods2 import units as U
-from allods2.common import DATA
+from allods2.common import INSTALL
 from allods2.graphics import Canvas
 
-from helpers import aset_of, needs_data, unit_type
+from helpers import GFS, aset_of, needs_data, unit_type
 
 # -- timing ----------------------------------------------------------------
 
@@ -137,15 +137,15 @@ def test_stand_mirrors_odd_facings_with_flip():
 
 @pytest.fixture(scope="module")
 def types():
-    return U.unit_types(DATA)
+    return U.unit_types(GFS)
 
 
 @needs_data
 def test_every_unit_and_hero_set_is_in_range(types):
-    keys = A.unit_keys(DATA, types)
+    keys = A.unit_keys(GFS, types)
     assert len(keys) == 61 + 30
     for k in keys:
-        a = A.load_unit_set(k, DATA, types)
+        a = A.load_unit_set(k, GFS, types)
         assert "stand" in a.actions
         missing = a.missing_frames()
         if k == 2:      # Unit33: Flip file under a non-Flip type (animation.md §2.5)
@@ -155,9 +155,10 @@ def test_every_unit_and_hero_set_is_in_range(types):
 
 
 @needs_data
-def test_unreachable_unit0_file(types):
-    with pytest.raises(FileNotFoundError):
-        A.load_unit_set(3, DATA, types)
+def test_unit0_swordsman_loads(types):
+    """GOG units.reg names the key `File0` (no trailing space)."""
+    a = A.load_unit_set(3, GFS, types)
+    assert a.t.file == "humans\\swordsman\\swordsman" and a.sprites() is not None
 
 
 @needs_data
@@ -172,15 +173,15 @@ def test_death_type_shares_placement(types):
 
 @needs_data
 def test_hero_dies_with_unarmed_or_staff_mage(types):
-    assert A.load_unit_set("heroes/swordsman", DATA, types).td.id == 24
-    assert A.load_unit_set("heroes_l/archer", DATA, types).td.id == 1
+    assert A.load_unit_set("heroes/swordsman", GFS, types).td.id == 24
+    assert A.load_unit_set("heroes_l/archer", GFS, types).td.id == 1
 
 
 @needs_data
 def test_cli_preview(tmp_path):
     grid = tmp_path / "grid.png"
     assert cli.main(["anim", "preview", "monsters/bee", str(tmp_path / "gif"),
-                     "--data", DATA, "--grid", str(grid)]) == 0
+                     "--install", INSTALL, "--grid", str(grid)]) == 0
     gifs = sorted(os.listdir(tmp_path / "gif"))
     assert "attack_d08.gif" in gifs and len(gifs) == 8 * 6
     assert grid.is_file()

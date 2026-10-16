@@ -15,10 +15,10 @@ hero frames (formulas in [units](units.md)); 3 timing rules; 4 the
 | Frames per action, phase lists, per-phase durations | `units.reg`, `structures.reg`, `objects.reg`, `projectiles.reg` | CONFIRMED (§1.2) |
 | Frame layout inside a sprite file | hard-coded per class draw routine | CONFIRMED |
 | Current phase | per-object counters advanced by the class tick (vtable `+0x3c`) | CONFIRMED |
-| Tick rate | game speed → table in `FUN_00492068` | CONFIRMED |
-| Hero sprite folder → unit type | string table in `FUN_0046f688` | CONFIRMED |
+| Tick rate | game speed → table in `FUN_0048bfaa` | CONFIRMED |
+| Hero sprite folder → unit type | string table in `FUN_0046a215` | CONFIRMED |
 | Action durations | `obj+0xa8` ticks left, set when an action starts; projectiles: hard-coded switch; move/turn: in-process server (§3.4) | CONFIRMED |
-| Sprite headers | **no** animation data, only `w, h, size` per frame | CONFIRMED (`FUN_00426da9`) |
+| Sprite headers | **no** animation data, only `w, h, size` per frame | CONFIRMED (`FUN_00424559`) |
 
 Not a source: no `.txt/.ini/.cfg` in the install mentions phases, frames,
 speeds or directions (English and cp1251; only spell descriptions match
@@ -32,27 +32,27 @@ only fade ranges (`Common/startx`, `FadingN/startframe`, `endframe`,
 
 ### 1.2 Registry loaders and record layouts
 
-All loaders read with `FUN_004efddf` (int with default), `FUN_004ef802`
-(string), `FUN_004f03c9` (int array). A **sequence** is built from
+All loaders read with `FUN_004e6f9f` (int with default), `FUN_004e69c2`
+(string), `FUN_004e7589` (int array). A **sequence** is built from
 `…Time`/`…Frame` arrays: each frame value is appended `Time[i]` times
-(`FUN_004028e0`), so one element = one tick (CONFIRMED, same loop in all
+(`FUN_00402850`), so one element = one tick (CONFIRMED, same loop in all
 four). Sequence objects hold the element array at `+4`
-(`FUN_00402a30`/`FUN_00402a50`: `elem(i) = [seq+4] + 4·i`); the element
+(`FUN_00402880`/`FUN_004028a0`: `elem(i) = [seq+4] + 4·i`); the element
 count is in a separate record field.
 
-#### `units.reg`: `FUN_0047f108`
+#### `units.reg`: `FUN_00479b1e`
 
 See [units](units.md). Sequences `MoveAnim` `T+0x3c` (length `T+0x50`),
 `AttackAnim` `T+0x54` (`T+0x68`), `IdleAnim` `T+0x6c` (`T+0x80`)
-(CONFIRMED `0x48004b`–`0x480323`); also the block phase counts, `Flip`,
+(CONFIRMED `0x47aa61`–`0x47ad39`); also the block phase counts, `Flip`,
 `Dying`, and event ticks `ShootDelay` `T+0x11c`, `AttackDelay` `T+0x120`.
 
-#### `structures.reg`: `FUN_00482e99`
+#### `structures.reg`: `FUN_0047d8af`
 
 `graphics\structures\structures.reg`; `Global/Count` records
-`Structure<n>`, 0xa4 bytes, stored by ID in table `0x62caf8`
-(`FUN_00484850`). CONFIRMED fields (offset; default −1 unless noted):
-`File` → `graphics\structures\<File>.256` (+`b.256`, `FUN_00482b5c`);
+`Structure<n>`, 0xa4 bytes, stored by ID in table `0x622930`
+(`FUN_0047f270`). CONFIRMED fields (offset; default −1 unless noted):
+`File` → `graphics\structures\<File>.256` (+`b.256`, `FUN_0047d572`);
 `ID` +0x0c; `TileWidth` W +0x10; `TileHeight` TH +0x14; `FullHeight` FH
 +0x18; `Phases` +0x1c; `SelectionX1/Y1/X2/Y2` rect +0x20; `ShadowY` +0x30
 (0); `AnimMask` +0x34 (string of `W·FH + 1` bytes, read only if
@@ -61,15 +61,15 @@ See [units](units.md). Sequences `MoveAnim` `T+0x3c` (length `T+0x50`),
 else empty); `Picture` +0x54 (16 chars); `Indestructible` +0x64 (0);
 `DescText` +0x68 (32 chars); `VariableSize` +0x88, `Usable` +0x8c,
 `Flat` +0x90, `LightRadius` +0x94, `LightPulse` +0x98 (all 0). The sprite
-object's `+0x4` is the file's frame count (`FUN_00426da9` stores the
-trailer count; read by `FUN_0043ae10`).
+object's `+0x4` is the file's frame count (`FUN_00424559` stores the
+trailer count; read by `FUN_00437ea0`).
 
-#### `objects.reg`: `FUN_0047e4a0`
+#### `objects.reg`: `FUN_00478eb6`
 
 `graphics\objects\objects.reg`; `Global/FileCount` entries
-`Files/File<n>` (lazy sprite files, `FUN_0047ed0d`), then
+`Files/File<n>` (lazy sprite files, `FUN_00479723`), then
 `Global/ObjectCount` records `Object<n>`, 0x6c bytes, appended to list
-`0x630d90`. `Parent` is an object **ID**: each int defaults to the
+`0x626bc8`. `Parent` is an object **ID**: each int defaults to the
 parent's value, and an empty `AnimationTime`/`AnimationFrame` is read from
 the parent's section. CONFIRMED fields (default parent's or −1): `ID`
 +0x04; (n) +0x08; `File` +0x0c (index into `Files`); `Index` +0x10 (first
@@ -78,35 +78,35 @@ frame); `Phases` +0x14; `Width`, `Height` +0x18/+0x1c; `CenterX`,
 +0x3c); `FireObject` +0x40; `DeadObject` +0x44; `InMapEditor` +0x48 (0);
 `DescText` +0x4c (31 chars, "").
 
-#### `projectiles.reg`: `FUN_004824cc`
+#### `projectiles.reg`: `FUN_0047cee2`
 
 `graphics\projectiles\projectiles.reg`; `Global/Count` records
-`Projectile<n>`, 0x3c bytes, stored by ID in table `0x62cb10`
-(`FUN_004849f0`). **No time array**: timing is in code (§1.4). CONFIRMED
+`Projectile<n>`, 0x3c bytes, stored by ID in table `0x622948`
+(`FUN_0047f410`). **No time array**: timing is in code (§1.4). CONFIRMED
 fields: `File`, `A16` → `graphics\projectiles\<File>` `.16a` if `A16`
-else `.256` (`FUN_004820a6`; `A16` default 0); `Phases` +0x10 (−1); `ID`
+else `.256` (`FUN_0047cabc`; `A16` default 0); `Phases` +0x10 (−1); `ID`
 +0x14 (−1); `RotationPhases` +0x18 (16; only `== 1` is tested: no
 directions); `Width`, `Height` +0x1c/+0x20 (64); `SFX` +0x24, `Palette`
 +0x28, `Homing` +0x2c, `Flip` +0x30 (0). The same loader loads
-`projectiles.pal` → `DAT_00630efc`, `projectile_.pal` → `DAT_00630f00`
+`projectiles.pal` → `DAT_00626d28`, `projectile_.pal` → `DAT_00626d2c`
 (16 levels, mode 2) and the trail sprites
-`graphics\projectiles\smoke0|1\sprites.16a` → `DAT_0062cb58[0..1]`.
+`graphics\projectiles\smoke0|1\sprites.16a` → `DAT_00622990[0..1]`.
 
 ### 1.3 Draw routines: inputs and layout
 
 | Kind | Draw | Inputs | Layout (hard-coded) |
 |---|---|---|---|
-| Unit | `FUN_00468640` (vtable `0x5d7780` `+0x28`) | type `T` (`obj+0x24`), state `obj+0x78`, facing `obj+0x70`, phase `obj+0x74`, death stage `obj+0x184` | §2, [units](units.md#frame-layout) |
-| Hero | same, own sprites `obj+0x1c0`/`+0x1c4` | as unit; `T` from `FUN_0046f688` | as unit |
-| Structure | `FUN_004669e8` (vtable `0x5d76d0` `+0x28`); shadow `FUN_00466c2f` (`+0x2c`) | record (`obj+0x24` = ID), cell col/row, phase `obj+0x74`, HP `obj+0x104`, option `DAT_005fb974` | §4.2 |
-| VariableSize structure | `FUN_004679f3` (vtable `0x5d8c50`), `FUN_00467bdb` (`0x5d8ca8`), slot `+0x28` | cell in the structure, view clock `view+0xa88` | 9 / 14 pieces (§4.2) |
-| Object | inline in view draw `FUN_00406fea` (`0x408b24`–`0x408d33`) | record (map cell byte − 1), cell X/Y, view clock, tile flags | §4.3 |
-| Projectile | `FUN_00471fee` (vtable `0x5d78a0` `+0x28`) | record (`obj+0x24` = ID), facing `obj+0x70`, phase `obj+0x74` | §4.4 |
+| Unit | `FUN_004632a1` (vtable `0x5cd5d0` `+0x28`) | type `T` (`obj+0x24`), state `obj+0x78`, facing `obj+0x70`, phase `obj+0x74`, death stage `obj+0x184` | §2, [units](units.md#frame-layout) |
+| Hero | same, own sprites `obj+0x1c0`/`+0x1c4` | as unit; `T` from `FUN_0046a215` | as unit |
+| Structure | `FUN_00461649` (vtable `0x5cd520` `+0x28`); shadow `FUN_00461890` (`+0x2c`) | record (`obj+0x24` = ID), cell col/row, phase `obj+0x74`, HP `obj+0x104`, option `DAT_005f17ec` | §4.2 |
+| VariableSize structure | `FUN_00462654` (vtable `0x5cea88`), `FUN_0046283c` (`0x5ceae0`), slot `+0x28` | cell in the structure, view clock `view+0xa88` | 9 / 14 pieces (§4.2) |
+| Object | inline in view draw `FUN_00406f43` (`0x408a7d`–`0x408c8c`) | record (map cell byte − 1), cell X/Y, view clock, tile flags | §4.3 |
+| Projectile | `FUN_0046cb7b` (vtable `0x5cd6f0` `+0x28`) | record (`obj+0x24` = ID), facing `obj+0x70`, phase `obj+0x74` | §4.4 |
 
-**Hero sprite → unit type** (CONFIRMED `FUN_0046f688`): folder =
+**Hero sprite → unit type** (CONFIRMED `FUN_0046a215`): folder =
 `graphics\units\` + (`heroes` if `obj+0x1b8 & 2`, else `heroes_l`, or the
 armour material's path from `material.reg` when `obj+0x1a4 ≠ 0`) + `\` +
-weapon name (`FUN_00479ba3`) + `_` with a shield; dying heroes (state 6)
+weapon name (`FUN_00474733`) + `_` with a shield; dying heroes (state 6)
 use `unarmed`, which with flag 2 becomes `mage_st`/`mage`. The name sets
 `obj+0x24` to a `units.reg` ID: `unarmed` 1, `unarmed_` 2, `swordsman` 3,
 `swordsman_` 4, `swordsman2h` 5, `axeman` 7, `axeman_` 8, `axeman2h` 9,
@@ -116,16 +116,16 @@ and timing come from those types.
 
 ### 1.4 Timing
 
-**Tick.** Window message `0x401` (handler `FUN_0040c2b9`; `0x402` draws
-via `FUN_00406fea`) → `FUN_0040bdc1`: view clock `view+0xa88` += 1, then
-every object's tick (vtable `+0x3c`). `FUN_0048e7d0` posts `0x401` in a
+**Tick.** Window message `0x401` (handler `FUN_0040c1d0`; `0x402` draws
+via `FUN_00406f43`) → `FUN_0040bcd8`: view clock `view+0xa88` += 1, then
+every object's tick (vtable `+0x3c`). `FUN_00488aa1` posts `0x401` in a
 fixed-step loop: one tick each time `timeGetTime() ≥ base + period·(n+1)`
-(`n` = `app+0x424`, wraps at 16 and re-bases `app+0x42c`). Period
-`app+0x430 = 1000 / rate` ms, set by `FUN_00492068(speed)` (speed clamped
-0..8, rate from a jump table; values §3.1). `FUN_0048e62f` is a second
+(`n` = `app+0x40c`, wraps at 16 and re-bases `app+0x414`). Period
+`app+0x418 = 1000 / rate` ms, set by `FUN_0048bfaa(speed)` (speed clamped
+0..8, rate from a jump table; values §3.1). `FUN_00488900` is a second
 poster sending one `0x401` per call. Per-kind phase rules: §3.2.
 
-**Unit tick** `FUN_0046b5ef` (vtable `0x5d7780` `+0x3c`): `obj+0xa8` =
+**Unit tick** `FUN_0046617c` (vtable `0x5cd5d0` `+0x3c`): `obj+0xa8` =
 ticks left in the action, `obj+0x8c` (byte) = action, copied to draw
 state `obj+0x78`; `obj+0x9c` = tick counter in the action. CONFIRMED:
 
@@ -140,18 +140,18 @@ state `obj+0x78`; `obj+0x9c` = tick counter in the action. CONFIRMED:
 | 8 cast | `obj+0x9c` | `AttackDelay` → `+0x60`; `ShootDelay` (tick 0 when `obj+0xac == 0x36`) → `+0x5c` |
 
 Actions 2 and 4 are never set: the only writers of `obj+0x8c` are the
-message handler `FUN_0040dac9` (0, 1, 3, 5, 6, 7, 8), projectile spawners
-(1), object initialisers (0) and save restore `FUN_00492961` (stored
+message handler `FUN_0040d9b2` (0, 1, 3, 5, 6, 7, 8), projectile spawners
+(1), object initialisers (0) and save restore `FUN_0048c8a3` (stored
 byte); the tick has no case for them (CONFIRMED, every
 `mov byte [reg+0x8c]`).
 
-**Projectile flight time** (CONFIRMED hard-coded switch, `FUN_0046c4f1`,
-`FUN_0046c28b`): `obj+0xa8` = `dist / 200` for IDs 10, 0x12, 0x28 (and
-every `FUN_0046c28b` projectile), `dist / 384` for 12, 13 for 0x1c/0x1e,
+**Projectile flight time** (CONFIRMED hard-coded switch, `FUN_0046707e`,
+`FUN_00466e18`): `obj+0xa8` = `dist / 200` for IDs 10, 0x12, 0x28 (and
+every `FUN_00466e18` projectile), `dist / 384` for 12, 13 for 0x1c/0x1e,
 21 for 0x36, 1 for 0x38/0x3c, else 0; `dist = √(dx² + dy² + c)` in map
 units, `c` = `_DAT_005d7618`.
 
-**Move phase** (CONFIRMED `FUN_0046b5ef` case 1, `0x46b760`–`0x46b8c5`).
+**Move phase** (CONFIRMED `FUN_0046617c` case 1, `0x4662ed`–`0x466452`).
 `obj+0x90/+0x94/+0x98` = distance still to go (x, y, z); each tick moves
 `step = remaining / obj+0xa8` (integer) and subtracts it, then
 
@@ -160,87 +160,84 @@ odometer = ftol(odometer + sqrt(step_x² + step_y² + 0.0))   // obj+0x9c
 phase    = odometer / 16                                    // obj+0x74
 ```
 
-and the draw takes `moveSeq[phase mod moveLen]` (`0x468cef`:
+and the draw takes `moveSeq[phase mod moveLen]` (`0x463950`:
 `idiv [T+0x50]`): one element per 16 map units moved, whatever the speed.
 `obj+0x9c` is not reset by the move message `0x6b`; it carries over from
 the idle counter (0 only for types without idle animation), so the first
 move phase can vary. Positions are 1/256 cell (`cell = pos >> 8`,
-`FUN_004674dd`), so the common `MoveAnimTime` 8 × 2 (33 of 62 types, 16
+`FUN_0046213e`), so the common `MoveAnimTime` 8 × 2 (33 of 62 types, 16
 elements) covers one cell per cycle (INFERRED, arithmetic). The other
 branch (`obj+0x24 < 0`) picks 8 phases from accumulated |x| (`obj+0xa0`)
 or |y| (`obj+0xa4`) per 25, 26 or 32 units, ±8 jitter on draw position
-`obj+0x2c/+0x30`; unreachable: `FUN_0046dd6a` loads the type as unsigned
+`obj+0x2c/+0x30`; unreachable: `FUN_004688f7` loads the type as unsigned
 16-bit and heroes get fixed IDs (INFERRED leftover).
 
 ### 1.5 Action durations from server messages
 
-Message loop `FUN_0040dac9` (called before each tick by `FUN_0048e7d0`;
-type = byte `msg+9`, switch tables `0x417d45` → `0x417c39`, case =
+Message loop `FUN_0040d9b2` (called before each tick by `FUN_00488aa1`;
+type = byte `msg+9`, switch tables `0x41607f` → `0x415fa7`, case =
 type − 3). CONFIRMED:
 
 | Msg | Action | Duration `obj+0xa8` | Site |
 |---|---|---|---|
-| 0x6b | 1 move | `msg[+0xd]` (u8, server) | `0x41333a` |
-| 0x6d | 5 turn | `msg[+0xd]` (u8) | `0x4135ad` |
-| 0x71 | 3 attack | `T+0x68` (AttackAnim length) | `0x41371f` |
-| 0x72 | 7 shoot | `T+0x68` | `0x4139a3` |
-| 0x86, 0x8a | 8 cast (caster) | `T+0x68` | `0x415b65`, `0x41604b` |
-| 0x86, 0x8b | 1 (new projectile) | `msg[+0xf]` (u16) | `0x415942`, `0x415e64` |
-| 0x8c | 1 (new projectile) | 13 | `0x4162b1` |
-| 0x6c, 0x6e–0x70 | 6 dying / 0 | death stage, below | `0x410ba8`, `0x410c67` |
-| speed msg | — | game speed = `msg[+0xa]` → `FUN_00492068` | `0x417b97` |
+| 0x6b | 1 move | `msg[+0xd]` (u8, server) | `0x412d4a` |
+| 0x6d | 5 turn | `msg[+0xd]` (u8) | `0x412fbd` |
+| 0x71 | 3 attack | `T+0x68` (AttackAnim length) | `0x41312f` |
+| 0x72 | 7 shoot | `T+0x68` | `0x4133b3` |
+| 0x86, 0x8a | 8 cast (caster) | `T+0x68` | `0x4152a4`, `0x415761` |
+| 0x86, 0x8b | 1 (new projectile) | `msg[+0xf]` (u16) | `0x415081`, `0x41558f` |
+| 0x8c | 1 (new projectile) | 13 | `0x4159b3` |
+| 0x6c, 0x6e–0x70 | 6 dying / 0 | death stage, below | `0x41062c`, `0x4106eb` |
 
-**Death stage** `obj+0x184` (CONFIRMED, case at `0x40f422`), recomputed
+**Death stage** `obj+0x184` (CONFIRMED, case at `0x40eea5`), recomputed
 on these messages from HP `obj+0x104` (s16): > 0 → 0 alive; ≤ 0 → 1
 corpse; < −10 → 2; < −20 → 3; < −40 → 4; < −600 → 5 (not drawn). Stages
 2–4 = bones frames `stage − 2`. 0 → 1: action 6 for `2 × DyingPhases`
-ticks of the `Dying` type (`0x410ba8`), 2 ticks per frame (draw uses
-`obj+0x74 / 2`). Staying at 1: action 6 for 4 ticks (`0x410c67`, §3.3
+ticks of the `Dying` type (`0x41062c`), 2 ticks per frame (draw uses
+`obj+0x74 / 2`). Staying at 1: action 6 for 4 ticks (`0x4106eb`, §3.3
 twitch). Back to 0: action 0 (revived). Heroes reload their sprite
-(`FUN_0046f688`) on both changes.
+(`FUN_0046a215`) on both changes.
 
-**Hero dying** (CONFIRMED `FUN_0046f688`, `0x46904b`–`0x469081`): with
+**Hero dying** (CONFIRMED `FUN_0046a215`, `0x463cac`–`0x463ce2`): with
 action 6 the folder becomes `unarmed` (type 1, `Flip`, 129 frames) or,
 for `obj+0x1b8 & 2`, `mage_st` (type 24, 216 frames). The hero draw always
 indexes its own sprite `obj+0x1c0` with the `T`/`T2` formulas and draws
-nothing past the file's end (`0x469070`). Largest dying/corpse/bones
+nothing past the file's end (`0x463cd1`). Largest dying/corpse/bones
 index: 116 (type 1), 194 (type 24), inside both files.
 
-**Default game speed** (CONFIRMED): `FUN_0048750d` sets `app+0x434 = 4`
-(16 ticks/s); profile loaders `FUN_004923a7`/`FUN_00492961` read
+**Default game speed** (CONFIRMED): `FUN_00481efc` sets `app+0x41c = 4`
+(`0x4822c5`; 16 ticks/s); profile loaders `FUN_0048c2e9`/`FUN_0048c8a3` read
 `GameOptions/Speed` from `game%d.sav` (`app+0x248`, built by
-`FUN_0048a922` as `9999 − n`), current value as default;
-`FUN_004f8233` keeps `DAT_0069d010` in 0..8, else 4. +/− hotkeys
-(`FUN_0048a097`, `FUN_00499d05`, `FUN_00499d2f`) step by one.
+`FUN_00485291` as `9999 − n`), current value as default;
+`FUN_004ef479` keeps `DAT_00690420` in 0..8, else 4. +/− hotkeys
+(`FUN_00484a76`, `FUN_004929e6`, `FUN_00492a10`) step by one.
 
 ### 1.6 Visibility gates
 
-`obj+0x7c` (returned by `FUN_004206c0`) = structure visibility, recomputed
-by `FUN_004667ff` from tile bits `0xc000` under its cells: 0 if any cell
+`obj+0x7c` (returned by `FUN_0041eb60`) = structure visibility, recomputed
+by `FUN_00461460` from tile bits `0xc000` under its cells: 0 if any cell
 has `0xc000`, else 1 if one has `0x8000`, else 2 (CONFIRMED). Structures
-animate only at 0 (`FUN_004676d2`), flat structures draw only below 2
-(`0x408011`), objects animate only on `0xc000` cells (`0x408ba3`).
+animate only at 0 (`FUN_00462333`), flat structures draw only below 2
+(`0x407f6a`), objects animate only on `0xc000` cells (`0x408afc`).
 
 **Fog update** (CONFIRMED; tile bits 14–15 of [terrain](terrain.md),
-never set in shipped maps). `FUN_0040bdc1` calls `FUN_0040c212` when
-`clock & 0x1f == 0` (every 32 ticks, `0x40be20`): clear `0x4000` on every
+never set in shipped maps). `FUN_0040bcd8` calls `FUN_0040c129` when
+`clock & 0x1f == 0` (every 32 ticks, `0x40bd37`): clear `0x4000` on every
 tile, then vtable `+0x48` on every object in view list `view+0x9d0`.
-Structures (`0x5d76d0`) use `FUN_00465e36` directly; ground/flying units
-(`0x5d7780`, `0x5d7810`) use `FUN_00472f70`, which calls it only while
-death stage `< 3`. `FUN_00465e36` does nothing unless sight
-`s16 obj+0x10a ≠ 0` and `FUN_00420610(owner)` accepts the owner
+Structures (`0x5cd520`) use `FUN_00460b76` directly; ground/flying units
+(`0x5cd5d0`, `0x5cd660`) use `FUN_0046df20`, which calls it only while
+death stage `< 3`. `FUN_00460b76` does nothing unless sight
+`s16 obj+0x10a ≠ 0` and `FUN_0041e860(owner)` accepts the owner
 (INFERRED: me, or a player sharing vision). It fills a 41 × 41 mask at
-`view+0x17e4` via a2mgr Ordinal_93 (→ `FUN_10023720(cellX obj+0x38,
-cellY obj+0x3c, sight, callbacks 0x10033cc0/0x10033c60)`, copies 0x1a44
-bytes), then for each entry `> 0` at `(i, j)` ORs `0xc000` into the 2 × 2
+`view+0x17e4` with `FUN_00403ca0` (`0x460c1a`; cell `obj+0x38/+0x3c`,
+sight), then for each entry `> 0` at `(i, j)` ORs `0xc000` into the 2 × 2
 tiles at column `x + w/2 − 20 + i`, row `y + h/2 − 20 + j` (`w, h` =
 vtable `+0x20/+0x24`). So `0xc000` = seen in the last refresh, `0x8000`
 alone = explored (never cleared), 0 = never seen. Structure/object
 animation freezes outside sight, up to 32 ticks after a unit leaves.
 
-**Sight mask** (CONFIRMED: exe `FUN_00403d47` body `0x403d4d`–`0x403fac`
-with `FUN_00403c36` and tables from `FUN_004037d7`; a2mgr
-`FUN_10023720` with tables from `FUN_10023560`). A height-aware ray
+**Sight mask** (CONFIRMED: `FUN_00403ca0` body `0x403ca6`–`0x403f05`
+with `FUN_00403b8f` and tables from `FUN_00403730`). A height-aware ray
 flood over a 41 × 41 window centred on the unit, `(dx, dy)` ∈ −20 … 20,
 `s = 7` (`view+0x3f50`, `1 << s` = 128 at `+0x3f4c`):
 
@@ -254,43 +251,35 @@ M(0,0)       = (sight >> (8 − s)) + (1 << (s − 1))  = sight/2 + 64      # si
 for r = 1 … 19:                                   # rings, sides in order top, bottom, left, right
     for each cell of ring r inside the map (7 ≤ x < w−7, 7 ≤ y < h−7):
         M(c) = M(pred c) − cost(c) − (H(c) − H(unit))                  # H = height byte, map +0x10
-    stop after a ring in which no cell kept M ≥ 1 (a2mgr: M ≥ 0)
-visible = M > 0                                    # FUN_00465e36 then ORs 0xc000
+    stop after a ring in which no cell kept M ≥ 1
+visible = M > 0                                    # FUN_00460b76 then ORs 0xc000
 ```
 
 Cells outside the map keep 0. On flat ground a cell at distance `d`
 (straight) is visible while `128·d < sight/2 + 64`: `sight ≈ 256 · cells`
 of radius (INFERRED unit); the window caps the radius at 19. Climbing
-costs one point per height unit; looking downhill gains it. Exe vs a2mgr
-(the one that runs): same tables and update; a2mgr reads heights
-**unsigned** (`movzx`; exe `movsx`), so the 777 negative-height cells of
-`sc_an_twins2_4_4` ([terrain](terrain.md#heights)) count as 128–143
-there; a2mgr keeps expanding while some cell is ≥ 0 (exe ≥ 1) and sets
-the centre cost to 0 explicitly. Implement the a2mgr variant.
+costs one point per height unit; looking downhill gains it. Heights are
+read signed (`movsx`, `0x403d4a`; [terrain](terrain.md#heights)).
 
 ### 1.7 Map placement of objects
 
 The objects draw reads its cell byte from map layer `+0x14`
-(`FUN_00420680` on `view+0x80`, `0x407b0d`) = `.alm` section 3: 0 = none,
+(`FUN_0041e8f0` on `view+0x80`, `0x407a66`) = `.alm` section 3: 0 = none,
 `b` = object list index `b − 1` (= its `ID`; IDs equal their
 `Object<n>` index for all 192). CONFIRMED. The loader copies only rows
 `8 … h−5`, columns `8 … w−9` ([terrain](terrain.md#heights)); everything
 outside stays 0 and is never read (CONFIRMED, loader window + data check):
 
-- 83 cells in 9 of the 216 maps hold bytes 193–255 (past the list), all
-  outside the window.
+- 11 cells of `52.alm` hold bytes past the list, all outside the window.
 - Burning trees: 7 objects (`Object1, 4, 7, 10, 13, 16, 19`, files
-  `<tree>ire<tree>`) are absent from the install and the `data/version`
-  manifest, yet 11 maps place them (206 cells, e.g.
-  `sb_an_waterfall_1_3.alm` 62), all outside the window. Loading would
-  go `FUN_0047edf3` → `FUN_00426da9` → `FATAL ERROR: can't load`,
-  `AfxMessageBox`, abort (`0x426e0b`–`0x426e42`); a2mgr's file-open hook
-  (`FUN_004ebe03`, `0x4ebeda` → Ordinal_1, `0x100339be`: tries
-  `data\patch\<path>`, `data\<path>`, then the original lookup) has no
-  substitute. Sprites load lazily on first draw
-  (`FUN_00420720`/`FUN_00420750`), so they are never requested. The 7
+  `<tree>ire<tree>`) are absent from the archives, yet 3 campaign maps
+  place them (80 cells: `52.alm` 62, `73.alm` 16, `50.alm` 2), all
+  outside the window. Loading would go `FUN_00479809` → `FUN_00424559` →
+  `FATAL ERROR: can't load`, `AfxMessageBox`, abort
+  (`0x4245bb`–`0x4245f2`). Sprites load lazily on first draw
+  (`FUN_0041f280`/`FUN_0041f2b0`), so they are never requested. The 7
   matching dead trees have `FireObject = −2`, which the ambient-sound scan
-  `FUN_0041d158` counts as burning (INFERRED: fire crackle).
+  `FUN_0041b311` counts as burning (INFERRED: fire crackle).
 
 ## 2. Layout: unit, monster and hero sprites
 
@@ -306,7 +295,7 @@ Action-major, then direction-major: stand block, then for each action all
 phases of sprite direction 0, then direction 1, …. `S, R` = 16, 8
 (9, 5 with `Flip`); `B M A D Bn I` = `MoveBeginPhases`, `MovePhases`,
 `AttackPhases`, `DyingPhases`, `BonePhases`, `IdlePhases` (CONFIRMED,
-[units](units.md#frame-per-state-fun_00468640); every file, §2.5):
+[units](units.md#frame-per-state-fun_004632a1); every file, §2.5):
 
 | Block | Frames | Index of (dir `i`, phase `p`) | Drawn for |
 |---|---|---|---|
@@ -337,12 +326,12 @@ direction `((12 − 8) & 14) >> 1 = 2`; attack phase 4 = `16 + 80 + 2·10 +
 
 Facing `d` (`obj+0x70`, 0..15) counts **clockwise from screen-up**.
 CONFIRMED: move message `0x6b` copies direction byte `msg+0xc` into
-`obj+0x8d` and steps by tables `0x6023b0` (dx) / `0x6023f0` (dy), 16 ints,
+`obj+0x8d` and steps by tables `0x5f81c0` (dx) / `0x5f8200` (dy), 16 ints,
 non-zero only at even `d`: 0 (0,−1), 2 (1,−1), 4 (1,0), 6 (1,1), 8 (0,1),
 10 (−1,1), 12 (−1,0), 14 (−1,−1) (map y grows down). The tick sets
-`obj+0x70 = obj+0x8d` for move/attack/shoot/cast (`0x46b837`, `0x46bfc4`,
-`0x46c05f`); a turn steps `obj+0xc4` (0..255) toward `obj+0x8d·16` by
-`diff / ticks left` and sets `obj+0x70 = obj+0xc4 >> 4` (`0x46c0a3`).
+`obj+0x70 = obj+0x8d` for move/attack/shoot/cast (`0x4663c4`, `0x466b51`,
+`0x466bec`); a turn steps `obj+0xc4` (0..255) toward `obj+0x8d·16` by
+`diff / ticks left` and sets `obj+0x70 = obj+0xc4 >> 4` (`0x466c30`).
 
 ```
                        d 0  up / north            stand i16   anim i8
@@ -366,15 +355,15 @@ only through turns; animated states round down to even.
 ### 2.3 Mirroring (`Flip = 1`)
 
 `Flip` files store the left half plus both poles: stand `i16` 0..8 (down →
-left → up), animated `i8` 0..4. CONFIRMED (`FUN_00468640`; frozen case
-`0x468f0c`–`0x468f35`): facings 8…15, 0 use them as stored (animated:
+left → up), animated `i8` 0..4. CONFIRMED (`FUN_004632a1`; frozen case
+`0x463b6d`–`0x463b96`): facings 8…15, 0 use them as stored (animated:
 `d` 8–15, 0–1); `d` 1..7 draw `16 − i16` (7..1) mirrored, animated `d`
 2–7 draw `8 − i8` (3..1) mirrored. The draw sets a mirror flag
 (`[ebp-0x48]`) passed as last argument to the blit (vtable `+0x14/+0x34`,
-`0x4691c8`, `0x469215`, `0x469333`) → leftward blitter `FUN_0045a64d`
+`0x463e29`, `0x463e76`, `0x463f94`) → leftward blitter `FUN_0045537d`
 ([sprites](sprites.md)). **Hotspot** (CONFIRMED): `left = obj.x −
 ((CenterX − Width/2) + frame_w/2)` is computed before the flag is read
-(`0x469136`), so a mirrored frame flips in place about its centre column;
+(`0x463d97`), so a mirrored frame flips in place about its centre column;
 the `CenterX − Width/2` offset is not negated. Every `Flip` type has
 `CenterX = Width/2`, so nothing shifts; the only non-zero x offsets (−1:
 mainnecro, skeletons, necromant, druid) are non-`Flip`. 11 of 62 types
@@ -384,7 +373,7 @@ same rule with `i16` and 9 stored directions (§4.4).
 
 ### 2.4 Attack events: hit and release frames
 
-Attack/shoot/cast messages set `obj+0x9c = 0` (e.g. `0x41374d`). Each tick
+Attack/shoot/cast messages set `obj+0x9c = 0` (e.g. `0x41315d`). Each tick
 compares `obj+0x9c` with the delays **before** taking the phase from it,
 so an event fires on tick `delay`, drawn on phase `AttackAnim[delay]`;
 delays ≥ sequence length never fire; delay 0 fires on the first tick.
@@ -392,12 +381,12 @@ CONFIRMED:
 
 | Action | `ShootDelay` (`T+0x11c`) | `AttackDelay` (`T+0x120`) |
 |---|---|---|
-| 3 attack | — | `+0x64` = `FUN_0046d145`: `Sound[0]` at the unit (volume by distance) |
-| 7 shoot | if `Projectile ≠ 0`: `+0x58` = `FUN_0046c28b`, spawn `T.Projectile` | `+0x64`, sound |
-| 8 cast | `+0x5c` = `FUN_0046c4f1`, spawn the spell's projectile (`obj+0xac`; spell `0x36` at tick 0); not gated on `Projectile` | `+0x60` = `FUN_0046d21b`: sound `500 + obj+0xac` |
+| 3 attack | — | `+0x64` = `FUN_00467cd2`: `Sound[0]` at the unit (volume by distance) |
+| 7 shoot | if `Projectile ≠ 0`: `+0x58` = `FUN_00466e18`, spawn `T.Projectile` | `+0x64`, sound |
+| 8 cast | `+0x5c` = `FUN_0046707e`, spawn the spell's projectile (`obj+0xac`; spell `0x36` at tick 0); not gated on `Projectile` | `+0x60` = `FUN_00467da8`: sound `500 + obj+0xac` |
 
 No damage here: HP arrives in server messages (§1.5); the server code
-(`0x4f0000` up) never reads the `units.reg` table `0x62cb40`. So the delays
+(from about `0x4e7000` up) never reads the `units.reg` table `0x622978`. So the delays
 are the client's impact-sound and release frames; the server hits
 `+0x134` ticks after sending the attack (§3.4).
 
@@ -434,7 +423,7 @@ Len = attack sequence length = action ticks):
 
 `tools/validate_units.py` (CONFIRMED): all 90 unit sprite files covered,
 60 named by `units.reg` types and 30 hero files
-(`heroes*/<weapon>/sprites.256`, type from `FUN_0046f688`). Hero files
+(`heroes*/<weapon>/sprites.256`, type from `FUN_0046a215`). Hero files
 hold `S + (B+M+A+I)·R` frames (no dying/bones: dying heroes switch to
 `unarmed`/`mage_st`), except `unarmed` and `mage_st`, which have them.
 59 of 62 types and 30 of 30 hero files exact. Exceptions:
@@ -459,21 +448,21 @@ All in ticks; §1.4–§1.5 hold the derivations.
 
 ### 3.1 The game tick
 
-**Clock** (CONFIRMED `FUN_0048e7d0`, `0x48e7e4`–`0x48e89f`): one
-fixed-step loop on `timeGetTime` (import `0x6dc0b0`).
-`QueryPerformanceCounter` (`0x5692cb`, `0x584f1e`) and `GetTickCount` are
-not used for it; the server `FUN_004f967a` reads `GetTickCount` only to
+**Clock** (CONFIRMED `FUN_00488aa1`, `0x488ab5`–`0x488b70`): one
+fixed-step loop on `timeGetTime` (import `0x6cf074`).
+`QueryPerformanceCounter` (`0x55f2db`, `0x57aeee`) and `GetTickCount` are
+not used for it; the server `FUN_004f08c0` reads `GetTickCount` only to
 time itself (`+0x1b8`). Each pass:
 
 ```
 loop:
-    due = base + period · (n + 1)          // app+0x42c, app+0x430, app+0x424
+    due = base + period · (n + 1)          // app+0x414, app+0x418, app+0x40c
     if timeGetTime() < due: stop
     if n == 0: base = timeGetTime()        // re-base once per 16 ticks
     n = (n + 1) & 15
-    server.step()                          // FUN_004f967a (DAT_0060e684)
-    client.read_messages(100)              // FUN_0040dac9: actions, durations
-    post 0x401 → FUN_0040bdc1               // view clock +0xa88 ++, every object's tick
+    server.step()                          // FUN_004f08c0 (DAT_006044c4)
+    client.read_messages(100)              // FUN_0040d9b2: actions, durations
+    post 0x401 → FUN_0040bcd8               // view clock +0xa88 ++, every object's tick
 ```
 
 | speed | 0 | 1 | 2 | 3 | 4 (default) | 5 | 6 | 7 | 8 |
@@ -486,10 +475,10 @@ The server steps exactly once per client tick, in the same loop. Late
 ticks run back to back only until `n` wraps: the re-base drops older
 backlog (≤ 15 extra ticks after a stall). Jitter: each block of 16 runs at
 `X, X+2P, X+3P, …, X+16P`, then tick 0 of the next block immediately (gap
-0); average one tick per period. Changing speed (`FUN_00492068`; network
-`0x417b97`) resets `n = 0`, `base = GetTickCount()`
-(`0x49213a`–`0x492152`); INFERRED: both clocks count ms since boot, so
-this only shifts the first tick. The exe never calls `timeBeginPeriod`
+0); average one tick per period. Changing speed (`FUN_0048bfaa`,
+`0x48c05c`–`0x48c09d`) sets the period, resets `n = 0` (and `+0x428`,
+`+0x42c`), and restarts `base` and `+0x424` from `timeGetTime()`, so it
+only shifts the first tick. The exe never calls `timeBeginPeriod`
 (VERIFY 3.6 #1).
 
 ### 3.2 What advances each kind of animation
@@ -499,15 +488,15 @@ CONFIRMED.
 
 | Kind | Phase rule | Gate | Source |
 |---|---|---|---|
-| Terrain water (sets 8–11) | set `8 + ((s + (x+1)·y + (clock >> 2)) & 3)`: 1 frame / 4 ticks, 16-tick loop | `DAT_005fb974` ("Object animations", [lighting §6](../mechanics/lighting.md#6-options)) | [terrain](terrain.md) |
-| Structure | `k = seq[obj+0x74]`; `obj+0x74 = (obj+0x74 + 1) mod len` per tick if the sequence is non-empty and `FUN_004206c0() == 0` | visible and `DAT_005fb974`, else frozen | `FUN_004676d2` (vtable `0x5d76d0` `+0x3c`) |
-| VariableSize bridge | bottom edge `8 + (clock & 3)`: 1 frame / tick | none | `FUN_00467bdb` |
-| Object | `Index + seq[(clock + X + X·Y) mod len]` (no tick routine) | cell `0xc000` (else `Index`); option off: frame **0** | `0x408b24` (§4.3) |
-| Projectile (default) | `obj+0x9c` (age) += 1; `(age / 2) mod Phases`: 1 frame / 2 ticks, loops for the flight | — | `FUN_00471643` (vtable `0x5d78a0` `+0x3c`) |
-| Projectile 0x1c/0x1e | `age − 1` = 0…12 → 4 3 2 1 0 1 2 1 0 1 2 3 4 (`0x471fba`); other ages keep the value; once, 13 ticks | — | §4.4 |
+| Terrain water (sets 8–11) | set `8 + ((s + (x+1)·y + (clock >> 2)) & 3)`: 1 frame / 4 ticks, 16-tick loop | `DAT_005f17ec` ("Object animations", [lighting §6](../mechanics/lighting.md#6-options)) | [terrain](terrain.md) |
+| Structure | `k = seq[obj+0x74]`; `obj+0x74 = (obj+0x74 + 1) mod len` per tick if the sequence is non-empty and `FUN_0041eb60() == 0` | visible and `DAT_005f17ec`, else frozen | `FUN_00462333` (vtable `0x5cd520` `+0x3c`) |
+| VariableSize bridge | bottom edge `8 + (clock & 3)`: 1 frame / tick | none | `FUN_0046283c` |
+| Object | `Index + seq[(clock + X + X·Y) mod len]` (no tick routine) | cell `0xc000` (else `Index`); option off: frame **0** | `0x408a7d` (§4.3) |
+| Projectile (default) | `obj+0x9c` (age) += 1; `(age / 2) mod Phases`: 1 frame / 2 ticks, loops for the flight | — | `FUN_0046c1d0` (vtable `0x5cd6f0` `+0x3c`) |
+| Projectile 0x1c/0x1e | `age − 1` = 0…12 → 4 3 2 1 0 1 2 1 0 1 2 3 4 (table `0x46cb47`, `0x46c579`); other ages keep the value; once, 13 ticks | — | §4.4 |
 | Projectile 0x17, hit IDs (0x10, 0x14, 0x18, 0x22, 0x2c–0x32, 0x38, 0x3c, 0x3e–0x42); 0x36 | `age` (0x36: `age − 1`), 1 frame / tick, once (INFERRED: removed when time ends) | — | |
-| Unit idle (`IdlePhases ≠ 0`) | `idleSeq[(++obj+0x9c) mod idleLen]` | — | `0x46b6ab` |
-| Unit stand (`IdlePhases = 0`) | stand frame, counter zeroed every tick | — | `0x46b6db` |
+| Unit idle (`IdlePhases ≠ 0`) | `idleSeq[(++obj+0x9c) mod idleLen]` | — | `0x466238` |
+| Unit stand (`IdlePhases = 0`) | stand frame, counter zeroed every tick | — | `0x466268` |
 | Unit move | `moveSeq[(odometer / 16) mod moveLen]` (§1.4) | — | |
 | Unit attack/shoot/cast | `attackSeq[t]`, `t` = 0, 1, … | — | |
 | Unit turn | stand frame of the stepping facing | — | |
@@ -519,8 +508,8 @@ projectile loop 12 ticks ≈ 0.74 s; 6-phase death ≈ 0.74 s; goblin attack
 
 ### 3.3 Unit actions: duration, then back to idle
 
-**Rule** (CONFIRMED `FUN_0046b5ef`, `0x46b647`–`0x46b724`,
-`0x46c1c5`–`0x46c1e4`): a message sets `obj+0x8c` and `obj+0xa8` (§1.5)
+**Rule** (CONFIRMED `FUN_0046617c`, `0x4661d4`–`0x4662b1`,
+`0x466d52`–`0x466d71`): a message sets `obj+0x8c` and `obj+0xa8` (§1.5)
 during `read_messages`, before the same pass's tick. Each tick with
 `obj+0xa8 > 0` runs the action, copies it to `obj+0x78`, decrements
 `obj+0xa8`: an action of length `N` is drawn on exactly `N` ticks. On the
@@ -536,31 +525,31 @@ repeats without a new server message.
 
 After an action, with `IdlePhases ≠ 0` the idle counter continues from
 the action's last `obj+0x9c` (arbitrary start phase); otherwise stand,
-counter zeroed each tick (CONFIRMED `0x46b6ab`–`0x46b6f2`).
+counter zeroed each tick (CONFIRMED `0x466238`–`0x46627f`).
 
 Walk continuity: one `0x6b` per cell; the odometer is not reset between
 cells (CONFIRMED, no write to `+0x9c` on `0x6b`), so walking continues
 the cycle. INFERRED: a step arriving one pass late shows one tick of
 stand/idle (VERIFY #2).
 
-Corpse re-hit twitch (CONFIRMED path `0x410c67`): a death-stage message
+Corpse re-hit twitch (CONFIRMED path `0x4106eb`): a death-stage message
 leaving the stage at 1 sets action 6 for 4 ticks **without** resetting
 `obj+0x9c`. Without idle animation the counter is 0, so dying phases 0,
 0, 1, 1 replay, then the corpse again. With idle animation the counter is
-arbitrary and the draw (`0x468e8f`, no clamp) indexes past the dying block
+arbitrary and the draw (`0x463af0`, no clamp) indexes past the dying block
 (VERIFY #3).
 
 ### 3.4 Where the speeds come from
 
 The client plays what the server sends.
 
-**Walk: ticks per cell** (CONFIRMED `FUN_00563185`; sender `FUN_00519b30`
-→ `FUN_0050cd3c` writes `msg[+0xd] = mover+0xaa`; the server marks the
+**Walk: ticks per cell** (CONFIRMED `FUN_00559195`; sender `FUN_0050ff2d`
+→ `FUN_005040c4` writes `msg[+0xd] = mover+0xaa`; the server marks the
 unit busy until `tick + msg[+0xd]`, `unit+0x138`):
 
 ```
 base  = group speed (unit+0x70 → +0x3c → byte +0x44) if non-zero,
-        else unit speed stat (s16 unit+0x8c)                 // FUN_0056314a
+        else unit speed stat (s16 unit+0x8c)                 // FUN_0055915a
 dir8  = (angle + 16) >> 5                                    // 8 compass steps
 if ground unit (vtable +0x20 == 1):
     v = base · SpeedMultiplier                               // map.reg, 8
@@ -575,7 +564,7 @@ step_x, step_y = v·dx, v·dy, each × 0.707 (truncated) when diagonal
 ticks_per_cell = ceil(256 / |step_x or, if 0, step_y|)      // mover+0xaa
 ```
 
-Terrain costs (CONFIRMED `FUN_0055dd41`: `world/data/map.reg`, section
+Terrain costs (CONFIRMED `FUN_00553d51`: `world/data/map.reg`, section
 `Terrain`, keys `Cost<name>`, into `map+0x54147…`):
 
 | Terrain | Land | Grass | Flowers | Sand | Cracked | Stones | Savanna | Mountain | Water | Road |
@@ -586,9 +575,9 @@ Terrain costs (CONFIRMED `FUN_0055dd41`: `world/data/map.reg`, section
 `SpeedMultiplier` (`Path Finding`, default 8) = 8; with cost 8 it cancels
 (flat grass: `v = base`).
 
-**Per-cell cost** (CONFIRMED `FUN_0055e616` → `FUN_0055e93d`): at map load
+**Per-cell cost** (CONFIRMED `FUN_00554626` → `FUN_0055494d`): at map load
 the server fills three 256 × 256 byte arrays indexed `(y << 8) + x`:
-`cost` (`map+0`, read by `FUN_00564137`/`FUN_00569a40`), `flags`
+`cost` (`map+0`, read by `FUN_0055a147`/`FUN_0055fa50`), `flags`
 (`map+0x10000`), and a signed byte at `map+0x944f4` (the slope term's
 height). From tile word `v & 0x3ff` ([terrain](terrain.md)):
 
@@ -619,24 +608,24 @@ strip 2: 2 3 2 4 3 4 2 4 2 2 4 2 4 4
 strip 3: 5 5 5 5 5 5 2 2 2 2 4 4 4 4
 ```
 
-Inputs (CONFIRMED): `FUN_005570f4` passes the server's own `.alm` reader
-object (`FUN_0053ea3a`: section 1 → `+0xc`, section 2 → `+0x14`,
+Inputs (CONFIRMED): `FUN_0054d104` passes the server's own `.alm` reader
+object (`FUN_00534ad4`: section 1 → `+0xc`, section 2 → `+0x14`,
 section 3 → `+0x10`, zero-filled when absent); tiles come from the
-runtime map (`FUN_004adbe0`). So `map+0x944f4` = the section-2 height
+runtime map (`FUN_004a66e0`). So `map+0x944f4` = the section-2 height
 byte and flag 5 = any object-layer byte ≠ 0, over the whole map (the
 client copies section 3 only inside an 8-cell border,
 [terrain](terrain.md#heights)).
 
 Flag bits (CONFIRMED, all writes to `map+0x10000`/`+0x20000`, direct
-and via `FUN_0054cdb0`/`FUN_00569a60`): `|5`/`&~5` structures and
-objects (`FUN_0055aa86`, `FUN_0056299b`), `|0x10`/`&~0x10` unit
-occupancy (`FUN_00563c18`/`FUN_00563cd5`, `FUN_0055a956`), `0x1f` the
-map border (`FUN_0055db20`; `FUN_00557516`), save/load copies
-(`FUN_00559ff8`). **No code sets `0x20`** except by accident:
-`FUN_00562a9b`, a one-shot scripted block (cells x 62–65, y 24–26,
-called once from `FUN_005792ee`), does `flags += 5` instead of `|= 5`,
+and via `FUN_00542dc0`/`FUN_0055fa70`): `|5`/`&~5` structures and
+objects (`FUN_00550a96`, `FUN_005589ab`), `|0x10`/`&~0x10` unit
+occupancy (`FUN_00559c28`/`FUN_00559ce5`, `FUN_00550966`), `0x1f` the
+map border (`FUN_00553b30`; `FUN_0054d526`), save/load copies
+(`FUN_00550008`). **No code sets `0x20`** except by accident:
+`FUN_00558aab`, a one-shot scripted block (cells x 62–65, y 24–26,
+called once from `FUN_0056f2b5`), does `flags += 5` instead of `|= 5`,
 and `0x1f + 5 = 0x24` on a border cell. The `0x20` branch of
-`FUN_00564137` (cost from a special-cell list) is otherwise dead.
+`FUN_0055a147` (cost from a special-cell list) is otherwise dead.
 
 Example (flat grass, `base` 18 = hero with default `+0x86 = 30`:
 `12 + 30/5`): orthogonal 15 ticks/cell = 0.93 s; diagonal
@@ -650,35 +639,35 @@ plays 1.41 cycles (CONFIRMED arithmetic).
 
 | Source | Rule | Status |
 |---|---|---|
-| hero defaults | `FUN_00518863`: `+0x8c = 10`, turn rate `mover+0xa = 8`, attack bytes `+0x134 = 8`, `+0x135 = 4` | CONFIRMED |
-| hero recompute | `FUN_0051d2a7` (`0x51d6b4`–`0x51d7fa`): `s = A` if `A < 12` else `12 + A/5`, `A` = Reaction (s16 `+0x86`); `+10` for cavalry (`+0xe` = units.reg 19 or 21); load `+0x90 = +0x8e + pack/2` (pack = Σ item weight · count); if load ≥ capacity `+0x92 = Body·10 + 1`: `s −= load / capacity`, min 6; then effect block `+0xd4` adds its delta (`FUN_0051b023`) | CONFIRMED |
-| monsters | `data.bin` monster `param[8]` → `+0x8c` (`FUN_0051b12f`; [databin](databin.md#parameter-maps)): Goblin_Pike 24, Ogre 15, Troll 8, Catapult 8 | CONFIRMED |
-| groups | in formation the group order's byte `+0x44` = min member `+0x8c` (from 250), so all walk at the slowest member's speed (`FUN_0057a3f9`); 0 when the order ends (`FUN_0057ae5b`); `unit+0x70` = group (`FUN_00534cae`) | CONFIRMED |
-| effects (Haste/Slow, …) | effect kind 17 = stat `speed` (`FUN_00527122` case 0x11, `0x527757`): `delta = ±effect+0x40`; heroes add to modifier `+0xd8` (recomputed), others to `+0x8c`. Haste `speed=+2`, Slow `speed=-2`, both `duration 30` = 480 ticks ([databin](databin.md#stat-names-and-modifier-text)) | CONFIRMED |
+| hero defaults | `FUN_0050ec60`: `+0x8c = 10`, turn rate `mover+0xa = 8`, attack bytes `+0x134 = 8`, `+0x135 = 4` | CONFIRMED |
+| hero recompute | `FUN_0051366b` (`0x513a78`–`0x513bbe`): `s = A` if `A < 12` else `12 + A/5`, `A` = Reaction (s16 `+0x86`); `+10` for cavalry (`+0xe` = units.reg 19 or 21); load `+0x90 = +0x8e + pack/2` (pack = Σ item weight · count); if load ≥ capacity `+0x92 = Body·10 + 1`: `s −= load / capacity`, min 6; then effect block `+0xd4` adds its delta (`FUN_005113e7`) | CONFIRMED |
+| monsters | `data.bin` monster `param[8]` → `+0x8c` (`FUN_005114f3`; [databin](databin.md#parameter-maps)): Goblin_Pike 24, Ogre 15, Troll 8, Catapult 8 | CONFIRMED |
+| groups | in formation the group order's byte `+0x44` = min member `+0x8c` (from 250), so all walk at the slowest member's speed (`FUN_005703c0`); 0 when the order ends (`FUN_00570e22`); `unit+0x70` = group (`FUN_0052af8c`) | CONFIRMED |
+| effects (Haste/Slow, …) | effect kind 17 = stat `speed` (`FUN_0051d436` case 0x11, `0x51da86`): `delta = ±effect+0x40`; heroes add to modifier `+0xd8` (recomputed), others to `+0x8c`. Haste `speed=+2`, Slow `speed=-2`, both `duration 30` = 480 ticks ([databin](databin.md#stat-names-and-modifier-text)) | CONFIRMED |
 
-**Spell projectile flight time** (CONFIRMED `FUN_0052365f` →
-`FUN_0050ce4e`/`FUN_0050cf32`; `0x86` with target object, `0x8b` with
+**Spell projectile flight time** (CONFIRMED `FUN_00519998` →
+`FUN_005041d6`/`FUN_005042ba`; `0x86` with target object, `0x8b` with
 target point): `msg[+0xc] = 2·spell + 8` (projectile ID), `msg[+0xd]` =
 target object ID (u16), `msg[+0xf]` = flight ticks (u16) → new
 projectile's `obj+0xa8`:
 
 ```
 if spell.param[5] == 2:                     // missile-type spell
-    ticks = trunc(sqrt(dx² + dy²)) / spell.param[7]   // FUN_005206ea; positions = cell·256 + fraction
+    ticks = trunc(sqrt(dx² + dy²)) / spell.param[7]   // FUN_00516aae; positions = cell·256 + fraction
     if spell == 10 (lightning): ticks = 5      // the code also tests 11, which never gets here
 else:
     ticks = 0
 ```
 
-`spell.param[k]` = template parameter array (`FUN_00421110(k)` on
+`spell.param[k]` = template parameter array (`FUN_0041e7e0(k)` on
 `template+0x3c+8`) from [data.bin](databin.md); `param[7]` = missile
 speed in 1/256 cell per tick: Fire Arrow, Ice Missile, Diamond Dust 200
 (1.28 ticks per cell), Fire Ball 384, Lightning and Prismatic Spray 60;
-the other spells have `param[5] = 1` (CONFIRMED data). Spell 11 (`spell+8` byte `0x0b`) goes via `FUN_005238cb`
+the other spells have `param[5] = 1` (CONFIRMED data). Spell 11 (`spell+8` byte `0x0b`) goes via `FUN_00519c04`
 and sends no `0x86`. Arrows and catapult shots are client-timed
 (`dist / 200`, §1.4).
 
-**Turn** (CONFIRMED `FUN_00560444`; `FUN_00519b30` type `0x6d`,
+**Turn** (CONFIRMED `FUN_00556454`; `FUN_0050ff2d` type `0x6d`,
 `msg[+0xd] = mover+0xa4`): byte angles (256 = full circle);
 `diff = |target − current|` folded to ≤ 128. If `diff < 33` (or
 `256 − diff < 33`, ~45°) the facing snaps, 1 tick; else
@@ -687,25 +676,25 @@ and sends no `0x86`. Arrows and catapult shots are client-timed
 Troll 8, Spider 24; effect kind 18 `rotationSpeed` adds to it). Client: `facing256 += (target − facing256) / ticks_left`
 per tick (§2.2).
 
-**Attack cadence and hit time** (CONFIRMED `FUN_00518d2f`, server unit
+**Attack cadence and hit time** (CONFIRMED `FUN_0050f12c`, server unit
 update; order `unit+0x54` = 3 attack, `0xd` cast at unit, `0xe` cast at
 point; phase `unit+0x58`, countdown byte `unit+0x6c`):
 
 ```
-phase 0 (start):  attack: FUN_0052076b → FUN_0050d730 sends 0x71 (unit+0x12c < 2, melee)
+phase 0 (start):  attack: FUN_00516b2f → FUN_00504ab8 sends 0x71 (unit+0x12c < 2, melee)
                           or 0x72 (shoot); extra = (dist·256 + 128) / 200 if dist > 1
-                  cast:   FUN_0052365f sends 0x86/0x8b (mana is checked and spent there)
+                  cast:   FUN_00519998 sends 0x86/0x8b (mana is checked and spent there)
                   countdown = +0x134 (+ extra); phase = 5
 phase 5 (windup): countdown −= 1; at 0:
-                  attack → FUN_0052085b: the HIT (FUN_00520927 on units,
-                           FUN_00520b16 on structures)
-                  cast   → FUN_00523a46 (unit) / FUN_00523a7f (point): the spell effect
+                  attack → FUN_00516c1f: the HIT (FUN_00516ceb on units,
+                           FUN_00516ea0 on structures)
+                  cast   → FUN_00519d7f (unit) / FUN_00519db8 (point): the spell effect
                   countdown = +0x135 + rand(0..3) + hero_delay [+ spell param[0] for
                               a weapon's spell]; phase = 7
 phase 7 (recovery): countdown −= 1; at 0: phase = 0, ready flag +0x136 = 1
 hero_delay = clamp((weight + (30 − reaction)·5) / 12, 0, 12)   // heroes with a weapon (+0x74):
              weight = weapon+0x4a, reaction = unit+0x86 (Body/Reaction/Mind/Spirit = +0x84…+0x8a)
-rand(n) = rand()·(n+1) >> 15                                        // FUN_005296f6
+rand(n) = rand()·(n+1) >> 15                                        // FUN_0051fa25
 ```
 
 Melee damage lands `+0x134` ticks after `0x71`; ranged later by
@@ -713,17 +702,17 @@ Melee damage lands `+0x134` ticks after `0x71`; ranged later by
 effects `+0x134` after the cast. One attack = `+0x134 + extra + +0x135 +
 rand(0..3) + hero_delay` + 1 tick for the phase-0 pass (INFERRED: one
 call per server tick). `0x71/0x72` also set `unit+0x138 = tick + +0x134 +
-+0x135` (`FUN_0050cd3c`/`FUN_0050cdcd`); for melee that sum is also in
++0x135` (`FUN_005040c4`/`FUN_00504155`); for melee that sum is also in
 `msg[+0xd]`, ignored by the client (it plays `AttackAnim`). Heroes'
-`+0x134/+0x135` come from the weapon (`FUN_00532dee`: item params 12 and
-13, kept when −1; defaults 8 and 4, `FUN_00518863`); monsters' from
+`+0x134/+0x135` come from the weapon (`FUN_005290cc`: item params 12 and
+13, kept when −1; defaults 8 and 4, `FUN_0050ec60`); monsters' from
 `data.bin` `param[17]`, `[18]` (Goblin_Pike 7 + 3, Ogre 12 + 6, Catapult
 2 + 38). Weapon weight = `round(param[3] · quality · material factor)`
 (Long Sword 20 in iron; [databin](databin.md#parameter-maps)); the stat
 names are CONFIRMED by use: `+0x84` sets max HP and capacity, `+0x86`
 speed and `+0xbe = /3`, `+0x8a` mana and resistances, and effect kinds 2–5
 (`body, mind, reaction, spirit`) write `+0x84, +0x88, +0x86, +0x8a`.
-Caps (`FUN_0051d2a7`): 52/50/48/46 (Body/Reaction/Mind/Spirit) for male
+Caps (`FUN_0051366b`): 52/50/48/46 (Body/Reaction/Mind/Spirit) for male
 warriors, 50/52/46/48 female warriors, 48/46/52/50 male mages, 46/48/50/52
 female mages (warrior = `+0x4c & 4` clear; female = `+0xe` 0x22/0x24,
 INFERRED). Example: Long Sword (20), Reaction 30 → `hero_delay = 1`;
@@ -761,8 +750,8 @@ at stage 5.
    "Dynamic lighting".
 8. Fireball on a forest: flames last ~1.4 s, shorter while the mouse
    moves (§4.6).
-9. The campaign world map cannot be opened in the allods2.eu install
-   (missing `Global.Map/Flag1`, `Flag`, `Cross`, `FlagOnMap`, §4.9).
+9. World-map flags step at most every 100 ms; the flag set switches
+   (MissionFlag/YourFlag ↔ Flag1/Flag) with map flag `+0x1b0` (§4.9).
 
 ## 4. Implementation
 
@@ -802,7 +791,7 @@ displacement; the anchor cross turns red on impact, yellow on release.
 
 ### 4.2 Structures and bridges
 
-**Placement** (CONFIRMED `FUN_004669e8`): the view draw calls the
+**Placement** (CONFIRMED `FUN_00461649`): the view draw calls the
 structure once per screen cell. Local column `c = cell x − obj+0x38`; the
 routine draws that column's pieces bottom-up, 32 px apart, from row
 `(cell y − obj+0x3c) + FH − TH` (all rows when the local row is 0, one row
@@ -815,7 +804,7 @@ footprint's top-left. Pieces use the file's own table (`+0x18`); the
 **Frame** of piece `cell = col + row·W` (CONFIRMED, all 179 records):
 destroyed (`obj+0x104 < 1` and not `Indestructible`) → `count − W·FH +
 cell` (the last `W·FH` frames); `k = seq[obj+0x74] ≠ 0` (k = 0 without a
-sequence or with `DAT_005fb974 == 0`) and mask char not `-` → `W·FH +
+sequence or with `DAT_005f17ec == 0`) and mask char not `-` → `W·FH +
 (k−1)·A +` rank among animated cells; else `cell`. Files hold `W·FH +
 (Phases − 1)·A` frames (60 structures) or that plus `W·FH` destroyed
 frames (117); the two bridges exactly 9 and 14. The nine destructible
@@ -830,12 +819,12 @@ cell 9 at `k = 3` draws `20 + 2·2 + 1 = 25`.
 option off). 2-phase records without `AnimTime` (inns, towers, castle, …)
 never animate.
 
-**Bridges** (CONFIRMED): map loader `0x4abf1b` builds structure ID `0x21`
-(vertical wooden bridge) as class `0x5d8c50` and `0x25` (horizontal) as
-`0x5d8ca8`, size in cells from the map record (`+0xa`, `+0xc` →
+**Bridges** (CONFIRMED): map loader `0x4a479b` builds structure ID `0x21`
+(vertical wooden bridge) as class `0x5cea88` and `0x25` (horizontal) as
+`0x5ceae0`, size in cells from the map record (`+0xa`, `+0xc` →
 `obj+0x144/+0x148`). Piece by local cell `(x, y)`:
 
-| Cell | ID 0x21 (`FUN_004679f3`) | ID 0x25 (`FUN_00467bdb`) |
+| Cell | ID 0x21 (`FUN_00462654`) | ID 0x25 (`FUN_0046283c`) |
 |---|---|---|
 | top-left, top-right | 0, 2 | 0, 3 |
 | top edge | 1 | `1 + (x & 1)` |
@@ -849,18 +838,18 @@ bottom edge animates every tick with no visibility/option gate.
 
 ### 4.3 Objects
 
-**Placement** (CONFIRMED `0x40924f`–`0x4092d3`): anchor = cell centre,
+**Placement** (CONFIRMED `0x4091a8`–`0x40922c`): anchor = cell centre,
 `left = 32·X + 16 − ((CenterX − Width/2) + w/2)`, `top = 32·Y + 16 −
 ((CenterY − Height/2) + h/2) − relief`, with the object's own record even
 when its dead object is drawn. Blit `+0x14` with the file's table,
 `b.256` at 50 % (`+0x34`) when Smoothing is on.
 
-**Frame** (CONFIRMED `0x408b24`–`0x408d46`), in order: cell fully visible
+**Frame** (CONFIRMED `0x408a7d`–`0x408c9f`), in order: cell fully visible
 (`& 0xc000 == 0xc000`) and a sequence → `Index + seq[(clock + X + X·Y)
 mod len]` (absolute cell X/Y, so neighbours are out of step); tile bit
 `0x2000` and `DeadObject ≠ −1` → frame 0 of the dead object's `File` (its
 `Index` ignored); else `Index`; finally, option off → frame **0** of the
-file (`0x408d3c`; quirk: an object with `Index ≠ 0` shows another
+file (`0x408c95`; quirk: an object with `Index ≠ 0` shows another
 object's picture). Data (CONFIRMED): `Index + max(AnimationFrame)` is in
 range for every object, and in all 135 present files the highest index
 used is the last frame. Example: Pine 1 (ID 0, 7 phases of 4 ticks) at
@@ -869,29 +858,29 @@ used is the last frame. Example: Pine 1 (ID 0, 7 phases of 4 ticks) at
 
 ### 4.4 Projectiles and spell effects
 
-**Placement** (CONFIRMED `FUN_00471fee`): `left = x − Width/2`, `top = y −
+**Placement** (CONFIRMED `FUN_0046cb7b`): `left = x − Width/2`, `top = y −
 Height/2 − z − obj+0x10`, record size (default 64), not frame size.
 
 **Age** (CONFIRMED): `obj+0x9c` += 1 at the start of each tick
-(`0x47187f`). Unit-fired projectiles (`FUN_0046c28b`, `FUN_0046c4f1`)
-start at 0 (`0x46c493`, `0x46c935`: first drawn tick has age 1);
-message-created ones (0x86 `0x415911`, 0x8b `0x415e33`, 0x8c `0x41628c`)
+(`0x46c40c`). Unit-fired projectiles (`FUN_00466e18`, `FUN_0046707e`)
+start at 0 (`0x467020`, `0x4674c2`: first drawn tick has age 1);
+message-created ones (0x86 `0x415050`, 0x8b `0x41555e`, 0x8c `0x41598e`)
 start at −1. The tick returns "remove" when `obj+0xa8` is 0 on entry
-(`0x4716bd`).
+(`0x46c24a`).
 
-**Phase by ID** (tick switch `0x4718c7`, table `0x471f84`):
+**Phase by ID** (tick switch `0x46c454`, table `0x46cb11`):
 
 | IDs | Phase `obj+0x74` | Notes |
 |---|---|---|
 | default | `(age / 2) mod Phases` | moves toward the target each tick |
-| 0x0d (fire explosion) | default | on the 3 × 3 cells around: at age 4 queues (list `view+0xa94`) each cell without bit `0x2000` holding an object with a `DeadObject` or being water (sets 8–11); at age 8 sets `0x2000` (burnt ground) except on water cells without an object (`0x471a32`–`0x471ce4`) |
+| 0x0d (fire explosion) | default | on the 3 × 3 cells around: at age 4 queues (list `view+0xa94`) each cell without bit `0x2000` holding an object with a `DeadObject` or being water (sets 8–11); at age 8 sets `0x2000` (burnt ground) except on water cells without an object (`0x46c5bf`–`0x46c871`) |
 | 0x17 (blizzard hail) | `age` | sound `0x20b` at age 8 |
 | 0x1c (lightning), 0x1e (prismatic) | ping-pong (§3.2) | lifetime 13 |
 | 0x36 (teleport) | `age − 1` | lifetime 21 |
 | 0x10 0x14 0x18 0x22 0x2c 0x2e 0x30 0x32 0x3e 0x40 0x42 | `age` | follow the target; add effect `ID << 16 \| 0xffff` |
 | 0x38, 0x3c | `age` | follow the target; set effect `ID << 16 \| 0x20` |
 
-**Draw** (`FUN_00471fee`, switch on `ID − 7`, table `0x472530`): frame
+**Draw** (`FUN_0046cb7b`, switch on `ID − 7`, byte table `0x46d0bd` → `0x46d0a1`, `0x46ccbc`): frame
 `phase + Phases·d`, `d = (facing − 8) & 15`, folded to `16 − d` mirrored
 when `Flip` and `d > 8` (`Flip` files hold 9 directions); just `phase`
 when `RotationPhases == 1`. Data (CONFIRMED): 28 of 28 present files hold
@@ -921,10 +910,10 @@ lifetime or `Phases` ticks (server lifetimes are data, §3.4).
 
 ### 4.5 The screen lens (projectile 7)
 
-CONFIRMED (`FUN_004adfc0(R = 20, d = 16)` at `0x479d9d`, table
-`FUN_004ae0df`, draw `FUN_004ae2cb`; global `0x62b61c`): bat and succubus
+CONFIRMED (`FUN_004a6840(R = 20, d = 16)` at `0x47492d`, table
+`FUN_004a695f`, draw `FUN_004a6b4b`; global `0x621454`): bat and succubus
 missiles (`Projectile = 7`) bend the picture behind them. CRT `atan`
-(`0x58ede4`, `fpatan`), `sin` (`0x58eb74`, `fsin`):
+(`0x584d44`, `fpatan`), `sin` (`0x584ad4`, `fsin`):
 
 ```
 n    = trunc(sqrt(R² − (R − d)²))                 = trunc(sqrt(384)) = 19
@@ -942,14 +931,14 @@ Example `T[18][0]`: `k = sqrt(340)/20 = 0.922` → `(17, 0)`.
 
 ### 4.6 Burning cells
 
-CONFIRMED (list `view+0xa94`; update `FUN_0040c199`; draws `0x40892e`,
-`0x4094ad`; light: [lighting §3](../mechanics/lighting.md#3-light-map-view--0xa8-confirmed)).
+CONFIRMED (list `view+0xa94`; update `FUN_0040c0b0`; draws `0x408887`,
+`0x409406`; light: [lighting §3](../mechanics/lighting.md#3-light-map-view--0xa8-confirmed)).
 Fire and steam are entries `{cell x | y << 8, counter}`, not objects:
 
 | Step | Rule |
 |---|---|
-| added | fire explosion (projectile 0x0d at age 4, §4.4) and server message at `0x4155cd` (`FUN_0041dfd3`: cells whose object has a `DeadObject`) |
-| counter | +1 per `FUN_0040b35f` call: once per view draw (`0x40aeaa`) and per view message 0x40e / 0x40f (`0x40c3fe`, `0x40c477`); removed at 22 |
+| added | fire explosion (projectile 0x0d at age 4, §4.4) and server message at `0x414d1f` (`FUN_0041c18c`: cells whose object has a `DeadObject`) |
+| counter | +1 per `FUN_0040b2b8` call: once per view draw (`0x40ae03`) and per view message 0x40e / 0x40f (`0x40c315`, `0x40c38e`); removed at 22 |
 | steam | water cell (sets 8–11), counter < 18: projectile 8 (`steam`, 9 frames `.16a`), frame `counter >> 1`, `left = 32·X + 16 − Width/2`, `top = 32·Y + 16 − relief − Height/2` (record 64 × 96) |
 | fire | cell with an object, after the object: projectile 0x0f (`firewall`, 11 frames `.16a`), frame `counter >> 1`, same placement (record 128 × 128) |
 | light | radius 1, value `36 24 12 0 12 0 12 0 20 28 36` by `counter >> 1` |
@@ -966,9 +955,9 @@ picks the first map window (name order) that is 40–70 % water.
 
 ### 4.8 Cursors
 
-CONFIRMED (table `FUN_00480f17`; class `FUN_00480d20`, vtable `0x5d7a90`;
-mouse manager `0x60e6c0`: set `FUN_004289d3`, step/draw `FUN_00428c10`,
-`0x4291f4`). Each cursor = `(file, hot x, hot y, period ms)`; class
+CONFIRMED (table `FUN_0047b92d`; class `FUN_0047b736`, vtable `0x5cd8e0`;
+mouse manager `0x604500`: set `FUN_00426183`, step/draw `FUN_004263c0`,
+`0x4269a4`). Each cursor = `(file, hot x, hot y, period ms)`; class
 stores sprite `+4`, hot spot `+8/+0xc`, frame count `+0x10`, period
 `+0x14`. `.16a` files load with FADE16, others as `.256` with
 `(1, 1, 0)`. Manager: frame `+0x24`, last step time `+0x30`:
@@ -1010,12 +999,12 @@ All `.16a` (FADE16), loaders CONFIRMED. UI timing is wall-clock
 
 | Sprite | Frames | Loader | Timing |
 |---|---|---|---|
-| `interface/chrgen/cube` (chargen dice) | 16 | `FUN_004313db` (`+0x8c`) | never drawn (below; preview 100 ms) |
-| `interface/chrgen/PreCreate/Blind` | 15 | `FUN_004364c3` (`+0x70`) | below |
-| `Global.Map/MissionFlag`, `YourFlag` | 9, 4 | `FUN_00474320` (`+0x80`, `+0x88`) | below |
-| `interface/inn/<unit>/sprites` (hire previews) | 8 (unit26: 5) | `FUN_004a0f02` | below |
+| `interface/chrgen/cube` (chargen dice) | 16 | `FUN_0042eba1` (`+0x8c`) | never drawn (below; preview 100 ms) |
+| `interface/chrgen/PreCreate/Blind` | 15 | `FUN_00433a3d` (`+0x70`) | below |
+| `Global.Map/MissionFlag`, `YourFlag` | 9, 4 | `FUN_0046eeb0` (`+0x80`, `+0x88`) | below |
+| `interface/inn/<unit>/sprites` (hire previews) | 8 (unit26: 5) | `FUN_00499783` | below |
 
-**Blind** (CONFIRMED `FUN_00437ea4`, the PreCreate screen draw): the
+**Blind** (CONFIRMED `FUN_0043541e`, the PreCreate screen draw): the
 screen redraws when ≥ 68 ms (`> 0x43`) have passed. Blind is idle
 (`+0x74 = 0`) until `rand()/65 + 500` ms (500–1004) after its last frame,
 then picks a random position (`rand` scaled to the area) and plays frames
@@ -1025,44 +1014,43 @@ never drawn.** The same draw also steps a counter `+0x1b0` once per
 redraw and shows image `+0x1b0 mod 15` and `(+0x1b0 + 8) mod 15` of a
 15-entry list at two fixed positions.
 
-**Chargen cube** (CONFIRMED): `FUN_004313db` loads it with the stats
+**Chargen cube** (CONFIRMED): `FUN_0042eba1` loads it with the stats
 panel's `FullStat` and `loader` pictures, converts it (FADE16), and the
-destructor (`0x4315a4`) frees it; no method of the class (vtable
-`0x5d5748`, all 16 slots checked) reads `+0x8c` otherwise. A dead asset.
+destructor (`0x42ed6a`) frees it; no method of the class (vtable
+`0x5cb730`, all 16 slots checked) reads `+0x8c` otherwise. A dead asset.
 
-**Inn pictures** (CONFIRMED): `FUN_004a0f02` formats
+**Inn pictures** (CONFIRMED): `FUN_00499783` formats
 `graphics\interface\inn\Unit%d\sprites.16a` with the unit type id
 (`unit+0x24`) for every hire candidate (list `parent+0xc0` → array
 `+0x224`) and every party member (`parent+0xe8` → `+0x238`; heroes,
 `+0x1b8 & 1`, use `HeroMage` when `& 2`, else `HeroFighter`), FADE16.
-The inn draw `FUN_0049f25e` draws each over its slot background
+The inn draw `FUN_00497adf` draws each over its slot background
 (`+0x274` / `+0x278`) with its own frame (`+0x24c` / `+0x260`, starting
 at 0); only the selected entry (`parent+0xb8`: candidates first, then
 party) advances, `(f + 1) mod frames`, when more than 125 ms (`> 0x7d`,
-`timeGetTime`) passed since the last step (one timer `0x6317a0` for both
+`timeGetTime`) passed since the last step (one timer `0x6275c8` for both
 lists; candidates step after drawing, party before). So ≤ 8 frames/s,
 the others hold their frame.
 
-**World-map flags** (CONFIRMED `FUN_00475245` map draw, `FUN_00476a15`):
-the window redraws on message `0x402` at most every 100 ms (`> 99`);
-each draw advances MissionFlag `+0x128 = (+0x128 + 1) mod frames(Flag1)`
-and YourFlag/Flag `+0x130 = (+0x130 + 1) mod frames(Flag)`: **the moduli
-come from `Flag1` (`+0x74`) and `Flag` (`+0x78`)**, not from the sprites
-drawn (`Flag`, `Flag1` are absent from this install, and the generic
-`.16a` loader `FUN_00426da9` shows `FATAL ERROR: can't load` for a
-missing file; a2mgr's hook of the file open (`0x4ebeda` → Ordinal 1)
-only retries with `data\patch\` and `data\` in front). Flag (`+0x78`) is
-drawn instead of YourFlag when `+0x1b0 ≠ 0`. So ≤ 10 frames/s.
+**World-map flags** (CONFIRMED `FUN_0046fdd5` map draw, `FUN_004715a5`):
+the window redraws on message `0x402` at most every 100 ms (`> 99`). The
+loader `FUN_0046eeb0` (vtable `+0x80` via `FUN_0046fa4b`) keeps the
+sprites at `+0x74` Flag1 (9 frames), `+0x78` Flag (4), `+0x7c` Cross
+(13), `+0x80` MissionFlag (9), `+0x84` FlagOnMap (9), `+0x88` YourFlag
+(4) (`0x46efb5`–`0x46f2fc`). Each draw advances `+0x128 = (+0x128 + 1)
+mod frames(Flag1)` (`0x470492`–`0x4704b1`) and `+0x130 = (+0x130 + 1) mod
+frames(Flag)` (`0x470550`–`0x47056f`). With map `+0x1b0 ≠ 0` it draws
+Flag1 (`+0x128`) and Flag (`+0x130`); otherwise MissionFlag and
+FlagOnMap (`+0x128`) and YourFlag (`+0x130`). The moduli come from Flag1
+and Flag, which have the same frame counts as MissionFlag/FlagOnMap and
+YourFlag, so every flag loops over its own frames: ≤ 10 frames/s. Cross
+keeps its own state (`+0x12c`, the sprite object's `+0x134`; not traced).
+API: `ui:map_missionflag`, `map_yourflag`, `map_flag1`, `map_flag`,
+`map_flagonmap`.
 
-The map window (0x1b4 bytes, id `0x41a`, vtable `0x5d7910`) is built
-with every other screen at start-up (`FUN_0048874a`) but loads its
-sprites only in `FUN_00474ebb` (vtable `+0x80`) → `FUN_00474320`, which
-loads `Flag1`, `Flag`, `Cross` and `FlagOnMap` unconditionally (CONFIRMED).
-With them absent the map screen cannot open in this install (INFERRED:
-the online-only allods2.eu build never shows it; VERIFY IN GAME §3.6).
-
-`FUN_00474320` also names `Global.Map/Flag1`, `Flag`, `Cross`,
-`FlagOnMap`, absent from this install.
+The map window (0x1b4 bytes, id `0x41a`, vtable `0x5cd760`) is built
+with every other screen at start-up (`FUN_00483129`) but loads its
+sprites only when opened.
 
 ### 4.10 Survey: everything that animates
 
@@ -1093,28 +1081,28 @@ every preview frame and the trails, then requires every multi-frame or
 `EXCLUSIONS` entry (an entry matching nothing fails, so the list stays
 current).
 
-CONFIRMED (English 1.30): 546 sets, 168,335 frame requests, 49,311 drawn
-frames, no error. Of 695 multi-frame or empty sprite files, 668 are read
-and 27 excluded:
+CONFIRMED: 549 sets, 167,916 frame requests, 49,164 drawn frames, no
+error. Of 740 multi-frame or empty sprite files, 671 are read and 69
+excluded:
 
 | Category | Files | Why |
 |---|---|---|
 | not animated (10) | `font1–3.16`, `font4.16a` | glyph sheets ([fonts](fonts.md)) |
 | | `interface/lm`, `radiob`, `scrlbars`, `subobj.256` | UI widget sheets |
-| | `backpack/sprites.256` + `b.256` | dropped sack: frame = `obj+0x24` (0–5), no clock (CONFIRMED `0x46647f`). The same draw shows `global.map/yourflag` (`obj+0x24 = 6`), `missionflag` (7) or both (8), frame 0, at `(x − 20, y − 60)` / `(x − 5, y − 57)` (globals `0x630e70`/`0x630e74`, loaded at `0x47d29e`/`0x47d2fc`) |
-| never loaded (9) | `cursors/attack.256`, `cursors/pickup.256` | not in the cursor table (§4.8) |
+| | `backpack/sprites.256` + `b.256` | dropped sack: frame = `obj+0x24` (0–5), no clock (CONFIRMED draw `0x4611d6`–`0x46128f`: sprite `0x626ca4`, overlay `0x626ca8` with Smoothing) |
+| never loaded (7) | `cursors/attack.256`, `cursors/pickup.256` | not in the cursor table (§4.8) |
 | | `projectiles/firebolt/sprites.256` + `b.256` | firebolt has `A16 = 1` |
-| | `projectiles/diamonddust`, `freeze`, `smallxpl` | no `projectiles.reg` record; the folder name occurs only in the `data/version` manifest (CONFIRMED, byte search of exe, a2mgr.dll, all data) |
-| | `units/humans/swordsman/swordsman.256` + `b.256` | `File0 ` trailing space (§2.5) |
+| | `projectiles/diamonddust`, `freeze`, `smallxpl` | no `projectiles.reg` record; the folder name is in no binary (CONFIRMED, byte search of the exe and all archives) |
 | empty (8) | `cursors/move\|patrol\|cast\|defend.256`, `equipment/[fm]fighter/primary/0[01]05002.256` | 0 bytes |
+| open (44) | `interface/townbirds/*` (41), `interface/town_druid/bug`, `lizard`, `global.map/cross` | town scenes and the world-map Cross: animated, draw code not traced (open questions) |
 
 One set reads past its file, as the game does: ID 2 (Unit33,
 `KNOWN_OUT_OF_RANGE`); the game draws nothing there. Outside sprite files
 only terrain water animates.
 
-**Projectile trails** (CONFIRMED tick `0x471e43`–`0x471ee6`, draw
-`0x4723a4`–`0x4724d5`; list size `0x4204a0`, remove-at `0x5a9378`, append
-`0x4028e0`): firebolt (10) and fireball (12) keep list `obj+0x144`. Each
+**Projectile trails** (CONFIRMED tick `0x46c9d0`–`0x46ca73`, draw
+`0x46cf31`–`0x46d062`; list size `0x41e1d0`, remove-at `0x59f2f8`, append
+`0x402850`): firebolt (10) and fireball (12) keep list `obj+0x144`. Each
 tick, before moving, drop the oldest point if 6 are held, then append the
 position packed `(y << 16 | x)` in map units. Draw point `i` with frame
 `i` of `smoke0` (10) / `smoke1` (12), oldest first, `.16a` alpha with the
@@ -1156,7 +1144,7 @@ frame 0's size minus the projectile's current `obj+0x6c + obj+0x10`. (x ≥
 
 ### 5.3 Handoff to combat
 
-1. **The server decides hits** (§3.4, CONFIRMED `FUN_00518d2f`): melee
+1. **The server decides hits** (§3.4, CONFIRMED `FUN_0050f12c`): melee
    `+0x134` after `0x71`, arrows `+0x134` + `(dist·256 + 128)/200`;
    recovery `+0x135 + rand(0..3)` + hero delay. `units.reg` is client
    only (§2.4).
@@ -1197,16 +1185,20 @@ In order of need; none required by the coverage check.
    closes §5.3 #3; changes preview counts.
 2. Turn action and corpse twitch (§4.1).
 3. A per-object animator in the game layer owning the §5.2 state, driven
-   by decoded server messages (what `FUN_0046b5ef` does per tick);
+   by decoded server messages (what `FUN_0046617c` does per tick);
    testable by replaying message sequences.
 4. Translucent/hidden unit draws (effect `0x20`, bit 8) and per-player
    palettes in the draw path (`UnitSet.player` exists).
 5. Lens (post-process) and trails (need map positions) in previews.
-6. Dropped sacks and mission flags (`0x46647f`, §5.1) as a small static
-   `AnimationSet`.
-7. UI sequence timing (§4.9: Blind, world-map flags; cube still open)
-   before the chargen and world-map screens.
+6. Dropped sacks (`0x4611d6`, §5.1) as a small static `AnimationSet`.
+7. UI sequence timing (§4.9: Blind, world-map flags; cube and Cross
+   still open) before the chargen and world-map screens.
 
 ## Open questions
 
-None.
+- Town scenes: `interface/townbirds/*` (41 files) and
+  `interface/town_druid/bug`, `lizard` animate, but no set reads them
+  yet; find their draw code and timing (start: string refs to
+  `townbirds`, `town_druid`).
+- World-map Cross (`+0x7c`, state `+0x12c` and the sprite's `+0x134`,
+  `FUN_0046fdd5` `0x470279`–`0x47040a`).

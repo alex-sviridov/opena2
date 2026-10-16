@@ -2,11 +2,13 @@
 CONFIRMED by walking all 216 maps) and docs/formats/terrain.md (Tiles block).
 """
 
-import os
 import struct
 from dataclasses import dataclass, field
 
 import numpy as np
+from a2res import basename
+
+from .common import read
 
 MAGIC = b"M7R\0"
 SECTION0_PAD = 16          # section 0 is followed by 16 bytes past its size
@@ -41,7 +43,7 @@ class AlmMap:
 
 
 def parse_alm(data, name=""):
-    if data[:4] != MAGIC:
+    if bytes(data[:4]) != MAGIC:
         raise ValueError("not an M7R map")
     hsize, _, count, _ = struct.unpack_from("<4I", data, 4)
     pos = hsize
@@ -61,6 +63,6 @@ def parse_alm(data, name=""):
     return AlmMap(w, h, sections, name)
 
 
-def load_alm(path):
-    with open(path, "rb") as f:
-        return parse_alm(f.read(), os.path.basename(path))
+def load_alm(path, fs=None):
+    """path in `fs` (None = OS path); section data are views of the file."""
+    return parse_alm(read(path, fs), basename(path))

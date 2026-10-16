@@ -3,7 +3,7 @@ every set loads, every action/facing/tick gives a valid frame and draws,
 and every multi-frame sprite file is used by a set or listed in
 allods2.anim.coverage.EXCLUSIONS.
 
-    .venv/bin/python tools/validate_anim.py [DATA_DIR] [--no-draw] [-v]
+    .venv/bin/python tools/validate_anim.py [INSTALL_DIR] [--no-draw] [-v]
 """
 
 import argparse
@@ -12,17 +12,17 @@ import sys
 import time
 
 from allods2.anim.coverage import KNOWN_OUT_OF_RANGE, verify
-from allods2.common import DATA
+from allods2.common import as_fs
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("data", nargs="?", default=DATA)
+    ap.add_argument("install", nargs="?")
     ap.add_argument("--no-draw", action="store_true")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args(argv)
     t0 = time.time()
-    r = verify(a.data, draw=not a.no_draw)
+    r = verify(as_fs(a.install), draw=not a.no_draw)
     print("sets %d, frame requests %d, frames drawn %d (%.1f s)" % (r.sets, r.refs, r.drawn, time.time() - t0))
     print("multi-frame sprite files %d: reached %d, excluded %d, unreached %d"
           % (r.multi, r.multi - len(r.excluded) - len(r.unreached), len(r.excluded), len(r.unreached)))

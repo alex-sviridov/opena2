@@ -1,6 +1,6 @@
 """Parse world/data/data.bin and check that every byte is consumed.
 
-    python tools/validate_databin.py [DATA_DIR]
+    python tools/validate_databin.py [INSTALL_DIR]
 
 Prints the record count of each list, the parameter-array lengths seen per
 list, and every modifier string (spells, special items) that does not
@@ -10,7 +10,7 @@ parse as a plain `stat=value[:time]` term.
 import collections
 import sys
 
-from allods2.common import DATA
+from allods2.common import as_fs
 from allods2.databin import databin, parse_modifier
 
 LISTS = ("qualities", "materials", "stats", "armour", "shields", "weapons", "items",
@@ -20,7 +20,7 @@ LISTS = ("qualities", "materials", "stats", "armour", "shields", "weapons", "ite
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     try:
-        db = databin(argv[0] if argv else DATA)
+        db = databin(as_fs(argv[0] if argv else None))
     except ValueError as e:
         print(e)
         return 1

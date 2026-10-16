@@ -1,18 +1,16 @@
-"""File-level tests: PNG/BMP I/O and checks against the game install in
-samples/ (skipped when it is absent)."""
+"""File-level tests: PNG/BMP I/O and checks against the game install
+(skipped when it is absent)."""
 
-import os
 
 import numpy as np
 import pytest
 from PIL import Image
 
 from allods2 import graphics as gfx
-from allods2.common import DATA
+from allods2.common import join
 
-from helpers import needs_graphics
+from helpers import GFS, needs_graphics
 
-GRAPHICS = os.path.join(DATA, "graphics")
 
 
 def test_bmp24_top_row_first(tmp_path):
@@ -42,7 +40,7 @@ def test_png_roundtrip(tmp_path):
 
 
 def consistent(rel, kind, count=None):
-    sf = gfx.SpriteFile.load(os.path.join(GRAPHICS, rel))
+    sf = gfx.SpriteFile.load(join("graphics", rel), GFS)
     assert sf.kind == kind
     if count is not None:
         assert len(sf) == count
@@ -67,20 +65,20 @@ def test_sample_sprites_consistent(rel, kind, count, has_palette):
 
 @needs_graphics
 def test_unit_pal_matches_embedded():
-    d = os.path.join(GRAPHICS, "units", "monsters", "bat")
-    assert np.array_equal(gfx.load_pal_file(os.path.join(d, "palette.pal")),
-                          gfx.SpriteFile.load(os.path.join(d, "sprites.256")).palette)
+    d = "graphics/units/monsters/bat/"
+    assert np.array_equal(gfx.load_pal_file(d + "palette.pal", GFS),
+                          gfx.SpriteFile.load(d + "sprites.256", GFS).palette)
 
 
 @needs_graphics
 def test_human_pal():
-    pals = gfx.load_human_palettes(os.path.join(GRAPHICS, "units", "heroes_l", "human.pal"))
+    pals = gfx.load_human_palettes(join("graphics", "units", "heroes_l", "human.pal"), GFS)
     assert len(pals) == 16
 
 
 @needs_graphics
 def test_terrain_bmp_is_tile_strip():
-    bmp = gfx.load_bmp(os.path.join(GRAPHICS, "terrain", "tile1-00.bmp"))
+    bmp = gfx.load_bmp(join("graphics", "terrain", "tile1-00.bmp"), GFS)
     assert bmp.width == 32 and bmp.height % 32 == 0
 
 

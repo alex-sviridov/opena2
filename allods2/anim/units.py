@@ -1,16 +1,16 @@
 """Units, monsters and heroes: which frame to draw at a given tick.
 
 Spec: docs/formats/animation.md (part 2 layout, part 3 timing) and
-docs/formats/units.md.  Frame indices come from the draw FUN_00468640
-(allods2.units), phases from the unit tick FUN_0046b5ef,
-action lengths from the message loop FUN_0040dac9.
+docs/formats/units.md.  Frame indices come from the draw FUN_004632a1
+(allods2.units), phases from the unit tick FUN_0046617c,
+action lengths from the message loop FUN_0040d9b2.
 
 Time is in game ticks (one sequence element per tick); `tick_at_ms`
 converts wall time at a game speed.  Walking is distance-driven: the walk
 cycle advances one element per 16 map units moved (256 units = one cell,
 8 units = one screen pixel), so `move` takes the ticks per cell.
 
-    aset = load_unit_set(64, data_dir)                 # goblin
+    aset = load_unit_set(64)                           # goblin (game data)
     ref = aset.frame_at("attack", 12, tick)            # facing 12 = left
     left, top = aset.placement(ref, x, y)
     aset.draw(canvas, ref, x, y)
@@ -20,10 +20,11 @@ are the ones the spec records (hero dying sprites, the Dying type).
 """
 
 import math
-import os
 
 from .. import units as U
-from ..common import cdiv
+from a2res import basename, dirname, join, splitext
+
+from ..common import as_fs, cdiv
 from .base import (CELL_UNITS, COMPASS, FACINGS, UNITS_PER_PIXEL, Action, AnimationSet,
                    FrameRef)
 
@@ -32,7 +33,7 @@ HERO_SPEED = 18                         # animation.md §3.4 worked example (+0x
 
 
 def walk_ticks_per_cell(v=HERO_SPEED, diagonal=False):
-    """Server walk time for one cell at speed v units/tick (FUN_00563185):
+    """Server walk time for one cell at speed v units/tick (FUN_00559195):
     ceil(256 / step), with step = trunc(v * 0.707) on a diagonal."""
     v = max(1, min(63, v))
     step = int(v * 0.707) if diagonal else v
@@ -41,7 +42,7 @@ def walk_ticks_per_cell(v=HERO_SPEED, diagonal=False):
 
 def walk_odometer(facing, tick, ticks_per_cell, start=0):
     """Client odometer obj+0x9c after `tick + 1` ticks of walking cell after
-    cell (FUN_0046b5ef case 1): each tick moves remaining // ticks_left on
+    cell (FUN_0046617c case 1): each tick moves remaining // ticks_left on
     each axis and adds the truncated length of that step.  Returns
     (odometer, (x, y) moved in map units)."""
     dx, dy = U.step(facing & 0xE)
@@ -69,8 +70,8 @@ class UnitSet(AnimationSet):
     kind = "units"
     preview_facings = COMPASS
 
-    def __init__(self, name, t, td=None, sprites=None, paths=None, palettes=None):
-        super().__init__(name, sprites, paths)
+    def __init__(self, name, t, td=None, sprites=None, paths=None, palettes=None, fs=None):
+        super().__init__(name, sprites, paths, fs)
         self.t = t
         self.td = td
         self.palettes = dict(palettes or {})
@@ -154,7 +155,7 @@ class UnitSet(AnimationSet):
         """The frame `action` shows on its tick `tick` (0 = first tick).
 
         idle: counter `start` (obj+0x9c) then +1 per tick, element
-              (start + tick + 1) mod len (0x46b6ab).
+              (start + tick + 1) mod len (0x466238).
         move: odometer from `start`, walking cell after cell in `facing`
               at `ticks_per_cell` (default walk_ticks_per_cell());
               element (odometer // 16) mod len.
@@ -191,7 +192,7 @@ class UnitSet(AnimationSet):
 
     def missing_frames(self):
         """[(action, facing, source, index)] past the end of their file:
-        the game draws nothing there (heroes, 0x469070)."""
+        the game draws nothing there (heroes, 0x463cd1)."""
         out = []
         for name in self.actions:
             for d in FACINGS:
@@ -245,11 +246,11 @@ class UnitSet(AnimationSet):
             spec = self.paths.get(source + "_pal")
             if spec is None:
                 return self.sprites(source).palette
-            self.palettes[key] = U.load_palette_spec(spec, player, variant)
+            self.palettes[key] = U.load_palette_spec(spec, player, variant, self.fs)
         return self.palettes[key]
 
     def draw(self, canvas, ref, x, y, palette=None, smoothing=True, z=0):
-        """Draw a frame anchored at (x, y) the way FUN_00468640 does: the
+        """Draw a frame anchored at (x, y) the way FUN_004632a1 does: the
         sprite (mirrored in place when ref.mirrored), then its b.256 overlay
         at 50 % with the main sprite's palette."""
         if self.sprites(ref.source) is None:
@@ -267,18 +268,19 @@ def _norm(p):
     return p.replace("\\", "/").lower().strip("/")
 
 
-def load_unit_set(key, data_dir, types=None):
+def load_unit_set(key, fs=None, types=None):
     """UnitSet for a units.reg ID (int or digits), a hero folder
     ("heroes/swordsman", "heroes_l/archer") or a unit file / folder relative
     to graphics/units ("monsters/goblin", "humans/axeman/axeman").
 
-    Heroes (FUN_0046f688): type from the folder name; dying, corpse and
+    Heroes (FUN_0046a215): type from the folder name; dying, corpse and
     bones come from heroes/mage_st (type 24) or heroes_l/unarmed (type 1).
     Others: dying from the type named by Dying.
     """
-    types = types or U.unit_types(data_dir)
+    fs = as_fs(fs)
+    types = types or U.unit_types(fs)
     ids = U.by_id(types)
-    root = os.path.join(data_dir, U.UNITS_DIR)
+    root = U.UNITS_DIR
     k = str(key)
     parts = _norm(k).split("/")
     if parts[0] in ("heroes", "heroes_l") and len(parts) >= 2:
@@ -288,14 +290,14 @@ def load_unit_set(key, data_dir, types=None):
         td = ids[U.HERO_TYPES[dfolder]]
         paths = {}
         for src, f in (("main", folder), ("death", dfolder)):
-            base = os.path.join(root, kind, f, "sprites")
+            base = join(root, kind, f, "sprites")
             paths[src], paths[src + "_b"] = base + ".256", base + "b.256"
-        paths["main_pal"] = paths["death_pal"] = t.palette_spec(data_dir)
-        return UnitSet("%s_%s" % (kind, folder), t, td, paths=paths)
+        paths["main_pal"] = paths["death_pal"] = t.palette_spec()
+        return UnitSet("%s_%s" % (kind, folder), t, td, paths=paths, fs=fs)
     if k.lstrip("-").isdigit():
         t = ids[int(k)]
     else:
-        want = _norm(os.path.splitext(k)[0])
+        want = _norm(splitext(k)[0])
         match = [t for t in types if t.file and want in (_norm(t.file),
                                                          _norm(t.file).rpartition("/")[0])]
         if not match:
@@ -310,20 +312,20 @@ def load_unit_set(key, data_dir, types=None):
     for src, ty in (("main", t), ("death", td)):
         if ty is None:
             continue
-        paths[src], paths[src + "_b"] = ty.sprite_paths(data_dir)
-        paths[src + "_pal"] = ty.palette_spec(data_dir)
-    name = os.path.basename(os.path.dirname(t.file.replace("\\", "/"))) or t.file
-    return UnitSet(name, t, td, paths=paths)
+        paths[src], paths[src + "_b"] = ty.sprite_paths()
+        paths[src + "_pal"] = ty.palette_spec()
+    name = basename(dirname(t.file)) or t.file
+    return UnitSet(name, t, td, paths=paths, fs=fs)
 
 
-def unit_keys(data_dir, types=None):
-    """Every animation set in the install: units.reg IDs with a file, then
+def unit_keys(fs=None, types=None):
+    """Every animation set in the game: units.reg IDs with a file, then
     the hero folders."""
-    types = types or U.unit_types(data_dir)
+    fs = as_fs(fs)
+    types = types or U.unit_types(fs)
     keys = [t.id for t in types if t.file]
-    root = os.path.join(data_dir, U.UNITS_DIR)
     for kind in ("heroes", "heroes_l"):
-        for f in sorted(os.listdir(os.path.join(root, kind))):
-            if os.path.isfile(os.path.join(root, kind, f, "sprites.256")):
+        for f in sorted(fs.listdir(join(U.UNITS_DIR, kind)), key=str.lower):
+            if fs.isfile(join(U.UNITS_DIR, kind, f, "sprites.256")):
                 keys.append("%s/%s" % (kind, f))
     return keys

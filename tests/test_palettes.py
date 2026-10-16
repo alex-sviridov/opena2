@@ -1,7 +1,6 @@
 """Palette tests: synthetic ones per rule in docs/formats/palettes.md, then
 checks against every palette in the install (skipped when it is absent)."""
 
-import os
 import struct
 from dataclasses import astuple
 
@@ -10,13 +9,12 @@ import pytest
 from PIL import Image
 
 from allods2 import graphics as gfx
-from allods2.common import DATA
+from allods2.common import join
 from allods2.graphics.palette import (BRIGHT2, BRIGHT32, FADE16, GRAY, MASK, PLAIN,
                                       TEAM_COLOR_INDEX)
 
-from helpers import needs_graphics
+from helpers import GFS, needs_graphics
 
-GRAPHICS = os.path.join(DATA, "graphics")
 
 
 def quads(entries):
@@ -172,8 +170,8 @@ def test_code_ramp_palettes():
 def test_code_ramps16():
     r = gfx.code_ramps16()
     assert len(r) == 14 and all(t.shape == (16, 3) for t in r.values())
-    assert r[0x629c48][15].tolist() == [255, 255, 255]
-    assert r[0x629c68][0].tolist() == [192, 180, 120] and r[0x629c68][15].tolist() == [32, 32, 32]
+    assert r[0x61fa80][15].tolist() == [255, 255, 255]
+    assert r[0x61faa0][0].tolist() == [192, 180, 120] and r[0x61faa0][15].tolist() == [32, 32, 32]
 
 
 @pytest.mark.parametrize("hour,tint", [(12, (0, 0, 0)), (0, (0, 12, 48)), (23, (0, 12, 48)),
@@ -248,31 +246,31 @@ def test_object_light_row():
 @needs_graphics
 def test_every_palette_in_install_parses():
     seen = 0
-    for rel, kind, pals in gfx.find_palettes(DATA):
-        assert gfx.check_palette_file(os.path.join(DATA, rel), kind, pals) == [], rel
+    for rel, kind, pals in gfx.find_palettes(GFS):
+        assert gfx.check_palette_file(rel, kind, pals, GFS) == [], rel
         for p in pals:
             assert p.rgb.shape == (256, 3) and p.rgb.dtype == np.uint8
             assert 0 <= p.rgb.min() and p.rgb.max() <= 255
         seen += len(pals)
-    assert seen == 2973
+    assert seen == 2854
 
 
 @needs_graphics
 def test_channels_are_8_bit_not_vga_6_bit():
-    p = gfx.load_pal(os.path.join(GRAPHICS, "units", "monsters", "bat", "palette.pal"))
+    p = gfx.load_pal(join("graphics", "units", "monsters", "bat", "palette.pal"), GFS)
     assert p.rgb.max() > 63 and (p.rgb & 3).any()
 
 
 @needs_graphics
 def test_human_pal_player_colours_differ_at_index_164():
-    pals = gfx.load_human(os.path.join(GRAPHICS, "units", "humans", "human.pal"))
+    pals = gfx.load_human(join("graphics", "units", "humans", "human.pal"), GFS)
     assert len(pals) == 16
     assert len({tuple(p.rgb[TEAM_COLOR_INDEX]) for p in pals}) == 16
 
 
 @needs_graphics
 def test_terrain_tiles_share_one_palette():
-    tiles = sorted(f for f in os.listdir(os.path.join(GRAPHICS, "terrain")) if f.startswith("tile"))
-    first = gfx.load_palettes(os.path.join(GRAPHICS, "terrain", tiles[0]))[0]
+    tiles = sorted(f for f in GFS.listdir("graphics/terrain") if f.startswith("tile"))
+    first = gfx.load_palettes(join("graphics", "terrain", tiles[0]), GFS)[0]
     for f in tiles[1:]:
-        assert gfx.load_palettes(os.path.join(GRAPHICS, "terrain", f))[0] == first
+        assert gfx.load_palettes(join("graphics", "terrain", f), GFS)[0] == first

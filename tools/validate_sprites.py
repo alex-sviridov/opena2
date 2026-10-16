@@ -1,30 +1,28 @@
 """Decode every sprite under a directory and report RLE stream consistency.
 
-    python tools/validate_sprites.py [DATA_DIR]
+    python tools/validate_sprites.py [INSTALL_DIR]
 
 A sprite is consistent when its decoder consumes exactly its data block.
-DATA_DIR defaults to the game install under samples/.
+Reads the install's .res archives (default: allods2.common.INSTALL).
 """
 
 import collections
-import glob
-import os
 import sys
 
 from allods2 import graphics as gfx
-from allods2.common import DATA
+from allods2.common import as_fs
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    data_dir = argv[0] if argv else DATA
+    fs = as_fs(argv[0] if argv else None)
     stats = collections.Counter()
     problems = []
-    for path in sorted(glob.glob(os.path.join(data_dir, "**", "*"), recursive=True)):
+    for path in fs.files():
         if not path.lower().endswith((".256", ".16a", ".16")):
             continue
         try:
-            sf = gfx.SpriteFile.load(path)
+            sf = gfx.SpriteFile.load(path, fs)
         except ValueError as e:
             problems.append("%s: %s" % (path, e))
             continue

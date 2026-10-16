@@ -17,7 +17,7 @@ game = ["pygame>=2.5"]
 dev = ["pytest>=8"]
 
 [tool.setuptools.packages.find]
-include = ["allods2*"]
+include = ["allods2*", "a2res*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

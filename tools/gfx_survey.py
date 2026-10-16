@@ -1,7 +1,7 @@
 """Survey the graphics files in the install: per-extension statistics and
 hex dumps of small and large samples.
 
-    python tools/gfx_survey.py [DATA_DIR] [-o out/gfx]
+    python tools/gfx_survey.py [INSTALL_DIR] [-o out/gfx]
 
 Writes OUT/stats.txt and OUT/dumps/<ext>/<name>.txt. Each dump holds the
 first 128 and last 32 bytes, since sprite containers keep their frame count
@@ -14,17 +14,17 @@ import collections
 import os
 import statistics
 
-from allods2.common import DATA, OUT
+from allods2.common import OUT, as_fs
 
 # Graphics extensions; "b.256" separates smoothing overlays from plain .256.
 KINDS = (".256", "b.256", ".16a", ".16", ".pal", ".bmp", ".png", ".dat")
 
 
-def kind_of(path):
+def kind_of(path, fs):
     """Extension class; "b.256" is a smoothing overlay: x b.256 next to x.256."""
     low = path.lower()
     ext = os.path.splitext(low)[1]
-    if low.endswith("b.256") and os.path.exists(path[:-5] + path[-4:]):
+    if low.endswith("b.256") and fs.isfile(path[:-5] + path[-4:]):
         return "b.256"
     if ext == ".dat" and "graphics" not in low.replace("\\", "/").split("/"):
         return None
@@ -41,14 +41,12 @@ def hexdump(data, base=0):
     return "\n".join(out)
 
 
-def collect(data_dir):
+def collect(fs):
     files = collections.defaultdict(list)
-    for dp, _, names in os.walk(data_dir):
-        for n in names:
-            p = os.path.join(dp, n)
-            k = kind_of(p)
-            if k:
-                files[k].append((os.path.getsize(p), os.path.relpath(p, data_dir)))
+    for p in fs.files():
+        k = kind_of(p, fs)
+        if k:
+            files[k].append((len(fs.read(p)), p))
     return files
 
 
@@ -59,10 +57,11 @@ def folder_of(rel):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("data", nargs="?", default=DATA)
+    ap.add_argument("install", nargs="?")
     ap.add_argument("-o", "--out", default=os.path.join(OUT, "gfx"))
     a = ap.parse_args(argv)
-    files = collect(a.data)
+    fs = as_fs(a.install)
+    files = collect(fs)
     lines = []
     for k in KINDS:
         entries = sorted(files.get(k, []))
@@ -79,8 +78,7 @@ def main(argv=None):
         ddir = os.path.join(a.out, "dumps", k.lstrip("."))
         os.makedirs(ddir, exist_ok=True)
         for size, rel in picks:
-            with open(os.path.join(a.data, rel), "rb") as fh:
-                data = fh.read()
+            data = fs.read_bytes(rel)
             name = rel.replace("\\", "/").replace("/", "__") + ".txt"
             with open(os.path.join(ddir, name), "w") as out:
                 out.write("%s  (%d bytes)\n\nfirst 128 bytes:\n%s\n" % (rel, size, hexdump(data[:128])))

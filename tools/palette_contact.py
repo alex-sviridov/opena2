@@ -1,10 +1,10 @@
 """Write a contact sheet of every distinct palette the game uses.
 
-    python tools/palette_contact.py [DATA_DIR] [-o out/contact/palettes.png]
+    python tools/palette_contact.py [INSTALL_DIR] [-o out/contact/palettes.png]
 
 Each palette is a 16x16 swatch (entry i at row i // 16, column i % 16),
 labelled with its source file and how many other files carry the same
-colours. Palettes built in code (FUN_00463d30) come first. The output
+colours. Palettes built in code (FUN_0045ea70) come first. The output
 contains game data, so it belongs in the gitignored out/.
 """
 
@@ -15,15 +15,15 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from allods2 import graphics as gfx
-from allods2.common import DATA, OUT
+from allods2.common import OUT, as_fs
 
 ORDER = ["code", "human.pal", ".pal", ".bmp", ".256", "*b.256", ".16a"]
 
 
-def collect(data_dir):
+def collect(fs):
     """[(kind, label, rgb)] with identical colours merged per first source."""
     entries = [("code", p.name, p.rgb) for p in gfx.code_palettes()]
-    for rel, kind, pals in gfx.find_palettes(data_dir):
+    for rel, kind, pals in gfx.find_palettes(fs):
         rel = rel.replace(os.sep, "/").removeprefix("graphics/")
         for i, p in enumerate(pals):
             entries.append((kind, rel if len(pals) == 1 else "%s[%d]" % (rel, i), p.rgb))
@@ -70,10 +70,10 @@ def sheet(items, ramps, cols=24, cell=4):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("data", nargs="?", default=DATA)
+    ap.add_argument("install", nargs="?")
     ap.add_argument("-o", "--out", default=os.path.join(OUT, "contact", "palettes.png"))
     a = ap.parse_args(argv)
-    items = collect(a.data)
+    items = collect(as_fs(a.install))
     img = sheet(items, gfx.code_ramps16())
     os.makedirs(os.path.dirname(a.out), exist_ok=True)
     img.save(a.out)

@@ -10,12 +10,11 @@ Classes (one AnimationSet subclass each, same surface, see base.py):
     burning cells (fire/steam)  effects.BurningSet    load_burning_set
     cursors                     ui.CursorSet          load_cursor_set
     other UI sequences          ui.UiSequenceSet      load_ui_set
-load_set("<kind>:<id>", data_dir) picks the loader by prefix.
+load_set("<kind>:<id>", fs) picks the loader by prefix; fs is an a2res FS
+(None = the game's, allods2.common.game_fs) and file names are game paths.
 """
 
-import os
-
-from ..common import find_file
+from ..common import as_fs
 from .base import (CELL, CELL_UNITS, COMPASS, DEFAULT_SPEED, FACINGS, TICK_RATES,
                    UNITS_PER_PIXEL, Action, AnimationSet, FrameRef, Part, period_ms,
                    tick_at_ms)
@@ -37,28 +36,30 @@ KINDS = {"unit": load_unit_set, "structure": load_structure_set,
          "cursor": load_cursor_set, "ui": load_ui_set}
 
 
-def load_set(key, data_dir):
+def load_set(key, fs=None):
     """Any animation set by key: "<kind>:<id>" with kind in KINDS
     (e.g. "structure:11", "object:0", "projectile:12"), or a unit key
     (units.reg ID, hero folder, unit file/folder) without a prefix."""
+    fs = as_fs(fs)
     kind, sep, rest = str(key).partition(":")
     if sep and kind in KINDS:
-        return KINDS[kind](rest, data_dir)
-    return load_unit_set(key, data_dir)
+        return KINDS[kind](rest, fs)
+    return load_unit_set(key, fs)
 
 
-def all_keys(data_dir):
-    """{class folder: [load_set key]} of everything animated in the install."""
-    objs = load_object_records(data_dir)
+def all_keys(fs=None):
+    """{class folder: [load_set key]} of everything animated in the game."""
+    fs = as_fs(fs)
+    objs = load_object_records(fs)
     return {
-        "units": [str(k) for k in unit_keys(data_dir)],
-        "structures": ["structure:%d" % i for i in sorted(load_structure_records(data_dir))],
+        "units": [str(k) for k in unit_keys(fs)],
+        "structures": ["structure:%d" % i for i in sorted(load_structure_records(fs))],
         "objects": ["object:%d" % i for i in sorted(objs)
-                    if find_file(os.path.join(data_dir, "graphics/objects"), objs[i]["file"] + ".256")],
-        "projectiles": ["projectile:%d" % i for i in sorted(load_projectile_records(data_dir))],
+                    if fs.isfile("graphics/objects/" + objs[i]["file"] + ".256")],
+        "projectiles": ["projectile:%d" % i for i in sorted(load_projectile_records(fs))],
         "terrain": ["water:auto"],
         "effects": ["burning:"],
         "cursors": ["cursor:" + cursor_name(c[0]) for c in CURSORS],
-        "ui": ["ui:" + n for n, _, _ in ui_sequence_paths(data_dir)],
+        "ui": ["ui:" + n for n, _, _ in ui_sequence_paths(fs)],
     }
 

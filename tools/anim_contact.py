@@ -1,6 +1,6 @@
 """Labelled contact sheets of one unit sprite file, to check its frame layout.
 
-    python tools/anim_contact.py NAME FILE TYPE_ID [DATA_DIR] [-o out/contact]
+    python tools/anim_contact.py NAME FILE TYPE_ID [INSTALL_DIR] [-o out/contact]
 
 FILE is relative to graphics/units without extension (e.g.
 heroes/swordsman/sprites); TYPE_ID the units.reg ID whose layout applies.
@@ -25,7 +25,7 @@ from PIL import Image, ImageDraw
 
 from allods2 import graphics as gfx
 from allods2 import units as U
-from allods2.common import DATA, OUT
+from allods2.common import OUT, as_fs
 
 SPECIMENS = [("hero_swordsman", "heroes/swordsman/sprites", 3),
              ("goblin", "monsters/goblin/sprites", 64),
@@ -36,12 +36,13 @@ LABEL_H = 12
 MAX_CELL = 128
 
 
-def palette(path, data):
-    for d in (os.path.dirname(path), os.path.dirname(os.path.dirname(path))):
-        p = os.path.join(d, "palette.pal")
-        if os.path.isfile(p):
-            return gfx.load_pal_file(p)
-    return gfx.load_human_palettes(U.human_pal_path(data))[0]
+def palette(path, fs):
+    d = path.rpartition("/")[0]
+    for folder in (d, d.rpartition("/")[0]):
+        p = folder + "/palette.pal"
+        if fs.isfile(p):
+            return gfx.load_pal_file(p, fs)
+    return gfx.load_human_palettes(U.HUMAN_PAL, fs)[0]
 
 
 def blocks(t, own_death, n):
@@ -96,12 +97,12 @@ def sheet(rows, cw, ch, left=0):
     return out
 
 
-def make(name, rel, type_id, data, out_dir):
-    types = U.by_id(U.unit_types(data))
+def make(name, rel, type_id, fs, out_dir):
+    types = U.by_id(U.unit_types(fs))
     t = types[type_id]
-    path = os.path.join(data, U.UNITS_DIR, rel + ".256")
-    sf = gfx.SpriteFile.load(path)
-    pal = palette(path, data)
+    path = U.UNITS_DIR + "/" + rel + ".256"
+    sf = gfx.SpriteFile.load(path, fs)
+    pal = palette(path, fs)
     n = len(sf)
     own_death = t.Dying == t.id and not rel.startswith("heroes") or \
         os.path.basename(os.path.dirname(rel)) in ("unarmed", "mage_st")
@@ -135,10 +136,10 @@ def make(name, rel, type_id, data, out_dir):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("spec", nargs="*", help="NAME FILE TYPE_ID [DATA_DIR]")
+    ap.add_argument("spec", nargs="*", help="NAME FILE TYPE_ID [INSTALL_DIR]")
     ap.add_argument("-o", "--out", default=os.path.join(OUT, "contact"))
     a = ap.parse_args(argv)
-    data = a.spec[3] if len(a.spec) > 3 else DATA
+    data = as_fs(a.spec[3] if len(a.spec) > 3 else None)
     specs = [(a.spec[0], a.spec[1], int(a.spec[2]))] if a.spec else SPECIMENS
     for name, rel, tid in specs:
         make(name, rel, tid, data, a.out)

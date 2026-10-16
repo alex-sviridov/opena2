@@ -1,10 +1,16 @@
 """Command line entry point: python -m allods2 <group> <command> ...
 
     python -m allods2 gfx export FILE DEST [--palette PAL] [--index N | --sheet [--cols C]]
-    python -m allods2 anim preview-all DEST [--data DIR] [--only CLASS ...]
-    python -m allods2 anim preview SPRITE DEST [--data DIR] [--speed N]
+    python -m allods2 anim preview-all DEST [--install DIR] [--only CLASS ...]
+    python -m allods2 anim preview SPRITE DEST [--install DIR] [--speed N]
                                    [--player P] [--variant V] [--grid PNG]
+    python -m allods2 res ls [PATH] [--install DIR]
+    python -m allods2 res list ARCHIVE.res
+    python -m allods2 res extract INSTALL|ARCHIVE.res DEST
 
+FILE and PAL are game paths (graphics/units/monsters/bat/sprites.256, read
+from the install's .res archives) or, when such a file exists on disk,
+plain file paths.
 `gfx export` writes one PNG per sprite (DEST/<stem>_NNN.png) for .256,
 b.256, .16 and .16a files, or DEST itself for a .bmp; with --index N, DEST
 is the PNG of sprite N; with --sheet, DEST is one PNG with every sprite on
@@ -20,7 +26,12 @@ under graphics/units (monsters/goblin), or <kind>:<id> for the other
 classes (structure:11, object:0, projectile:12, water:auto, burning:,
 cursor:pickup, ui:chrgen_cube). `anim preview-all` writes
 DEST/<class>/<name>/<action>[_dNN].gif and grid.png for everything.
---data defaults to $ALLODS2_DATA, else the install under samples/ (see
+
+`res ls` lists a game folder (archives at the top); `res list` prints
+offset, size and path of every file in one archive; `res extract` unpacks
+one archive, or every .res of an install, into DEST/<archive stem>/... for
+inspection (the library itself reads the archives directly).
+--install defaults to $ALLODS2_INSTALL, else samples/allods2_en_gog (see
 allods2.common). Write into out/ or outside the repo, never samples/.
 """
 
@@ -31,15 +42,25 @@ import os
 import numpy as np
 
 from . import graphics as gfx
-from .common import DATA, OUT
+import a2res
+from a2res import OS
+
+from .common import INSTALL, OUT, as_fs
 
 
-def load_palette(spec):
+def source(path, install=None):
+    """(fs, path): a file on disk as is, else a game path in the install."""
+    if os.path.isfile(path):
+        return OS, path
+    return as_fs(install), path
+
+
+def load_palette(spec, install=None):
     """'path' or 'path:N' (N-th of a multi-palette file such as human.pal)."""
     path, sep, n = spec.rpartition(":")
     if not (sep and n.isdigit()):
         path, n = spec, ""
-    pals = gfx.load_palettes(path)
+    pals = gfx.load_palettes(path, source(path, install)[0])
     return pals[int(n or 0)].rgb
 
 
@@ -66,16 +87,17 @@ def _write_one(path, img, what):
 
 
 def gfx_export(a):
+    fs, path = source(a.file, a.install)
     if a.file.lower().endswith(".bmp"):
-        return _write_one(a.dest, gfx.load_bmp(a.file).rgb, a.file)
-    sf = gfx.SpriteFile.load(a.file)
-    pal = load_palette(a.palette) if a.palette else None
+        return _write_one(a.dest, gfx.load_bmp(path, fs).rgb, a.file)
+    sf = gfx.SpriteFile.load(path, fs)
+    pal = load_palette(a.palette, a.install) if a.palette else None
     if a.index is not None:
         return _write_one(a.dest, sf.to_rgba(a.index, pal), "%s[%d]" % (a.file, a.index))
     if a.sheet:
         return _write_one(a.dest, sheet(sf, pal, a.cols), "%s: %d sprites" % (a.file, len(sf)))
     os.makedirs(a.dest, exist_ok=True)
-    stem = os.path.splitext(os.path.basename(a.file))[0]
+    stem = os.path.splitext(os.path.basename(a.file.replace("\\", "/")))[0]
     for i in range(len(sf)):
         gfx.write_png(os.path.join(a.dest, "%s_%03d.png" % (stem, i)), sf.to_rgba(i, pal))
     print("%s: %d %s sprites -> %s/" % (a.file, len(sf), sf.kind, a.dest))
@@ -85,7 +107,7 @@ def gfx_export(a):
 def anim_preview(a):
     from . import anim
     from .anim import preview as P
-    aset = anim.load_set(a.sprite, a.data)
+    aset = anim.load_set(a.sprite, as_fs(a.install))
     aset.player, aset.variant = a.player, a.variant
     paths = P.write_gifs(aset, a.dest, a.speed)
     grid = a.grid or os.path.join(OUT, "contact", "anim_%s_grid.png" % aset.name)
@@ -99,12 +121,13 @@ def anim_preview(a):
 def anim_preview_all(a):
     from . import anim
     from .anim import preview as P
+    fs = as_fs(a.install)
     total, used = 0, set()
-    for cls, keys in anim.all_keys(a.data).items():
+    for cls, keys in anim.all_keys(fs).items():
         if a.only and cls not in a.only:
             continue
         for key in keys:
-            aset = anim.load_set(key, a.data)
+            aset = anim.load_set(key, fs)
             name = aset.name
             if (cls, name) in used:         # e.g. units.reg IDs 1 and 2 share humans/unarmed
                 name = "%s_%s" % (name, key.replace(":", "_").replace("/", "_"))
@@ -115,6 +138,32 @@ def anim_preview_all(a):
             total += n
         print("%s: %d sets" % (cls, len(keys)))
     print("%d GIFs -> %s/" % (total, a.dest))
+    return 0
+
+
+def res_ls(a):
+    fs = as_fs(a.install)
+    for name in fs.listdir(a.path):
+        p = a2res.join(a.path, name)
+        print("%-5s %10s %s" % ("dir" if fs.isdir(p) else "", "" if fs.isdir(p) else len(fs.read(p)), p))
+    return 0
+
+
+def res_list(a):
+    with a2res.ResArchive(a.archive) as arc:
+        for path, e in arc.walk():
+            print("0x%08x %10d %s" % (e.a, e.b, path))
+    return 0
+
+
+def res_extract(a):
+    if os.path.isdir(a.source):
+        archives = list(a2res.ResFS(a.source).archives.values())
+    else:
+        archives = [a2res.ResArchive(a.source)]
+    for arc in archives:
+        print("%s: %d files -> %s/" % (os.path.basename(arc.path), a2res.extract(arc, a.dest),
+                                      os.path.join(a.dest, arc.name)))
     return 0
 
 
@@ -130,12 +179,13 @@ def main(argv=None):
     one.add_argument("--index", type=int, help="write only sprite N to DEST (a PNG)")
     one.add_argument("--sheet", action="store_true", help="write all sprites on one grid PNG")
     ex.add_argument("--cols", type=int, default=16, help="grid columns for --sheet")
+    ex.add_argument("--install", default=INSTALL)
     ex.set_defaults(func=gfx_export)
     g = groups.add_parser("anim", help="unit animation").add_subparsers(dest="cmd", required=True)
     pv = g.add_parser("preview", help="animated GIFs per action and facing, plus a still grid")
     pv.add_argument("sprite")
     pv.add_argument("dest")
-    pv.add_argument("--data", default=DATA)
+    pv.add_argument("--install", default=INSTALL)
     pv.add_argument("--speed", type=int, default=4, choices=range(9))
     pv.add_argument("--player", type=int, default=0, help="human.pal player colour (Palette 0)")
     pv.add_argument("--variant", type=int, default=0, help="palette<N>.pal variant (Palette > 0)")
@@ -143,10 +193,22 @@ def main(argv=None):
     pv.set_defaults(func=anim_preview)
     pa = g.add_parser("preview-all", help="GIFs and grids for every animated thing, by class")
     pa.add_argument("dest")
-    pa.add_argument("--data", default=DATA)
+    pa.add_argument("--install", default=INSTALL)
     pa.add_argument("--speed", type=int, default=4, choices=range(9))
     pa.add_argument("--only", nargs="*", help="classes: units structures objects projectiles "
                                              "terrain effects cursors ui")
     pa.set_defaults(func=anim_preview_all)
+    g = groups.add_parser("res", help=".res archives").add_subparsers(dest="cmd", required=True)
+    d = g.add_parser("ls", help="list a game folder")
+    d.add_argument("path", nargs="?", default="")
+    d.add_argument("--install", default=INSTALL)
+    d.set_defaults(func=res_ls)
+    ls = g.add_parser("list", help="list the files of an archive")
+    ls.add_argument("archive")
+    ls.set_defaults(func=res_list)
+    x = g.add_parser("extract", help="unpack an archive or every archive of an install")
+    x.add_argument("source", help="ARCHIVE.res or an install directory")
+    x.add_argument("dest")
+    x.set_defaults(func=res_extract)
     a = ap.parse_args(argv)
     return a.func(a)

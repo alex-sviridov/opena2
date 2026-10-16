@@ -2,20 +2,21 @@
 
 A palette is a (256, 3) uint8 RGB array.  `Palette` adds the raw reserved
 bytes (so files round-trip exactly) and I/O helpers.  `shade_table` is the
-game's palette -> brightness-level table builder (FUN_00425bee); `pack16`
+game's palette -> brightness-level table builder (FUN_0042339e); `pack16`
 is its final RGB888 -> 16-bit step.
 """
 
-import glob
 import os
 import struct
 
 import numpy as np
 
+from ..common import read
+
 PALETTE_BYTES = 0x400
 PAL_OFFSET = 0x36           # the game seeks here in BMP-wrapped .pal files
 HUMAN_PALETTES = 16
-TEAM_COLOR_INDEX = 164      # 0x148 / 2, cached per player colour (FUN_0048392f)
+TEAM_COLOR_INDEX = 164      # 0x148 / 2, cached per player colour (FUN_0047e345)
 
 
 def read_palette(buf, offset=0):
@@ -86,30 +87,28 @@ class Palette:
         return "Palette(%r)" % self.name
 
 
-def load_pal_file(path):
-    """Unit .pal: the game seeks to 0x36 and reads 0x400 bytes (0x47f108)."""
-    return load_pal(path).rgb
+def load_pal_file(path, fs=None):
+    """Unit .pal: the game seeks to 0x36 and reads 0x400 bytes (0x479b1e)."""
+    return load_pal(path, fs).rgb
 
 
-def load_pal(path):
-    with open(path, "rb") as f:
-        f.seek(PAL_OFFSET)
-        return Palette.from_bytes(f.read(PALETTE_BYTES), name=path)
+def load_pal(path, fs=None):
+    """path in `fs` (a2res FS; None = OS path), as for every loader here."""
+    return Palette.from_bytes(read(path, fs), PAL_OFFSET, name=path)
 
 
-def load_human_palettes(path):
+def load_human_palettes(path, fs=None):
     """units/humans/human.pal: 16 raw palettes of 0x400 bytes each."""
-    return [p.rgb for p in load_human(path)]
+    return [p.rgb for p in load_human(path, fs)]
 
 
-def load_human(path):
-    with open(path, "rb") as f:
-        data = f.read(HUMAN_PALETTES * PALETTE_BYTES)
+def load_human(path, fs=None):
+    data = read(path, fs)[:HUMAN_PALETTES * PALETTE_BYTES]
     return [Palette.from_bytes(data, i * PALETTE_BYTES, "%s[%d]" % (path, i))
             for i in range(len(data) // PALETTE_BYTES)]
 
 
-def load_palettes(path):
+def load_palettes(path, fs=None):
     """Every palette in a file, by the rule the game uses for that file type:
 
     - `human.pal` (raw, a multiple of 0x400 bytes): one per 0x400 bytes
@@ -118,12 +117,11 @@ def load_palettes(path):
     - 8-bit `.bmp`: the colour table (biClrUsed entries, 0 = 256), zero-padded
     Returns [] for files without a palette.
     """
-    with open(path, "rb") as f:
-        data = f.read()
+    data = read(path, fs)
     ext = os.path.splitext(path)[1].lower()
     if ext == ".pal":
-        if data[:2] != b"BM" and len(data) % PALETTE_BYTES == 0:
-            return load_human(path)
+        if bytes(data[:2]) != b"BM" and len(data) % PALETTE_BYTES == 0:
+            return load_human(path, fs)
         return [Palette.from_bytes(data, PAL_OFFSET, path)]
     if ext in (".256", ".16a", ".16"):
         if len(data) >= 4 and struct.unpack_from("<I", data, len(data) - 4)[0] & 0x80000000:
@@ -136,7 +134,7 @@ def load_palettes(path):
             return []
         used, = struct.unpack_from("<I", data, 46)
         n = used or 256
-        table = data[14 + hsize:14 + hsize + 4 * n].ljust(PALETTE_BYTES, b"\0")
+        table = bytes(data[14 + hsize:14 + hsize + 4 * n]).ljust(PALETTE_BYTES, b"\0")
         return [Palette.from_bytes(table, 0, path)]
     raise ValueError("no palette rule for %s" % path)
 
@@ -154,21 +152,20 @@ def source_kind(path):
     return ext
 
 
-def find_palettes(data_dir):
-    """Yield (path relative to data_dir, source_kind, [Palette]) for every
-    file under data_dir that has palettes, in sorted path order."""
-    for path in sorted(glob.glob(os.path.join(data_dir, "**", "*"), recursive=True)):
-        if path.lower().endswith(PALETTE_EXTS) and os.path.isfile(path):
-            pals = load_palettes(path)
+def find_palettes(fs, top=""):
+    """Yield (game path, source_kind, [Palette]) for every file under `top`
+    in `fs` that has palettes, in sorted path order."""
+    for path in fs.files(top):
+        if path.lower().endswith(PALETTE_EXTS):
+            pals = load_palettes(path, fs)
             if pals:
-                yield os.path.relpath(path, data_dir), source_kind(path), pals
+                yield path, source_kind(path), pals
 
 
-def check_palette_file(path, kind, pals):
+def check_palette_file(path, kind, pals, fs=None):
     """Rule violations (palettes.md) of one find_palettes entry: exact
     round trip, the .pal / human.pal container shape, zero reserved bytes."""
-    with open(path, "rb") as f:
-        data = f.read()
+    data = bytes(read(path, fs))
     bad = []
     if kind == "human.pal":
         if len(data) != HUMAN_PALETTES * PALETTE_BYTES:
@@ -193,7 +190,7 @@ def check_palette_file(path, kind, pals):
     return bad
 
 
-# --- shade tables (FUN_00425bee) ---------------------------------------------
+# --- shade tables (FUN_0042339e) ---------------------------------------------
 
 MASK, PLAIN, BRIGHT2, BRIGHT32, FADE16, GRAY = range(6)
 
@@ -202,7 +199,7 @@ def shade_table(rgb, levels, mode, tint=(0, 0, 0)):
     """RGB888 rows the game converts to 16-bit, as an (n, 256, 3) uint8 array.
 
     tint is the day/night (R, G, B) bias the game passes when the 4th
-    argument is 1 (FUN_0047a208); pass (0, 0, 0) for argument 0.  Row r of
+    argument is 1 (FUN_00474d98); pass (0, 0, 0) for argument 0.  Row r of
     BRIGHT2 / BRIGHT32 / GRAY is level k = levels - r (row 0 brightest);
     row r of FADE16 is k = r + 1 (row 15 = full colour).
     MASK and PLAIN fill one row; FADE16 always fills 16.  The game's
@@ -237,7 +234,7 @@ def shade_table(rgb, levels, mode, tint=(0, 0, 0)):
 def pack16(rgb, bits=(5, 6, 5)):
     """RGB888 -> 16-bit pixels: each channel `c >> (8 - n) << shift`,
     R highest.  The game reads widths and shifts from the surface
-    (0x5fb958..0x5fb968, 0x62c9bc); (5, 6, 5) and (5, 5, 5) are typical."""
+    (0x5f17d0..0x5f17e0, 0x6227f4); (5, 6, 5) and (5, 5, 5) are typical."""
     rgb = np.asarray(rgb, np.uint16)
     rb, gb, bb = bits
     return ((rgb[..., 0] >> (8 - rb)) << (gb + bb)
@@ -256,7 +253,7 @@ def unpack16(px, bits=(5, 6, 5)):
     return np.stack(out, -1).astype(np.uint8)
 
 
-# --- palettes built in code (FUN_00463d30) -----------------------------------
+# --- palettes built in code (FUN_0045ea70) -----------------------------------
 
 # 256-entry gradients: entry i = (i * R // 255, i * G // 255, i * B // 255).
 # The game converts each with shade_table(..., 16, FADE16).
@@ -279,34 +276,34 @@ def code_palettes():
 
 
 def code_ramps16():
-    """The 14 sixteen-colour 16-bit tables FUN_00463d30 writes directly,
+    """The 14 sixteen-colour 16-bit tables FUN_0045ea70 writes directly,
     as {table address: (16, 3) RGB888 before pack16}."""
     i = np.arange(16, dtype=np.int64)
     j = 15 - i
     z = np.zeros(16, np.int64)
     lin = lambda m: i * m // 15
     tables = {
-        0x62afb8: (z + 8, z + 8, z + 8),
-        0x629c48: (i * 17, i * 17, i * 17),
-        0x62aaf0: (i * 14, i * 14, i * 14),
-        0x62af58: (lin(185), lin(159), lin(73)),
-        0x62af38: (lin(107), lin(154), lin(120)),
-        0x62afd8: (lin(255), lin(255), lin(64)),
-        0x62b068: (lin(255), lin(64), lin(64)),
-        0x62a6d0: (lin(64), lin(255), lin(64)),
-        0x62a2a8: (lin(160), lin(120), lin(50)),
-        0x62af98: (lin(139), lin(65), lin(32)),
-        0x62af18: (lin(150), lin(90), z),
-        0x62b028: (141 - lin(61), lin(126), lin(49)),
-        0x62b008: (255 - lin(175), lin(252), lin(98)),
-        0x629c68: (j * 160 // 15 + 32, j * 148 // 15 + 32, j * 88 // 15 + 32),
+        0x620df0: (z + 8, z + 8, z + 8),
+        0x61fa80: (i * 17, i * 17, i * 17),
+        0x620928: (i * 14, i * 14, i * 14),
+        0x620d90: (lin(185), lin(159), lin(73)),
+        0x620d70: (lin(107), lin(154), lin(120)),
+        0x620e10: (lin(255), lin(255), lin(64)),
+        0x620ea0: (lin(255), lin(64), lin(64)),
+        0x620508: (lin(64), lin(255), lin(64)),
+        0x6200e0: (lin(160), lin(120), lin(50)),
+        0x620dd0: (lin(139), lin(65), lin(32)),
+        0x620d50: (lin(150), lin(90), z),
+        0x620e60: (141 - lin(61), lin(126), lin(49)),
+        0x620e40: (255 - lin(175), lin(252), lin(98)),
+        0x61faa0: (j * 160 // 15 + 32, j * 148 // 15 + 32, j * 88 // 15 + 32),
     }
     return {a: np.stack(t, 1).astype(np.uint8) for a, t in tables.items()}
 
 
 def player_text_ramp(rgb, tint=(0, 0, 0)):
     """16-entry colour table for player colour palette `rgb` (a human.pal
-    entry), as FUN_0048392f builds at 0x629c90 + p * 0x20: slot s is
+    entry), as FUN_0047e345 builds at 0x61fac8 + p * 0x20: slot s is
     index 164 of BRIGHT2 row 15 - s // 2, i.e. the colour x (s // 2 + 1) / 8."""
     rows = shade_table(rgb, 16, BRIGHT2, tint)
     return np.stack([rows[15 - s // 2, TEAM_COLOR_INDEX] for s in range(16)])

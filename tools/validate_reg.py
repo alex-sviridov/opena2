@@ -1,6 +1,6 @@
 """Parse every .reg file and check its byte accounting.
 
-    python tools/validate_reg.py [DATA_DIR]
+    python tools/validate_reg.py [INSTALL_DIR]
 
 Header + 32·N directory + u32 blob size + blob must equal the file size;
 every section's child range and every string/array blob range must be in
@@ -9,23 +9,21 @@ lookup) are listed.
 """
 
 import collections
-import glob
-import os
 import sys
 
-from allods2.common import DATA
+from allods2.common import as_fs
 from allods2.reg import T_FLOAT, T_INTS, T_STRING, load_reg
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    data = argv[0] if argv else DATA
+    fs = as_fs(argv[0] if argv else None)
     bad, types, odd = [], collections.Counter(), []
-    paths = sorted(glob.glob(os.path.join(data, "**", "*.reg"), recursive=True))
+    paths = fs.glob("*.reg")
     for p in paths:
-        rel = os.path.relpath(p, data)
+        rel = p
         try:
-            r = load_reg(p)
+            r = load_reg(p, fs)
         except ValueError as e:
             bad.append("%s: %s" % (rel, e))
             continue

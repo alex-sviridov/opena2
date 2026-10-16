@@ -1,238 +1,168 @@
 # Install inventory and binary triage
 
-Survey of `samples/Allods2_en_251005/Allods2_en/` (English 1.30,
-allods2.eu build; the requested `samples/game/` does not exist). `maps/`
-shipped empty; on 2026-10-15 the 216 `.alm` maps of the allods2.eu maps
-pack (`https://allods2.eu/files/maps_all.zip`) were added.
-`python3 tools/inventory.py` → `out/inventory.csv` (5,299 rows: path,
-size, extension, first 16 bytes; stays in gitignored `out/` because it
-holds game bytes).
+Survey of `samples/allods2_en_gog/`: "Rage of Mages II: Necromancer" from
+GOG (game id 1459856152, launched as `allods2.exe -1024`; README dated May
+28, 1999). Single-player work only: the campaign, towns and world map;
+the multiplayer client/server parts of the exe are out of scope.
+`python tools/inventory.py` → `out/inventory.csv` (6,094 rows: every loose
+file and every archive member as `<stem>.res:<path>`; size, extension,
+first 16 bytes; stays in gitignored `out/` because it holds game bytes).
 
 ## 1. Totals
 
-5,299 files, 176.2 MB (5,083 / 144.8 MB before the maps pack).
+**Loose files** (116): `allods2.exe`, `Scenario.dll`, `smackw32.dll`,
+`ROM2 Map Editor.exe` with its HTML `Help/` (38 `.gif`, 17 `.jpg`, 13
+`.htm`), the ten `.res` archives (499 MB), 11 multiplayer `.alm` maps
+(not used), `famehall.dat` (228 B), `server.cfg` (commented server
+settings), `Music.ini` (17 track names), `Description Checks/Instants.ini`
+(map editor), GOG files (`goggame-*.dll/.info/.hashdb/.ico`, `unins000.*`,
+`GameuxInstallHelper.dll`, `webcache.zip`), Windows `SHLWAPI.DLL`,
+`WININET.DLL`, and an empty CD-overlay folder `Allods/dummy.txt`
+([res § Mounting](formats/res.md#mounting)).
+
+**Archive members** (5,978 files, 513.7 MB; per archive:
+[res § Contents](formats/res.md#contents-gog)):
 
 | Extension | Files | MB | Magic / first bytes | Kind |
 |---|---:|---:|---|---|
-| `.bmp` | 1,012 | 72.3 | "BM"; 949 24-bit, 63 8-bit, uncompressed | standard DIB, [bitmaps](formats/bitmaps.md) |
-| `.alm` | 216 | 31.4 | "M7R\0" | **custom** map (maps pack); container §5.2 |
-| `.wav` | 558 | 25.1 | `RIFF`, PCM mono 16-bit, 557 × 22,050 Hz, 1 × 44,100 Hz | standard |
-| `.256` | 1,931 | 22.7 | 1,912 start `00 00 00 00` (palette); 8 are 0 bytes (4 cursors, 4 equipment) | **custom**, [sprites](formats/sprites.md) |
-| `.png` | 536 | 5.4 | RGBA 8-bit (2 are 16-bit) | standard, allods2.eu patch, §4 |
-| `.16a` | 782 | 4.8 | palette, no header | **custom**, [sprites](formats/sprites.md) |
-| `.exe` / `.dll` / `.old` | 3 / 14 / 2 | 10.3 | `MZ` | PE32, §3 |
-| `.pal` | 166 | 2.9 | 161 BMP-wrapped; 3 `human.pal` raw 16 KiB | [palettes](formats/palettes.md) |
-| (none) | 3 | 0.4 | text | `data/version` (SHA-1 manifest), `data/version_id`, `data/main/id` |
-| `.txt` | 44 | 0.4 | cp1251 text | custom conventions |
+| `.wav` | 1,599 | 268.1 | `RIFF`; PCM 16-bit and MS ADPCM (`wFormatTag` 2), 22,050 Hz (3 × 44,100) | standard: music, sfx, speech |
+| `.smk` | 8 | 121.4 | `SMK2` | standard Smacker video |
+| `.bmp` | 1,515 | 85.5 | "BM", uncompressed 24-bit and 8-bit | standard DIB, [bitmaps](formats/bitmaps.md) |
+| `.256` | 1,929 | 22.2 | 1,915 with palette; 8 are 0 bytes (4 cursors, 4 equipment) | **custom**, [sprites](formats/sprites.md) |
+| `.16a` | 623 | 7.2 | palette, no header | **custom**, [sprites](formats/sprites.md) |
+| `.alm` | 46 | 5.6 | "M7R\0" | **custom** campaign maps (`scenario/`), §5.2 |
+| `.pal` | 159 | 2.8 | 156 BMP-wrapped; 3 `human.pal` raw 16 KiB | [palettes](formats/palettes.md) |
+| `.txt` | 68 | 0.5 | cp1251 text | `main/text/`, `patch/patch.txt`, §5.3 |
 | `.reg` | 17 | 0.3 | "&YA1" = 0x31415926 | **custom**, [reg](formats/reg.md) |
-| `.bin` | 2 | 0.15 | — | **custom**: `world/data/data.bin`, `itemname.bin` |
-| `.ttf` | 1 | 0.05 | `00 01 00 00` | TrueType `font5` (a2mgr) |
-| `.16` | 3 | 0.03 | — | **custom** 4-bit font sprites |
-| `.pkt` | 1 | 0.01 | `00 00 00 bd` | **custom**: `world/data/itemname.pkt` |
-| `.dat` | 6 | <0.01 | mixed | font metrics ×4, `famehall.dat`, `interface/data.dat` (text) |
-| `.cfg` / `.log` | 1 / 1 | <0.01 | text | a2mgr config `allods2.cfg`, log |
+| `.bin` / `.pkt` / `.pat` | 2 / 1 / 1 | 0.2 | — | `world/data/data.bin` ([databin](formats/databin.md)), `itemname.bin/.pkt`, `main/text/itemname.pat` |
+| `.16` | 3 | 0.04 | — | **custom** 4-bit font sprites |
+| `.dat` | 5 | <0.01 | — | font metrics ×4, `graphics/interface/data.dat` (`0\r\n`) |
+| `.exe` | 1 | 0.02 | `MZ` | `main/text/namemake.exe` (tool leftover) |
+| (none) | 1 | <0.01 | text | `main/id` = `english 0` ([fonts](formats/fonts.md#the-remap-switch-dat_006227fc)) |
 
-## 2. Grouped by directory
+## 2. Grouped by folder
 
-| Directory | Files | MB | Contents |
-|---|---:|---:|---|
-| `./` | 21 | 7.57 | cfg, famehall.dat, 13 dll, 2 exe, 2 `.old`, log, patch30.txt |
-| `data/` | 4 | 3.14 | `version`, `version_id`, copies of `allods2.exe`, `a2mgr.dll` (updater staging, §4) |
-| `data/graphics/units/` | 346 | 18.26 | 180 `.256`, 164 `.pal`, `units.reg`, `material.reg` |
-| `data/graphics/interface/` | 641 | 37.29 | 598 `.bmp`, 30 `.16a`, 12 `.256`, `data.dat` |
-| `data/graphics/infowindow/` | 190 | 21.90 | `.bmp` portraits |
-| `data/graphics/equipment/` | 1,620 | 8.24 | 1,104 `.256` + 516 `.png` per `{m,f}{fighter,mage}/{primary,secondary}` |
-| `data/graphics/inventory/` | 697 | 3.36 | `.16a` item icons |
-| `data/graphics/structures/` | 327 | 2.66 | 326 `.256`, `structures.reg` |
-| `data/graphics/objects/` | 271 | 1.14 | 270 `.256`, `objects.reg` |
-| `data/graphics/projectiles/` | 46 | 0.68 | `.16a`, `.256`, 2 `.pal`, `projectiles.reg` |
-| `data/graphics/terrain/` | 53 | 0.71 | `tile{1..}-{00..15}.bmp`, `dirt.bmp` |
-| `data/graphics/cursors/` | 46 | 0.16 | 23 `.16a`, 23 `.256` |
-| `data/graphics/font1..5/` | 9 | 0.12 | glyphs + `.dat`, `font5.ttf` |
-| `data/graphics/global.map/`, `backpack/` | 4 | 0.02 | sprites |
-| `data/locale/{en,ru}/` | 77 | 9.17 | 21 `.txt` per language, localized `.bmp`/`.png` |
-| `data/movies/{shop_druid,shop_kaarg,shopanim}/` | 156 | 5.08 | numbered `.bmp` frames |
-| `data/sfx/**` | 559 | 25.1 | `.wav` + `sfx.reg` |
-| `data/video/*/` | 8 | <0.01 | **only** `.reg` fade metadata; `.smk` absent |
-| `data/world/data/` | 6 | 0.17 | `data.bin`, `itemname.bin`, `itemname.pkt`, `ai.reg`, `map.reg`, `itemex.txt` |
-| `data/scenario/` | 1 | <0.01 | `npc.reg` |
-| `data/main/` | 1 | <0.01 | `id` = `russian 1` |
-| `maps/` | 216 | 31.42 | maps pack `.alm` |
-| `screenshots/` | 0 | 0 | empty |
-
-### Assets the exe references that this install does not ship
-
-CONFIRMED as strings in `allods2.exe`, absent on disk:
-
-- **`.res` archives** `cs`, `main`, `patch`, `world`, `music`, `video`,
-  `movies`, `scenario`, `speech`, `sfx` `.res` (table `0x5fd13c`); a2mgr
-  adds `locale.res`. Contents are loose under `data/` (INFERRED, §4).
-- **Campaign missions** `%d.alm`, `World\Mission\scr_` (INFERRED inside
-  `world.res`/`scenario.res`); the maps pack lacks them.
-- **Music** `music\B00..B16.wav`, `menu.wav`, `map.wav`, `chrgen.wav`,
-  `credit.wav` (a2mgr also tries `data\music`).
-- **Video** `video\%s\%02d.smk`, `video\logos\nival.smk` (only `.reg`
-  companions ship).
-- **Characters/saves** `chr\%s\%u%u.a2c`, `game%d.sav` (written at run
-  time).
-- **Network packers** `Packer1.dat`, `Packer2.dat` (from `0x509ca3`, next
-  to "CBufferManager::ReceiveData(). Error during unpacking buffer";
-  INFERRED net compression tables).
-
-A retail install (or other source of `.res` files and campaign missions)
-is the main data gap.
+| Folder | Files | Contents |
+|---|---:|---|
+| `graphics/interface/` | 1,162 | UI and town screens (`town`, `town_druid`, `town_kaarg`, `townbirds`, `docs`, inn, shops), `.bmp`, `.16a`, `.256` |
+| `graphics/equipment/` | 1,104 | `.256` paper-doll layers per `{m,f}{fighter,mage}/{primary,secondary}` ([paperdoll](formats/paperdoll.md)) |
+| `graphics/inventory/` | 491 | `.16a` item icons |
+| `graphics/units/` | 337 | `.256` sprites, `.pal`, `units.reg`, `material.reg` |
+| `graphics/structures/`, `objects/` | 327, 271 | `.256` + `b.256`, `structures.reg`, `objects.reg` |
+| `graphics/infowindow/` | 185 | `.bmp` portraits |
+| `graphics/terrain/` | 53 | `tile{1..}-{00..15}.bmp`, `dirt.bmp` |
+| `graphics/projectiles/`, `cursors/` | 46, 46 | sprites, `projectiles.reg`, 2 `.pal` |
+| `graphics/global.map/` | 17 | world map: Flag, Flag1, Cross, FlagOnMap, MissionFlag, YourFlag, scrolls, paths |
+| `main/` | 104 | locale: `text/*.txt` (incl. 46 `mission%d.txt`), menu/logo/famehall bitmaps, `id` |
+| `movies/` | 156 | shop pictures `shop_druid/`, `shop_kaarg/`, `shopanim/` |
+| `sfx/`, `speech/`, `music/` | 446, 1,133, 21 | sound effects (+ `sfx.reg`), NPC voices, music |
+| `video/` | 16 | `*/01.smk` + `.reg` fade scripts, `logos/` |
+| `world/data/` | 5 | `data.bin`, `itemname.bin/.pkt`, `ai.reg`, `map.reg` |
+| `scenario/` | 47 | campaign `10.alm … 110.alm`, `npc.reg` |
 
 ## 3. Binary triage
 
-REA (Ghidra 12.1.4) for allods2.exe, a2mgr.dll, scenario.dll;
-objdump/strings and a local PE parser for the rest.
+REA (Ghidra 12.1.4) for `allods2.exe`; objdump/strings for the rest.
 
-| File | sha256 (prefix) | Built | Toolchain | Packed? | Symbols |
-|---|---|---|---|---|---|
-| `allods2.exe` (= `data/allods2.exe`) | 2a8bdf9d… | 1999-07-28 | Linker 5.02, no Rich, static MFC + old iostream → **MSVC 5.0** (INFERRED) | no (`.text` entropy 6.25, EP 0x58f400 in `.text`) | none; PDB path `c:\a2server\a2client\Release\allods2.pdb`; no RTTI for game classes |
-| `allods2.exe.old` | 8e798d3e… | same | same | no | differs from the exe in 55 bytes |
-| `a2mgr.dll` (= `data/a2mgr.dll`) | 6bc57ebb… | 2020-11-01 | Linker 14.0, Rich prodids 255–261 build 24123/24215 → **VS 2015 Update 3** (INFERRED) | no | 127 exports **by ordinal only**; exe imports 113 |
-| `scenario.dll` | 871f57c7… | 1999-03-29 | Linker 5.02, static MFC → MSVC 5.0 (INFERRED) | no | 18 named `Scenario*` exports; `Scenario.pdb` (NB10) not shipped |
-| `engine32.dll` | c9b42526… | 2004-09-23 | VC6 | no | `InitEngine`/`DeinitEngine`; VERSIONINFO "Allods 2 DLL Helper" 1.10.00.1, Nival; resolution dialog (`/videoconfig`, 800×600…1280×1024) |
-| `helper32.dll` | ac8bfd16… | 2005-02-07 | VC6 | no | `InitEngine`/`DeinitEngine`; "Allods Map Editor", 16-bit mode switch; map editor helper, not loaded by the game (INFERRED) |
-| `smackw32.dll` | f9b2fdb5… | 1998-06-09 | RAD Game Tools | no | Smacker SDK, 61 exports |
-| SDL, SDL_image, SDL_ttf, libpng, zlib, jpeg, libtiff, libfreetype | — | 2009–2012 | MinGW | no | not imported by the exe or a2mgr (gdiplus); launcher leftovers (INFERRED) |
+| File | sha256 (prefix) | Built | Toolchain | Notes |
+|---|---|---|---|---|
+| `allods2.exe` | 0eaa9673… | 1999-04-29 | Linker 5.02, static MFC → MSVC 5.0 (INFERRED) | not packed; PDB path `S:\Peter\AddOn\AddOn___\rom2.pdb` (not shipped); version string `1.01` in the server report URL |
+| `Scenario.dll` | d23a9361… | 1999-03-29 | Linker 5.02 | 18 named `Scenario*` exports: campaign state machine (`ScenarioNewGame/Load/Save/GetVar/SetVar/TalkTo/EnterInn/EnterShop/EnterLocation/…`) |
+| `smackw32.dll` | 21be2e65… | 1998-06-09 | RAD Game Tools | Smacker SDK |
+| `ROM2 Map Editor.exe` | b891d259… | 1999-04-13 | Linker 6.0 | map editor (not analysed) |
 
-**allods2.exe sections**: `.text` 0x401000 (1.83 MB, 9,418 functions),
-`.rdata` 0x5d5000, `.data` 0x5f8000, `.idata` 0x6db000, `.rsrc` 0x6df000,
-non-standard **`.anet` 0x6e2000** (RWX, 16 KiB, ~360 non-zero bytes:
-hand-written cdecl stubs and `hat.allods.net`; INFERRED community-patch
-code cave).
+**allods2.exe sections**: `.text` 0x401000 (1.79 MB), `.rdata` 0x5cb000,
+`.data` 0x5ee000, `.idata` 0x6ce000, `.rsrc` 0x6d2000.
 
-**Imports by purpose**: graphics DDRAW `DirectDrawCreate`, GDI32 (87,
-mostly MFC); sound DSOUND #1, MSACM32 `acmStream*`, WINMM `timeGetTime`;
-video smackw32 (16: `SmackOpen/DoFrame/NextFrame/ToBuffer/Blit*/
-SoundUseDirectSound…`); network WSOCK32 (23 by ordinal), WININET
-`InternetOpen(Url)A/ReadFile/CloseHandle`; file I/O KERNEL32
-`CreateFileA/ReadFile/SetFilePointer/CreateFileMappingA/MapViewOfFile/
-FindFirstFileA…`, `GetPrivateProfile*`; registry ADVAPI32 `Reg*` (key
-`SOFTWARE\1C\Allods2.eu`: `CDSPEED`, `RESOLUTION`, `INSTALLDIR`, read in
-`FUN_0048626d`); UI USER32 (166), COMCTL32, comdlg32, SHELL32, WINSPOOL,
-ole32 (MFC); CD check `GetVolumeInformationA` (CONFIRMED called in
-`FUN_0048626d`), `GetDriveTypeA`, `GetLogicalDriveStringsA`; a2mgr.dll
-ordinals 1–127 (113), which mount resources: `FUN_0048626d` calls
-`Ordinal_108("cs.res")`, `Ordinal_108("main.res")` (CONFIRMED).
+**Imports by purpose**: graphics DDRAW; sound DSOUND, MSACM32; time WINMM
+`timeGetTime` (the game clock, [animation §3.1](formats/animation.md));
+video smackw32; network WSOCK32, WININET (multiplayer, not covered); file
+I/O KERNEL32; registry ADVAPI32 (key `SOFTWARE\Rage of Mages 2`: CD
+speed, resolution, install dir); UI USER32 (`CharToOemA`/`OemToCharA`,
+[fonts](formats/fonts.md#locale-text-chartooema)), COMCTL32, comdlg32,
+SHELL32, WINSPOOL, ole32 (MFC).
 
-**File-name strings (allods2.exe)**:
-- Archives: `*.res` above; `Data_updated.lst`, `dbg_alt.txt`,
-  `dbg_grp.txt`, `passbase.txt`, `server.cfg`, `error.log`, `pkt.log`,
-  `c:\structures.ini`.
+**File-name strings** (CONFIRMED, `strings`):
+- Archives: the ten `.res` names ([res](formats/res.md#mounting)),
+  `update.lst`.
 - Graphics: `graphics\<category>\...\sprites.256|spritesb.256|sprites.16a`,
-  `\palette%d`, `graphics\units\humans\human.pal`,
-  `graphics\terrain[.3d]\tile%d-%d.bmp`, `graphics\interface\**.bmp`,
-  `main\graphics\**`, `graphics\fontN\fontN`, `%s%d.256`,
-  `Allods%04d.bmp` (screenshots).
-- World: `World\Data\Data.bin`, `ai.reg`, `map.reg`,
-  `world\data\itemname.bin|.pkt`; build-time sources `Armors.txt`,
-  `Weapons.txt`, `Shields.txt`, `Magic.txt`, `Magic Items.txt`,
-  `Materials.txt|.reg`, `Items.reg`, `Spells.txt|.reg`,
-  `Shapes.txt|.reg`, `Buildings.txt|.reg`, `Units.txt`, `Humans.txt`, with
-  "Parsing .txt files", ".reg processed", "Writing new .bin file": `Data.bin`
-  is compiled from them when present (INFERRED).
-- Text: `main\text\*.txt`, `mission%d.txt`, `Docs\%d.txt` (a2mgr remaps to
-  `locale\<lang>\*.txt`).
-- Sound: `SFX\**.wav`, `sfx\characters\%s\{attack,move,select,swarm}\%d.wav`,
-  `sfx\sfx.reg`, `music\*.wav`.
-- Maps/saves: `%d.alm`, `1.alm`, `\*.alm`, `World\Mission\scr_`,
-  `%schr\%s\%u%u.a2c`, `game%d.sav`, `famehall.dat`, `lockflag`.
+  `graphics\units\humans\human.pal`, `graphics\terrain\tile%d-%d.bmp`,
+  `graphics\Global.Map\*`, `main\graphics\**`, `graphics\fontN\fontN`,
+  `%s%d.256`.
+- Text: `main\text\*.txt`, `patch\patch.txt`, `mission%d`, `docs\%d`.
+- Sound: `SFX\**.wav`, `music\B00…B16.wav`, `menu.wav`, `map.wav`.
+- Campaign and saves: `%d.alm` (`0x48ca44`), `World\Mission\scr_`,
+  `Scenario\`, `%schr\%s\%u%u.a2c`, `chr\*.*`, `lockflag`, `game%d.sav`,
+  `\game*.sav`, `famehall.dat`.
 - Video: `video\%s\%02d.smk`, `video\logos\{nival,publisher}.smk`.
 
-**scenario.dll**: `ScenarioNewGame/Load/Save/GetVar/SetVar/TalkTo/
-EnterInn/EnterShop/EnterLocation/…` = single-player campaign state
-machine. `ScenarioLoad` (`0x10003686`, CONFIRMED) reads via vtable `Read`
-(+0x3c): a 0x1000-byte variable block; 4 × 4 records of 0x14 bytes; u32
-N + N list entries; u32 cursor.
+## 4. Single-player scope
 
-## 4. a2mgr.dll (allods2.eu client patch)
-
-- **Updater** (CONFIRMED strings): fetches `/allods/version` and
-  `/allods/version_id` from `api.allods2.eu`, posts `action=check_version`
-  with exe/dll checksums; keeps `allods2.exe.old`, `a2mgr.dll.old`;
-  stages updates as `data/allods2.exe`, `data/a2mgr.dll`.
-- **`data/version`** = manifest `<path relative to data/> <sha1>`, 5,075
-  lines, append-only; 5,072 match disk (SHA-1 checked over every listed
-  file), the other 3 are older exe/dll hashes listed several times. Format
-  CONFIRMED by data; last entry wins INFERRED. `data/version_id` = 40-hex
-  SHA-1 of the manifest set (INFERRED).
-- **Loose-file override** (INFERRED from strings `data\`, `data\patch\`,
-  `locale.res`, `world\data\*`, `data\%s%d.256`, `data\%s%d.png`):
-  Ordinal_108 and friends map `.res` paths onto `data/`. `%s%d.png` lets
-  PNG replace `.256` (CONFIRMED for the paper doll, [png](formats/png.md));
-  the 516 equipment PNG IDs never overlap `.256` IDs: post-release items.
-- Also GDI+ PNG/TTF UI, screenshot upload, chat (`hat.allods2.eu`), log
-  `allods2.log`.
+The exe holds client and server; single player runs both in one process
+(the clock steps the server once per client tick,
+[animation §3.1](formats/animation.md)). Covered: everything the campaign
+reaches (maps in `scenario.res`, towns, world map, saves, `Scenario.dll`).
+Not covered: network transport (WSOCK32/WININET, `server.cfg`, the 11
+root `.alm` maps, chat, diplomacy).
 
 ## 5. Custom formats: what is known
 
 ### 5.1 `.reg` registry (`&YA1`)
 
-See [formats/reg.md](formats/reg.md) (CONFIRMED; supersedes the survey).
+See [formats/reg.md](formats/reg.md) (CONFIRMED).
 
 ### 5.2 `.alm` maps (`M7R\0`)
 
-216 files, 32,596–386,478 bytes, 210 distinct (6 byte-identical copies).
-Container CONFIRMED by data (walks to EOF on all 216); field meanings
-INFERRED unless marked.
+46 campaign maps (`scenario/<n>.alm`, 41,060–306,948 bytes, all
+distinct). Container CONFIRMED by data (walks to EOF on all 46,
+`allods2/alm.py`); field meanings INFERRED unless marked.
 
 Header (20 bytes): `M7R\0`; u32 header size 0x14; u32 always
-`width·height·4 + 72`; u32 section count, always 13; u32 always 0x640.
-Then 13 sections, each a 20-byte header `{u32 tag, u32 header size 0x14,
-u32 data size, u32 id, u32 ?}` + data. Tag 7 in 212 files, 5 in 4
-(`aeq_maraslavin_1_104R`, `sc_ac_necro_1_2`, `sc_acq_zwilling_1_1`,
-`sc_acq_zwilling_1_11`; perhaps a version). **Quirk**: section 0 is
-followed by 16 bytes beyond its declared 644. IDs always in order 0, 1, 2,
-3, 5, 11, 4, 9, 8, 6, 7, 10, 12.
+`width·height·4 + 72`; u32 section count, always 13; u32 1300 (41 maps)
+or 1600 (5). Then 13 sections, each a 20-byte header `{u32 tag, u32
+header size 0x14, u32 data size, u32 id, u32 ?}` + data. Tag 7 in 37
+maps, 5 in 9 (perhaps a version). **Quirk**: section 0 is followed by 16
+bytes beyond its declared 644. IDs always in order 0, 1, 2, 3, 5, 11, 4,
+9, 8, 6, 7, 10, 12.
 
 | ID | Size | Observations |
 |---|---|---|
-| 0 | 644 (+16) | general info: u32 width, height at data +0x00/+0x04 (file 0x28/0x2c): 144² (101), 80² (46), 256² (38), 208² (13), non-square 48×112 … 256×144; at +0x08 f32 0x3f490fda (π/4) |
-| 1 | w·h·2 | u16 terrain tiles ("Tiles block", CONFIRMED by error string in `FUN_0056a69a`; [terrain](formats/terrain.md)) |
+| 0 | 644 (+16) | general info: u32 width, height at data +0x00/+0x04 (file 0x28/0x2c): 144² (32), 80² (13), 256² (1); at +0x08 f32 0x3f490fda (π/4) |
+| 1 | w·h·2 | u16 terrain tiles ("Tiles block", CONFIRMED by the error string "Tiles block not found" in `FUN_005606aa`; [terrain](formats/terrain.md)) |
 | 2 | w·h | u8 heights ("Altitudes block", CONFIRMED); copied verbatim to `+0x10`, read **signed** ([terrain](formats/terrain.md#heights)) |
-| 3 | w·h | u8 object layer: copied to runtime `+0x14` inside an 8-cell border (`FUN_004abc1c`), byte = object index + 1 (CONFIRMED, [animation §1.7](formats/animation.md#17-map-placement-of-objects)) |
-| 4–12 | variable | records (structures, units, players, triggers, …); 8, 10, 11 can be empty |
+| 3 | w·h | u8 object layer: copied to runtime `+0x14` inside an 8-cell border, byte = object index + 1 (CONFIRMED, [animation §1.7](formats/animation.md#17-map-placement-of-objects)) |
+| 4–12 | variable | records (structures, units, players, triggers, …); 10 always empty, 11 empty in 36 maps, 8 in 21 |
 
 ### 5.3 Others (all INFERRED)
 
 | File | Observations |
 |---|---|
-| `fontN.dat` | decoded, [fonts](formats/fonts.md) |
-| `world/data/data.bin` (153,528 B) | MFC archive: qualities, materials, stat names, item classes, special items, monsters, humans, structures, spells; CONFIRMED, [databin](formats/databin.md) |
-| `world/data/itemname.bin` (1,402 B) | u16 pairs (`02 01 03 01 …`), like (id, class) keys |
-| `world/data/itemname.pkt` (10,629 B) | `00 00 00 bd 02 00 00 7c 29 …`: packed item-name records, repeated `0d 0X 0e 0X 0c` tags |
-| `world/data/itemex.txt` | rule text: `ignore material Bone type not Staff …` |
-| `famehall.dat` (228 B) | u32 count?, records `{u32 len, name\0, u32 score, …}` (`Diamond`, `Glazz`, `Gella`): hall of fame |
-| `graphics/interface/data.dat` | ASCII `1c 30.03.99\r\n`: version/date stamp |
-| `data/locale/*/*.txt` | cp1251; one string per line (`main.txt`, `itemname.txt`) or `#key` sections with `<part=N>` (`town.txt`, `quest.txt`, `globalmap.txt`) |
+| `world/data/itemname.bin` (982 B) | starts `ab f8 ae f7 ad f7 02 15 …`: item ids → names/sprites |
+| `world/data/itemname.pkt` (7,763 B) | `00 00 00 eb 01 00 00 4a 1e …`: packed item-name records |
+| `famehall.dat` (228 B, loose) | u32 count?, records `{u32 len, name\0, u32 score, …}`: hall of fame |
+| `main/text/*.txt` | cp1251; one string per line (`main.txt`, `itemname.txt`) or `#key` sections (`town.txt` `#tips1`, `quest.txt`, `globalmap.txt`, `mission%d.txt` `#briefing`, `#failure2`, `===` comments) |
 | `video/*/NN.reg` | `Common/Fading1…`, `startx/starty/nFadings/startframe/endframe/startfade/endfade` |
 
 ## 6. Plan: custom formats to reverse, in order
 
 Small bounded formats first, dependencies before dependants. Done:
-sprites, palettes, BMP, `.reg` (step 1), font metrics (step 2), the
-`human.pal` "remap" (= shade tables + player palettes).
+`.res`, sprites, palettes, BMP, `.reg`, fonts, the `human.pal` "remap"
+(= shade tables + player palettes), `data.bin` container and columns.
 
-3. **Locale `.txt` conventions**: line-indexed vs `#key`/`<part>`, cp1251;
-   needed by UI, items, quests.
-4. **`world/data/data.bin`**: done, container CONFIRMED and decoded
-   ([databin](formats/databin.md)); monster, item and spell parameter maps
-   partly, humans and structures open.
-5. **`itemname.bin` / `.pkt` / `itemex.txt`**: item IDs → names/sprites;
-   need the data.bin item model.
+1. **`main/text` conventions**: line-indexed vs `#key` sections; needed by
+   UI, items, quests, mission briefings.
+2. **`itemname.bin` / `.pkt`**: item IDs → names/sprites; need the
+   data.bin item model.
+3. **`.alm` sections 0, 4–12**: structures, units, players, triggers of
+   the 46 campaign maps; the server reader `FUN_00534ad4` switches on the
+   section id. "Map version too new (update loader!)".
+4. **Campaign flow**: `Scenario.dll` exports, `World\Mission\scr_`
+   scripts, mission texts.
+5. **`.a2c` characters / `game*.sav` saves** (incl. the `Scenario.dll`
+   chunk; INFERRED, not yet checked in this DLL: `ScenarioLoad` reads a
+   0x1000-byte variable block, 4 × 4 records of 0x14 bytes, u32 N + N
+   list entries, u32 cursor): need data.bin and `.alm`.
 6. **`famehall.dat`**: tiny, self-contained, low priority.
-7. **`.res` container**: needed for a retail install; probably `&YA1`
-   (check `FUN_004edd03`/`FUN_004eae80`); needs a sample file.
-8. **`.alm` maps**: largest format (terrain, objects, units, triggers);
-   needs data.bin, `.reg` metadata, terrain. Container mapped (§5.2);
-   strings `%d.alm` (xref `0x492b02`), "Map version too new". Sections 0–3
-   could precede data.bin; only 4–12 need its IDs.
-9. **`.a2c` characters / `game*.sav` saves** (incl. the scenario.dll chunk,
-   §3): need data.bin and `.alm`; a2c path built at `0x4f30b9`.
 
-Not planned as formats: `.smk` (standard Smacker, absent);
-`Packer1/2.dat` and the network protocol (network layer); `data/version`
-(understood, §4).
+Not planned as formats: `.smk` (standard Smacker), `.wav` (standard
+RIFF), the network protocol.

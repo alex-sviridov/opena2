@@ -2,7 +2,7 @@
 
     python tools/terrain_contact.py [INSTALL_DIR] [-o out/contact/terrain.png]
 
-Top: the 13 sets x 4 strips as the game loads them (FUN_0047b899), labelled
+Top: the 13 sets x 4 strips as the game loads them (FUN_00476429), labelled
 set/strip and file. Bottom: map thumbnails, one pixel per cell = the mean
 colour of the tile the game would draw (water frame 0, dirt overlay
 applied, daylight row 46 on flat ground), plus one full-resolution crop.
@@ -10,14 +10,13 @@ Output contains game data: out/ only.
 """
 
 import argparse
-import glob
 import os
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from allods2.alm import load_alm
-from allods2.common import INSTALL, OUT
+from allods2.common import INSTALL, OUT, as_fs, campaign_maps
 from allods2.graphics import shade_table, terrain as tr
 from allods2.graphics.palette import BRIGHT32
 
@@ -45,19 +44,20 @@ def main(argv=None):
     ap.add_argument("-o", "--out", default=os.path.join(OUT, "contact", "terrain.png"))
     ap.add_argument("-n", type=int, default=30)
     a = ap.parse_args(argv)
-    terrain = tr.TerrainSet.load(os.path.join(a.base, "data", "graphics", "terrain"))
+    fs = as_fs(a.base)
+    terrain = tr.TerrainSet.load(fs)
     table = shade_table(terrain.palette, tr.LIGHT_ROWS, BRIGHT32)
     font = ImageFont.load_default(10)
 
     strip_w = 4 * 34 + 10
     top_h = 448 + 30
-    maps = sorted(glob.glob(os.path.join(a.base, "maps", "*.alm")))
+    maps = campaign_maps(fs)
     picks = [maps[round(i * (len(maps) - 1) / (a.n - 1))] for i in range(a.n)] if len(maps) > a.n else maps
-    thumbs = [(os.path.basename(p), thumbnail(load_alm(p), terrain, table)) for p in picks]
+    thumbs = [(p.rpartition("/")[2], thumbnail(load_alm(p, fs), terrain, table)) for p in picks]
     cols = 10
     cell = 270
     width = max(13 * strip_w, cols * cell) + 10
-    crop_map = load_alm(picks[len(picks) // 2])
+    crop_map = load_alm(picks[len(picks) // 2], fs)
     cy, cx = crop_map.height // 2, crop_map.width // 2
     sub = crop_map.tiles[cy - 6:cy + 6, cx - 12:cx + 12]
     light = np.full(sub.shape, DAY_ROW)

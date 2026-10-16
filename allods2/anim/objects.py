@@ -1,7 +1,7 @@
 """Map objects (trees, bushes, stones, ...): objects.reg.
 
-Spec: docs/formats/animation.md §1.2 (loader FUN_0047e4a0), §1.3 / §4.3
-(draw inside the view draw FUN_00406fea, 0x408b24-0x409480).
+Spec: docs/formats/animation.md §1.2 (loader FUN_00478eb6), §1.3 / §4.3
+(draw inside the view draw FUN_00406f43, 0x408a7d-0x4093d9).
 
 Frame (all CONFIRMED):
 - animated, when the sequence is not empty and the cell is fully visible
@@ -9,8 +9,8 @@ Frame (all CONFIRMED):
 - otherwise Index;
 - tile bit 0x2000 (burnt ground) with DeadObject != -1: frame 0 of the dead
   object's File;
-- "Object animations" off (DAT_005fb974 == 0): frame 0 of the file, not
-  Index (0x408d3c), a quirk for objects that share a file.
+- "Object animations" off (DAT_005f17ec == 0): frame 0 of the file, not
+  Index (0x408c95), a quirk for objects that share a file.
 Placement: the anchor is the cell centre (32 X + 16, 32 Y + 16, minus the
 relief height); top-left = anchor - ((CenterX - Width/2) + w/2,
 (CenterY - Height/2) + h/2), always with the record of the object itself,
@@ -18,9 +18,7 @@ also when the dead object's frame is drawn.  Opaque blit with the file's own
 palette (+0x14 with main+0x14), b.256 overlay at 50 % when Smoothing is on.
 """
 
-import os
-
-from ..common import find_file
+from ..common import as_fs, find
 from ..reg import load_reg
 from ..units import center_anchor, expand_sequence
 from .base import Action, AnimationSet, FrameRef, record_name
@@ -30,11 +28,11 @@ INT_KEYS = ("File", "Index", "Phases", "Width", "Height", "CenterX", "CenterY",
             "FireObject", "DeadObject")
 
 
-def load_object_records(data_dir):
+def load_object_records(fs=None):
     """objects.reg records by ID with Parent inheritance (Parent = an ID;
     ints default to the parent's, empty AnimationTime/Frame come from the
     parent's section)."""
-    reg = load_reg(os.path.join(data_dir, OBJECTS_DIR, "objects.reg"))
+    reg = load_reg(OBJECTS_DIR + "/objects.reg", as_fs(fs))
     files = reg["Files"].to_dict()
     out = {}
     for raw in reg.records("Object", "ObjectCount"):
@@ -57,8 +55,8 @@ class ObjectSet(AnimationSet):
     frame_at("anim", 0, clock, x=0, y=0) uses the view clock and the cell."""
     kind = "objects"
 
-    def __init__(self, rec, dead=None, sprites=None, paths=None):
-        super().__init__(record_name(rec, "file"), sprites, paths)
+    def __init__(self, rec, dead=None, sprites=None, paths=None, fs=None):
+        super().__init__(record_name(rec, "file"), sprites, paths, fs)
         self.rec, self.dead = rec, dead
         acts = []
         if rec["seq"]:
@@ -92,17 +90,17 @@ class ObjectSet(AnimationSet):
             self.blit_overlay(canvas, ref, x, y, pal)
 
 
-def object_paths(rec, data_dir, prefix="main"):
-    root = os.path.join(data_dir, OBJECTS_DIR)
-    return {prefix: find_file(root, rec["file"] + ".256"),
-            prefix + "_b": find_file(root, rec["file"] + "b.256")}
+def object_paths(rec, fs, prefix="main"):
+    root = OBJECTS_DIR + "/" + rec["file"]
+    return {prefix: find(fs, root + ".256"), prefix + "_b": find(fs, root + "b.256")}
 
 
-def load_object_set(oid, data_dir, records=None):
-    recs = records or load_object_records(data_dir)
+def load_object_set(oid, fs=None, records=None):
+    fs = as_fs(fs)
+    recs = records or load_object_records(fs)
     rec = recs[int(oid)]
     dead = recs.get(rec["DeadObject"]) if rec["DeadObject"] >= 0 else None
-    paths = object_paths(rec, data_dir)
+    paths = object_paths(rec, fs)
     if dead is not None:
-        paths.update(object_paths(dead, data_dir, "dead"))
-    return ObjectSet(rec, dead, paths=paths)
+        paths.update(object_paths(dead, fs, "dead"))
+    return ObjectSet(rec, dead, paths=paths, fs=fs)

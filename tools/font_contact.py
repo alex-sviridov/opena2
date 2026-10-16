@@ -1,26 +1,25 @@
 """Write out/contact/fonts.png: each font's glyph grid and sample lines.
 
-    python tools/font_contact.py [DATA_DIR] [-o out/contact/fonts.png]
+    python tools/font_contact.py [INSTALL_DIR] [-o out/contact/fonts.png]
 
 Rows per font: the 224 (or 64) glyph cells, 32 per row, then sample text
-laid out with the game's rules (`.dat` advances, spacing 2, '~' underline,
-a2mgr %[...] colour escapes for .16 fonts). .16 fonts use the 17i grey ramp
-and the gold code ramp 0x62af58; font4 uses its embedded palette.
+laid out with the game's rules (`.dat` advances, spacing 2, '~' underline).
+.16 fonts use the 17i grey ramp
+and the gold code ramp 0x620d90; font4 uses its embedded palette.
 Transparent areas show a checkerboard. Output contains game data: out/ only.
 """
 
 import argparse
-import glob
 import os
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from allods2 import graphics as gfx
-from allods2.common import DATA, OUT
+from allods2.common import OUT, as_fs
 
 SAMPLES = [b"The quick brown fox jumps over the lazy dog 0123456789",
-           b"~Load game  ~~tilde~~  %[F80]orange%[*] back  %[64,255,64]green",
+           b"~Load game  ~~tilde~~  ~hotkey",
            b"Gold: 12,345  HP 100/100  [x] {y} (z) !?"]
 SCALE = 2
 
@@ -47,16 +46,17 @@ def glyph_grid(font, colours):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("data", nargs="?", default=DATA)
+    ap.add_argument("install", nargs="?")
     ap.add_argument("-o", "--out", default=os.path.join(OUT, "contact", "fonts.png"))
     a = ap.parse_args(argv)
     ramps = gfx.code_ramps16()
-    grey, gold = gfx.pack16(ramps[0x629c48]), gfx.pack16(ramps[0x62af58])
+    grey, gold = gfx.pack16(ramps[0x61fa80]), gfx.pack16(ramps[0x620d90])
     label_font = ImageFont.load_default(11)
     blocks = []
-    for dat in sorted(glob.glob(os.path.join(a.data, "graphics", "font*", "font*.dat"))):
-        font = gfx.Font.load(dat[:-4])
-        name = os.path.basename(dat)[:-4]
+    fs = as_fs(a.install)
+    for dat in fs.glob("graphics/font*/font*.dat"):
+        font = gfx.Font.load(dat[:-4], fs)
+        name = dat.rpartition("/")[2][:-4]
         parts = [(name + " glyphs (red line = .dat width)", glyph_grid(font, gold))]
         for i, s in enumerate(SAMPLES):
             text = s.upper() if len(font.sprites) <= 64 else s

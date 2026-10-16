@@ -1,15 +1,21 @@
 # Allods 2 recreation
 
-Reverse-engineering and reimplementing Allods 2 / Rage of Mages 2 (Nival).
+Reverse-engineering and reimplementing Allods 2 / Rage of Mages II:
+Necromancer (Nival), **single player**, from the GOG release.
 The company is legally entitled to recreate the game.
 
 ## Layout
-- `allods2/` core library (formats, decoders, data models; no pygame)
+- `a2res/` stand-alone `.res` library (stdlib only): `ResArchive`, `ResFS`,
+  `DirFS`, `ChainFS`, `OS`; zero-copy `memoryview` reads
+- `allods2/` core library (formats, decoders, data models; no pygame); every
+  loader is `load(path, fs)` on game paths (`graphics/units/units.reg`)
 - `allods2/game/` game layer (pygame), built on the core
 - `docs/{formats,mechanics,...}/<name>.md` specs; each folder's README.md is its index
-- `allods2/common.py` install paths (`ALLODS2_INSTALL` / `ALLODS2_DATA`, OUT)
-- `tests/` · `tools/` thin CLIs over the package
-- `samples/` original game files (English 1.30: samples/Allods2_en_251005/Allods2_en/)
+- `allods2/common.py` `INSTALL` (`ALLODS2_INSTALL`), `game_fs()`, `as_fs()`, OUT
+- `tests/` · `tools/` thin CLIs over the package (`[INSTALL_DIR]` argument)
+- `samples/allods2_en_gog/` the GOG install (exe 1.01, ten `.res` archives)
+- Scope: single player (campaign, towns, world map, saves); the multiplayer
+  network parts are out of scope
 
 ## Hard rules
 - samples/ is read-only and never committed. Never copy game files, or data
@@ -28,9 +34,9 @@ The company is legally entitled to recreate the game.
   byte layout table, the math, worked examples, and open questions. Keep
   specs compact: state each fact once and cross-link instead of repeating.
 - Mark each fact:
-  - **CONFIRMED**: checked in allods2.exe / a2mgr.dll via REA (build sha256
+  - **CONFIRMED**: checked in the GOG allods2.exe via REA (build sha256
     in docs/formats/README.md, routine address given), or the decoder
-    consumes every file in samples/ exactly.
+    consumes every file of the install exactly.
   - **INFERRED**: anything else (data patterns, code shape, analogy).
   Never present a guess as a fact.
 - Match the game exactly, including quirks; any "clean" API is a separate layer.
@@ -41,8 +47,8 @@ The company is legally entitled to recreate the game.
 
 ## Code and tests
 - Library code is written from the specs, never pasted from decompiler output.
-- Tests: `.venv/bin/pytest`. Game-file tests read samples/ (or
-  ALLODS2_DATA) and skip when missing; synthetic tests build small streams
+- Tests: `.venv/bin/pytest`. Game-file tests read the install's archives
+  (`tests/helpers.GFS`) and skip when missing; synthetic tests build small streams
   in code, one per spec rule, and always run.
 - A decoder is done when its validate tool passes on the full install
   (e.g. `tools/validate_sprites.py`; animation API: `tools/validate_anim.py`).
@@ -56,44 +62,42 @@ The company is legally entitled to recreate the game.
 
 ## Known so far
 Details, routines and tools are in each spec; CLI: `python -m allods2 gfx
-export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`, `anim preview-all
-DEST`; contact sheets `tools/*_contact.py` → out/contact/.
-- Sprites `.256/.16/.16a/*b.256`: CONFIRMED, 43,051 decode exactly. `*b.256`
-  = 50 % edge-smoothing overlays (not shadows); mirrored blit twins; darken
-  = UI drop shadows; effect 0x20 Invisibility + relation word. sprites.md
-- Palettes: CONFIRMED, 2,973 in 2,928 files; `FUN_00425bee` shade tables (6
+export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
+`anim preview-all DEST`, `res ls|list|extract`; contact sheets
+`tools/*_contact.py` → out/contact/.
+- .res / a2res: CONFIRMED (`FUN_004e2040` opener, lookup `FUN_004e9046`, mount
+  `FUN_00481186`): `.reg` entry tree, header +0x10 dir offset, +0x14 count,
+  absolute file ranges; all 10 archives tile exactly; first path component =
+  archive stem. Mount 0.15 s, every file read 0.35 s. res.md
+- Sprites `.256/.16/.16a/*b.256`: CONFIRMED, 43,947 decode exactly. `*b.256`
+  = 50 % edge-smoothing overlays; mirrored blit twins; darken = UI drop
+  shadows; effect 0x20 Invisibility + relation word. sprites.md
+- Palettes: CONFIRMED, 2,854 in 2,809 files; `FUN_00425bee` shade tables (6
   modes, FADE16 = `.16a` alpha); human.pal = 16 player colours; code tables
   = text colours; effect id = 2·spell + 8; low-memory flag not reproduced
   (user decision). palettes.md
 - Lighting: CONFIRMED day/night, terrain light, light map + stamps, object
-  rows, shadows, options, fog draw (bilinear blend-table rows over relief
-  quads, `draw_fog`). mechanics/lighting.md
+  rows, shadows, options (labels from patch.txt), fog draw. mechanics/lighting.md
 - BMP: CONFIRMED (8-bit flips, 64k class doesn't; pack16; price bar;
   portrait canvas + crop table). bitmaps.md
-- .reg: CONFIRMED; trailing-space names unreachable (units.reg File0). reg.md
+- .reg: CONFIRMED (17 files; no unreachable names). reg.md
 - Units: CONFIRMED units.reg + frame layout, facing clockwise from up,
-  Flip, events; 59/62 + 30/30 hero files; palette variant = data.bin
-  monster param 30. units.md, animation.md §2
-- Terrain: CONFIRMED incl. signed relief and displaced blit; all maps load
-  every set; terrain.3d dead code. terrain.md
-- Fonts: CONFIRMED (widths, cp866 remap forced on by a2mgr, `~`, `%[RGB]`,
-  shadow, 0xC1 star; locale .txt via CharToOemA = cp1251→cp866
-  `ansi_to_oem`). fonts.md
-- PNG: CONFIRMED a2mgr paper-doll lookup, 160×240 blend (straight alpha,
-  SSE precision), exe layer order `FUN_0046dd6a`, menu PNG blit. png.md
+  Flip, events; 59/61 + 30/30 hero files; bones stride = BonePhases;
+  palette variant = data.bin monster param 30. units.md, animation.md §2
+- Terrain: CONFIRMED incl. signed relief, displaced blit, grid overlay
+  `DAT_00622800`; all 46 campaign maps load every set. terrain.md
+- Fonts: CONFIRMED (widths, `~` underline, shadow, char map off: main\id
+  `english 0`; text loaders + CharToOemA). fonts.md
+- Paper doll: CONFIRMED `.256` layers `FUN_004688f7`, layer order. paperdoll.md
 - Animation: CONFIRMED sources, layout, client/server timing (VERIFY IN GAME
   list §3.6), `allods2/anim` API for every animated class, whole-install
-  check (546 sets; 668/695 files + 27 exclusions), combat handoff §5.3,
-  suggested work §5.4; sight mask (exe + a2mgr), data-driven speeds, map
-  flags, Blind/world-map/inn timing; chargen cube never drawn; world map
-  can't open in this install (INFERRED). animation.md
-- Install, binary triage, reversing plan: docs/inventory.md (no .res,
-  music, .smk; data/version = SHA-1 manifest). .alm: 216 maps; container
-  walks all; sections 1–3 CONFIRMED (tiles, heights, objects), rest open.
-- Graphics overview: ranks 1–10 CONFIRMED. graphics-overview.md
-- data.bin: CONFIRMED MFC archive, consumed exactly (`allods2.databin`,
-  tools/validate_databin.py); monster/item/spell params, stat names =
-  effect kinds, modifier text. Humans/structures open. databin.md
-- Not started: saves, game layer.
+  check (549 sets; 671/740 files + 69 exclusions, 44 open: town scenes,
+  world-map Cross), world-map flags, sight mask (exe variant), data-driven
+  speeds, combat handoff §5.3, suggested work §5.4. animation.md
+- data.bin: CONFIRMED MFC archive, consumed exactly; column names per group
+  (`DataBin.columns`) name every param incl. humans/structures. databin.md
+- Install, triage, plan: docs/inventory.md. .alm: 46 campaign maps;
+  container walks all; sections 1–3 CONFIRMED, rest open.
+- Not started: saves, Scenario.dll, item names, game layer.
 - Next (docs/open-questions.md): .alm sections 0, 4–12 (server reader
-  `FUN_0053ea3a`), data.bin humans/structures.
+  `FUN_00534ad4`), town-scene animations, text conventions.

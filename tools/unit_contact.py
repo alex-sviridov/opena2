@@ -1,6 +1,6 @@
 """Write out/contact/units.png: per unit type, the frames the game draws.
 
-    python tools/unit_contact.py [DATA_DIR] [-o out/contact/units.png]
+    python tools/unit_contact.py [INSTALL_DIR] [-o out/contact/units.png]
 
 Row per Unit<n>: stand for facings d = 0..15 (mirrored where Flip says),
 then for facing d = 8 (sprite direction 0): one move cycle, one attack
@@ -17,7 +17,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from allods2 import graphics as gfx
 from allods2 import units as U
-from allods2.common import DATA, OUT
+from allods2.common import OUT, as_fs
 
 CELL = 64
 
@@ -38,22 +38,24 @@ def tile(sf, pal, idx_m):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("data", nargs="?", default=DATA)
+    ap.add_argument("install", nargs="?")
     ap.add_argument("-o", "--out", default=os.path.join(OUT, "contact", "units.png"))
     a = ap.parse_args(argv)
-    types = U.unit_types(a.data)
+    fs = as_fs(a.install)
+    types = U.unit_types(fs)
     ids = U.by_id(types)
     cache = {}
 
     def sprites(t):
-        p = t.sprite_paths(a.data)[0]
+        p = t.sprite_paths()[0]
         if p not in cache:
-            cache[p] = gfx.SpriteFile.load(p) if t.file and os.path.isfile(p) and os.path.getsize(p) > 4 else None
+            cache[p] = (gfx.SpriteFile.load(p, fs)
+                        if t.file and fs.isfile(p) and len(fs.read(p)) > 4 else None)
         return cache[p]
 
     rows = []
     for t in types:
-        sf, pal = sprites(t), t.palette(a.data) if t.file else None
+        sf, pal = sprites(t), t.palette(fs) if t.file else None
         cells = [tile(sf, pal, U.stand_frame(t, d)) for d in range(16)]
         d = 8
         if t.MovePhases > 0:
@@ -62,7 +64,7 @@ def main(argv=None):
             cells += [tile(sf, pal, U.attack_frame(t, d, p)) for p in sorted(set(t.sequence("Attack")))]
         td = ids.get(t.Dying)
         if td is not None and td.DyingPhases > 0 and td.file:
-            sd, pd = sprites(td), td.palette(a.data)
+            sd, pd = sprites(td), td.palette(fs)
             cells += [tile(sd, pd, U.dying_frame(td, d, s)) for s in range(td.DyingPhases)]
             cells += [tile(sd, pd, U.bones_frame(td, d, st)) for st in range(2, 2 + max(td.BonePhases, 0))]
         rows.append(("Unit%d ID %d %s%s" % (t.index, t.id, t.DescText or t.file, " [Flip]" if t.Flip else ""), cells))

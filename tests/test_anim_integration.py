@@ -7,23 +7,23 @@ import pytest
 from allods2 import anim as A
 from allods2.anim import coverage as C
 from allods2.anim.projectiles import ProjectileSet
-from allods2.common import DATA
+
 from allods2.graphics import Canvas
 
-from helpers import aset_of, needs_data, projectile, sprite_file, unit_type
+from helpers import GFS, aset_of, needs_data, projectile, sprite_file, unit_type
 
 
 # -- the install -----------------------------------------------------------------
 
 @pytest.fixture(scope="module")
 def report():
-    return C.verify(DATA)
+    return C.verify(GFS)
 
 
 @needs_data
 def test_every_animated_asset_loads_and_draws(report):
     assert report.errors == []
-    assert report.sets == 546
+    assert report.sets == 549
     assert report.out_of_range.keys() == C.KNOWN_OUT_OF_RANGE.keys()
     assert report.drawn > 49000
 
@@ -32,7 +32,7 @@ def test_every_animated_asset_loads_and_draws(report):
 def test_every_multi_frame_sprite_file_is_used_or_excluded(report):
     assert report.unreached == []
     assert report.stale == []
-    assert len(report.excluded) == 27 and report.multi == 695
+    assert len(report.excluded) == 25 + 44 and report.multi == 740
     assert "projectiles/smoke0/sprites.16a" in report.reached
     assert "projectiles/smoke1/sprites.16a" in report.reached
 
@@ -56,7 +56,7 @@ def test_check_set_reports_missing_frames_and_bad_events():
 
 
 def test_exclusion_categories():
-    assert {c for _, c, _ in C.EXCLUSIONS} == {"not animated", "never loaded", "empty"}
+    assert {c for _, c, _ in C.EXCLUSIONS} == {"not animated", "never loaded", "empty", "open"}
     assert all(p == p.lower() for p, _, _ in C.EXCLUSIONS)
 
 

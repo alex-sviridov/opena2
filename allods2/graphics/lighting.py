@@ -11,27 +11,27 @@ from dataclasses import dataclass
 import numpy as np
 
 # Doubles as stored in allods2.exe .rdata (not exact pi fractions).
-_PI = 3.1415926                  # 0x5d79c8
-_QUARTER = 0.78539815            # 0x5d79f0 / -0x5d79e0
-_SUN_ELEVATION = 0.5235987666666667   # 0x5d8c38, ~pi/6
-_CELL = 32.0                     # 0x5d8c30
-_LIGHT_MAX = 94.0                # 0x5d8c40
+_PI = 3.1415926                  # 0x5cd818
+_QUARTER = 0.78539815            # 0x5cd840 / -0x5cd830
+_SUN_ELEVATION = 0.5235987666666667   # 0x5cea70, ~pi/6
+_CELL = 32.0                     # 0x5cea68
+_LIGHT_MAX = 94.0                # 0x5cea78
 
 
 @dataclass(frozen=True)
 class Daylight:
-    """Globals set by FUN_0047a208 (addresses in allods2.exe)."""
-    tint: tuple        # 0x62c888..a, (R, G, B) added before palette conversion
-    ambient: int       # 0x62c88c
-    diffuse: int       # 0x62c890
-    shadow1: int       # 0x62c894, shadow darkness level (dst * (16 - k) / 16)
-    shadow2: int       # 0x62c898, lighter shadow level
-    angle: float       # 0x62c8a0, sun azimuth in radians
+    """Globals set by FUN_00474d98 (addresses in allods2.exe)."""
+    tint: tuple        # 0x6226c0..a, (R, G, B) added before palette conversion
+    ambient: int       # 0x6226c4
+    diffuse: int       # 0x6226c8
+    shadow1: int       # 0x6226cc, shadow darkness level (dst * (16 - k) / 16)
+    shadow2: int       # 0x6226d0, lighter shadow level
+    angle: float       # 0x6226d8, sun azimuth in radians
 
 
 def daylight(minutes, enabled=True):
     """Lighting state at game time `minutes` (0 = midnight).  `enabled` is
-    the day/night option (DAT_0062c938); off gives the fixed default."""
+    the day/night option (DAT_00622770); off gives the fixed default."""
     if not enabled:
         return Daylight((0, 0, 0), 14, 32, 4, 2, _QUARTER)
     hour = (minutes // 60) % 24
@@ -71,7 +71,7 @@ def _half_light(dz, run, ambient, diffuse):
 
 
 def terrain_light(heights, angle, ambient, diffuse):
-    """Per-vertex terrain light rows (FUN_004ad552) from a (h, w) array of
+    """Per-vertex terrain light rows (FUN_004a5dd2) from a (h, w) array of
     signed heights.  Cells with x in 1..w-2 and y in 1..h-2 are computed;
     the border keeps 0."""
     h = np.asarray(heights, np.int64)
@@ -95,7 +95,7 @@ def terrain_light(heights, angle, ambient, diffuse):
 
 def object_light_row(ambient):
     """Default 16-row shade level for units and objects in an unlit cell
-    (FUN_00404ad1): ambient >> 2."""
+    (FUN_00404a2a): ambient >> 2."""
     return ambient >> 2
 
 
@@ -103,16 +103,16 @@ def object_light_row(ambient):
 
 NO_LIGHT = 0xFF
 
-# FUN_004040e2: static map light value by animation phase (flags >> 1), radius 1.
+# FUN_0040403b: static map light value by animation phase (flags >> 1), radius 1.
 STATIC_LIGHT_PHASES = (0x24, 0x18, 0x0C, 0, 0x0C, 0, 0x0C, 0, 0x14, 0x1C, 0x24)
 # The list view+0xa94 holds burning cells (fire explosion / server message
-# 0x4155cd), not static lights: the same table, by counter >> 1.
+# 0x414d1f), not static lights: the same table, by counter >> 1.
 BURNING_LIGHT_PHASES = STATIC_LIGHT_PHASES
-BURN_TICKS = 0x16           # FUN_0040c199 drops an entry when its counter reaches 22
+BURN_TICKS = 0x16           # FUN_0040c0b0 drops an entry when its counter reaches 22
 
 
 def structure_light_value(pulse, clock):
-    """Light-map value a structure with LightRadius writes (FUN_00467725):
+    """Light-map value a structure with LightRadius writes (FUN_00462386):
     0x20 without LightPulse, else a pulse of period 2 * pulse ticks of the
     view clock."""
     if not pulse:
@@ -124,14 +124,14 @@ def structure_light_value(pulse, clock):
 
 
 def structure_light_vertices(x0, y0, x1, y1, radius):
-    """Light-map vertices FUN_00467725 writes for a structure whose view
+    """Light-map vertices FUN_00462386 writes for a structure whose view
     cell rectangle is (x0, y0)-(x1, y1): x in [x0 + R - 1, x1 + R], y the
     same.  With R = 1 (every record in the data) these are exactly the
     footprint's corner vertices; the range is not centred for other R."""
     return [(x, y) for y in range(y0 + radius - 1, y1 + radius + 1)
             for x in range(x0 + radius - 1, x1 + radius + 1)]
 
-# FUN_00472562: projectile type (projectiles.reg ID) -> (radius, value).
+# FUN_0046d0ef: projectile type (projectiles.reg ID) -> (radius, value).
 PROJECTILE_LIGHTS = {10: (0, 0x10), 18: (0, 0x10), 40: (0, 0x10), 12: (1, 0x10)}
 # Type 13 (fireexpl): (radius, value) by phase; phases 2, 3 keep (3, 0).
 _FIREEXPL = {0: (1, 0x10), 1: (2, 8), 4: (3, 8), 5: (3, 0x10), 6: (3, 0x18),
@@ -148,7 +148,7 @@ def projectile_light(type_id, phase=0):
 
 
 def stamp_light(light, cx, cy, radius, value):
-    """FUN_004063c5: write `value` at every vertex (cx+dx, cy+dy) with
+    """FUN_0040631e: write `value` at every vertex (cx+dx, cy+dy) with
     dx^2 + dy^2 < r(r+1) (r = 0: just the centre).  Out-of-range vertices
     are skipped.  `light` is a (h, w) uint8 array indexed [y, x]."""
     limit = radius * (radius + 1) or 1
@@ -161,13 +161,13 @@ def stamp_light(light, cx, cy, radius, value):
 
 
 def lit_terrain_corner(terrain, light):
-    """FUN_00405d9b: a lit vertex uses the brighter of the terrain light
+    """FUN_00405cf4: a lit vertex uses the brighter of the terrain light
     and the light map."""
     return terrain if light == NO_LIGHT else min(terrain, light)
 
 
 def object_light_row_lit(corners, ambient):
-    """FUN_00404ad1 step 3: row for a cell from its four light-map corners,
+    """FUN_00404a2a step 3: row for a cell from its four light-map corners,
     or None when all four are 0xFF (the cell keeps its default)."""
     vals = [max(v - 32, 0) for v in corners]
     if sum(vals) == 4 * 223:
@@ -176,7 +176,7 @@ def object_light_row_lit(corners, ambient):
     return min(ambient >> 2, total >> 4)
 
 
-# --- shadows (FUN_0045a33f, FUN_004abba9) ------------------------------------
+# --- shadows (FUN_0045506f, FUN_004a4429) ------------------------------------
 
 def shadow_angle(angle):
     """Shadow lean from the sun angle: angle / 1.5, except that small
@@ -218,17 +218,17 @@ def shadow_pixel(dst_rgb, level):
 # --- fog of war (§3 fog levels, §4.1 fog draw) -------------------------------
 
 FOG_SEEN, FOG_EXPLORED, FOG_UNSEEN = 0, 8, 16
-_FOG_K = 0x10000           # DAT_00625650: entries per blend-table row (bytes = 2·K)
+_FOG_K = 0x10000           # DAT_0061b488: entries per blend-table row (bytes = 2·K)
 
 
 def fog_level(bits):
-    """FUN_004040e2: a cell's fog level from its tile visibility bits."""
+    """FUN_0040403b: a cell's fog level from its tile visibility bits."""
     b = bits & 0xC000
     return FOG_SEEN if b == 0xC000 else FOG_EXPLORED if b == 0x8000 else FOG_UNSEEN
 
 
 def fog_shade(px, k, bits=(5, 6, 5)):
-    """Blend-table row k (FUN_0045752b) on 16-bit pixels: every channel
+    """Blend-table row k (FUN_0045225b) on 16-bit pixels: every channel
     v -> v·(16 − k) >> 4 in its own bit width.  Row 8 equals the game's
     `(px >> 1) & mask` fast path, row 16 its black fill."""
     px = np.asarray(px, np.uint32)
@@ -242,15 +242,15 @@ def fog_shade(px, k, bits=(5, 6, 5)):
 
 
 def fog_quad_columns(ytl, ytr, ybl, ybr, levels):
-    """One fog quad as FUN_0045d22b draws it: yields (c, y_top, rows) for
+    """One fog quad as FUN_00457f5b draws it: yields (c, y_top, rows) for
     each column with pixels; rows[i] is the blend row at y_top + i.
 
     Edges step like the terrain blit (terrain.edge_offsets).  The levels
     (tl, tr, bl, br) walk linearly along x on the top and bottom edges,
     then down each column; a pixel takes the row its walk value + ½ falls
     in.  Uniform levels give that level everywhere, so this also describes
-    the solid fast paths (FUN_0045cc14/cd1d black, FUN_0045d58c/d7a0 half)
-    and the flat variant FUN_0045d077."""
+    the solid fast paths (FUN_00457944/cd1d black, FUN_004582bc/d7a0 half)
+    and the flat variant FUN_00457da7."""
     from ..common import cdiv
     from .terrain import TILE, edge_offsets
     ftl, ftr, fbl, fbr = (int(v) for v in levels)
@@ -268,7 +268,7 @@ def fog_quad_columns(ytl, ytr, ybl, ybr, levels):
 
 
 def fog_runs(levels, vy, cols, rows):
-    """The fog pass of the view draw (0x40a111-0x40a663) as a list of
+    """The fog pass of the view draw (0x40a06a-0x40a5bc) as a list of
     (x, ytl, ytr, ybl, ybr, (tl, tr, bl, br), solid) quads in draw order.
 
     levels[r][c] = fog level of view cell (c, r) and vy[r][c] = screen y of

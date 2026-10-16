@@ -1,14 +1,11 @@
 """Spell numbers and effect ids (docs/formats/palettes.md §7)."""
 
-import os
-
 from allods2 import spells
-from allods2.common import DATA
 from allods2.reg import load_reg
 
-from helpers import needs
+from helpers import GFS, needs
 
-PROJ_REG = os.path.join(DATA, "graphics", "projectiles", "projectiles.reg")
+PROJ_REG = "graphics/projectiles/projectiles.reg"
 
 
 def test_draw_effects():
@@ -25,7 +22,7 @@ def test_secondary_and_inverse():
 
 @needs("graphics", "projectiles", "projectiles.reg")
 def test_projectiles_reg_ids_are_spells():
-    reg = load_reg(PROJ_REG).to_dict()
+    reg = load_reg(PROJ_REG, GFS).to_dict()
     files = {v["ID"]: v["File"].lower() for k, v in reg.items() if k != "Global"}
     assert all(spells.spell_of_effect(i) for i in files if i >= 10)
     assert files[spells.effect_id("fire_arrow")] == "firebolt\\sprites"

@@ -9,9 +9,8 @@ import pytest
 
 from allods2 import anim as A
 from allods2.anim.structures import BridgeSet, StructureSet
-from allods2.common import DATA
-
-from helpers import needs_data, projectile, sprite_file
+from allods2.common import INSTALL
+from helpers import GFS, needs_data, projectile, sprite_file
 
 
 # -- structures ----------------------------------------------------------------
@@ -147,8 +146,8 @@ def test_lens_magnifies_centre():
                                          ("projectile", A.load_projectile_records)])
 def test_every_record_is_in_range(kind, loader):
     burning = {1, 4, 7, 10, 13, 16, 19}      # files absent (animation.md §1.7)
-    for i in loader(DATA):
-        s = A.load_set("%s:%d" % (kind, i), DATA)
+    for i in loader(GFS):
+        s = A.load_set("%s:%d" % (kind, i), GFS)
         if kind == "object" and i in burning:
             assert s.sprites() is None
             continue
@@ -161,7 +160,7 @@ def test_cli_preview_other_classes(tmp_path):
     from allods2 import cli
     for key, n in (("structure:11", 2), ("object:0", 3), ("projectile:12", 8)):
         d = tmp_path / key.replace(":", "_")
-        assert cli.main(["anim", "preview", key, str(d), "--data", DATA,
+        assert cli.main(["anim", "preview", key, str(d), "--install", INSTALL,
                          "--grid", str(tmp_path / "g.png")]) == 0
         assert len(os.listdir(d)) == n
 
@@ -200,12 +199,12 @@ def test_cursor_frames():
 
 @needs_data
 def test_all_keys_load_and_cursor_files_exist():
-    keys = A.all_keys(DATA)
+    keys = A.all_keys(GFS)
     assert len(keys["cursors"]) == 28 and len(keys["projectiles"]) == 31
     for k in keys["cursors"] + keys["ui"] + keys["effects"]:
-        s = A.load_set(k, DATA)
+        s = A.load_set(k, GFS)
         for src in {a.source for a in s.actions.values()}:
             assert s.sprites(src) is not None, k
         assert s.missing_frames() == [], k
-    w = A.load_set("water:auto", DATA)
+    w = A.load_set("water:auto", GFS)
     assert ((w.cell_sets(0) >= 8) & (w.cell_sets(0) < 12)).mean() >= 0.4

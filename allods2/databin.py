@@ -7,13 +7,17 @@ structures, spells.  Every record but the first two kinds is a name plus an
 int parameter array plus per-kind extras.
 """
 
-import os
 import struct
 from dataclasses import dataclass, field
 
-PATH = os.path.join("world", "data", "data.bin")
+from .common import as_fs, read
 
-# Monster parameter index -> server unit field (FUN_0051b12f reads them in
+PATH = "world/data/data.bin"
+
+# Record groups in file order; group g is preceded by string array g.
+GROUPS = ("factors", "stats", "classes", "items", "monsters", "humans", "structures", "spells")
+
+# Monster parameter index -> server unit field (FUN_005114f3 reads them in
 # order; -1 keeps the default).  Names follow the stat list where the field
 # use is known; "unit+0x.." where it is not.
 MONSTER_PARAMS = (
@@ -28,7 +32,7 @@ MONSTER_PARAMS = (
     "unit+0xcf", "unit+0xd0", "unit+0xd1", "unit+0xd2", "unit+0xd3",
     "unitType",                                                # +0xe, units.reg ID
     "paletteVariant", "unit+0x49", "unit+0x4a", "unused33",   # +0x4b (units.md), +0x49, +0x4a
-    "ai+0x40", "ai+0x44", "ai+0x71", "unit+0x1c",              # +0x1c4 object; 37 also FUN_0051b595
+    "ai+0x40", "ai+0x44", "ai+0x71", "unit+0x1c",              # +0x1c4 object; 37 also FUN_00511959
 )
 MONSTER = {name: i for i, name in enumerate(MONSTER_PARAMS)}
 
@@ -68,8 +72,19 @@ class DataBin:
     spells: list = field(default_factory=list)
     headers: list = field(default_factory=list)      # the 8 leading string arrays
 
+    def columns(self, group):
+        """Column names the file stores for a record group (databin.md
+        § Column names): header[0] names the record name, header[k + 1]
+        param k (factors: f64 k; classes: armour, shields, weapons)."""
+        h = self.headers[GROUPS.index(group)]
+        return list(h[1:])
+
+    def param(self, record, group, column):
+        """record.params[k] for the column named `column` (exact name)."""
+        return record.params[self.columns(group).index(column)]
+
     def stat_index(self, name):
-        """Effect kind of a stat name (case-insensitive, as FUN_005285cb)."""
+        """Effect kind of a stat name (case-insensitive, as FUN_0051e8fa)."""
         low = name.lower()
         for i, r in enumerate(self.stats):
             if i and r.name.lower() == low:
@@ -78,7 +93,7 @@ class DataBin:
 
     def monster(self, name):
         """(type id, record) of the first monster named `name` in the
-        server's search order (FUN_0051b595: index 26 up, 30..62 skipped)."""
+        server's search order (FUN_00511959: index 26 up, 30..62 skipped)."""
         n = len(self.monsters) + 1
         i = 26
         while i < n:
@@ -189,19 +204,18 @@ def parse_databin(data):
     return db
 
 
-def load_databin(path):
-    with open(path, "rb") as f:
-        return parse_databin(f.read())
+def load_databin(path, fs=None):
+    return parse_databin(bytes(read(path, fs)))
 
 
-def databin(data_dir):
-    """load_databin of the install's world/data/data.bin."""
-    return load_databin(os.path.join(data_dir, PATH))
+def databin(fs=None):
+    """load_databin of the game's world/data/data.bin."""
+    return load_databin(PATH, as_fs(fs))
 
 
 @dataclass
 class Modifier:
-    """One `name=value[:time]` term (FUN_005285cb)."""
+    """One `name=value[:time]` term (FUN_0051e8fa)."""
     kind: int                 # stat index = effect kind (effect +0x3c)
     value: int                # effect +0x40
     mode: int                 # effect +0x3d: 0 permanent, 1 duration, 2 continuous, 4 charges, 8 single use
@@ -220,7 +234,7 @@ def parse_modifier(db, text):
     value, _, time = rest.partition(":")
     value = value.strip()
     mod = Modifier(kind, int(value) if value.lstrip("+-").isdigit() else 0, 0)
-    t = time.strip().lower()                    # FUN_00528f6d
+    t = time.strip().lower()                    # FUN_0051f29c
     if t == "singleuse":
         mod.mode = 8
     elif t != "permanent":

@@ -1,8 +1,8 @@
 """Structures (buildings) and the two VariableSize bridges.
 
-Spec: docs/formats/animation.md §1.2 (loader FUN_00482e99), §1.3 (draw
-FUN_004669e8, bridges FUN_004679f3 / FUN_00467bdb), §3.2 (tick
-FUN_004676d2), §4.2 (this API).
+Spec: docs/formats/animation.md §1.2 (loader FUN_0047d8af), §1.3 (draw
+FUN_00461649, bridges FUN_00462654 / FUN_0046283c), §3.2 (tick
+FUN_00462333), §4.2 (this API).
 
 A structure file is a grid of 32 x 32 pieces, cell = col + row * W, W x FH
 of them for the intact building.  The picture is FH cells high; its bottom
@@ -11,21 +11,21 @@ the footprint (the structure's cell position), so piece (col, row) is drawn
 at (32 col, 32 (row - (FH - TileHeight))) from it.
 """
 
-import os
 
-from ..common import find_file
+
+from ..common import as_fs, find, join
 from ..reg import load_reg
 from ..units import expand_sequence
 from .base import CELL, Action, AnimationSet, FrameRef, Part, blit, record_name
 
 STRUCTURES_DIR = "graphics/structures"
-BRIDGE9_ID = 0x21           # map loader 0x4abf1b: class 0x5d8c50 (FUN_004679f3)
-BRIDGE14_ID = 0x25          # class 0x5d8ca8 (FUN_00467bdb)
+BRIDGE9_ID = 0x21           # map loader 0x4a479b: class 0x5cea88 (FUN_00462654)
+BRIDGE14_ID = 0x25          # class 0x5ceae0 (FUN_0046283c)
 
 
-def load_structure_records(data_dir):
-    """structures.reg records by ID (FUN_00482e99 fields as dicts)."""
-    reg = load_reg(os.path.join(data_dir, STRUCTURES_DIR, "structures.reg"))
+def load_structure_records(fs=None):
+    """structures.reg records by ID (FUN_0047d8af fields as dicts)."""
+    reg = load_reg(STRUCTURES_DIR + "/structures.reg", as_fs(fs))
     out = {}
     for r in reg.records("Structure", "Count"):
         animated = r.setdefault("Phases", -1) > 1
@@ -43,12 +43,12 @@ class StructureSet(AnimationSet):
     frame_at(action, 0, tick, start=0, animate=True): the phase index runs
     (start + tick) mod len, start = obj+0x74 on the first shown tick;
     animate=False is the frozen state (not in sight, or the "Object
-    animations" option off, DAT_005fb974).
+    animations" option off, DAT_005f17ec).
     """
     kind = "structures"
 
-    def __init__(self, rec, sprites=None, paths=None):
-        super().__init__(record_name(rec), sprites, paths)
+    def __init__(self, rec, sprites=None, paths=None, fs=None):
+        super().__init__(record_name(rec), sprites, paths, fs)
         self.rec = rec
         self.W, self.TH, self.FH = rec["TileWidth"], rec["TileHeight"], rec["FullHeight"]
         self.seq = rec["seq"]
@@ -60,7 +60,7 @@ class StructureSet(AnimationSet):
         self.actions = {a.name: a for a in acts}
 
     def piece(self, cell, k, destroyed=False):
-        """Frame of piece `cell` at sequence value k (FUN_004669e8).  The
+        """Frame of piece `cell` at sequence value k (FUN_00461649).  The
         destroyed frame count - W*FH + cell is the file's last W*FH pieces,
         so files without a destroyed block show their intact (or last
         animation) pieces (animation.md §1.3)."""
@@ -100,14 +100,14 @@ class BridgeSet(StructureSet):
     tick."""
     kind = "bridges"
 
-    def __init__(self, rec, w=4, h=4, sprites=None, paths=None):
-        super().__init__(rec, sprites, paths)
+    def __init__(self, rec, w=4, h=4, sprites=None, paths=None, fs=None):
+        super().__init__(rec, sprites, paths, fs)
         self.w, self.h = w, h
         self.actions = {"bridge": Action("bridge", [0, 1, 2, 3] if rec["ID"] == BRIDGE14_ID else [0])}
 
     def bridge_piece(self, x, y, clock):
         w, h = self.w, self.h
-        if self.rec["ID"] == BRIDGE14_ID:          # FUN_00467bdb
+        if self.rec["ID"] == BRIDGE14_ID:          # FUN_0046283c
             if (x, y) == (0, 0):
                 return 0
             if (x, y) == (w - 1, 0):
@@ -121,7 +121,7 @@ class BridgeSet(StructureSet):
             if y == h - 1:
                 return 12 if x & 1 else 8 + (clock & 3)
             return 4 if x == 0 else 6 if x == w - 1 else 5
-        corner = {(0, 0): 0, (w - 1, 0): 2, (0, h - 1): 6, (w - 1, h - 1): 8}   # FUN_004679f3
+        corner = {(0, 0): 0, (w - 1, 0): 2, (0, h - 1): 6, (w - 1, h - 1): 8}   # FUN_00462654
         if (x, y) in corner:
             return corner[(x, y)]
         if y == 0:
@@ -136,14 +136,14 @@ class BridgeSet(StructureSet):
         return FrameRef("main", -1, False, (0, 0), action, tick & 3, parts=parts)
 
 
-def structure_paths(rec, data_dir):
-    root = os.path.join(data_dir, STRUCTURES_DIR)
-    return {"main": find_file(root, rec["File"] + ".256"),
-            "main_b": find_file(root, rec["File"] + "b.256")}
+def structure_paths(rec, fs):
+    root = join(STRUCTURES_DIR, rec["File"])
+    return {"main": find(fs, root + ".256"), "main_b": find(fs, root + "b.256")}
 
 
-def load_structure_set(sid, data_dir, records=None, **kw):
-    recs = records or load_structure_records(data_dir)
+def load_structure_set(sid, fs=None, records=None, **kw):
+    fs = as_fs(fs)
+    recs = records or load_structure_records(fs)
     rec = recs[int(sid)]
     cls = BridgeSet if rec.get("VariableSize") else StructureSet
-    return cls(rec, paths=structure_paths(rec, data_dir), **kw)
+    return cls(rec, paths=structure_paths(rec, fs), fs=fs, **kw)

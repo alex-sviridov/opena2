@@ -7,23 +7,23 @@ palette).
 ## 1. Where palettes live
 
 No raw 768/1024-byte palette files, nor anything that size plus a small
-header (CONFIRMED, size scan of all 5,299 files). Every palette is 256 ×
+header (CONFIRMED, size scan of all 5,978 archive files). Every palette is 256 ×
 4-byte entries in one of:
 
 | Source | Files | Palettes | Distinct | How the game reads it |
 |---|---:|---:|---:|---|
-| `.256` sprites (trailer bit 31) | 1,523 | 1,523 | 1,064 | first 0x400 bytes ([sprites](sprites.md)) |
-| `*b.256` smoothing overlays | 394 | 394 | 4 | same; 391 **all zero** |
-| `.16a` sprites (trailer bit 31) | 782 | 782 | 760 | first 0x400 bytes |
-| unit / projectile `.pal` | 163 | 163 | 129 | BMP-wrapped, seek 0x36, read 0x400 (§3) |
+| `.256` sprites (trailer bit 31) | 1,522 | 1,522 | 1,062 | first 0x400 bytes ([sprites](sprites.md)) |
+| `*b.256` smoothing overlays | 393 | 393 | 3 | same; 391 **all zero** |
+| `.16a` sprites (trailer bit 31) | 623 | 623 | 540 | first 0x400 bytes |
+| unit / projectile `.pal` | 156 | 156 | 100 | BMP-wrapped, seek 0x36, read 0x400 (§3) |
 | `units/*/human.pal` | 3 | 48 | 32 | raw 16 × 0x400 (§4) |
-| 8-bit `.bmp` (terrain, interface) | 63 | 63 | 10 | DIB colour table ([bitmaps](bitmaps.md)) |
-| built in code | – | 5 + 14 ramps | – | `FUN_00463d30` (§6) |
-| **total from files** | 2,928 | 2,973 | 1,942 | |
+| 8-bit `.bmp` (terrain, interface) | 111 | 111 | 13 | DIB colour table ([bitmaps](bitmaps.md)) |
+| built in code | – | 5 + 14 ramps | – | `FUN_0045ea70` (§6) |
+| **total from files** | 2,809 | 2,854 | 1,692 | |
 
 CONFIRMED: `tools/validate_palettes.py` parses all and checks the rules
-below. The 6 `.256` and 3 `.16` files without bit 31 carry no palette
-(fonts take colours from the caller).
+below. The 14 `.256` (8 of them empty) and 3 `.16` files without bit 31
+carry no palette (fonts take colours from the caller).
 
 ## 2. Entry layout
 
@@ -31,8 +31,8 @@ Entry `i` at `4·i`: blue, green, red, reserved (never read). Windows
 RGBQUAD, 0x400 bytes. Example: `0A 14 1E 00` at offset 4 → entry 1 =
 RGB (30, 20, 10).
 
-- CONFIRMED (`FUN_00425bee`): R from `+2`, G `+1`, B `+0`, `+3` unread.
-  `CDib::MakePalette` (`FUN_004568f6`) builds a GDI `LOGPALETTE` with
+- CONFIRMED (`FUN_0042339e`): R from `+2`, G `+1`, B `+0`, `+3` unread.
+  `CDib::MakePalette` (`FUN_004516d6`) builds a GDI `LOGPALETTE` with
   `peRed = q[2]`, `peGreen = q[1]`, `peBlue = q[0]`, `peFlags = 0`.
 - CONFIRMED: channels are 8-bit, not 6-bit VGA (`c >> (8 − bits)` treats
   255 as full scale). All non-zero palettes exceed 63, low 2 bits evenly
@@ -50,11 +50,11 @@ RGB (30, 20, 10).
 
 ## 3. Unit palettes: `palette.pal`, `palette2.pal`, …
 
-CONFIRMED (`FUN_0047f108`): `units.reg` `Palette` count `N`; for
+CONFIRMED (`FUN_00479b1e`): `units.reg` `Palette` count `N`; for
 `i = 1..N` the file is `<unit dir>\palette<i>.pal`, digit dropped for
-`i = 1`; open, **seek 0x36**, read 0x400. `FUN_004824cc` reads
+`i = 1`; open, **seek 0x36**, read 0x400. `FUN_0047cee2` reads
 `graphics\projectiles\projectiles.pal` and `projectile_.pal` the same way
-→ 16-level `BRIGHT2` tables without tint, `DAT_00630efc`/`DAT_00630f00`.
+→ 16-level `BRIGHT2` tables without tint, `DAT_00626d28`/`DAT_00626d2c`.
 
 CONFIRMED (data): all 163 are 8-bit BMPs, 14 + 40-byte header,
 `bfOffBits = 0x436`; sizes 128², 160², 64² or 2²; `biClrUsed` 256 or 0.
@@ -64,16 +64,16 @@ i = index i.
 
 ## 4. `human.pal`: player colours
 
-CONFIRMED (`FUN_0047f108`, `FUN_0048392f`): raw 0x4000 bytes (16 × 0x400,
-no header) → `DAT_0062cb78`. Palette *p* = human sprite palette for
+CONFIRMED (`FUN_00479b1e`, `FUN_0047e345`): raw 0x4000 bytes (16 × 0x400,
+no header) → `DAT_006229b0`. Palette *p* = human sprite palette for
 **player colour p**:
 
 - each → 16-level `BRIGHT2` table *with* tint
-  (`FUN_00425bee(pal + p·0x400, 0x10, 2, 1)`); palette 0 also → 16-level
+  (`FUN_0042339e(pal + p·0x400, 0x10, 2, 1)`); palette 0 also → 16-level
   `GRAY` (`…, 0x10, 5, 0`);
 - for rows `15 − k` (k = 0..7) the 16-bit value at byte 0x148 (**index
-  164**) is copied into both `0x629c90 + p·0x20 + k·4` and `+ k·4 + 2`
-  (CONFIRMED asm `0x480446`–`0x4804d2`: same table and row; the
+  164**) is copied into both `0x61fac8 + p·0x20 + k·4` and `+ k·4 + 2`
+  (CONFIRMED asm `0x47ae5c`–`0x47aee8`: same table and row; the
   decompiler's extra argument is spurious).
 
 CONFIRMED (data): in all three files index 164 differs per palette: blue
@@ -82,27 +82,27 @@ darker variants for p = 8..15. Palettes differ only in 55–59 scattered
 indices between 4 and 225: player colour is **not** a contiguous range.
 `humans/human.pal` differs from the identical `heroes/` and `heroes_l/`
 copies. CONFIRMED: only `humans/human.pal` is used, by every unit and
-hero: the exe's one `human.pal` string (`0x5fc858`) is opened by
-`FUN_0047f108` (`0x480380`) into the 16 player tables (list `0x62cb28`);
-a2mgr holds no palette path; `heroes*/human.pal` and `heroes*/palette.pal`
+hero: the exe's one `human.pal` string (`0x5f267c`) is opened by
+`FUN_00479b1e` (`0x47ad96`) into the 16 player tables (list `0x622960`);
+`heroes*/human.pal` and `heroes*/palette.pal`
 are never opened (hero folders are not units.reg files).
 
 Result: a **16-entry colour table per player** in the `.16` font format
 ([sprites](sprites.md)): slot `s` = player colour × `(s // 2 + 1)/8`.
-`FUN_0047ab33` installs `0x629c90` as a text-colour table (§6).
+`FUN_004756c3` installs `0x61fac8` as a text-colour table (§6).
 Implementation: `player_text_ramp(rgb)`.
 
-## 5. Conversion: shade tables (`FUN_00425bee`)
+## 5. Conversion: shade tables (`FUN_0042339e`)
 
 The game draws to **16-bit surfaces**, never a hardware palette. Every
-palette becomes a *shade table* (vtable `0x5d5308`, constructor
-`FUN_00425b0f`): `+4` levels (rows), `+8` `u16 rows[levels][256]`
-(`levels << 9` bytes). CONFIRMED (a2mgr Ordinal_37 `0x1000a450`, via exe
-thunk `FUN_00420440`): `row(level)` = `table + 8 → data + level·0x200`.
+palette becomes a *shade table* (vtable `0x5cb2f0`, constructor
+`FUN_004232bf`): `+4` levels (rows), `+8` `u16 rows[levels][256]`
+(`levels << 9` bytes). CONFIRMED (`FUN_0041e650`): `row(level)` =
+`table + 8 → data + level·0x200`.
 
-`FUN_00425bee(this, src_quads, levels, mode, use_tint)` (CONFIRMED); `c` =
-source channel, `t` = tint byte (R `0x62c888`, G `0x62c889`, B
-`0x62c88a`, 0 without tint); integer division truncates; results clamped
+`FUN_0042339e(this, src_quads, levels, mode, use_tint)` (CONFIRMED); `c` =
+source channel, `t` = tint byte (R `0x6226c0`, G `0x6226c1`, B
+`0x6226c2`, 0 without tint); integer division truncates; results clamped
 0..255:
 
 | mode | rows | row r, channel | Use |
@@ -115,20 +115,20 @@ source channel, `t` = tint byte (R `0x62c888`, G `0x62c889`, B
 | 5 `GRAY` | N | `((r+g+b)·k·2 / 3) / N` all channels, k = N − r, no tint | grey-out of human palette 0 and unit palettes |
 
 Then `pack16`: `px = (R >> (8 − Rbits)) << Rshift | (G >> (8 − Gbits)) <<
-Gshift | (B >> (8 − Bbits)) << Bshift`; widths `0x5fb960/964/968`, shifts
-`0x5fb958/95c`, `0x62c9bc` (from the surface pixel format, 5-6-5 in
+Gshift | (B >> (8 − Bbits)) << Bshift`; widths `0x5f17d8/964/968`, shifts
+`0x5f17d0/95c`, `0x6227f4` (from the surface pixel format, 5-6-5 in
 practice, [bitmaps](bitmaps.md)). **Row order**: modes 2, 3, 5 brightest
 first; mode 4 darkest first.
 
 **Low-memory variant, not reproduced** (user decision). CONFIRMED: when
-`GlobalMemoryStatus().dwTotalPhys` < 24,000,000, `FUN_0045752b` sets
-`DAT_0062c9b8 = 1`: mode 4 divides by 18, blend tables shrink 0x10000 →
-0x2000 entries, `FUN_00487a00` allocates a half-size buffer, shadow
+`GlobalMemoryStatus().dwTotalPhys` < 24,000,000, `FUN_0045225b` sets
+`DAT_006227f0 = 1`: mode 4 divides by 18, blend tables shrink 0x10000 →
+0x2000 entries, `FUN_004823e2` allocates a half-size buffer, shadow
 blitters switch variants. Legacy 1999 memory saver.
 
 **FADE16 is the `.16a` alpha table** (CONFIRMED): `.16a` palettes are
-converted in mode 4 by `FUN_004313db` (chrgen cube), `FUN_004364c3`
-(chrgen), `FUN_00474320` (global map), `FUN_00463a16` (fonts) and others.
+converted in mode 4 by `FUN_0042eba1` (chrgen cube), `FUN_00433a3d`
+(chrgen), `FUN_0046eeb0` (global map), `FUN_0045e756` (fonts) and others.
 The blitter adds pixel word `a << 9 | index << 1` to row 0 → row `a`,
 column `index`: `colour·(a+1)/16`, destination × `(15 − a)/16`.
 
@@ -140,17 +140,17 @@ Worked example: index 1 = (100, 200, 3), mode 2, N 16, no tint: row 0 →
 
 | Caller | Source palette | levels, mode, tint |
 |---|---|---|
-| `FUN_0047f108` / `FUN_0048392f` | `human.pal` × 16 | 16, BRIGHT2, yes; palette 0 also 16, GRAY, no |
-| `FUN_0048392f` via `FUN_00426be0` | three object registries (`FUN_00422f70`/`FUN_00422ff0`/`FUN_00423030` lists) and one global; INFERRED units, structures, objects | 16, BRIGHT2, yes |
-| `FUN_0047b899` / `FUN_0048392f` | terrain: first tile of each of 32 slots | 0x60, BRIGHT32, yes |
-| `FUN_004824cc` | `projectiles.pal`, `projectile_.pal` | 16, BRIGHT2, no |
-| `FUN_00482125` (projectile type, lazy) | own `.256` + `b.256` palettes if `Palette ≠ 0`, `A16 = 0`; `.16a` palette if `A16 = 1` | 16, BRIGHT2, yes; `.16a`: 16, FADE16, no |
-| `FUN_004824cc` | `projectiles\smoke%d\sprites.256` ×2 | 16, FADE16, no |
-| `FUN_00463d30` | 5 code gradients (§6) | 16, FADE16, no |
-| `.16a` loaders (`FUN_004313db`, `FUN_004364c3`, `FUN_00463a16`, `FUN_00474320`, …) | embedded `.16a` palettes, incl. fonts | 16, FADE16, no |
-| interface/equipment loaders (`FUN_004478af` `subobj.256`, `FUN_0046dd6a`, `FUN_0047bedd`, …) | embedded `.256`/BMP | 1, PLAIN |
-| `FUN_00473010` | a unit's palette when no table exists yet | 16, BRIGHT2, yes |
-| `FUN_00468640` (unit draw) | unit palette, when the unit has effect 0x2c | 16, GRAY, no |
+| `FUN_00479b1e` / `FUN_0047e345` | `human.pal` × 16 | 16, BRIGHT2, yes; palette 0 also 16, GRAY, no |
+| `FUN_0047e345` via `FUN_00424390` | three object registries (`FUN_00420dd0`/`FUN_00420e50`/`FUN_00420e90` lists) and one global; INFERRED units, structures, objects | 16, BRIGHT2, yes |
+| `FUN_00476429` / `FUN_0047e345` | terrain: first tile of each of 32 slots | 0x60, BRIGHT32, yes |
+| `FUN_0047cee2` | `projectiles.pal`, `projectile_.pal` | 16, BRIGHT2, no |
+| `FUN_0047cb3b` (projectile type, lazy) | own `.256` + `b.256` palettes if `Palette ≠ 0`, `A16 = 0`; `.16a` palette if `A16 = 1` | 16, BRIGHT2, yes; `.16a`: 16, FADE16, no |
+| `FUN_0047cee2` | `projectiles\smoke%d\sprites.256` ×2 | 16, FADE16, no |
+| `FUN_0045ea70` | 5 code gradients (§6) | 16, FADE16, no |
+| `.16a` loaders (`FUN_0042eba1`, `FUN_00433a3d`, `FUN_0045e756`, `FUN_0046eeb0`, …) | embedded `.16a` palettes, incl. fonts | 16, FADE16, no |
+| interface/equipment loaders (`FUN_00444393` `subobj.256`, `FUN_004688f7`, `FUN_00476a6d`, …) | embedded `.256`/BMP | 1, PLAIN |
+| `FUN_0046df70` | a unit's palette when no table exists yet | 16, BRIGHT2, yes |
+| `FUN_004632a1` (unit draw) | unit palette, when the unit has effect 0x2c | 16, GRAY, no |
 
 Terrain slot *s* (0..31) = `tile{s/4 + 1}-{v + 4·(s mod 4)}.bmp`, v 0..3.
 CONFIRMED (data): all 52 `tile*.bmp` share one palette; `dirt.bmp` has
@@ -158,125 +158,104 @@ its own.
 
 ### GDI palettes
 
-`CreatePalette` only in `FUN_004568f6` (`CDib::MakePalette`) and
-`FUN_00456a13` (copies the system palette via `GetSystemPaletteEntries`
+`CreatePalette` only in `FUN_004516d6` (`CDib::MakePalette`) and
+`FUN_004517ca` (copies the system palette via `GetSystemPaletteEntries`
 when a DIB has no colour table on a palettised display);
 `RealizePalette`/`SelectPalette` are MFC imports; `_SmackBlitSetPalette`
 is for Smacker video (absent). CONFIRMED (imports, xrefs). No
 `IDirectDrawPalette::SetEntries`, no palette rotation/colour cycling found
 (INFERRED: xref search, not proof).
 
-## 6. Palettes built in code (`FUN_00463d30`)
+## 6. Palettes built in code (`FUN_0045ea70`)
 
 CONFIRMED. Five 256-entry gradients, entry i = `(i·R/255, i·G/255,
-i·B/255)`, 16 levels mode 4: `0x62a6f0` (185, 159, 73) gold →
-`DAT_0062b088`; `0x629848` (255, 255, 116) yellow → `DAT_0062af8c`;
-`0x62ab10` (0, 0, 0) black → `DAT_0062b064`; `0x62a2c8` (65, 47, 20)
-brown → `DAT_0062b048`; `0x629e90` (101, 39, 61) purple → `DAT_0062b000`.
+i·B/255)`, 16 levels mode 4: `0x620528` (185, 159, 73) gold →
+`DAT_00620ec0`; `0x61f680` (255, 255, 116) yellow → `DAT_00620dc4`;
+`0x620948` (0, 0, 0) black → `DAT_00620e9c`; `0x620100` (65, 47, 20)
+brown → `DAT_00620e80`; `0x61fcc8` (101, 39, 61) purple → `DAT_00620e38`.
 
 Fourteen 16-entry tables of 16-bit colours, i = 0..15 (`/` truncates):
 
 | Table | RGB |
 |---|---|
-| `0x62afb8` | (8, 8, 8) constant |
-| `0x629c48` | (17i, 17i, 17i) |
-| `0x62aaf0` | (14i, 14i, 14i) |
-| `0x62af58` | (185i/15, 159i/15, 73i/15) |
-| `0x62af38` | (107i/15, 154i/15, 120i/15) |
-| `0x62afd8` | (255i/15, 255i/15, 64i/15) |
-| `0x62b068` | (255i/15, 64i/15, 64i/15) |
-| `0x62a6d0` | (64i/15, 255i/15, 64i/15) |
-| `0x62a2a8` | (160i/15, 120i/15, 50i/15) |
-| `0x62af98` | (139i/15, 65i/15, 32i/15) |
-| `0x62af18` | (150i/15, 90i/15, 0) |
-| `0x62b028` | (141 − 61i/15, 126i/15, 49i/15) |
-| `0x62b008` | (255 − 175i/15, 252i/15, 98i/15) |
-| `0x629c68` | ((15−i)·160/15 + 32, (15−i)·148/15 + 32, (15−i)·88/15 + 32) |
+| `0x620df0` | (8, 8, 8) constant |
+| `0x61fa80` | (17i, 17i, 17i) |
+| `0x620928` | (14i, 14i, 14i) |
+| `0x620d90` | (185i/15, 159i/15, 73i/15) |
+| `0x620d70` | (107i/15, 154i/15, 120i/15) |
+| `0x620e10` | (255i/15, 255i/15, 64i/15) |
+| `0x620ea0` | (255i/15, 64i/15, 64i/15) |
+| `0x620508` | (64i/15, 255i/15, 64i/15) |
+| `0x6200e0` | (160i/15, 120i/15, 50i/15) |
+| `0x620dd0` | (139i/15, 65i/15, 32i/15) |
+| `0x620d50` | (150i/15, 90i/15, 0) |
+| `0x620e60` | (141 − 61i/15, 126i/15, 49i/15) |
+| `0x620e40` | (255 − 175i/15, 252i/15, 98i/15) |
+| `0x61faa0` | ((15−i)·160/15 + 32, (15−i)·148/15 + 32, (15−i)·88/15 + 32) |
 
 **They are text colours** (CONFIRMED). Gradients colour **`.16a`
 fonts** (glyph index → gradient position, alpha → FADE16 row): e.g.
-`FUN_0042bc1b` formats a number and calls font `DAT_0062af90` with
-`DAT_0062b088.row(0)` (gold); brown (`DAT_0062b048`) in `FUN_00461429`,
-`FUN_004affc1`; black in `FUN_00463d18`; `FUN_004627f6` draws strings
-twice with an offset (shadow, [fonts](fonts.md#drop-shadow-fun_004627f6)).
-16-entry tables colour **`.16` fonts** (`FUN_004593a1`).
+`FUN_004293cb` formats a number and calls font `DAT_00620dc8` with
+`DAT_00620ec0.row(0)` (gold); brown (`DAT_00620e80`) in `FUN_0045c159`,
+`FUN_004a8841`; black in `FUN_0045ea58`; `FUN_0045d536` draws strings
+twice with an offset (shadow, [fonts](fonts.md#drop-shadow-fun_0045d536)).
+16-entry tables colour **`.16` fonts** (`FUN_004540d1`).
 
-**Message-log colours** (CONFIRMED `FUN_0047ab33`, `FUN_0040dac9`, key
-handler `0x40d2a5`): six current text-colour pointers
-`0x5fb97c…0x5fb990`. A modified key toggles `DAT_0062c9e0`, calls
-`FUN_0047ab33(state)`, shows `patch.txt` `0x55 + state` "Standard /
+**Message-log colours** (CONFIRMED `FUN_004756c3`, `FUN_0040d9b2`, key
+handler `0x40d1bc`): six current text-colour pointers
+`0x5f17f4…0x5f1808`. A modified key toggles `DAT_00622818`, calls
+`FUN_004756c3(state)`, shows `patch.txt` `0x55 + state` "Standard /
 Alternative message colors". Messages go to the log (`view+0xa28`,
 `FUN_004021fe`) with a table and lifetime in ms:
 
 | Slot | Standard (0) | Alternative (1) | Used for |
 |---|---|---|---|
-| `0x5fb97c` | `0x629c48` grey 17i | `0x629cd0` | system/status messages, e.g. option toggles (2000 ms); 42 users |
-| `0x5fb980` | `0x62aaf0` grey 14i | `0x629d70` | "Picked up N pieces / N gold" (`main.txt` `0x55`–`0x59`; 3000 ms) |
-| `0x5fb984` | unchanged | `0x62afd8` | chat kinds 0 and 4 (10000 ms) |
-| `0x5fb98c` | unchanged | `0x629cb0` | chat kind 1 |
-| `0x5fb988` | unchanged | `0x629d10` | chat kind 2 |
-| `0x5fb990` | unchanged | `0x629c90` | chat kind 3 |
+| `0x5f17f4` | `0x61fa80` grey 17i | `0x61fb08` | system/status messages, e.g. option toggles (2000 ms); 42 users |
+| `0x5f17f8` | `0x620928` grey 14i | `0x61fba8` | "Picked up N pieces / N gold" (`main.txt` `0x55`–`0x59`; 3000 ms) |
+| `0x5f17fc`, `0x5f1804`, `0x5f1800`, `0x5f1808` | unchanged | `0x620e10`, `0x61fae8`, `0x61fb48`, `0x61fac8` | multiplayer chat lines (not covered) |
 
-Chat (`0x413cd8`) uses those four only in state 1 with sender flag
-`+0x41c & 1`; otherwise the sender's player ramp `0x629c90 +
-32·player[+0xc]` (§4). A chat line of kind ≠ 4 is dropped when the viewer
-has "silent" (bit 4) set for the sender. **Quirk**: state 0 resets only
-the first two slots; all six start as `0x629c48` (`0x62aaf0` for the
-second), so after Alternative and back the chat slots keep Alternative
-colours.
-
-**Chat kinds** (CONFIRMED): sent by `FUN_0041cb2c(text, kind, target)`;
-the in-game input (`0x48f167`…`0x48f2f1`, widget 0x445) picks the kind
-from the first character; a2mgr's `g_altchat` (Ordinal_87, `0x100039a0`)
-prefixes kinds 1–3 with `patch.txt` 0xdf–0xe1:
-
-| Kind | Typed as (`help.txt`) | a2mgr tag | Sent by |
-|---|---|---|---|
-| 0 | `text`: everyone nearby | none | no prefix |
-| 1 | `-text`: all allies | `[ally] ` | `-` when `FUN_0049a950` (INFERRED name match) returns −1 |
-| 2 | `-name text`: one player | `[private] ` | `-` + name; `target` = that player |
-| 3 | `=text`: all players | `[shout] ` | `=` |
-| 4 | chat box of "Create or Join Game" / map select | none | `FUN_00454540` (Enter in input from `FUN_0044faad`, `dialogs.txt` 0x85); shown even when the sender is silent |
+**Quirk**: state 0 resets only the first two slots; all six start as
+`0x61fa80` (`0x620928` for the second).
 
 ### Which text uses which table
 
-CONFIRMED (every reference outside `FUN_00463d30`/`FUN_0047ab33`). Three
-never-written `.data` pointers are constants: `0x5fa5a0` → `0x62aaf0`,
-`0x5fa5a4` → `0x629c48`, `0x5fa5a8` → `0x62af58` (`0x5fa5ac` →
-`0x62afd8`, no reader). Routine lists CONFIRMED; roles INFERRED from the
+CONFIRMED (every reference outside `FUN_0045ea70`/`FUN_004756c3`). Three
+never-written `.data` pointers are constants: `0x5f0554` → `0x620928`,
+`0x5f0558` → `0x61fa80`, `0x5f055c` → `0x620d90` (`0x5f0560` →
+`0x620e10`, no reader). Routine lists CONFIRMED; roles INFERRED from the
 drawn strings, except where code shows them (shadow, tooltip, drop-down
 hover, flying damage).
 
 | Table | Routines (+ pointer reads) | Used for |
 |---|---:|---|
-| `0x62afb8` (8, 8, 8) | 1 | `.16` drop shadow: font slot 6 (`FUN_00463a06`), under nearly all text via `FUN_004627f6` |
-| `0x62aaf0` grey 14i | 28 (+ 96 of `0x5fa5a0`) | **normal** UI text: dialog widget labels, buttons, lists (font1; Options, Save/Load, network and modem setup, lobby, Victory), input boxes, "Drop money", hero creation, log slot `0x5fb980`, font3 hotkey numbers (`FUN_004cec31`, `F%d`), quest list (`FUN_004e78fa`), inventory (`FUN_0049fc52`) |
-| `0x629c48` grey 17i | 21 (+ 18 of `0x5fa5a4`) | **highlighted** variant (selected entry, hovered button), system slot `0x5fb97c`, FPS counter (`FUN_00406fea`), in-game options panel (font2, `FUN_00450f0b`), identify prompt (`FUN_004c353c`) |
-| `0x62af58` gold | 13 (+ 6 of `0x5fa5a8`) | panel **labels** (font2): unit info (`FUN_0046fe90`: Body, Agility, …, Health, Mana), inventory/shop (`FUN_0049fc52`), quest panel (`FUN_004b746f`, `FUN_004b8b61`), kill stats (`FUN_004316ad`), tips (`FUN_004e6f45`), "No units selected"; menu/list items in widget classes (`FUN_004dfd32`, `FUN_004dd88a`, …) |
-| `0x62af38` sage | 3 | **values** beside gold labels: unit info numbers (`%d/%d`, stats), quest panel numbers |
-| `0x62af18` orange | 3 | unit info headers ("Skills"/"Resistance", `main.txt` 0x1b/0x1c); **hovered** drop-down item (`FUN_004dfd32`: gold → orange) |
-| `0x62a2a8` tan | 1 | **tooltip** text (`FUN_0042a1e9`: brown frame, font2, one line per `#` part) |
-| `0x629c68` inverted ramp | 2 | body text (font2) of the framed message box `FUN_00475245`/`FUN_00475c73` (three frame sprites, font4 title; INFERRED sign/scroll window) |
-| `0x62b068` red | 7 | "HIRED" in taverns (`FUN_0049f25e`, `FUN_004a46a1`, `FUN_004a6be6`); some inventory text (`FUN_0049fc52`), quest list (`FUN_004e78fa`), `FUN_004478af` |
-| `0x62afd8` yellow | 1 (+ `0x5fb984`) | chat kinds 0, 4 with Alternative colours |
-| `0x62a6d0` green | 0 live | only the flying-damage quirk |
-| `0x62af98`, `0x62b028`, `0x62b008` | 0 | built, never referenced |
+| `0x620df0` (8, 8, 8) | 1 | `.16` drop shadow: font slot 6 (`FUN_0045e746`), under nearly all text via `FUN_0045d536` |
+| `0x620928` grey 14i | 28 (+ 96 of `0x5f0554`) | **normal** UI text: dialog widget labels, buttons, lists (font1; Options, Save/Load, Victory), input boxes, "Drop money", hero creation, log slot `0x5f17f8`, font3 hotkey numbers (`FUN_004c6ac1`, `F%d`), quest list (`FUN_004df659`), inventory (`FUN_004984d3`) |
+| `0x61fa80` grey 17i | 21 (+ 18 of `0x5f0558`) | **highlighted** variant (selected entry, hovered button), system slot `0x5f17f4`, FPS counter (`FUN_00406f43`), in-game options panel (font2, `FUN_0044c553`), identify prompt (`FUN_004bb3d7`) |
+| `0x620d90` gold | 13 (+ 6 of `0x5f055c`) | panel **labels** (font2): unit info (`FUN_0046aa1d`: Body, Agility, …, Health, Mana), inventory/shop (`FUN_004984d3`), quest panel (`FUN_004af3bf`, `FUN_004b0a10`), kill stats (`FUN_0042ee73`), tips (`FUN_004deca4`), "No units selected"; menu/list items in widget classes (`FUN_004d7b31`, `FUN_004d571a`, …) |
+| `0x620d70` sage | 3 | **values** beside gold labels: unit info numbers (`%d/%d`, stats), quest panel numbers |
+| `0x620d50` orange | 3 | unit info headers ("Skills"/"Resistance", `main.txt` 0x1b/0x1c); **hovered** drop-down item (`FUN_004d7b31`: gold → orange) |
+| `0x6200e0` tan | 1 | **tooltip** text (`FUN_00427999`: brown frame, font2, one line per `#` part) |
+| `0x61faa0` inverted ramp | 2 | body text (font2) of the framed message box `FUN_0046fdd5`/`FUN_00470803` (three frame sprites, font4 title; INFERRED sign/scroll window) |
+| `0x620ea0` red | 7 | "HIRED" in taverns (`FUN_00497adf`, `FUN_0049cf22`, `FUN_0049f467`); some inventory text (`FUN_004984d3`), quest list (`FUN_004df659`), `FUN_00444393` |
+| `0x620e10` yellow | 1 (+ `0x5f17fc`) | Alternative colour of log slot `0x5f17fc` |
+| `0x620508` green | 0 live | only the flying-damage quirk |
+| `0x620dd0`, `0x620e60`, `0x620e40` | 0 | built, never referenced |
 
-**Quirk** (CONFIRMED `FUN_0040dac9` `0x412f22`–`0x412f5e`): with "Flying
+**Quirk** (CONFIRMED `FUN_0040d9b2` `0x412932`–`0x41296e`): with "Flying
 damage" on (`view+0xabc`, `main.txt` 0x66/0x67) the HP handler picks green
 (HP ≥ max/2), yellow (≥ max/4) or red into a local (`ebp−0x47c`) that is
-**never read**; the number (`FUN_004617aa`) uses the player ramp
-`0x629c90 + 32·player`.
+**never read**; the number (`FUN_0045c4ea`) uses the player ramp
+`0x61fac8 + 32·player`.
 
 ## 7. Palette effects
 
-### Day/night tint (`FUN_0047a208`), CONFIRMED
+### Day/night tint (`FUN_00474d98`), CONFIRMED
 
-With day/night on (`DAT_0062c938 ≠ 0`), game time sets the tint added to
+With day/night on (`DAT_00622770 ≠ 0`), game time sets the tint added to
 every palette in modes 1–3; off → (0, 0, 0). Formula table (with the other
 lighting parameters it sets): [lighting §1](../mechanics/lighting.md).
-`FUN_0041f200` re-evaluates every 20 game minutes, then calls
-`FUN_004ad552` (terrain light map) and **`FUN_0048392f`**, which rebuilds
+`FUN_0041d3b9` re-evaluates every 20 game minutes, then calls
+`FUN_004a5dd2` (terrain light map) and **`FUN_0047e345`**, which rebuilds
 every tinted table (human, unit, terrain, structure, object): time of day
 is applied at conversion, not per pixel. Implementation:
 `lighting.daylight(minutes)`, `daylight_tint(minutes)`,
@@ -286,33 +265,33 @@ is applied at conversion, not per pixel. Implementation:
 
 - **Brightness levels** (modes 2/3) replace per-pixel lighting; rows come
   from light maps ([lighting](../mechanics/lighting.md)). CONFIRMED.
-- **Hover highlight**: `FUN_00468640` forces row 0 (×2) for the unit
+- **Hover highlight**: `FUN_004632a1` forces row 0 (×2) for the unit
   stored at view `+0x994` when flag `+0x40c` is 0 (CONFIRMED code;
   INFERRED: unit under the cursor).
-- **Grey-out** (mode 5): `FUN_00468640` uses a 16-level GRAY table of the
+- **Grey-out** (mode 5): `FUN_004632a1` uses a 16-level GRAY table of the
   unit's palette with **effect 0x2c** = Stone Curse (CONFIRMED).
-  `FUN_0046600b` looks up an effect id (high 16 bits of u32 entries).
+  `FUN_00460d4b` looks up an effect id (high 16 bits of u32 entries).
 - **Effect 0x20** (Invisibility): visibility check and 50 % blit
-  ([sprites](sprites.md)); the 50 % blit is `+0x34`, `FUN_004271d0` →
-  `FUN_00459926`: `dst = (dst >> 1 & m) + (src >> 1 & m)`, `m =
-  0x62c9c0` = channel masks without top bits (0x7BEF for 5-6-5); its
-  shadow uses the lighter level `0x62c898`.
+  ([sprites](sprites.md)); the 50 % blit is `+0x34`, `FUN_00424980` →
+  `FUN_00454656`: `dst = (dst >> 1 & m) + (src >> 1 & m)`, `m =
+  0x6227f8` = channel masks without top bits (0x7BEF for 5-6-5); its
+  shadow uses the lighter level `0x6226d0`.
 - **Effect ids = projectile type ids** (`projectiles.reg` `ID`), both from
   the spell number. CONFIRMED:
-  - Spell numbers: exe name table `0x603190`, entries `0x32 + n`: 0
+  - Spell numbers: exe name table `0x5f8f50`, entries `0x32 + n`: 0
     `unused_spell_0`, 1 `fire_arrow`, 2 `fire_ball`, …, 12 `invisibility`,
     …, 18 `stone_curse`, …, 29 `slow` (`spell.txt` order + 1).
-  - Server builder `FUN_00523a7f` switches on the spell (`0x523ea0`,
-    table `0x525bb8`, 30 cases); effect object (vtable `0x5db3c8`)
+  - Server builder `FUN_00519db8` switches on the spell (`0x51a1d9`,
+    table `0x51becc`, 30 cases); effect object (vtable `0x5d1178`)
     `+0xc = n`, `+0xe = 2n + 8`; secondary projectile `2n + 9` (e.g.
-    `0x523e73`). Invisibility (case 12, `0x525613`) → `0x20`; Stone Curse
-    (18, `0x52539a`) → `0x2c`.
-  - `FUN_00526afe` attaches it: bit `1 << n` into `unit+0x144`; bless
-    (20) and curse (28) cancel. Announced by `FUN_0050d132`: message
+    `0x51a1ac`). Invisibility (case 12, `0x51b927`) → `0x20`; Stone Curse
+    (18, `0x51b6ae`) → `0x2c`.
+  - `FUN_0051ce12` attaches it: bit `1 << n` into `unit+0x144`; bless
+    (20) and curse (28) cancel. Announced by `FUN_005044ba`: message
     `0x88` with unit id (`msg+0xa`) and `effect+0xe` (`msg+0xc`).
-  - Client (`FUN_0040dac9` case `0x88`, `0x4155f6`) adds/replaces
+  - Client (`FUN_0040d9b2` case `0x88`, `0x414d48`) adds/replaces
     `id << 16 | 0xffff` in the effect list `unit+0x130`, sets
-    `unit+0x114 = 1`. The projectile tick `FUN_00471643` adds the same
+    `unit+0x114 = 1`. The projectile tick `FUN_0046c1d0` adds the same
     entry when a homing projectile `0x10 … 0x42` reaches its target.
 
   So `effect id = 2·spell + 8 (+1)`. Data (CONFIRMED): every

@@ -1,22 +1,21 @@
 """Check units.reg against the unit sprite files.
 
-    python tools/validate_units.py [DATA_DIR]
+    python tools/validate_units.py [INSTALL_DIR]
 
 For each Unit<n>: the sprite file and b.256 exist, the frame count equals
 the block layout (stand | move | attack | dying | bones-or-idle), and every
 frame index the draw formulas can produce (all 16 facings, all sequence
 values, death stages 1..4) is inside the file. Then every hero file
 heroes*/<weapon>/sprites.256 against the type its folder maps to
-(FUN_0046f688): stand + (move + attack + idle) per direction, plus the
+(FUN_0046a215): stand + (move + attack + idle) per direction, plus the
 dying and bones blocks only for unarmed / mage_st.
 """
 
-import os
 import sys
 
 from allods2 import graphics as gfx
 from allods2 import units as U
-from allods2.common import DATA
+from allods2.common import as_fs
 
 
 def frames_used(t, td):
@@ -43,15 +42,16 @@ def frames_used(t, td):
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    data = argv[0] if argv else DATA
-    types = U.unit_types(data)
+    fs = as_fs(argv[0] if argv else None)
+    types = U.unit_types(fs)
     ids = U.by_id(types)
     counts, problems = {}, []
 
     def count(t):
-        p = t.sprite_paths(data)[0]
+        p = t.sprite_paths()[0]
         if p not in counts:
-            counts[p] = len(gfx.SpriteFile.load(p)) if os.path.isfile(p) and os.path.getsize(p) > 4 else None
+            counts[p] = (len(gfx.SpriteFile.load(p, fs))
+                         if fs.isfile(p) and len(fs.read(p)) > 4 else None)
         return counts[p]
 
     exact = 0
@@ -60,7 +60,7 @@ def main(argv=None):
         if not t.file or n is None:
             problems.append("Unit%d (ID %d): no sprite file (%r)" % (t.index, t.id, t.file))
             continue
-        if not os.path.isfile(t.sprite_paths(data)[1]):
+        if not fs.isfile(t.sprite_paths()[1]):
             problems.append("Unit%d: no b.256" % t.index)
         exact += n == U.expected_frames(t)
         if n != U.expected_frames(t):
@@ -76,13 +76,13 @@ def main(argv=None):
     print("%d unit types, %d with the exact block layout" % (len(types), exact))
     heroes = hero_exact = 0
     for kind in ("heroes", "heroes_l"):
-        base = os.path.join(data, U.UNITS_DIR, kind)
-        for folder in sorted(os.listdir(base)):
-            p = os.path.join(base, folder, "sprites.256")
-            if not os.path.isfile(p):
+        base = U.UNITS_DIR + "/" + kind
+        for folder in sorted(fs.listdir(base), key=str.lower):
+            p = base + "/" + folder + "/sprites.256"
+            if not fs.isfile(p):
                 continue
             heroes += 1
-            n, want = len(gfx.SpriteFile.load(p)), U.hero_expected_frames(ids[U.HERO_TYPES[folder]], folder)
+            n, want = len(gfx.SpriteFile.load(p, fs)), U.hero_expected_frames(ids[U.HERO_TYPES[folder]], folder)
             hero_exact += n == want
             if n != want:
                 problems.append("%s/%s: %d frames, layout expects %d" % (kind, folder, n, want))

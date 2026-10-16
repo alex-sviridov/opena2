@@ -1,7 +1,7 @@
 """Spell numbers and the effect / projectile ids derived from them.
 Spec: docs/formats/palettes.md §7 "Effect ids"."""
 
-# allods2.exe name table at 0x603190, entries 0x32 + n.  n = spell.txt index + 1.
+# allods2.exe name table at 0x5f8f50, entries 0x32 + n.  n = spell.txt index + 1.
 SPELL_NAMES = (
     "unused_spell_0", "fire_arrow", "fire_ball", "wall_of_fire",
     "protection_from_fire", "ice_missile", "poison_cloud", "blizzard",
@@ -15,7 +15,7 @@ SPELLS = {name: n for n, name in enumerate(SPELL_NAMES)}
 
 
 def effect_id(spell, secondary=False):
-    """Effect / projectile type id of a spell (FUN_00523a7f): 2n + 8, or
+    """Effect / projectile type id of a spell (FUN_00519db8): 2n + 8, or
     2n + 9 for the secondary projectile.  `spell` is a number or name."""
     n = SPELLS[spell] if isinstance(spell, str) else spell
     return 2 * n + 8 + (1 if secondary else 0)

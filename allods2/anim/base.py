@@ -15,14 +15,14 @@ cursors) is an AnimationSet subclass with the same surface:
 Sets whose clock is "ms" step previews by `preview_step_ms`.
 """
 
-import os
+from a2res import OS
 from dataclasses import dataclass, field
 
 from ..graphics import SpriteFile
 
-# FUN_00492068: ticks per second by game speed 0..8; period = 1000 // rate ms.
+# FUN_0048bfaa: ticks per second by game speed 0..8; period = 1000 // rate ms.
 TICK_RATES = (8, 10, 12, 14, 16, 20, 24, 28, 32)
-DEFAULT_SPEED = 4                       # FUN_0048750d
+DEFAULT_SPEED = 4                       # FUN_00481efc (0x4822c5)
 FACINGS = range(16)                     # obj+0x70, clockwise from screen-up
 COMPASS = (8, 10, 12, 14, 0, 2, 4, 6)   # one facing per stored animated direction, front first
 CELL = 32                               # pixels per map cell
@@ -36,7 +36,7 @@ def period_ms(speed=DEFAULT_SPEED):
 
 def tick_at_ms(ms, speed=DEFAULT_SPEED):
     """Ticks elapsed after `ms` milliseconds of the fixed-step loop
-    (FUN_0048e7d0), ignoring its 16-tick re-base jitter."""
+    (FUN_00488aa1), ignoring its 16-tick re-base jitter."""
     return int(ms) // period_ms(speed)
 
 
@@ -106,8 +106,9 @@ class AnimationSet:
     preview_step_ms = 1
     blit_mode = "opaque"
 
-    def __init__(self, name, sprites=None, paths=None):
+    def __init__(self, name, sprites=None, paths=None, fs=None):
         self.name = name
+        self.fs = fs                # a2res FS the paths are in; None = OS paths
         self.paths = dict(paths or {})
         self._sprites = dict(sprites or {})
         self.actions = {}
@@ -115,7 +116,8 @@ class AnimationSet:
     def sprites(self, source="main"):
         if source not in self._sprites:
             p = self.paths.get(source)
-            self._sprites[source] = SpriteFile.load(p) if p and os.path.isfile(p) else None
+            fs = self.fs or OS
+            self._sprites[source] = SpriteFile.load(p, fs) if p and fs.isfile(p) else None
         return self._sprites[source]
 
     def overlay(self, source="main"):

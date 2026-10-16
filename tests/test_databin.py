@@ -5,9 +5,9 @@ import struct
 import pytest
 
 from allods2 import databin as D
-from allods2.common import DATA
 
-from helpers import needs
+
+from helpers import GFS, needs
 
 needs_databin = needs("world", "data", "data.bin")
 
@@ -97,11 +97,11 @@ def test_monster_search_skips_30_to_62():
 
 @needs_databin
 def test_install_databin():
-    db = D.databin(DATA)                          # raises unless every byte is consumed
+    db = D.databin(GFS)                          # raises unless every byte is consumed
     counts = [len(x) for x in (db.qualities, db.materials, db.stats, db.armour, db.shields,
                                db.weapons, db.items, db.monsters, db.humans, db.structures,
                                db.spells)]
-    assert counts == [7, 16, 50, 30, 9, 27, 150, 246, 298, 179, 34]
+    assert counts == [7, 16, 50, 30, 9, 27, 96, 241, 289, 179, 34]
     spells = {r.name: r for r in db.spells}
     assert spells["Fire Arrow"].params[D.SPELL_KIND] == 2
     assert spells["Fire Arrow"].params[D.SPELL_MISSILE_SPEED] == 200
@@ -119,9 +119,23 @@ def test_install_databin():
 
 @needs_databin
 def test_monster_palette_variant():
-    db = D.databin(DATA)
+    db = D.databin(GFS)
     pv = D.MONSTER["paletteVariant"]
     assert pv == 30
     assert db.monster("Goblin_Pike.3")[1].params[pv] == 3
     assert db.monster("F_Zombie.5")[1].params[pv] == 2
     assert {r.params[pv] for r in db.monsters if r.name and len(r.params) > pv} == set(range(1, 8))
+
+
+@needs_databin
+def test_column_names_match_parameter_maps():
+    db = D.databin(GFS)
+    assert len(db.columns("monsters")) == 62 + 1          # + the equipment strings
+    assert db.columns("monsters")[D.MONSTER["speed"]] == "speed"
+    assert db.columns("monsters")[29] == "typeID"
+    assert db.columns("classes")[D.ITEM_WEIGHT] == "weight"
+    assert db.columns("spells")[D.SPELL_MISSILE_SPEED] == "Spell Effect Speed"
+    hut = db.structures[0]
+    assert (hut.name, db.param(hut, "structures", "healthMax")) == ("Goblin Hut", 300)
+    man = next(r for r in db.humans if r.name == "Man_Sword")
+    assert db.param(man, "humans", "Speed") == 19

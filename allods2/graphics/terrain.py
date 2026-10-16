@@ -1,17 +1,16 @@
 """Terrain: .alm Tiles values -> 32x32 tiles from tile<g>-<nn>.bmp strips.
 
-Spec: docs/formats/terrain.md.  Loader FUN_0047b899, cell decode and
-water/dirt rules FUN_00404eb5, flat lit blit FUN_0045c757, height-displaced
-blit FUN_0045c8ce with the edge step table from FUN_0045752b, vertex table
-FUN_00406658.
+Spec: docs/formats/terrain.md.  Loader FUN_00476429, cell decode and
+water/dirt rules FUN_00404e0e, flat lit blit FUN_00457487, height-displaced
+blit FUN_004575fe with the edge step table from FUN_0045225b, vertex table
+FUN_004065b1.
 """
 
-import os
 from dataclasses import dataclass
 
 import numpy as np
 
-from ..common import cdiv
+from ..common import as_fs, cdiv
 from .bmp import load_bmp
 from .palette import BRIGHT32, shade_table
 
@@ -42,13 +41,13 @@ def decode_cell(v):
 
 
 def strip_name(set_, strip):
-    """FUN_0047b899: slot t, bitmap j -> tile{(t>>2)+1}-{(t&3)*4+j:02d}.bmp."""
+    """FUN_00476429: slot t, bitmap j -> tile{(t>>2)+1}-{(t&3)*4+j:02d}.bmp."""
     return "tile%d-%02d.bmp" % ((set_ >> 2) + 1, (set_ & 3) * 4 + strip)
 
 
 def water_set(set_, x, y, anim, animate=True):
-    """FUN_00404eb5: water sets cycle through 8..11.  `anim` is the
-    counter at view+0xa88; the option DAT_005fb974 == 0 freezes frame 0."""
+    """FUN_00404e0e: water sets cycle through 8..11.  `anim` is the
+    counter at view+0xa88; the option DAT_005f17ec == 0 freezes frame 0."""
     if not animate:
         return 8
     return 8 + ((set_ + (x + 1) * y + (anim >> 2)) & 3)
@@ -58,8 +57,11 @@ def dirt_variant(x, y):
     return (x + 5 * y) & 3
 
 
+TERRAIN_DIR = "graphics/terrain"
+
+
 class TerrainSet:
-    """The strips the game keeps in DAT_00630b90[set][strip] plus dirt.bmp."""
+    """The strips the game keeps in DAT_006269c8[set][strip] plus dirt.bmp."""
 
     def __init__(self, strips, dirt, palette):
         self.strips = strips        # {(set, strip): (rows*32, 32) uint8}
@@ -67,17 +69,20 @@ class TerrainSet:
         self.palette = palette      # (256, 3) of the tile strips
 
     @classmethod
-    def load(cls, terrain_dir):
+    def load(cls, fs=None, terrain_dir=TERRAIN_DIR):
+        """The strips and dirt.bmp under `terrain_dir` in `fs` (a2res FS;
+        None = the game's)."""
+        fs = as_fs(fs)
         strips, palette = {}, None
         for s in range(SETS):
             for j in range(STRIPS):
-                path = os.path.join(terrain_dir, strip_name(s, j))
-                if os.path.exists(path):
-                    bmp = load_bmp(path)
+                path = terrain_dir + "/" + strip_name(s, j)
+                if fs.isfile(path):
+                    bmp = load_bmp(path, fs)
                     strips[(s, j)] = bmp.index
                     if palette is None:
                         palette = bmp.palette
-        dirt = load_bmp(os.path.join(terrain_dir, "dirt.bmp")).index
+        dirt = load_bmp(terrain_dir + "/dirt.bmp", fs).index
         return cls(strips, dirt, palette)
 
     def rows(self, set_, strip):
@@ -117,13 +122,13 @@ class TerrainSet:
         if c.dirt and c.set not in WATER:
             base = np.zeros((TILE, TILE), np.uint8) if t is None else t.copy()
             d = self.dirt[dirt_variant(x, y) * TILE:(dirt_variant(x, y) + 1) * TILE]
-            np.copyto(base, d, where=d != 0)       # FUN_00457e8d: index 0 is clear
+            np.copyto(base, d, where=d != 0)       # FUN_00452bbd: index 0 is clear
             return base
         return t
 
 
 def light_rows(corners):
-    """FUN_0045c757: (32, 32) table rows for corner lights
+    """FUN_00457487: (32, 32) table rows for corner lights
     (top-left, top-right, bottom-left, bottom-right), column by column."""
     tl, tr, bl, br = (int(c) for c in corners)
     out = np.empty((TILE, TILE), np.int64)
@@ -139,7 +144,7 @@ def light_rows(corners):
 
 
 def _step_row(n):
-    """FUN_0045752b: T[n][k], k = 0..n, the column where an edge that moves
+    """FUN_0045225b: T[n][k], k = 0..n, the column where an edge that moves
     n pixels over the tile takes its (k+1)-th 1-pixel step."""
     step = 0x200000 // (n + 1)
     return [((k + 1) * step + 0x8000) >> 16 for k in range(n + 1)]
@@ -150,14 +155,14 @@ STEP_TABLE = [[0]] + [_step_row(n) for n in range(1, STEP_ROWS)]
 
 
 def _step_row_any(n):
-    # |dy| > 127 makes the game read past its table (into DAT_00629780);
+    # |dy| > 127 makes the game read past its table (into DAT_0061f5b8);
     # that is undefined, so the formula is extended instead.
     return STEP_TABLE[n] if n < STEP_ROWS else _step_row(n)
 
 
 def edge_offsets(y0, y1, bottom=False):
     """Per tile column c = 0..31, the y of an edge from y0 (left) to y1
-    (right) relative to y0, as FUN_0045c8ce steps it before drawing column c.
+    (right) relative to y0, as FUN_004575fe steps it before drawing column c.
 
     The top edge counts T[n][k] <= c when it goes down (y0 < y1) and
     32 - T[n][k] <= c when it goes up; the bottom edge does the opposite,
@@ -176,7 +181,7 @@ def edge_offsets(y0, y1, bottom=False):
 
 
 def tile_columns(ytl, ytr, ybl, ybr, lights):
-    """FUN_0045c8ce for one tile: yields (c, y_top, rows, light_rows) for
+    """FUN_004575fe for one tile: yields (c, y_top, rows, light_rows) for
     each column that has pixels.  rows[i] is the tile texel row drawn at
     y_top + i, light_rows[i] the row of the 96-row shade table.  lights =
     (tl, tr, bl, br) corner light values."""
@@ -196,7 +201,7 @@ def tile_columns(ytl, ytr, ybl, ybr, lights):
 
 
 def vertex_y(heights):
-    """FUN_00406658: screen y of vertex (x, y) = 32·y − H[y][x], with H the
+    """FUN_004065b1: screen y of vertex (x, y) = 32·y − H[y][x], with H the
     .alm Altitudes block read as signed bytes (runtime map +0x10).  Returns
     an (h + 1, w + 1) array; the extra row and column repeat the last ones
     (INFERRED: the game never draws the map edge)."""
@@ -207,8 +212,8 @@ def vertex_y(heights):
 
 def render_3d(tiles, heights, terrain, light, anim=0, animate=True, tint=(0, 0, 0)):
     """(h·32 + top + bottom, w·32, 3) RGB of a Tiles block drawn like
-    FUN_00404eb5 with heights: rows top to bottom, each tile through
-    FUN_0045c8ce (on undistorted tiles this equals the flat blit).  Returns
+    FUN_00404e0e with heights: rows top to bottom, each tile through
+    FUN_004575fe (on undistorted tiles this equals the flat blit).  Returns
     (image, top) where `top` is the margin above map row 0 in pixels."""
     h, w = tiles.shape
     vy = vertex_y(heights)

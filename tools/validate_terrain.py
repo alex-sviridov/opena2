@@ -1,6 +1,8 @@
-"""Check every .alm Tiles block against the terrain strips.
+"""Check every campaign map's Tiles block against the terrain strips.
 
     python tools/validate_terrain.py [INSTALL_DIR]
+
+Maps: scenario/<n>.alm in the install's scenario.res (single-player).
 
 Byte accounting: the M7R container walks to EOF and the Tiles block is
 exactly width·height u16. Then every cell must name an existing strip
@@ -9,32 +11,30 @@ are counted (the game reads past the bitmap there) and listed per map.
 """
 
 import collections
-import glob
-import os
 import sys
 
 import numpy as np
 
 from allods2.alm import load_alm
-from allods2.common import INSTALL
+from allods2.common import as_fs, campaign_maps
 from allods2.graphics import terrain as tr
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    base = argv[0] if argv else INSTALL
-    terrain = tr.TerrainSet.load(os.path.join(base, "data", "graphics", "terrain"))
+    fs = as_fs(argv[0] if argv else None)
+    terrain = tr.TerrainSet.load(fs)
     rows = np.zeros((16, 4), int)
     for (s, j), a in terrain.strips.items():
         rows[s, j] = a.shape[0] // tr.TILE
     stats = collections.Counter()
     bad_maps, past = [], []
-    for path in sorted(glob.glob(os.path.join(base, "maps", "*.alm"))):
+    for path in campaign_maps(fs):
         try:
-            m = load_alm(path)
+            m = load_alm(path, fs)
             t = m.tiles.astype(int)
         except (ValueError, KeyError) as e:
-            bad_maps.append("%s: %s" % (os.path.basename(path), e))
+            bad_maps.append("%s: %s" % (path, e))
             continue
         s, j, r = (t & 0x1FFF) >> 6, (t >> 4) & 3, t & 0xF
         missing = (s >= tr.SETS).sum()

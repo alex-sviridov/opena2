@@ -1,7 +1,7 @@
 # Allods 2 game mechanics
 
-Behaviour reverse-engineered from `allods2.exe` (English 1.30; binary
-identity as in [formats](../formats/README.md)). Facts marked CONFIRMED or
+Behaviour reverse-engineered from the GOG `allods2.exe` (binary identity
+and fact markers as in [formats](../formats/README.md)). Facts marked CONFIRMED or
 INFERRED, with routines.
 
 | Mechanism | Document | Status |

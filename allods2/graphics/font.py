@@ -1,22 +1,21 @@
 """Bitmap fonts: fontN.16 / fontN.16a glyph sprites + fontN.dat metrics.
 
-Spec: docs/formats/fonts.md.  Text is a byte string (cp866 plus the a2mgr
-codes, see map_char); layout follows the measure routine FUN_00461e19,
-the .16 draw 0x4637f1 (with the a2mgr.dll hooks Ordinal_125/126) and the
-.16a draw FUN_00463bbd.
+Spec: docs/formats/fonts.md.  Text is a byte string of font codes (see
+map_char); layout follows the measure routine FUN_0045cb59, the .16 draw
+FUN_0045e531 and the .16a draw FUN_0045e8fd.
 """
 
-import os
 import struct
 from dataclasses import dataclass, field
 
 import numpy as np
+from a2res import OS
 
 from .palette import pack16, unpack16
 from .sprites import SpriteFile, to_rgba
 
 FIRST_CHAR = 0x20
-SPACING = 2                 # FUN_00464849 passes 2 to every font constructor
+SPACING = 2                 # FUN_0045f589 passes 2 to every font constructor
 TILDE = 0x7E - FIRST_CHAR   # glyph 0x5e
 
 ALIGN_RIGHT = 1             # x -= measure(text)
@@ -24,7 +23,7 @@ ALIGN_CENTER = 2            # x -= measure(text) >> 1
 ALIGN_BOTTOM = 4            # y -= width of glyph 0 (sic)
 ALIGN_MIDDLE = 8            # y -= width of glyph 0 >> 1
 
-DEFAULT_COLOURS = 0x62AFB8  # FUN_00463a06: the constant (8, 8, 8) table
+DEFAULT_COLOURS = 0x62AFB8  # FUN_0045e746: the constant (8, 8, 8) table
 
 
 def read_metrics(data):
@@ -34,16 +33,21 @@ def read_metrics(data):
     return list(struct.unpack("<%dI" % (len(data) // 4), data))
 
 
+LOCALE_ID = "main/id"       # "english 0": the last character is the flag digit
+
+
+def locale_flag(fs):
+    """DAT_006227fc as the font setup sets it (0x4748b8: the last character
+    of main\\id minus '0').  GOG: "english 0" -> 0."""
+    data = bytes(fs.read(LOCALE_ID))
+    return data[-1] - 0x30 if data else 0
+
+
 def map_char(c, cyrillic=False):
-    """FUN_00461da1 + a2mgr Ordinal_26: byte -> font code.  Only active when
-    DAT_0062c9c4 == 1 (`cyrillic`).  The exe sets that flag from the digit
-    in data/main/id; a2mgr (Ordinal_81) forces it to 1, so fonts default
-    to `cyrillic=True` (see Font)."""
+    """FUN_0045cae1: byte -> font code.  Only active when DAT_006227fc == 1
+    (`cyrillic`, see locale_flag): 0x80-0xAF + 0x30, 0xE0-0xEF + 0x10."""
     if not cyrillic:
         return c
-    special = {0xC1: 0x80, 0xF0: 0xE0, 0xF1: 0x89}      # a2mgr, checked first
-    if c in special:
-        return special[c]
     if 0x80 <= c <= 0xAF:
         return c + 0x30
     if 0xE0 <= c <= 0xEF:
@@ -58,7 +62,7 @@ _OEM_BEST_FIT = {"‘": "'", "’": "'", "“": '"', "”": '"',
 
 def ansi_to_oem(data):
     """Locale .txt bytes -> font text: CharToOemA, which the loaders
-    FUN_004799f5 / FUN_0047961d apply in place.  Win32 converts system ANSI
+    FUN_00474585 / FUN_004741ad apply in place.  Win32 converts system ANSI
     to OEM; on the Russian locale the game expects that is cp1251 -> cp866
     (А 0xC0 -> 0x80, Ё 0xA8 -> 0xF0, ё 0xB8 -> 0xF1).  Unmappable -> '?'."""
     out = bytearray()
@@ -70,63 +74,6 @@ def ansi_to_oem(data):
         ch = _OEM_BEST_FIT.get(ch, ch)
         out += ch.encode("cp866", errors="replace")
     return bytes(out)
-
-
-def escape_ramp(r, g, b):
-    """The 16-entry RGB565 table a2mgr builds for %[...] (FUN_10005a20):
-    entry k = (k·c / 15) scaled by 31/255 or 63/255, packed with OR."""
-    out = []
-    for k in range(16):
-        r5 = (k * r // 15) * 31 // 255
-        g6 = (k * g // 15) * 63 // 255
-        b5 = (k * b // 15) * 31 // 255
-        out.append((((r5 * 0x40) | g6) << 5 | b5) & 0xFFFF)
-    return np.array(out, np.uint16)
-
-
-def _hex(s):
-    try:
-        return int(s, 16)
-    except ValueError:
-        return -1
-
-
-def _dec(s):
-    try:
-        return int(s, 10) if s else 0
-    except ValueError:
-        return -1
-
-
-def parse_escape(text, i, original):
-    """a2mgr FUN_10005a20 at text[i].  Returns (new_i, colour change) where
-    the change is None (keep), "reset" (back to the caller's table) or an
-    (r, g, b) triple.  Only parsed when the caller passed a colour table."""
-    if original is None or text[i:i + 2] != b"%[":
-        return i, None
-    start = i + 2
-    end = start
-    while end < len(text) and text[end] not in (0, ord("]")):
-        end += 1
-    if end >= len(text) or text[end] != ord("]"):
-        return i, None
-    body = text[start:end].decode("latin-1")
-    if body == "*":
-        return end + 1, "reset"
-    rgb = [-1, 0, 0]
-    if "," in body:
-        fields = body.split(",")
-        if len(fields) > 3 or any(len(f) > 3 for f in fields):
-            return i, None
-        for k, f in enumerate(fields):
-            rgb[k] = _dec(f)
-    elif len(body) == 3:
-        rgb = [_hex(ch) * 17 if _hex(ch) >= 0 else -1 for ch in body]
-    elif len(body) == 6:
-        rgb = [_hex(body[k:k + 2]) for k in (0, 2, 4)]
-    if min(rgb) < 0:
-        return i, None
-    return end + 1, tuple(rgb)
 
 
 @dataclass
@@ -153,26 +100,30 @@ class Layout:
 
 
 class Font:
-    """A font object as built by FUN_0046365e (.16) / FUN_00463a16 (.16a):
+    """A font object as built by FUN_0045e39e (.16) / FUN_0045e756 (.16a):
     glyph sprites, the .dat table, spacing."""
 
-    def __init__(self, sprites, widths, spacing=SPACING, cyrillic=True):
+    def __init__(self, sprites, widths, spacing=SPACING, cyrillic=False):
         self.sprites = sprites
         self.widths = widths
         self.spacing = spacing
         self.cyrillic = cyrillic
 
     @classmethod
-    def load(cls, stem, cyrillic=True):
-        """stem: path without extension, e.g. .../font1/font1."""
+    def load(cls, stem, fs=None, cyrillic=None):
+        """stem: path without extension in `fs` (None = OS path), e.g.
+        graphics/font1/font1.  cyrillic None: locale_flag(fs) == 1 when fs
+        has main/id, else False."""
+        fs = fs or OS
+        if cyrillic is None:
+            cyrillic = fs is not OS and fs.isfile(LOCALE_ID) and locale_flag(fs) == 1
         for ext in (".16", ".16a"):
-            if os.path.exists(stem + ext):
-                sprites = SpriteFile.load(stem + ext)
+            if fs.isfile(stem + ext):
+                sprites = SpriteFile.load(stem + ext, fs)
                 break
         else:
             raise FileNotFoundError(stem + ".16/.16a")
-        with open(stem + ".dat", "rb") as f:
-            widths = read_metrics(f.read())
+        widths = read_metrics(bytes(fs.read(stem + ".dat")))
         return cls(sprites, widths, cyrillic=cyrillic)
 
     @property
@@ -193,9 +144,8 @@ class Font:
         return self.sprites[0].height
 
     def measure(self, text):
-        """FUN_00461e19.  Bytes < 0x20 and a lone '~' count 0; '~~' counts
-        one '~'; a space adds half the glyph-0 height.  %[...] escapes are
-        not recognised here (a2mgr does not hook it), so they count."""
+        """FUN_0045cb59.  Bytes < 0x20 and a lone '~' count 0; '~~' counts
+        one '~'; a space adds half the glyph-0 height."""
         total, i = 0, 0
         while i < len(text):
             c = text[i]
@@ -231,7 +181,7 @@ class Font:
             self._layout16(text, x, y, flags, colours)
 
     def _layout16a(self, text, x, y, flags):
-        """FUN_00463bbd: no '~' or %[...] handling."""
+        """FUN_0045e8fd: no '~' handling."""
         out = Layout()
         x, y = self._align(text, x, y, flags)
         for c in text:
@@ -245,22 +195,14 @@ class Font:
         return out
 
     def _layout16(self, text, x, y, flags, colours):
-        """0x4637f1 + a2mgr: per position, first one %[...] escape, then
-        '~' + c underlines c (no advance), '~~' draws '~', space advances
-        half the glyph-0 height."""
+        """FUN_0045e531: '~' + c underlines c (no advance) in colour entry
+        15 (table +0x1e), '~~' draws '~', space advances half the glyph-0
+        height."""
         out = Layout()
         x, y = self._align(text, x, y, flags)
-        original = None if colours is None else np.asarray(colours, np.uint16)
-        current = original
+        current = None if colours is None else np.asarray(colours, np.uint16)
         i = 0
         while i < len(text):
-            i, change = parse_escape(text, i, original)
-            if change == "reset":
-                current = original
-            elif change is not None:
-                current = escape_ramp(*change)
-            if i >= len(text):
-                break
             g = self.glyph(text[i])
             g2 = self.glyph(text[i + 1] if i + 1 < len(text) else 0)
             if g == TILDE and g2 != TILDE:
