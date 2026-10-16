@@ -202,9 +202,14 @@ The company is legally entitled to recreate the game.
   start 0, message-spawned -1; ping-pong 4321012101234 (0x471fba); no
   additive blend: .16a alpha / opaque+50% / projectiles.pal; ID 7 = screen
   lens (atan/sin bulge, R 20 d 16, n 19). Previews allods2/anim_preview.py
-  via `python -m allods2 anim preview KEY DEST` (+ grid in out/contact).
-  animation.md §4
+  via `python -m allods2 anim preview KEY DEST` (+ grid in out/contact);
+  `anim preview-all DEST` = everything by class (anim.all_keys). Also
+  water (terrain.py, sets 8-11 only, no lava), burning cells (effects.py,
+  fire 0x0f/steam 8 frames counter>>1), cursors (ui.py, exe table
+  FUN_00480f17: hot x/y + period ms, step when > period, timeGetTime),
+  UI .16a sequences (cube/blind/map flags; timing open). Survey table
+  animation.md §4.10. animation.md §4
 - Not started: data.bin, saves, game layer.
 - Next (see docs/open-questions.md): sprite/animation open questions one
-  by one (user request), terrain/UI animation API, server hit timing, data.bin,
+  by one (user request), fog overlay draw, UI sequence timing, server hit timing, data.bin,
   .alm sections 0, 4-12.

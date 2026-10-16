@@ -1114,6 +1114,91 @@ INFERRED: with one view draw per game tick the fire burns 22 ticks
 faster. **VERIFY IN GAME**: a fireball on a forest; the flames should
 last about 1.4 s and look shorter while the mouse moves.
 
+### 4.7 Terrain water
+
+**CONFIRMED** ([terrain](terrain.md), `FUN_00404eb5`): only tile sets 8–11
+animate; a water cell of set `s` at absolute cell `(x, y)` draws set
+`8 + ((s + (x+1)·y + (clock >> 2)) & 3)` (one frame per 4 ticks, a 16-tick
+loop, neighbouring cells out of step), frozen at set 8 when "Object
+animations" is off. There is no lava or other animated terrain in Allods 2
+(13 sets, none else cycles). `WaterSet` draws a window of map cells;
+`load_water_set("auto")` picks the first map window in name order that is
+40–70 % water (shore and open water).
+
+### 4.8 Cursors
+
+**CONFIRMED** (table `FUN_00480f17`; class `FUN_00480d20`, vtable
+`0x5d7a90`; mouse manager object `0x60e6c0`: set `FUN_004289d3`, step and
+draw `FUN_00428c10`, `0x4291f4`). Each cursor is `(file, hot x, hot y,
+period ms)`; the class stores the sprite (`+4`), hot spot (`+8`, `+0xc`),
+frame count (`+0x10`) and period (`+0x14`). Files ending `.16a` load with a
+FADE16 table, the others as `.256` with `(1, 1, 0)`. The manager keeps the
+frame at `+0x24` and the last step time at `+0x30`:
+
+```
+now = timeGetTime()
+if now − last > period:  last = now;  frame = (frame + 1) mod count
+draw frame (+0x18, own table) at (mouse x − hot x, mouse y − hot y)
+```
+
+So a cursor steps on the first poll more than `period` ms after the
+previous step (`cursor_frame` models a 1 ms poll: one frame per
+`period + 1` ms); setting a cursor resets the frame to 0. Period
+2000000000 = still.
+
+| Cursor | Hot spot | Period ms | Frames |
+|---|---|---|---|
+| default | 4, 4 | still | 1 |
+| move, swarm | 2, 3 | 100 | 11 |
+| attack | 3, 3 | 100 | 10 |
+| select | 3, 3 | 100 | 1 |
+| defend | 16, 16 | 100 | 8 |
+| patrol | 8, 25 | 100 | 8 |
+| cast | 16, 16 | 100 | 14 |
+| pickup | 16, 12 | 66 | 11 |
+| dice, wait | 16, 16 | 100 | 15, 10 |
+| backpack | 16, 16 | 100 | 1 |
+| arrow0–7 (map scroll, by direction) | 16,6 · 23,9 · 26,16 · 23,24 · 16,28 · 8,24 · 5,16 · 8,9 | still | 1 |
+| sdefault (`.16a`), smove, sattack, sdefend, spatrol, scast (`.256`) | 1,1 / 0,0 | still | 1 |
+| cantput, town | 38,36 / 16,16 | still | 1 |
+
+The loose `cursors/{attack,cast,defend,move,patrol,pickup}.256` and
+`d/l/ld/lu/r/rd/ru/u.256` files are never named by the exe (no string),
+so they are unused leftovers; four of them are truncated.
+
+### 4.9 Other UI sequences
+
+Multi-frame UI sprites (all `.16a`, FADE16), **CONFIRMED** loaders, timing
+**not traced** (previews use 100 ms per frame and are marked untimed):
+
+| Sprite | Frames | Loader |
+|---|---|---|
+| `interface/chrgen/cube` (character creation dice) | 16 | `FUN_004313db` (`+0x8c`) |
+| `interface/chrgen/PreCreate/Blind` | 15 | `FUN_004364c3` |
+| `Global.Map/MissionFlag`, `YourFlag` | 9, 4 | `FUN_00474320` |
+| `interface/inn/<unit>/sprites` (hire previews) | 8 (unit26: 5) | not found: no path string in the exe or a2mgr |
+
+`FUN_00474320` also names `Global.Map/Flag1`, `Flag`, `Cross` and
+`FlagOnMap`, which are absent from this install.
+
+### 4.10 Survey: everything that animates
+
+| Class | Metadata | Layout | Timing | Draw | API |
+|---|---|---|---|---|---|
+| units, monsters, heroes | `units.reg` | §2 | ticks, distance for walk (§3) | opaque + 50 % overlay, mirrored | `UnitSet` |
+| structures | `structures.reg` | piece grid, `AnimMask` | `AnimTime/Frame` per tick | opaque + 50 % overlay | `StructureSet` |
+| bridges | map record size | 9 / 14 pieces | bottom edge `clock & 3` | opaque | `BridgeSet` |
+| map objects | `objects.reg` | `Index + seq` | `clock + X + X·Y` | opaque + 50 % overlay | `ObjectSet` |
+| projectiles, spell effects | `projectiles.reg` + per-ID code | `phase + Phases·dir` | `age / 2`, ping-pong, `age` (§4.4) | `.16a` alpha, opaque, 50 % shadow, screen lens; no additive blend | `ProjectileSet` |
+| burning cells | list `view+0xa94` | firewall / steam frames | counter per view draw, 22 | `.16a` alpha | `BurningSet` |
+| water | tile sets 8–11 | 4 sets | `clock >> 2` | tile copy | `WaterSet` |
+| cursors | exe table | `.16a` / `.256` | ms, `timeGetTime` | alpha / opaque | `CursorSet` |
+| other UI | exe loaders | `.16a` | not traced | alpha | `UiSequenceSet` |
+
+`python -m allods2 anim preview-all DEST` writes
+`DEST/<class>/<name>/<action>[_dNN].gif` and `grid.png` for every set
+(`anim.all_keys`).
+
 ## Open questions
 
 - The sight mask algorithm (line of sight, radius shape): a2mgr
@@ -1130,5 +1215,8 @@ last about 1.4 s and look shorter while the mouse moves.
 - Server map fill `FUN_0055e616`: which layers its input `+0x10`/`+0x14`
   are, and who sets cell flag `0x20` (`FUN_00564137` path).
   [§3.4](#34-where-the-speeds-come-from)
+- Frame timing of the UI sequences (chrgen cube, PreCreate Blind,
+  world-map flags) and the loader of the inn unit pictures
+  (`FUN_004313db`, `FUN_004364c3`, `FUN_00474320`). [§4.9](#49-other-ui-sequences)
 - What `weapon+0x4a` and `unit+0x86` are in the hero recovery delay
   (INFERRED: weapon speed and a hero stat; [§3.4](#34-where-the-speeds-come-from)).

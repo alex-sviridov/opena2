@@ -1,6 +1,7 @@
 """Command line entry point: python -m allods2 <group> <command> ...
 
     python -m allods2 gfx export FILE DEST [--palette PAL]
+    python -m allods2 anim preview-all DEST [--data DIR] [--only CLASS ...]
     python -m allods2 anim preview SPRITE DEST [--data DIR] [--speed N]
                                    [--player P] [--variant V] [--grid PNG]
 
@@ -15,7 +16,9 @@ for --speed (0..8, default 4), plus a still grid (rows = actions, columns
 = facings; default out/contact/anim_<name>_grid.png). SPRITE is a
 units.reg ID, a hero folder (heroes/swordsman), a unit file/folder
 under graphics/units (monsters/goblin), or <kind>:<id> for the other
-classes (structure:11, object:0, projectile:12). --data defaults to $ALLODS2_DATA,
+classes (structure:11, object:0, projectile:12, water:auto, burning:,
+cursor:pickup, ui:chrgen_cube). `anim preview-all` writes
+DEST/<class>/<name>/<action>[_dNN].gif and grid.png for everything. --data defaults to $ALLODS2_DATA,
 else samples/.../data under the current directory. Write into out/ or
 outside the repo, never samples/.
 """
@@ -66,6 +69,23 @@ def anim_preview(a):
     return 0
 
 
+def anim_preview_all(a):
+    from . import anim, anim_preview as P
+    total = 0
+    for cls, keys in anim.all_keys(a.data).items():
+        if a.only and cls not in a.only:
+            continue
+        for key in keys:
+            aset = anim.load_set(key, a.data)
+            d = os.path.join(a.dest, cls, aset.name)
+            n = len(P.write_gifs(aset, d, a.speed))
+            P.grid(aset).save(os.path.join(d, "grid.png"))
+            total += n
+        print("%s: %d sets" % (cls, len(keys)))
+    print("%d GIFs -> %s/" % (total, a.dest))
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python -m allods2", description="Allods 2 data tools.")
     groups = ap.add_subparsers(dest="group", required=True)
@@ -85,5 +105,12 @@ def main(argv=None):
     pv.add_argument("--variant", type=int, default=0, help="palette<N>.pal variant (Palette > 0)")
     pv.add_argument("--grid", help="still grid PNG path")
     pv.set_defaults(func=anim_preview)
+    pa = g.add_parser("preview-all", help="GIFs and grids for every animated thing, by class")
+    pa.add_argument("dest")
+    pa.add_argument("--data", default=os.environ.get("ALLODS2_DATA", DEFAULT_DATA))
+    pa.add_argument("--speed", type=int, default=4, choices=range(9))
+    pa.add_argument("--only", nargs="*", help="classes: units structures objects projectiles "
+                                             "terrain effects cursors ui")
+    pa.set_defaults(func=anim_preview_all)
     a = ap.parse_args(argv)
     return a.func(a)

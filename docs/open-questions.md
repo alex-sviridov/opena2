@@ -47,6 +47,9 @@ Rules (also in CLAUDE.md):
   `FUN_00527122`). [animation](formats/animation.md#34-where-the-speeds-come-from)
 - Server map fill `FUN_0055e616`: input layers `+0x10`/`+0x14`; who sets
   cell flag `0x20` (`FUN_00564137`). [animation](formats/animation.md#34-where-the-speeds-come-from)
+- Timing of the UI sequences (chrgen cube, Blind, map flags) and the inn
+  pictures' loader (`FUN_004313db`, `FUN_004364c3`, `FUN_00474320`).
+  [animation](formats/animation.md#49-other-ui-sequences)
 - Meaning of `weapon+0x4a` and `unit+0x86` in the hero attack recovery
   (`FUN_00518d2f`). [animation](formats/animation.md#34-where-the-speeds-come-from)
 

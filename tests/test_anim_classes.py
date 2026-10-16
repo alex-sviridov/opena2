@@ -171,3 +171,48 @@ def test_cli_preview_other_classes(tmp_path):
         assert cli.main(["anim", "preview", key, str(d), "--data", DATA,
                          "--grid", str(tmp_path / "g.png")]) == 0
         assert len(os.listdir(d)) == n
+
+
+# -- terrain water, burning cells, cursors, UI ----------------------------------
+
+def test_water_phase_per_cell():
+    from allods2.graphics.terrain import cell_value
+    w = A.WaterSet("w", None, np.array([[cell_value(8, 0, 0), cell_value(0, 0, 0)],
+                                         [cell_value(9, 0, 0), cell_value(8, 0, 0)]]), x0=3, y0=1)
+    # 8 + ((s + (x+1)*y + (clock >> 2)) & 3) with absolute x, y
+    assert w.cell_sets(0).tolist() == [[8 + ((8 + 4 * 1) & 3), 0], [8 + ((9 + 4 * 2) & 3), 8 + ((8 + 5 * 2) & 3)]]
+    assert w.cell_sets(4)[0, 0] == 8 + ((8 + 4 + 1) & 3)
+    assert (w.cell_sets(5, animate=False)[[0, 1, 1], [0, 0, 1]] == 8).all()
+
+
+def test_burning_cell_frames_and_light():
+    rec = dict(Width=128, Height=128)
+    b = A.BurningSet(rec, dict(Width=64, Height=96), sprites={"fire": sprite_file(11), "steam": sprite_file(9)})
+    refs = [b.frame_at("fire", 0, t) for t in range(23)]
+    assert [r.index for r in refs[:5]] == [0, 0, 1, 1, 2]
+    assert refs[21].index == 10 and refs[22].index == -1
+    assert refs[6].events == ("light=0",) and refs[0].events == ("light=36",)
+    assert b.frame_at("steam", 0, 17).index == 8 and b.frame_at("steam", 0, 18).index == -1
+    assert b.frame_at("steam", 0, 0).hotspot == (32, 48)
+
+
+def test_cursor_frames():
+    assert A.cursor_frame(0, 100, 10) == 0
+    assert A.cursor_frame(100, 100, 10) == 0 and A.cursor_frame(101, 100, 10) == 1
+    assert A.cursor_frame(1010, 100, 10) == 0
+    assert A.cursor_frame(5000, 2000000000, 10) == 0
+    c = A.CursorSet("move/sprites.16a", 2, 3, 100, sprites={"main": sprite_file(11)})
+    assert c.frame_at("cursor", 0, 202).index == 2 and c.frame_at("cursor", 0, 0).hotspot == (2, 3)
+
+
+@needs_data
+def test_all_keys_load_and_cursor_files_exist():
+    keys = A.all_keys(DATA)
+    assert len(keys["cursors"]) == 28 and len(keys["projectiles"]) == 31
+    for k in keys["cursors"] + keys["ui"] + keys["effects"]:
+        s = A.load_set(k, DATA)
+        for src in {a.source for a in s.actions.values()}:
+            assert s.sprites(src) is not None, k
+        assert s.missing_frames() == [], k
+    w = A.load_set("water:auto", DATA)
+    assert ((w.cell_sets(0) >= 8) & (w.cell_sets(0) < 12)).mean() >= 0.4
