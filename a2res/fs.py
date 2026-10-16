@@ -24,6 +24,15 @@ def norm(path):
     return "/".join(_parts(path))
 
 
+def game_lower(path):
+    """FUN_004e26c9: the resource manager lower-cases every path before the
+    lookup, A-Z only (CRT tolower, C locale)."""
+    return path.translate(_LOWER)
+
+
+_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
+
+
 def join(*parts):
     return norm("/".join(p for p in parts if p))
 
@@ -141,8 +150,9 @@ class FS:
 
 class ResFS(FS):
     """The game's mounted archives: <install>/<stem>.res for each ARCHIVES
-    member present.  The first path component selects the archive (stem
-    compared case-insensitively, INFERRED: res.md open questions)."""
+    member present.  Paths are lower-cased (A-Z) first, as the game's
+    manager does (`game_lower`); the first component then selects the
+    archive and the rest follows ResArchive.lookup (res.md § Lookup)."""
 
     def __init__(self, install, archives=ARCHIVES):
         self.name = self.install = install
@@ -159,8 +169,8 @@ class ResFS(FS):
             a.close()
 
     def _split(self, path):
-        head, _, rest = path.partition("/")
-        return self.archives.get(head.lower()), rest
+        head, _, rest = game_lower(path).partition("/")
+        return self.archives.get(head), rest
 
     def _file(self, path):
         arc, rest = self._split(path)

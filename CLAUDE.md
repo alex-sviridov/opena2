@@ -66,9 +66,10 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
 `anim preview-all DEST`, `res ls|list|extract`; contact sheets
 `tools/*_contact.py` → out/contact/.
 - .res / a2res: CONFIRMED (`FUN_004e2040` opener, lookup `FUN_004e9046`, mount
-  `FUN_00481186`): `.reg` entry tree, header +0x10 dir offset, +0x14 count,
-  absolute file ranges; all 10 archives tile exactly; first path component =
-  archive stem. Mount 0.15 s, every file read 0.35 s. res.md
+  `FUN_00481186`, manager `FUN_004e2b5d`): `.reg` entry tree, absolute file
+  ranges; paths lower-cased (A–Z) before lookup; loose dirs cwd/temp/CD
+  fallback + `update.lst` overrides; all 10 archives tile exactly. Mount
+  0.15 s, every file read 0.35 s. res.md
 - Sprites `.256/.16/.16a/*b.256`: CONFIRMED, 43,947 decode exactly. `*b.256`
   = 50 % edge-smoothing overlays; mirrored blit twins; darken = UI drop
   shadows; effect 0x20 Invisibility + relation word. sprites.md
@@ -80,7 +81,8 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   rows, shadows, options (labels from patch.txt), fog draw. mechanics/lighting.md
 - BMP: CONFIRMED (8-bit flips, 64k class doesn't; pack16; price bar;
   portrait canvas + crop table). bitmaps.md
-- .reg: CONFIRMED (17 files; no unreachable names). reg.md
+- .reg: CONFIRMED (17 files): reader/writer, +0x14 = garbage bytes, sort pass
+  bug (only roots sorted), INI compiler; saves use .reg. reg.md
 - Units: CONFIRMED units.reg + frame layout, facing clockwise from up,
   Flip, events; 59/61 + 30/30 hero files; bones stride = BonePhases;
   palette variant = data.bin monster param 30. units.md, animation.md §2

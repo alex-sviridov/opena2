@@ -15,7 +15,7 @@ ENTRY = 32
 NAME_MAX = 15               # names compare on at most 15 characters
 T_SECTION = 1               # type & 0xF: 0 file, 1 section
 SORTED = 0x10               # section children sorted: bsearch + strcmp
-DELETED = 0x40000000        # lookups skip it (meaning INFERRED)
+DELETED = 0x40000000        # replaced/removed entry (FUN_004e92f5); lookups skip it
 DIR_INLINE = 0x80000000     # root-type flag: directory not at the header's offset
 
 _ENTRY = struct.Struct("<4I16s")

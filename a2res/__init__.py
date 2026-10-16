@@ -12,7 +12,7 @@ Spec: docs/formats/res.md.
 from .archive import (DELETED, DIR_INLINE, ENTRY, HEADER, NAME_MAX, SIGNATURE, SORTED,
                       T_SECTION, Entry, ResArchive)
 from .fs import (ARCHIVES, FS, OS, ChainFS, DirFS, MemoryFile, OSFS, ResFS, basename,
-                 dirname, join, norm, open_fs, splitext)
+                 dirname, game_lower, join, norm, open_fs, splitext)
 
 
 def extract(archive, dest):

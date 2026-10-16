@@ -145,6 +145,17 @@ def test_resfs_mounts_by_stem_and_reads_views(install):
     assert arc.name == "graphics" and e.b == 2
 
 
+def test_resfs_lower_cases_the_path_first(tmp_path):
+    d = tmp_path / "game"
+    d.mkdir()
+    write_res(d / "speech.res", {"abc.wav": b"w", "Upper.wav": b"u"}, root_type=0x11)
+    fs = R.ResFS(str(d))
+    assert fs.read_bytes("SPEECH\\ABC.WAV") == b"w"        # sorted root, strcmp after lowering
+    assert "ABC.WAV" not in fs.archives["speech"]           # the archive alone is case-sensitive
+    assert not fs.isfile("speech/Upper.wav")                # stored upper case is unreachable
+    assert R.game_lower("A\\Zé") == "a\\zé"
+
+
 def test_open_gives_seekable_file(install, tmp_path):
     img = Image.fromarray(np.arange(12, dtype=np.uint8).reshape(2, 2, 3))
     loose = tmp_path / "loose"

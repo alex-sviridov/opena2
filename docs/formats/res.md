@@ -26,16 +26,30 @@ File entry: `+4` absolute offset of the data in the archive, `+8` byte
 length, `+12` type 0, `+16` name. Section entry: `+4` first child index,
 `+8` child count, `+12` type 1 (`0x11` = children sorted).
 
-- CONFIRMED (`FUN_004e2040`, the opener): reads the signature, the root
-  entry (+4, +8, +0xc), D (+0x10) and N (+0x14). It seeks to D unless
-  root type bit 31 is set, then reads `32·N` bytes. Opened for writing,
-  the table gets room for `N + N/4 + 10000` entries.
+- CONFIRMED (`FUN_004e2040`, the opener): opens the file read-only
+  (`CFile` mode `0x40`, share-deny-none; the mode word `+0x3c` is set to 0
+  just before), reads the signature, the root entry (+4, +8, +0xc), D
+  (+0x10) and N (+0x14), seeks to D unless root type bit 31 is set
+  (then the directory follows the header), and reads `32·N` bytes. The
+  writable-table branch (room for `N + N/4 + 10000` entries) is
+  unreachable from this opener.
+- CONFIRMED (`.res` stream, vtable `0x5d06a8`): Open `FUN_004e2fc3` asks
+  the manager (`FUN_004e2b5d` → `FUN_004e2445`) for {archive file, entry
+  `+4`, entry `+8`}; Read `FUN_004e329c` seeks the archive file to
+  `base + pos` and clamps to the length. So `+4` is an absolute file
+  offset.
 - CONFIRMED (all 10 archives, `tools/validate_res.py`): `D + 32·N` = file
   size, every entry is reached exactly once from the root, and the file
   ranges tile `0x18..D` with no gap or overlap. Entry `+0` is 0
-  everywhere, and the only types are 0, 1 and `0x11`.
-- INFERRED: offsets are absolute (data: the first file starts at 0x18).
-  Bit 31 of the root type ("directory follows the header") never occurs.
+  everywhere, and the only types are 0, 1 and `0x11`. Bit 31 of the root
+  type never occurs.
+
+Entry flags (high bits of `+12`, set in memory, never in the shipped
+files): `0x40000000` replaced or removed (`FUN_004e92f5`, used when a
+key is re-added by `FUN_004e8ed0`; recursive for sections; freed blob
+bytes go to the header `+0x14` count of [reg](reg.md#layout));
+`0x20000000` overridden by a loose file (§ Mounting, `update.lst`);
+`0x10000000` name longer than 15 characters (`FUN_004e3620`).
 
 ## Lookup
 
@@ -48,22 +62,56 @@ remaining components are resolved one level at a time with the
 section, `bsearch` + `strcmp` on the key cut to 15 chars; otherwise
 `_strnicmp(key, name, 15)`. Every step must be a section with flag
 `0x40000000` clear. The result is rejected (`FUN_004e9153`) if it has
-`0x40000000` or `0x10` set. `0x40000000` never occurs in the data; it
-probably means "deleted" (INFERRED). In all archives every walked path
-resolves back to its own entry.
+`0x40000000` or `0x10` set. In all archives every walked path resolves
+back to its own entry.
+
+Case: CONFIRMED (`FUN_004e26c9`). The resource manager lower-cases every
+path, A–Z only (CRT `tolower`), before the lookup above and before
+mounting an archive, so the stems are lower case and `SFX\Add.wav` finds
+`sfx\add.wav`. The switch `DAT_005f7870` starts at 1, and its toggle
+`FUN_004e26a0` has no callers. Every name in the 10 archives is lower case
+(CONFIRMED, all archives), so a lowered path meets the case-sensitive
+`strcmp` of sorted sections without loss. `ResFS` does the same
+(`game_lower`).
 
 ## Mounting
 
-CONFIRMED (`FUN_00481186`, the mount sequence; `FUN_004e2901` mounts one
-archive into the manager at `0x6682b0`). The order is `graphics.res`,
-`main.res`, `patch.res`, `world.res`, `music.res`, `video.res`, then
-`sfx.res`, `movies.res`, `scenario.res`, `speech.res`. The name of the
-first is pasted together from `"grap" + "hi" + "cs.res"`, so the lone `cs.res`
-string is not a separate archive. `-nomusic` is
-checked between the two groups. After the mounts, `update.lst` is read
-line by line (`FUN_004e2a1d`). INFERRED: `FUN_004e2932` mounts the
-CD-ROM `Allods\` folder (CD volume label `ROM2`) as a loose-file directory.
-The GOG install ships an empty `Allods\dummy.txt`.
+CONFIRMED (`FUN_00481186`, the mount sequence; `FUN_004e2901` lower-cases
+the name and mounts one archive into the manager at `0x6682b0`). The order is
+`graphics.res`, `main.res`, `patch.res`, `world.res`, `music.res`,
+`video.res`, then `sfx.res`, `movies.res`, `scenario.res`,
+`speech.res`. The name of the first is pasted together from `"grap" + "hi"
++ "cs.res"`, so the lone `cs.res` string is not a separate archive.
+`-nomusic` is checked between the two groups.
+
+The manager keeps a list of **loose directories** (CONFIRMED;
+`FUN_004e2963` adds one, fatal error 3 unless `FUN_004e34d0` reports a
+directory or a drive root `X:\`):
+
+1. the current directory at start-up (the manager's static constructor
+   `FUN_004e24f6`, before `WinMain`);
+2. the temp directory (`GetTempPathA`, trailing `\` cut);
+3. `<CD>\Allods`, when `HKLM\SOFTWARE\Rage of Mages 2` value `CD`
+   exists (the volume label is compared with `ROM2`, but the result is
+   ignored). The GOG install ships an empty `Allods\dummy.txt`.
+
+An archive is opened as `<dir>\<name>` from the first directory where the
+open succeeds (`FUN_004e274a`; none → fatal error 2). A file lookup
+(`FUN_004e2b5d`) asks each archive in mount order; the first hit wins. If no
+archive has the path, or the hit carries `0x20000000`, it tries
+`<dir>\<path>` in each loose directory in order (`CFile` open errors 2
+and 3, not found, move on; any other is fatal).
+
+`update.lst` (CONFIRMED, `FUN_004e2a1d`): read after the mounts through
+the same loose lookup. Each line, with CR/LF cut, is a game path; reading
+stops at the first line whose first character is not printable
+(`isprint`). `FUN_004e2af9` sets `0x20000000` on that path's entry in the
+first archive that has it, so the loose copy replaces it. The GOG install
+has no `update.lst`.
+
+`World\Mission\scr_<map>.reg` mission scripts are opened the same way
+(`FUN_005756a1`); it adds the current directory to the loose list again
+on every call.
 
 Game paths name the archive first, e.g. `graphics\units\units.reg`,
 `main\graphics\famehall\hall.bmp`, `main\id` (CONFIRMED, exe strings).
@@ -75,8 +123,8 @@ memory-maps one archive and parses the directory once; `read(path)` is a
 `memoryview` slice of the map (no copy), `lookup` follows § Lookup, with
 one table per section built on first use (O(1) per component),
 `check()` is the validation above. `ResFS(install)` mounts the archives
-in mount order and routes a path by its first component (compared
-case-insensitively, see the open question). `DirFS(folder)` serves a loose
+in mount order, lower-cases the path (§ Lookup) and routes it by its
+first component. `DirFS(folder)` serves a loose
 tree (case-insensitive like Windows), `ChainFS(a, b, …)` layers file
 systems (first hit wins, listings merged), `OS` reads plain paths. Every
 FS has `read`, `read_bytes`, `open` (seekable file over the same memory,
@@ -111,12 +159,4 @@ first file in it, `ai.reg`, sits at 0x18: an embedded `.reg` (it starts
 
 ## Open questions
 
-- The file reader and the writer: confirm in code that entry `+4` is
-  absolute (data says so), and find what writes flags `0x40000000` /
-  bit 31 (`FUN_004e2040` write mode, callers of `FUN_004e9153`).
-- How the archive-name compare treats case. `FUN_004e9046` is
-  case-sensitive, yet the exe also uses paths like `SFX\Add.wav`. Find
-  where paths are lower-cased before the lookup, in the caller of the
-  manager at `0x6682b0`.
-- `update.lst` line format, and the `Allods\` directory mount
-  (`FUN_004e2a1d`, `FUN_004e2963`).
+- None. (The CD mount needs the original CD and is not reproduced.)

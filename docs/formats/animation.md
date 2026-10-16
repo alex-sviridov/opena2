@@ -1044,7 +1044,18 @@ Flag1 (`+0x128`) and Flag (`+0x130`); otherwise MissionFlag and
 FlagOnMap (`+0x128`) and YourFlag (`+0x130`). The moduli come from Flag1
 and Flag, which have the same frame counts as MissionFlag/FlagOnMap and
 YourFlag, so every flag loops over its own frames: ≤ 10 frames/s. Cross
-keeps its own state (`+0x12c`, the sprite object's `+0x134`; not traced).
+(CONFIRMED asm `0x470279`–`0x47040a`; the field names are INFERRED) is
+drawn at the destination (`+0x10c`/`+0x110` plus the scroll offset, −10/−12
+px) once per window redraw: frame `+0x134` of the sprite object, clamped
+to the last frame (12) once reached, then `+0x134 += 1`. The route
+progress `+0x12c` grows by 8 per draw while the dotted route (list at
+`+0xe0`, sprite `+0x70` drawn at every 8th point up to `+0x12c`) is being
+laid; when `+0x12c` passes the route length and `+0x134 > 14` the party
+position `+0x104/+0x108` is set to the destination, `+0x12c` is reset to
+0 and the route is cleared (`0x472860`). So the Cross plays its 13 frames
+at ≤ 10 frames/s, holds the last one until the route is done, and stops
+after ~15 draws. Where `+0x134` is reset to 0 for a new click was not
+traced.
 API: `ui:map_missionflag`, `map_yourflag`, `map_flag1`, `map_flag`,
 `map_flagonmap`.
 
@@ -1191,7 +1202,7 @@ In order of need; none required by the coverage check.
    palettes in the draw path (`UnitSet.player` exists).
 5. Lens (post-process) and trails (need map positions) in previews.
 6. Dropped sacks (`0x4611d6`, §5.1) as a small static `AnimationSet`.
-7. UI sequence timing (§4.9: Blind, world-map flags; cube and Cross
+7. UI sequence timing (§4.9: Blind, world-map flags, Cross; cube
    still open) before the chargen and world-map screens.
 
 ## Open questions
@@ -1200,5 +1211,4 @@ In order of need; none required by the coverage check.
   `interface/town_druid/bug`, `lizard` animate, but no set reads them
   yet; find their draw code and timing (start: string refs to
   `townbirds`, `town_druid`).
-- World-map Cross (`+0x7c`, state `+0x12c` and the sprite's `+0x134`,
-  `FUN_0046fdd5` `0x470279`–`0x47040a`).
+- World-map Cross: where the click handler resets `+0x134` to 0 (writers of `+0x134`, `FUN_0046fdd5` callers' mouse path).
