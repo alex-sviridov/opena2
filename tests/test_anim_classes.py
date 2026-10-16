@@ -8,10 +8,10 @@ import numpy as np
 import pytest
 
 from allods2 import anim as A
-from allods2.anim.projectiles import ProjectileSet
 from allods2.anim.structures import BridgeSet, StructureSet
+from allods2.common import DATA
 
-from test_anim import DATA, needs_data, sprite_file
+from helpers import needs_data, projectile, sprite_file
 
 
 # -- structures ----------------------------------------------------------------
@@ -83,13 +83,6 @@ def test_object_dead_frame_and_anchor():
 
 
 # -- projectiles -------------------------------------------------------------------
-
-def projectile(pid, **kw):
-    rec = dict(ID=pid, File="p", Phases=4, RotationPhases=16, Width=64, Height=64,
-               Palette=1, Flip=0, A16=1)
-    rec.update(kw)
-    return ProjectileSet(rec, sprites={"main": sprite_file(64)})
-
 
 def test_projectile_default_phase_two_ticks_per_frame():
     p = projectile(10)

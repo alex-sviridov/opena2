@@ -8,41 +8,10 @@ Exit status 0 when every rule holds on every file.
 
 import collections
 import os
-import struct
 import sys
-
-import numpy as np
 
 from allods2 import graphics as gfx
 from allods2.common import DATA
-
-
-def check_file(path, kind, pals):
-    """Return the list of rule violations for one file."""
-    with open(path, "rb") as f:
-        data = f.read()
-    bad = []
-    if kind == "human.pal":
-        if len(data) != gfx.palette.HUMAN_PALETTES * gfx.palette.PALETTE_BYTES:
-            bad.append("human.pal is %d bytes, not 0x4000" % len(data))
-        if b"".join(p.to_bytes() for p in pals) != data:
-            bad.append("round trip differs")
-    elif kind == ".pal":
-        off, hsize = struct.unpack_from("<II", data, 10)
-        bpp, = struct.unpack_from("<H", data, 28)
-        if data[:2] != b"BM" or hsize != 40 or bpp != 8 or off != 0x36 + 0x400:
-            bad.append("not an 8-bit BMP with its colour table at 0x36")
-        if pals[0].to_bytes() != data[0x36:0x436]:
-            bad.append("round trip differs")
-    elif kind in (".256", "*b.256", ".16a"):
-        if pals[0].to_bytes() != data[:0x400]:
-            bad.append("round trip differs")
-    for p in pals:
-        if p.rgb.shape != (256, 3) or p.rgb.dtype != np.uint8:
-            bad.append("bad palette shape")
-    if kind in (".pal", "human.pal", ".bmp") and any(p.reserved.any() for p in pals):
-        bad.append("non-zero reserved byte")
-    return bad
 
 
 def main(argv=None):
@@ -61,7 +30,7 @@ def main(argv=None):
             distinct[kind].add(p.rgb.tobytes())
             zero[kind] += not p.rgb.any()
             reserved[kind] += bool(p.reserved.any())
-        problems += ["%s: %s" % (rel, b) for b in check_file(os.path.join(data_dir, rel), kind, pals)]
+        problems += ["%s: %s" % (rel, b) for b in gfx.check_palette_file(os.path.join(data_dir, rel), kind, pals)]
     print("%-10s %6s %9s %9s %9s %9s" % ("source", "files", "palettes", "distinct", "all-zero", "rsvd!=0"))
     for kind in sorted(files):
         print("%-10s %6d %9d %9d %9d %9d" % (kind, files[kind], count[kind], len(distinct[kind]),

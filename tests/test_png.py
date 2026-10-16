@@ -8,6 +8,8 @@ import numpy as np
 from allods2 import graphics as gfx
 from allods2.common import DATA
 
+from helpers import needs
+
 H, W = gfx.PAPERDOLL_H, gfx.PAPERDOLL_W
 
 
@@ -70,10 +72,9 @@ def test_png_roundtrip_rgba(tmp_path):
 EQUIP = sorted(glob.glob(os.path.join(DATA, "graphics", "equipment", "**", "*.png"), recursive=True))
 
 
+@needs("graphics", "equipment")
 def test_game_equipment_pngs_are_paperdoll_layers():
-    if not EQUIP:
-        import pytest
-        pytest.skip("game files not available")
+    assert EQUIP
     for p in EQUIP:
         rgba = gfx.load_png(p)
         assert rgba.shape == (H, W, 4), p

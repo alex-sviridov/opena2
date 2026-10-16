@@ -7,9 +7,10 @@ import pytest
 from allods2 import anim as A
 from allods2.anim import coverage as C
 from allods2.anim.projectiles import ProjectileSet
+from allods2.common import DATA
 from allods2.graphics import Canvas
 
-from test_anim import DATA, aset_of, needs_data, sprite_file, unit_type
+from helpers import aset_of, needs_data, projectile, sprite_file, unit_type
 
 
 # -- the install -----------------------------------------------------------------
@@ -62,9 +63,7 @@ def test_exclusion_categories():
 # -- projectile trails (10, 12) --------------------------------------------------
 
 def trail_projectile(pid):
-    rec = dict(ID=pid, File="p", Phases=4, RotationPhases=16, Width=64, Height=64,
-               Palette=1, Flip=0, A16=1)
-    return ProjectileSet(rec, sprites={"main": sprite_file(64), "trail": sprite_file(6)})
+    return projectile(pid, {"main": sprite_file(64), "trail": sprite_file(6)})
 
 
 def test_trail_keeps_six_pre_move_positions_oldest_first():

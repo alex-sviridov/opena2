@@ -10,10 +10,9 @@ from PIL import Image
 from allods2 import graphics as gfx
 from allods2.common import DATA
 
-GRAPHICS = os.path.join(DATA, "graphics")
+from helpers import needs_graphics
 
-needs_samples = pytest.mark.skipif(not os.path.isdir(GRAPHICS),
-                                   reason="game install not present in samples/")
+GRAPHICS = os.path.join(DATA, "graphics")
 
 
 def test_bmp24_top_row_first(tmp_path):
@@ -53,7 +52,7 @@ def consistent(rel, kind, count=None):
     return sf
 
 
-@needs_samples
+@needs_graphics
 @pytest.mark.parametrize("rel,kind,count,has_palette", [
     ("units/heroes/archer/sprites.256", "256", 168, True),
     ("units/heroes/archer/spritesb.256", "smooth", 168, True),
@@ -66,20 +65,20 @@ def test_sample_sprites_consistent(rel, kind, count, has_palette):
         assert (sf.palette is not None) == has_palette
 
 
-@needs_samples
+@needs_graphics
 def test_unit_pal_matches_embedded():
     d = os.path.join(GRAPHICS, "units", "monsters", "bat")
     assert np.array_equal(gfx.load_pal_file(os.path.join(d, "palette.pal")),
                           gfx.SpriteFile.load(os.path.join(d, "sprites.256")).palette)
 
 
-@needs_samples
+@needs_graphics
 def test_human_pal():
     pals = gfx.load_human_palettes(os.path.join(GRAPHICS, "units", "heroes_l", "human.pal"))
     assert len(pals) == 16
 
 
-@needs_samples
+@needs_graphics
 def test_terrain_bmp_is_tile_strip():
     bmp = gfx.load_bmp(os.path.join(GRAPHICS, "terrain", "tile1-00.bmp"))
     assert bmp.width == 32 and bmp.height % 32 == 0

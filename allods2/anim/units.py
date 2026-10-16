@@ -327,7 +327,3 @@ def unit_keys(data_dir, types=None):
             if os.path.isfile(os.path.join(root, kind, f, "sprites.256")):
                 keys.append("%s/%s" % (kind, f))
     return keys
-
-
-# the original name of the unit loader
-load_animation_set = load_unit_set

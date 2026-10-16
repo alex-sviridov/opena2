@@ -11,7 +11,7 @@ from .lighting import (Daylight, daylight, daylight_tint, lit_terrain_corner,
                        object_light_row, object_light_row_lit, projectile_light,
                        shadow_angle, shadow_pixel, shadow_row_offsets, shadow_shear,
                        stamp_light, terrain_light)
-from .palette import (Palette, code_palettes, code_ramps16, find_palettes,
+from .palette import (Palette, check_palette_file, code_palettes, code_ramps16, find_palettes,
                       grayscale_palette, load_human, load_human_palettes, load_pal,
                       load_pal_file, load_palettes, pack16, player_text_ramp,
                       read_palette,

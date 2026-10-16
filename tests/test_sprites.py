@@ -7,15 +7,7 @@ import pytest
 
 from allods2 import graphics as gfx
 
-
-def container(sprites, palette=None):
-    """Build a sprite container: [palette] {w, h, size, data}* trailer."""
-    body = b"".join(struct.pack("<III", w, h, len(d)) + d for w, h, d in sprites)
-    trailer = len(sprites)
-    if palette is not None:
-        body = palette + body
-        trailer |= gfx.PALETTE_FLAG
-    return body + struct.pack("<I", trailer)
+from helpers import container
 
 
 def words(*ws):
@@ -62,38 +54,38 @@ def test_guess_kind(name, kind):
     assert gfx.guess_kind(name) == kind
 
 
-# --- .256 -----------------------------------------------------------------
+# --- RLE walks: (decoder, stream, w, h) -> drawn indices [, (consumed, rows_left)]
 
-def test_256_literal_and_pixel_skip():
-    data = bytes((0x81, 0x02, 5, 6, 0x83))          # skip 1, copy 2 | skip 3
-    d = gfx.decode_256(data, 3, 2)
-    assert drawn(d) == [[-1, 5, 6], [-1, -1, -1]]
-    assert (d.consumed, d.rows_left) == (5, 0)
+D256, D16 = gfx.decode_256, gfx.decode_16
 
 
-def test_256_0xc0_is_pixel_skip():
-    assert drawn(gfx.decode_256(bytes((0xC1, 0x01, 7)), 2, 1)) == [[-1, 7]]
-
-
-def test_256_row_skip_keeps_column():
-    data = bytes((0x01, 4, 0x41, 0x01, 9))          # copy 1 | skip row | copy 1
-    assert drawn(gfx.decode_256(data, 2, 2)) == [[4, -1], [-1, 9]]
-
-
-def test_256_row_skip_past_end_terminates():
-    data = bytes((0x02, 1, 2, 0x45, 0x01, 3))
-    d = gfx.decode_256(data, 2, 3)
-    assert drawn(d) == [[1, 2], [-1, -1], [-1, -1]]
-    assert (d.consumed, d.rows_left) == (4, 2)
-
-
-def test_256_overshoot_carries_into_next_row():
-    data = bytes((0x03, 1, 2, 3, 0x02, 4, 5))       # width 2: 3 pixels, counter resets
-    assert drawn(gfx.decode_256(data, 2, 3)) == [[1, 2], [3, 4], [5, -1]]
-
-
-def test_256_literal_index_zero_is_drawn():
-    assert drawn(gfx.decode_256(bytes((0x01, 0)), 1, 1)) == [[0]]
+@pytest.mark.parametrize("decode,data,w,h,image,walk", [
+    pytest.param(D256, (0x81, 0x02, 5, 6, 0x83), 3, 2, [[-1, 5, 6], [-1, -1, -1]], (5, 0),
+                 id="256-literal-and-pixel-skip"),
+    pytest.param(D256, (0xC1, 0x01, 7), 2, 1, [[-1, 7]], None, id="256-0xc0-is-pixel-skip"),
+    pytest.param(D256, (0x01, 4, 0x41, 0x01, 9), 2, 2, [[4, -1], [-1, 9]], None,
+                 id="256-row-skip-keeps-column"),
+    pytest.param(D256, (0x02, 1, 2, 0x45, 0x01, 3), 2, 3, [[1, 2], [-1, -1], [-1, -1]], (4, 2),
+                 id="256-row-skip-past-end-terminates"),
+    pytest.param(D256, (0x03, 1, 2, 3, 0x02, 4, 5), 2, 3, [[1, 2], [3, 4], [5, -1]], None,
+                 id="256-overshoot-carries-into-next-row"),
+    pytest.param(D256, (0x01, 0), 1, 1, [[0]], None, id="256-literal-index-0-is-drawn"),
+    pytest.param(D16, (0x01, 0x21), 2, 1, [[1, 2]], None, id="16-nibbles-low-first"),
+    # 1 pixel, the counter advances 2*1-1
+    pytest.param(D16, (0x01, 0x05, 0x81), 2, 1, [[5, -1]], (3, 0), id="16-zero-high-nibble-ends-run"),
+    # run of 2 bytes, the first has a zero high nibble: 1 pixel, counter 2*2-1 = 3;
+    # the second byte (0x81) is then a control byte: skip 1 -> counter 4 = w
+    pytest.param(D16, (0x02, 0x03, 0x81), 4, 1, [[3, -1, -1, -1]], (3, 0),
+                 id="16-rest-of-run-reread-as-control"),
+    # the same stream at width 2: counter 3 >= 2 closes the row before 0x81 is read
+    pytest.param(D16, (0x02, 0x03, 0x81), 2, 1, None, (2, 0), id="16-short-run-closes-row"),
+])
+def test_rle_walk(decode, data, w, h, image, walk):
+    d = decode(bytes(data), w, h)
+    if image is not None:
+        assert drawn(d) == image
+    if walk is not None:
+        assert (d.consumed, d.rows_left) == walk
 
 
 def test_smooth_overlay_is_half_transparent_colour():
@@ -101,34 +93,6 @@ def test_smooth_overlay_is_half_transparent_colour():
     pal[4 * 7:4 * 7 + 3] = bytes((3, 2, 1))
     sf = gfx.SpriteFile.parse(container([(2, 1, bytes((0x81, 0x01, 7)))], bytes(pal)), "smooth")
     assert sf.to_rgba(0)[0].tolist() == [[0, 0, 0, 0], [1, 2, 3, 128]]
-
-
-# --- .16 ------------------------------------------------------------------
-
-def test_16_nibbles_low_first():
-    assert drawn(gfx.decode_16(bytes((0x01, 0x21)), 2, 1)) == [[1, 2]]
-
-
-def test_16_zero_high_nibble_ends_run():
-    data = bytes((0x01, 0x05, 0x81))                # 1 pixel, counter advances 2*1-1
-    d = gfx.decode_16(data, 2, 1)
-    assert drawn(d) == [[5, -1]]
-    assert d.consumed == 3
-
-
-def test_16_rest_of_run_is_reread_as_control():
-    # run of 2 bytes, first has zero high nibble: 1 pixel, counter 2*2-1 = 3;
-    # the second byte (0x81) is then a control byte: skip 1 -> counter 4 = w
-    data = bytes((0x02, 0x03, 0x81))
-    d = gfx.decode_16(data, 4, 1)
-    assert drawn(d) == [[3, -1, -1, -1]]
-    assert (d.consumed, d.rows_left) == (3, 0)
-
-
-def test_16_short_run_counter_can_close_row():
-    # same stream at width 2: counter 3 >= 2 closes the row before 0x81 is read
-    d = gfx.decode_16(bytes((0x02, 0x03, 0x81)), 2, 1)
-    assert (d.consumed, d.rows_left) == (2, 0)
 
 
 # --- .16a -----------------------------------------------------------------
@@ -153,35 +117,30 @@ def test_16a_alpha_coverage():
 
 # --- compositing ----------------------------------------------------------
 
-def test_canvas_darken():
-    c = gfx.Canvas(1, 1, (160, 80, 16))
-    c.draw_darken(gfx.Sprite(1, 1, bytes((0x01, 0))), 0, 0, level=8)
-    assert c.pix[0, 0].tolist() == [80, 40, 8]
+GREY = [(i, i, i) for i in range(256)]
 
 
-def test_canvas_16a_blend():
-    c = gfx.Canvas(1, 1)
-    c.draw_16a(gfx.Sprite(1, 1, words(0x0001, px16a(3, 7))), 0, 0, [(255, 255, 255)] * 256)
-    assert c.pix[0, 0].tolist() == [127, 127, 127]     # 255 * 8/16
-
-
-def test_canvas_translucent():
-    c = gfx.Canvas(1, 1, (100, 100, 100))
-    c.draw_256_translucent(gfx.Sprite(1, 1, bytes((0x01, 0))), 0, 0, [(200, 0, 51)] * 256)
-    assert c.pix[0, 0].tolist() == [150, 50, 75]
-
-
-def test_canvas_clipping():
-    c = gfx.Canvas(1, 1)
-    c.draw_256(gfx.Sprite(2, 1, bytes((0x02, 1, 2))), -1, 0, [(i, i, i) for i in range(256)])
-    assert c.pix[0, 0].tolist() == [2, 2, 2]
+@pytest.mark.parametrize("fill,draw,expect", [
+    pytest.param((160, 80, 16), lambda c: c.draw_darken(gfx.Sprite(1, 1, bytes((0x01, 0))), 0, 0, level=8),
+                 [80, 40, 8], id="darken"),
+    pytest.param((0, 0, 0), lambda c: c.draw_16a(gfx.Sprite(1, 1, words(0x0001, px16a(3, 7))), 0, 0,
+                                                 [(255, 255, 255)] * 256),
+                 [127, 127, 127], id="16a-blend-255x8/16"),
+    pytest.param((100, 100, 100), lambda c: c.draw_256_translucent(
+        gfx.Sprite(1, 1, bytes((0x01, 0))), 0, 0, [(200, 0, 51)] * 256), [150, 50, 75], id="translucent"),
+    pytest.param((0, 0, 0), lambda c: c.draw_256(gfx.Sprite(2, 1, bytes((0x02, 1, 2))), -1, 0, GREY),
+                 [2, 2, 2], id="clipping"),
+])
+def test_canvas_mode(fill, draw, expect):
+    c = gfx.Canvas(1, 1, fill)
+    draw(c)
+    assert c.pix[0, 0].tolist() == expect
 
 
 def test_canvas_mirror_256():
     # Row [1, 2, ·] mirrored in place: the run starts at x + w - 1 going left.
     c = gfx.Canvas(3, 1)
-    c.draw_256(gfx.Sprite(3, 1, bytes((0x02, 1, 2, 0x81))), 0, 0,
-               [(i, i, i) for i in range(256)], mirror=True)
+    c.draw_256(gfx.Sprite(3, 1, bytes((0x02, 1, 2, 0x81))), 0, 0, GREY, mirror=True)
     assert c.pix[0, :, 0].tolist() == [0, 2, 1]
 
 

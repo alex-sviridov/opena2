@@ -164,6 +164,35 @@ def find_palettes(data_dir):
                 yield os.path.relpath(path, data_dir), source_kind(path), pals
 
 
+def check_palette_file(path, kind, pals):
+    """Rule violations (palettes.md) of one find_palettes entry: exact
+    round trip, the .pal / human.pal container shape, zero reserved bytes."""
+    with open(path, "rb") as f:
+        data = f.read()
+    bad = []
+    if kind == "human.pal":
+        if len(data) != HUMAN_PALETTES * PALETTE_BYTES:
+            bad.append("human.pal is %d bytes, not 0x4000" % len(data))
+        if b"".join(p.to_bytes() for p in pals) != data:
+            bad.append("round trip differs")
+    elif kind == ".pal":
+        off, hsize = struct.unpack_from("<II", data, 10)
+        bpp, = struct.unpack_from("<H", data, 28)
+        if data[:2] != b"BM" or hsize != 40 or bpp != 8 or off != 0x36 + 0x400:
+            bad.append("not an 8-bit BMP with its colour table at 0x36")
+        if pals[0].to_bytes() != data[0x36:0x436]:
+            bad.append("round trip differs")
+    elif kind in (".256", "*b.256", ".16a"):
+        if pals[0].to_bytes() != data[:0x400]:
+            bad.append("round trip differs")
+    for p in pals:
+        if p.rgb.shape != (256, 3) or p.rgb.dtype != np.uint8:
+            bad.append("bad palette shape")
+    if kind in (".pal", "human.pal", ".bmp") and any(p.reserved.any() for p in pals):
+        bad.append("non-zero reserved byte")
+    return bad
+
+
 # --- shade tables (FUN_00425bee) ---------------------------------------------
 
 MASK, PLAIN, BRIGHT2, BRIGHT32, FADE16, GRAY = range(6)

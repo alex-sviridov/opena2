@@ -28,8 +28,8 @@ from .effects import BurningSet, load_burning_set
 from .terrain import WaterSet, find_water_window, load_water_set
 from .ui import (CURSORS, CursorSet, UiSequenceSet, cursor_frame, cursor_name, load_cursor_set,
                  load_ui_set, ui_sequence_paths)
-from .units import (HERO_SPEED, MOVE_UNITS_PER_ELEMENT, UnitSet, load_animation_set,
-                    load_unit_set, unit_keys, walk_odometer, walk_ticks_per_cell)
+from .units import (HERO_SPEED, MOVE_UNITS_PER_ELEMENT, UnitSet, load_unit_set,
+                    unit_keys, walk_odometer, walk_ticks_per_cell)
 
 KINDS = {"unit": load_unit_set, "structure": load_structure_set,
          "object": load_object_set, "projectile": load_projectile_set,

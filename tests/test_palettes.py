@@ -3,7 +3,6 @@ checks against every palette in the install (skipped when it is absent)."""
 
 import os
 import struct
-import sys
 from dataclasses import astuple
 
 import numpy as np
@@ -11,13 +10,13 @@ import pytest
 from PIL import Image
 
 from allods2 import graphics as gfx
-from allods2.common import DATA, ROOT
+from allods2.common import DATA
 from allods2.graphics.palette import (BRIGHT2, BRIGHT32, FADE16, GRAY, MASK, PLAIN,
                                       TEAM_COLOR_INDEX)
 
+from helpers import needs_graphics
+
 GRAPHICS = os.path.join(DATA, "graphics")
-needs_samples = pytest.mark.skipif(not os.path.isdir(GRAPHICS),
-                                   reason="game install not present in samples/")
 
 
 def quads(entries):
@@ -110,42 +109,28 @@ def one(r, g, b):
     return rgb
 
 
-def test_shade_mask():
-    t = gfx.shade_table(one(1, 2, 3), 16, MASK)
-    assert t.shape == (1, 256, 3)
-    assert t[0, 0].tolist() == [0, 0, 0] and t[0, 1].tolist() == [255, 255, 255]
-
-
-def test_shade_plain_adds_tint_and_clamps():
-    t = gfx.shade_table(one(250, 10, 20), 16, PLAIN, tint=(24, 12, 0))
-    assert t[0, 1].tolist() == [255, 22, 20]
-
-
-def test_shade_bright2_rows_descend_from_double():
-    t = gfx.shade_table(one(100, 200, 3), 16, BRIGHT2)
-    assert t.shape == (16, 256, 3)
-    assert t[0, 1].tolist() == [200, 255, 6]       # k = 16: x2, clamped
-    assert t[8, 1].tolist() == [100, 200, 3]       # k = 8: unchanged
-    assert t[15, 1].tolist() == [12, 25, 0]        # k = 1: x1/8, truncated
-
-
-def test_shade_bright2_tint_before_scaling():
-    t = gfx.shade_table(one(10, 10, 10), 16, BRIGHT2, tint=(0, 12, 48))
-    assert t[8, 1].tolist() == [10, 22, 58]
-
-
-def test_shade_bright32():
-    t = gfx.shade_table(one(64, 255, 31), 0x60, BRIGHT32)
-    assert t.shape == (96, 256, 3)
-    assert t[0, 1].tolist() == [192, 255, 93]      # k = 96: x3
-    assert t[64, 1].tolist() == [64, 255, 31]      # k = 32: unchanged
-    assert t[95, 1].tolist() == [2, 7, 0]          # k = 1: >> 5
-
-
-def test_shade_fade16_rows_ascend():
-    t = gfx.shade_table(one(160, 16, 255), 16, FADE16)
-    assert t[0, 1].tolist() == [10, 1, 15]
-    assert t[15, 1].tolist() == [160, 16, 255]
+# (colour of entry 1, levels, mode, tint) -> table rows, {row: entry 1}
+@pytest.mark.parametrize("colour,levels,mode,tint,rows,expect", [
+    pytest.param((1, 2, 3), 16, MASK, (0, 0, 0), 1, {0: [255, 255, 255]}, id="mask"),
+    pytest.param((250, 10, 20), 16, PLAIN, (24, 12, 0), 1, {0: [255, 22, 20]},
+                 id="plain-tint-clamps"),
+    pytest.param((100, 200, 3), 16, BRIGHT2, (0, 0, 0), 16,          # x2 clamped, x1, x1/8
+                 {0: [200, 255, 6], 8: [100, 200, 3], 15: [12, 25, 0]}, id="bright2"),
+    pytest.param((10, 10, 10), 16, BRIGHT2, (0, 12, 48), 16, {8: [10, 22, 58]},
+                 id="bright2-tint-before-scaling"),
+    pytest.param((64, 255, 31), 0x60, BRIGHT32, (0, 0, 0), 96,       # x3, x1, >> 5
+                 {0: [192, 255, 93], 64: [64, 255, 31], 95: [2, 7, 0]}, id="bright32"),
+    pytest.param((160, 16, 255), 16, FADE16, (0, 0, 0), 16,
+                 {0: [10, 1, 15], 15: [160, 16, 255]}, id="fade16-rows-ascend"),
+    pytest.param((30, 60, 90), 16, GRAY, (50, 50, 50), 16,           # mean at k = N / 2
+                 {0: [120, 120, 120], 8: [60, 60, 60]}, id="gray-ignores-tint"),
+])
+def test_shade_table(colour, levels, mode, tint, rows, expect):
+    t = gfx.shade_table(one(*colour), levels, mode, tint)
+    assert t.shape == (rows, 256, 3)
+    assert {r: t[r, 1].tolist() for r in expect} == expect
+    if mode == MASK:
+        assert t[0, 0].tolist() == [0, 0, 0]
 
 
 def test_fade16_row_is_16a_alpha_premultiply():
@@ -260,13 +245,11 @@ def test_object_light_row():
 
 # --- game files ---------------------------------------------------------------
 
-@needs_samples
+@needs_graphics
 def test_every_palette_in_install_parses():
-    sys.path.insert(0, os.path.join(ROOT, "tools"))
-    import validate_palettes
     seen = 0
     for rel, kind, pals in gfx.find_palettes(DATA):
-        assert validate_palettes.check_file(os.path.join(DATA, rel), kind, pals) == [], rel
+        assert gfx.check_palette_file(os.path.join(DATA, rel), kind, pals) == [], rel
         for p in pals:
             assert p.rgb.shape == (256, 3) and p.rgb.dtype == np.uint8
             assert 0 <= p.rgb.min() and p.rgb.max() <= 255
@@ -274,20 +257,20 @@ def test_every_palette_in_install_parses():
     assert seen == 2973
 
 
-@needs_samples
+@needs_graphics
 def test_channels_are_8_bit_not_vga_6_bit():
     p = gfx.load_pal(os.path.join(GRAPHICS, "units", "monsters", "bat", "palette.pal"))
     assert p.rgb.max() > 63 and (p.rgb & 3).any()
 
 
-@needs_samples
+@needs_graphics
 def test_human_pal_player_colours_differ_at_index_164():
     pals = gfx.load_human(os.path.join(GRAPHICS, "units", "humans", "human.pal"))
     assert len(pals) == 16
     assert len({tuple(p.rgb[TEAM_COLOR_INDEX]) for p in pals}) == 16
 
 
-@needs_samples
+@needs_graphics
 def test_terrain_tiles_share_one_palette():
     tiles = sorted(f for f in os.listdir(os.path.join(GRAPHICS, "terrain")) if f.startswith("tile"))
     first = gfx.load_palettes(os.path.join(GRAPHICS, "terrain", tiles[0]))[0]

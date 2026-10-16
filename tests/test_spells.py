@@ -2,10 +2,11 @@
 
 import os
 
-import pytest
-
 from allods2 import spells
 from allods2.common import DATA
+from allods2.reg import load_reg
+
+from helpers import needs
 
 PROJ_REG = os.path.join(DATA, "graphics", "projectiles", "projectiles.reg")
 
@@ -22,9 +23,8 @@ def test_secondary_and_inverse():
     assert spells.spell_of_effect(4) is None
 
 
-@pytest.mark.skipif(not os.path.exists(PROJ_REG), reason="game install not present")
+@needs("graphics", "projectiles", "projectiles.reg")
 def test_projectiles_reg_ids_are_spells():
-    from allods2.reg import load_reg
     reg = load_reg(PROJ_REG).to_dict()
     files = {v["ID"]: v["File"].lower() for k, v in reg.items() if k != "Global"}
     assert all(spells.spell_of_effect(i) for i in files if i >= 10)

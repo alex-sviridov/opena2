@@ -2,7 +2,6 @@
 the full install when samples/ (or ALLODS2_DATA) is present."""
 
 import os
-import struct
 
 import numpy as np
 import pytest
@@ -11,42 +10,9 @@ from allods2 import anim as A
 from allods2 import cli
 from allods2 import units as U
 from allods2.common import DATA
-from allods2.graphics import Canvas, SpriteFile
+from allods2.graphics import Canvas
 
-needs_data = pytest.mark.skipif(not os.path.isfile(os.path.join(DATA, U.UNITS_DIR, "units.reg")),
-                                reason="game files not present")
-
-
-def unit_type(uid=50, **kw):
-    vals = {k: d for k, _, d in U.INT_FIELDS}
-    vals.update({k: [] for k in U.ARRAY_FIELDS})
-    vals.update(DescText="", InfoPicture="", MovePhases=4, MoveBeginPhases=1, AttackPhases=3,
-                DyingPhases=2, BonePhases=1, IdlePhases=0, Width=128, Height=128,
-                CenterX=64, CenterY=70, Dying=uid,
-                MoveAnimTime=[2, 2, 2, 2], MoveAnimFrame=[0, 1, 2, 3],
-                AttackAnimTime=[1, 2, 1], AttackAnimFrame=[0, 1, 2],
-                AttackDelay=1, ShootDelay=9)
-    vals.update(kw)
-    t = U.UnitType(0, uid, -1, vals)
-    t.file = "synthetic"
-    return t
-
-
-def sprite_file(n, pixels=(0, 1, 2, 3)):
-    """n identical 4x1 frames; index 0 = transparent (skip), others literal."""
-    assert pixels[0] == 0 and 0 not in pixels[1:]
-    data = bytes([0x81, len(pixels) - 1, *pixels[1:]])
-    pal = bytearray(1024)
-    for i in range(1, 4):
-        pal[4 * i:4 * i + 3] = bytes((0, 0, 60 * i))        # BGR0 -> red ramp
-    body = b"".join(struct.pack("<III", len(pixels), 1, len(data)) + data for _ in range(n))
-    return SpriteFile.parse(bytes(pal) + body + struct.pack("<I", n | 0x80000000))
-
-
-def aset_of(t, **kw):
-    sf = sprite_file(U.expected_frames(t))
-    return A.UnitSet("synthetic", t, t, sprites={"main": sf, "death": sf}, **kw)
-
+from helpers import aset_of, needs_data, unit_type
 
 # -- timing ----------------------------------------------------------------
 
@@ -171,7 +137,7 @@ def test_stand_mirrors_odd_facings_with_flip():
 
 @pytest.fixture(scope="module")
 def types():
-    return U.load_unit_types(os.path.join(DATA, U.UNITS_DIR, "units.reg"))
+    return U.unit_types(DATA)
 
 
 @needs_data
@@ -179,7 +145,7 @@ def test_every_unit_and_hero_set_is_in_range(types):
     keys = A.unit_keys(DATA, types)
     assert len(keys) == 61 + 30
     for k in keys:
-        a = A.load_animation_set(k, DATA, types)
+        a = A.load_unit_set(k, DATA, types)
         assert "stand" in a.actions
         missing = a.missing_frames()
         if k == 2:      # Unit33: Flip file under a non-Flip type (animation.md §2.5)
@@ -191,7 +157,7 @@ def test_every_unit_and_hero_set_is_in_range(types):
 @needs_data
 def test_unreachable_unit0_file(types):
     with pytest.raises(FileNotFoundError):
-        A.load_animation_set(3, DATA, types)
+        A.load_unit_set(3, DATA, types)
 
 
 @needs_data
@@ -206,8 +172,8 @@ def test_death_type_shares_placement(types):
 
 @needs_data
 def test_hero_dies_with_unarmed_or_staff_mage(types):
-    assert A.load_animation_set("heroes/swordsman", DATA, types).td.id == 24
-    assert A.load_animation_set("heroes_l/archer", DATA, types).td.id == 1
+    assert A.load_unit_set("heroes/swordsman", DATA, types).td.id == 24
+    assert A.load_unit_set("heroes_l/archer", DATA, types).td.id == 1
 
 
 @needs_data
