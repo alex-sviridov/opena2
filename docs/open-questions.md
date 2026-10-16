@@ -37,3 +37,11 @@ from both places when answered).
   characters. [inventory §6](inventory.md#6-plan-custom-formats-to-reverse-in-order)
 - Text conventions of `main/text/*.txt` (line lists, `#key` sections,
   `mission%d.txt`). [inventory §6](inventory.md#6-plan-custom-formats-to-reverse-in-order)
+
+## Engine
+
+- View scroll limits, scroll speed and edge-scroll zone of the exe (engine uses
+  chosen values); day/night light recomputation in the engine.
+  [architecture](engine/architecture.md#open-questions)
+- Engine terrain scroll hitch (~27 ms per new cell row/column): pre-warm or flat-cell fast path.
+  [architecture](engine/architecture.md#open-questions)

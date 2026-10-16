@@ -10,7 +10,8 @@ The company is legally entitled to recreate the game.
 - `allods2/` core library (formats, decoders, data models; no pygame); every
   loader is `load(path, fs)` on game paths (`graphics/units/units.reg`)
 - `allods2/formats/` decoded views of data files (`Map`); `allods2/alm.py` is the .alm container
-- `allods2/game/` game layer (pygame), built on the core
+- `engine/` the game (world, sim, view, ui, `backend_pygame`; only the backend imports
+  pygame-ce), built on the core; `allods2/assets.py` asset cache; docs/engine/
 - `docs/{formats,mechanics,...}/<name>.md` specs; each folder's README.md is its index
 - `allods2/common.py` `INSTALL` (`ALLODS2_INSTALL`), `game_fs()`, `as_fs()`, OUT
 - `tests/` · `tools/` thin CLIs over the package (`[INSTALL_DIR]` argument)
@@ -22,13 +23,20 @@ The company is legally entitled to recreate the game.
 - samples/ is read-only and never committed. Never copy game files, or data
   derived from them (exports, extracted sprites, decompiled listings), into
   the repo. Write exports to the gitignored `out/` or outside the repo.
-- Use the venv: `python3 -m venv .venv && .venv/bin/pip install -e '.[game,dev]'`.
+- Use the venv: `python3 -m venv .venv && .venv/bin/pip install -e '.[engine,dev]'`.
 
 ## Dependencies
 - Core may use numpy and other well-known libraries (e.g. Pillow), never
-  pygame; the game layer uses pygame. Python 3.10+.
-- Declare every dependency in pyproject.toml: core in `dependencies`, pygame
-  in the `game` extra, tooling in `dev`. Niche packages need approval first.
+  pygame; only `engine/backend_pygame` uses pygame-ce (not `pygame`: the two
+  cannot coexist). Python 3.10+.
+- Declare every dependency in pyproject.toml: core in `dependencies`, pygame-ce
+  in the `engine` extra, tooling in `dev`. Niche packages need approval first.
+
+## Workflow
+- Once a spec is written and committed, go ahead and implement it: no further
+  questions, no plan-approval round. Decide sensibly and record assumptions in the spec.
+- Delegate to subagents where it helps (implementation, review, research);
+  prefer `model: sonnet` over opus.
 
 ## Specs
 - Every format, mechanism or subsystem gets docs/<area>/<name>.md with a
@@ -124,6 +132,11 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   structures, then per cell structure → unit → object. `Map.structures`,
   `.placed_objects()`, `.passability(m, stats)`, `anim/scene.py`. Open: dirt meaning/clear.
   map.md part 4
-- Not started: saves, Scenario.dll, item names, game layer.
-- Next (docs/open-questions.md): .alm sections 5–12 (server reader
+- Engine G1 (skeleton) done: `engine/` world, sim (tick table CONFIRMED), view
+  (Camera, coords, per-cell numpy compositing reusing `graphics.terrain`),
+  ui (scroll), `backend_pygame` (surface cache, accumulator loop); `python -m
+  engine run|screenshot`; screenshot equals `render_3d` pixel for pixel (tested);
+  import boundaries enforced by `tests/test_engine_boundaries.py`. docs/engine/
+- Not started: saves, Scenario.dll, item names, entities/objects/structures in the engine.
+- Next: G2a (engine: objects/structures drawing). Also (docs/open-questions.md): .alm sections 5–12 (server reader
   `FUN_00534ad4`), town-scene animations, text conventions.

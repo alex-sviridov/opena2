@@ -64,5 +64,16 @@ Game-file tests skip without the install.
 ## Out of scope
 Entities, objects/structures drawing, fog, minimap, UI panels, commands beyond the base class.
 
+## Implementation notes (assumptions recorded)
+- Venv swapped to pygame-ce 2.5.8 as authorised. `engine/view` and `engine/ui`
+  also never import pygame (stricter than the brief); `ui` depends on nothing of `view`
+  except via the camera object passed in.
+- Camera y/x clamp to the flat grid extent `[0, 32*n - viewport]`; screenshot X Y are
+  world pixels. `run` starts at (256, 256). Scroll 600 px/s, 4 px edge zone (chosen).
+- Light = fixed default daylight (as `map render --relief`); no day/night yet.
+- Performance: measured in architecture.md section 6; the cache is mandatory (740 ms
+  uncached per full frame). Screenshot equals `render_3d` crop with no difference inside
+  the clamped area (synthetic map and campaign map 10 tested).
+
 ## Open questions
-- Performance of per-cell numpy compositing at full viewport (measure; cache).
+- Pre-warming water phases / flat-cell fast path (scroll hitch about 27 ms).

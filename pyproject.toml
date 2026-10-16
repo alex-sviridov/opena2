@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "allods2"
 version = "0.1.0"
-description = "Allods 2 / Rage of Mages 2 recreation: data formats and game layer"
+description = "Allods 2 / Rage of Mages 2 recreation: data formats and engine"
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.24",
@@ -13,11 +13,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-game = ["pygame>=2.5"]
+engine = ["pygame-ce>=2.5"]
 dev = ["pytest>=8"]
 
 [tool.setuptools.packages.find]
-include = ["allods2*", "a2res*"]
+include = ["allods2*", "a2res*", "engine*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
