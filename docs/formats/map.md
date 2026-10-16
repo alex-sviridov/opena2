@@ -114,7 +114,7 @@ copied for rows 8…h−5, columns 8…w−9; `FUN_0041c071` addresses cells 8�
 in every cell, so the 1,654 dirt cells in the files are never drawn. The
 flag is set again at run time from a server message (type 155) that
 run-length encodes the **block bit 0x10** over the playable area; the bit is
-set by unit orders, not by the map ([part 4](#the-run-time-dirt-flag)). The server's path finder, however, reads the
+set by spell area effects, not by the map ([part 4](#the-run-time-dirt-flag)). The server's path finder, however, reads the
 file's tiles with the bit still set and treats it as blocked
 ([part 3](#part-3-heights-and-passability)). `Map.runtime_terrain()` clears the bit; the
 renderer does too unless `--dirt` is given.
@@ -333,7 +333,7 @@ all 46 maps, 1,721 structures of which 21 bridges):
 | 0x00 | i32 | `x` | 1/256 cell, always `cell·256 + 128`; the reader passes `>> 8`: top-left cell of the footprint |
 | 0x04 | i32 | `y` | same |
 | 0x08 | u32 | `type` | structure ID 1…179 (`structures.reg` `ID`, data.bin structures record `ID − 1`); `0x21` or bit `0x1000000` (11 entries are `0x1000021`, 10 plain `0x21`) = a sized bridge, the reader forces the ID to `0x21` |
-| 0x0c | u16 | `intact` | 0 = the structure starts destroyed (HP 0), else full HP (values 0, 10, 100 in the files; only zero/non-zero is tested) |
+| 0x0c | u16 | `intact` | 0 = the structure starts destroyed (HP 0), else full HP (values 0, 10, 100 in the files; the builder tests only zero, `0x4a4a5c`, so 10 and 100 are the same) |
 | 0x0e | u32 | `owner` | 1…8, see below |
 | 0x12 | i16 | `uid` | unique within a map (1…363; 33 maps are not 1, 2, 3 … in order, so the numbering is shared with other lists); the runtime object ID is `0x6000 + uid` |
 | 0x14 | u32, u32 | `size` | **only if the type is `0x21` or has bit `0x1000000`**: width, height in cells (low 16 bits are used) |
@@ -350,17 +350,20 @@ type`, position `+0x08/+0x0c = cell·256 + 0x80`, **max HP `+0x108` = data.bin
 and a sight radius `+0x10a = scanRange << 8`. Type `0x25` never occurs in a
 file (and would have no size: its entry has no extra bytes).
 
-**Owner (INFERRED)**: the builder compares `owner` with field `+0x08` of the
-entries of a run-time player list (index ≥ 1; the last match wins, default
-entry 0) and stores the match at `obj+0x14`. The player objects the reader
-makes (class `0x5cbb70`) hold the 1-based record index at `+0x04` and the
-file's first u32 at `+0x0c`; `+0x08` is not written by the reader. Data:
-`owner` is **never above `player_count`** in all 1,721 entries (1…8) and in
-136 of them it is not the first u32 of any player record, so it is the
-**1-based index of the section 5 record**, not the id column (e.g.
-`10.alm`: 3 = "Enemy", 8 = "Skrakan"; `52.alm`: 2 "Humans", 4 "Os", 6 "Druid
-monsters"). That the list's `+0x08` is that index (set when the list is
-built) is not traced.
+**Owner (CONFIRMED)**: the builder compares `owner` with field `+0x08` of
+the run-time player objects (keyed by their `+0x04`; the last match among
+keys ≥ 1 wins, default key 0) and stores the match at `obj+0x14`. That
+`+0x08` is the **1-based index of the section 5 record**: the server creates
+one player object per map player (`0x5612af`, `0x56130a`–`0x5613a9`) with
+`+0x08 = mapPlayer + 0x04`, and the reader numbered those `index + 1`
+(`FUN_00534ad4` case 5); the client gets it as byte 1 of the add-player
+message (type 150, sender `0x504d39`: `+0x0a` index, `+0x0b` this value,
+`+0x0c` the file's first u32, as `+0xa44 − 1`) and stores it again at
+`+0x08` (`0x413f3d`–`0x413f4e`). Data agrees: `owner` ≤ `player_count` in all
+1,721 entries and 136 of them match no id (e.g. `10.alm`: 3 = "Enemy", 8 =
+"Skrakan"; `52.alm`: 2 "Humans", 4 "Os", 6 "Druid monsters"). The first u32
+of the record (its "id") is carried separately: the server stores `id + 1`
+at player `+0xa44` and sends it as byte 2 of that message.
 
 **Which structures** (data): 1,721 entries use 152 of the 179 IDs, every one
 resolves in `structures.reg` and data.bin and every sprite file exists; every
@@ -412,16 +415,22 @@ free. Units and the cost layer are not reproduced.
 The **dirt flag is not the structure foundation**: only 11 of the 1,654
 dirt cells in the files lie inside any footprint. CONFIRMED pipeline: the
 server's block bit `0x10` is set by `FUN_00559c28(x, y)` (live and reset
-layers), cleared by `FUN_00559ce5`, read by `FUN_00559cb3`; the callers of
-the setter are two methods of a unit order class (`0x518589` in
-`FUN_005184bf`, `0x51899b`; `param_3 != 0` marks the cell, after
-`FUN_005189b5` and the terrain update `FUN_0055a325`, INFERRED: a worker
-changing the ground). When a player joins, `0x4f2326` sends message 155:
-`FUN_00559d70` run-length encodes bit `0x10` over the playable area (first
-word = the bit of the first cell, then alternating run lengths, rows from
-(8, 8)), and the client (`FUN_0041c071`) turns it into tile flag `0x2000`.
-The static build never sets bit `0x10`, so nothing is dirty at the start of a
-mission: the file's flag only seeds block bit 1.
+layers), cleared by `FUN_00559ce5`, read by `FUN_00559cb3`. The setter's
+callers are the **spell area-effect objects**: `FUN_00518024` picks by the
+spell record's `Distribution system` (data.bin spell param 8; 4 = wall:
+Wall of Fire, Wall of Earth …) the wall or the area routine
+(`FUN_005182b6`, `FUN_005183a2`: all cells with `|dx| + |dy| ≤ radius + 1`
+around the effect, radius at `+0x4d`), which call `FUN_005184bf` per cell:
+`FUN_0055a325` adds the area effect to the cell, and when the flag argument is
+set `FUN_00559c28` marks it. The flag is 1 when the effect list holds
+`Effect_DirectDamage` and the effect record's byte `+0x5c` is non-zero
+(INFERRED meaning: scorched ground under damaging area spells). When a
+player joins, `0x4f2326` sends message 155: `FUN_00559d70` run-length
+encodes bit `0x10` over the playable area (first word = the bit of the first
+cell, then alternating run lengths, rows from (8, 8)), and the client
+(`FUN_0041c071`) turns it into tile flag `0x2000`. The static build never
+sets bit `0x10`, so nothing is dirty at the start of a mission: the file's
+flag only seeds block bit 1 (a leftover of the editor).
 
 ### Draw order and placement (structures)
 
@@ -446,8 +455,11 @@ row `r + FH − TH` and, for `r == 0`, also the `FH − TH` rows above, bottom-u
 at `(32·(X0 + c), 32·(Y0 + row − (FH − TH)) − g)` with the ground height `g`
 of the structure ([part 3](#heights-section-2), `objects.ground_height`: footprint
 `W × TH`; sized bridges `w × h`). The client's
-registration for the Castle (picture 11 × 5, data 11 × 4) was not traced; the
-renderer uses the picture's `W × TH` (INFERRED; consistent for the Cave). A destroyed structure
+footprint is the picture's: vtable slots `+0x20/+0x24` (`0x4620fc`,
+`0x46211d`) return `TileWidth`/`TileHeight` of the `structures.reg` record
+(CONFIRMED), so the Castle is 11 × 5 on the client and 11 × 4 on the server
+(the game's own mismatch); that the client registers exactly those cells in
+its structure layer (`view+0x94`) is INFERRED. A destroyed structure
 (`intact == 0`, not `Indestructible`) shows its destroyed block; animated
 structures start at `seq[0]`. Examples (`10.alm`): `map render 10 out/maps/10.png
 --layers terrain,objects,structures --relief` draws the tower at (67, 36) on
@@ -468,8 +480,8 @@ are inside the window, structures stamp into passability, and the scene draws.
 - `field_0c` (360/720, runtime map `+0x2c`): consumer; `field_84/88` (1…4)
   and `field_8c/90`: reader stores them at object `+0xd8/+0xdc/+0xe0/+0xe4`,
   users untraced (candidates: map limits for players, game mode flags).
-- Dirt: the unit order that calls `FUN_00559c28` (class of `0x5184bf`), the
-  caller of `FUN_00559ce5` (clear), and which orders change the ground.
+- Dirt: the meaning of effect byte `+0x5c`, the caller of `FUN_00559ce5`
+  (clear), and when the mark disappears.
 - Line of sight: the distance tables (`+0x22000` steps, `+0x28000`
   `ftol` of a power of `dx² + dy²`) and the `FUN_00559536` gate of
   `FUN_00552c28`; callers (`FUN_00552929` has no direct caller: vtable?).
@@ -478,6 +490,3 @@ are inside the window, structures stamp into passability, and the scene draws.
   and the search itself (`FUN_0054d76e`, `FUN_0055d010`): phase H.
 - Sections 5–12 (players, units, triggers, …; the reader `FUN_00534ad4`
   cases 5–12 are in the exe).
-- Structure `owner` = player record index: where the run-time player list's
-  `+0x08` is assigned (builder `0x4a4940`); `intact` 10 vs 100 (one entry has
-  10; only zero/non-zero is tested); the client footprint of the Castle.

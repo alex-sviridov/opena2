@@ -26,13 +26,11 @@ from both places when answered).
   `FUN_00534ad4` parses all of them (switch on the section id); 46 campaign
   maps in `scenario.res`. Header, terrain, objects and structures (sections
   3–4) are done. [map](formats/map.md#open-questions)
-- `.alm` structures: where the player list's `+0x08` (= `owner`) is set,
-  the Castle's client footprint. [map](formats/map.md#open-questions)
 - Line of sight tables and the `FUN_00559536` gate; block-layer dynamic bits
   and per-class `movementType` (`FUN_00557a89`, vtable `+0x20`); the search
   `FUN_0054d76e` (phase H). [map](formats/map.md#open-questions)
 - `.alm` header leftovers: `field_0c` (360/720), `field_84/88/8c/90`
-  users; which unit order sets the run-time dirt bit (`FUN_00559c28`).
+  users; meaning of effect byte `+0x5c` (spell dirt mark, `FUN_00559c28`), caller of the clear `FUN_00559ce5`.
   [map](formats/map.md#open-questions)
 - `itemname.bin` / `.pkt`, `famehall.dat`, saves (`game%d.sav`; the
   client state is a [`.reg`](formats/reg.md#writing) tree, `FUN_0048dc9f`), `.a2c`

@@ -119,11 +119,11 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   +8 bytes; 1,721 entries tile all 46 maps). Footprint = data.bin
   `sizeX × sizeY` + `Passability`/`BuildingPresent` bit masks (`FUN_005599df`
   registers present cells, `FUN_00550a96` stamps; index mod 32; bridges mask 0
-  = walkable). `owner` = 1-based section 5 record index; dirt = server block
-  bit 0x10 set by unit orders (message 155). Draw order (`FUN_00406f43`): terrain, flat
+  = walkable). `owner` = 1-based section 5 record index (CONFIRMED); dirt =
+  server block bit 0x10 set by spell area effects (message 155). Draw order (`FUN_00406f43`): terrain, flat
   structures, then per cell structure → unit → object. `Map.structures`,
-  `.placed_objects()`, `.passability(m, stats)`, `anim/scene.py`. Open: player-list
-  `+0x08`, Castle client footprint, the dirt-setting order. map.md part 4
+  `.placed_objects()`, `.passability(m, stats)`, `anim/scene.py`. Open: dirt meaning/clear.
+  map.md part 4
 - Not started: saves, Scenario.dll, item names, game layer.
 - Next (docs/open-questions.md): .alm sections 5–12 (server reader
   `FUN_00534ad4`), town-scene animations, text conventions.
