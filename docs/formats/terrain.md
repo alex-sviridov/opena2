@@ -1,6 +1,7 @@
 # Terrain: `.alm` Tiles block → `tile<g>-<nn>.bmp` strips
 
-Code: `allods2/alm.py` (container), `allods2/graphics/terrain.py`. Tools:
+Code: `allods2/alm.py` (container), `allods2/formats/map.py` ([map](map.md)),
+`allods2/graphics/terrain.py`. Tools:
 `tools/validate_terrain.py`; `tools/terrain_contact.py` →
 `out/contact/terrain.png` (all strips, map thumbnails);
 `tools/tile_contact.py` → `out/contact/tiles_<set>.png` (each tile
@@ -81,6 +82,11 @@ tile(v, x, y):                       # x, y = map cell
 animations** option ([lighting §6](../mechanics/lighting.md#6-options));
 it also freezes structures, objects and projectile lights. The water test
 uses the stored set, so the frame depends on which of 8–11 the map stored.
+
+**The dirt bit is not drawn from the file**: `FUN_004a449c` clears bit 13 of
+every cell on load, the game sets it later from a server message
+([map](map.md#terrain-cell--tile-image)); `Map.runtime_terrain()` does the
+same, and `cell_tile` only applies dirt for cells that still carry the flag.
 
 CONFIRMED (data, `tools/validate_terrain.py`): all 46 campaign maps walk
 exactly; Tiles = `width · height` u16; every cell names set 0–12 (812,288

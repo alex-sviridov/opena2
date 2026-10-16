@@ -1,5 +1,5 @@
-"""`.alm` map container (M7R).  Spec: docs/inventory.md §5.2 (container,
-CONFIRMED by walking all 216 maps) and docs/formats/terrain.md (Tiles block).
+"""`.alm` map container (M7R).  Spec: docs/formats/map.md §1 (container),
+docs/formats/terrain.md (Tiles block).  The decoded view is formats/map.py.
 """
 
 import struct
@@ -22,6 +22,7 @@ class Section:
     id: int
     extra: int
     data: bytes
+    tail: bytes = b""      # bytes after the data that the game's reader still consumes
 
 
 @dataclass
@@ -55,8 +56,10 @@ def parse_alm(data, name=""):
         pos += shs
         if pos + size > len(data):
             raise ValueError("section %d data past end of file" % k)
-        sections[sid] = Section(tag, sid, extra, data[pos:pos + size])
-        pos += size + (SECTION0_PAD if k == 0 else 0)
+        pad = SECTION0_PAD if k == 0 else 0
+        sections[sid] = Section(tag, sid, extra, data[pos:pos + size],
+                                data[pos + size:pos + size + pad])
+        pos += size + pad
     if pos != len(data):
         raise ValueError("%d bytes after the last section" % (len(data) - pos))
     w, h = struct.unpack_from("<II", sections[SEC_GENERAL].data, 0)

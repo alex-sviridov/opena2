@@ -9,6 +9,7 @@ The company is legally entitled to recreate the game.
   `DirFS`, `ChainFS`, `OS`; zero-copy `memoryview` reads
 - `allods2/` core library (formats, decoders, data models; no pygame); every
   loader is `load(path, fs)` on game paths (`graphics/units/units.reg`)
+- `allods2/formats/` decoded views of data files (`Map`); `allods2/alm.py` is the .alm container
 - `allods2/game/` game layer (pygame), built on the core
 - `docs/{formats,mechanics,...}/<name>.md` specs; each folder's README.md is its index
 - `allods2/common.py` `INSTALL` (`ALLODS2_INSTALL`), `game_fs()`, `as_fs()`, OUT
@@ -63,7 +64,8 @@ The company is legally entitled to recreate the game.
 ## Known so far
 Details, routines and tools are in each spec; CLI: `python -m allods2 gfx
 export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
-`anim preview-all DEST`, `res ls|list|extract`; contact sheets
+`anim preview-all DEST`, `map info MAP`, `map render MAP DEST.png [--relief]`,
+`res ls|list|extract`; contact sheets
 `tools/*_contact.py` → out/contact/.
 - .res / a2res: CONFIRMED (`FUN_004e2040` opener, lookup `FUN_004e9046`, mount
   `FUN_00481186`, manager `FUN_004e2b5d`): `.reg` entry tree, absolute file
@@ -87,7 +89,8 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   Flip, events; 59/61 + 30/30 hero files; bones stride = BonePhases;
   palette variant = data.bin monster param 30. units.md, animation.md §2
 - Terrain: CONFIRMED incl. signed relief, displaced blit, grid overlay
-  `DAT_00622800`; all 46 campaign maps load every set. terrain.md
+  `DAT_00622800`; all 46 campaign maps load every set; the file's dirt bit
+  13 is cleared on load (`FUN_004a449c`), dirt arrives from the server. terrain.md
 - Fonts: CONFIRMED (widths, `~` underline, shadow, char map off: main\id
   `english 0`; text loaders + CharToOemA). fonts.md
 - Paper doll: CONFIRMED `.256` layers `FUN_004688f7`, layer order. paperdoll.md
@@ -99,7 +102,10 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
 - data.bin: CONFIRMED MFC archive, consumed exactly; column names per group
   (`DataBin.columns`) name every param incl. humans/structures. databin.md
 - Install, triage, plan: docs/inventory.md. .alm: 46 campaign maps;
-  container walks all; sections 1–3 CONFIRMED, rest open.
+  container walks all; header (section 0, `FUN_00534ad4`: size, version,
+  players, tile-set mask, cp1251 name/description, counts) and layers 1–3
+  CONFIRMED, `Map.load` + `map info|render`; light fields are overwritten
+  by `FUN_004a5dd2`; sections 4–12 raw. map.md
 - Not started: saves, Scenario.dll, item names, game layer.
-- Next (docs/open-questions.md): .alm sections 0, 4–12 (server reader
+- Next (docs/open-questions.md): .alm sections 4–12 (server reader
   `FUN_00534ad4`), town-scene animations, text conventions.

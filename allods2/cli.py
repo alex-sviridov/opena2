@@ -4,6 +4,9 @@
     python -m allods2 anim preview-all DEST [--install DIR] [--only CLASS ...]
     python -m allods2 anim preview SPRITE DEST [--install DIR] [--speed N]
                                    [--player P] [--variant V] [--grid PNG]
+    python -m allods2 map info MAP [--install DIR]
+    python -m allods2 map render MAP DEST.png [--layers terrain] [--relief] [--dirt]
+                                 [--rect X Y W H] [--install DIR]
     python -m allods2 res ls [PATH] [--install DIR]
     python -m allods2 res list ARCHIVE.res
     python -m allods2 res extract INSTALL|ARCHIVE.res DEST
@@ -26,6 +29,14 @@ under graphics/units (monsters/goblin), or <kind>:<id> for the other
 classes (structure:11, object:0, projectile:12, water:auto, burning:,
 cursor:pickup, ui:chrgen_cube). `anim preview-all` writes
 DEST/<class>/<name>/<action>[_dNN].gif and grid.png for everything.
+
+MAP is a campaign map (10, 10.alm, scenario/10.alm) or a file on disk.
+`map info` prints the header (size, version, players, tile sets, name and
+description decoded from cp1251, section counts). `map render` draws the
+layers: terrain = the Tiles block from the original tile strips, flat and
+unlit by default (one 32x32 tile per cell); --relief draws it as the game
+does (heights, terrain light at 06:00; slow on big maps); --dirt keeps the
+editor's dirt flag, which the game clears on load; --rect crops to cells.
 
 `res ls` lists a game folder (archives at the top); `res list` prints
 offset, size and path of every file in one archive; `res extract` unpacks
@@ -141,6 +152,56 @@ def anim_preview_all(a):
     return 0
 
 
+def open_map(spec, install=None):
+    from .formats import Map
+    if os.path.isfile(spec):
+        return Map.load(spec, a2res.OS)
+    path = spec.replace("\\", "/")
+    if "/" not in path:
+        path = "scenario/" + path
+    if not path.lower().endswith(".alm"):
+        path += ".alm"
+    return Map.load(path, as_fs(install))
+
+
+def map_info(a):
+    m = open_map(a.map, a.install)
+    h = m.header
+    print("%s: %d x %d cells, version %d, section tag %d" % (m.name, h.width, h.height, h.version, h.tag))
+    print("name:        %r" % h.name)
+    print("description: %r" % h.description)
+    print("players:     %d" % h.player_count)
+    print("tile sets:   0x%04x = %s" % (h.tile_sets, " ".join(map(str, h.tile_set_list))))
+    print("light:       angle %.4f, ambient %d, diffuse %d, field_0c %d (initial; the game overwrites)"
+          % (h.angle, h.ambient, h.diffuse, h.field_0c))
+    print("counts:      sec4 %d, sec6 %d, sec7 %d, sec8 %d, sec10 %d, sec11 %s, sec12 %d"
+          % (h.n_sec4, h.n_sec6, h.n_sec7, h.n_sec8, h.n_sec10, h.n_sec11, h.n_sec12))
+    print("misc:        84=%d 88=%d 8c=%d 90=%d" % (h.field_84, h.field_88, h.field_8c, h.field_90))
+    print("terrain:     %d cells, %d with the dirt flag, %d water" % (
+        h.cells, int(((m.terrain & 0x2000) != 0).sum()),
+        int((((m.terrain & 0x1FFF) >> 6 >= 8) & ((m.terrain & 0x1FFF) >> 6 <= 11)).sum())))
+    print("sections:    " + ", ".join("%d: %d B" % (k, len(v)) for k, v in sorted(m.alm.sections.items())
+                                    for v in [v.data]))
+    return 0
+
+
+def map_render(a):
+    from .graphics import lighting as lt, terrain as tr
+    m = open_map(a.map, a.install)
+    cells = m.terrain if a.dirt else m.runtime_terrain()
+    x, y, w, h = a.rect or (0, 0, m.width, m.height)
+    sub = (slice(y, y + h), slice(x, x + w))
+    terrain = tr.TerrainSet.load(as_fs(a.install))
+    if a.relief:
+        day = lt.daylight(0, False)
+        heights = m.heights.astype(np.int8)
+        light = lt.terrain_light(heights, day.angle, day.ambient, day.diffuse)
+        img, _ = tr.render_3d(cells[sub], heights[sub], terrain, light[sub], tint=day.tint)
+    else:
+        img = tr.render(cells[sub], terrain)
+    return _write_one(a.dest, img, "%s %s" % (m.name, "+".join(a.layers)))
+
+
 def res_ls(a):
     fs = as_fs(a.install)
     for name in fs.listdir(a.path):
@@ -198,6 +259,20 @@ def main(argv=None):
     pa.add_argument("--only", nargs="*", help="classes: units structures objects projectiles "
                                              "terrain effects cursors ui")
     pa.set_defaults(func=anim_preview_all)
+    g = groups.add_parser("map", help=".alm maps").add_subparsers(dest="cmd", required=True)
+    mi = g.add_parser("info", help="print the map header")
+    mi.add_argument("map")
+    mi.add_argument("--install", default=INSTALL)
+    mi.set_defaults(func=map_info)
+    mr = g.add_parser("render", help="draw map layers into a PNG")
+    mr.add_argument("map")
+    mr.add_argument("dest")
+    mr.add_argument("--layers", nargs="+", default=["terrain"], choices=["terrain"])
+    mr.add_argument("--relief", action="store_true", help="heights and lighting as in game (slow)")
+    mr.add_argument("--dirt", action="store_true", help="keep the editor's dirt flag")
+    mr.add_argument("--rect", type=int, nargs=4, metavar=("X", "Y", "W", "H"))
+    mr.add_argument("--install", default=INSTALL)
+    mr.set_defaults(func=map_render)
     g = groups.add_parser("res", help=".res archives").add_subparsers(dest="cmd", required=True)
     d = g.add_parser("ls", help="list a game folder")
     d.add_argument("path", nargs="?", default="")

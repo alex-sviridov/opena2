@@ -22,10 +22,13 @@ from both places when answered).
 
 ## Not started (from the reversing plan)
 
-- `.alm` sections 0 and 4–12 (general info, structures, units, triggers,
-  …); the server reader `FUN_00534ad4` parses all of them (switch on the
-  section id); 46 campaign maps in `scenario.res`.
-  [inventory §5.2](inventory.md#52-alm-maps-m7r0)
+- `.alm` sections 4–12 (structures, units, players, triggers, …); the
+  server reader `FUN_00534ad4` parses all of them (switch on the section
+  id); 46 campaign maps in `scenario.res`. Header and terrain are done.
+  [map](formats/map.md#open-questions)
+- `.alm` header leftovers: `field_0c` (360/720), `field_84/88/8c/90`
+  users; server source of the run-time dirt flag (`FUN_0041c071`).
+  [map](formats/map.md#open-questions)
 - `itemname.bin` / `.pkt`, `famehall.dat`, saves (`game%d.sav`; the
   client state is a [`.reg`](formats/reg.md#writing) tree, `FUN_0048dc9f`), `.a2c`
   characters. [inventory §6](inventory.md#6-plan-custom-formats-to-reverse-in-order)

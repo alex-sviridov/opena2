@@ -113,6 +113,9 @@ See [formats/reg.md](formats/reg.md) (CONFIRMED).
 
 ### 5.2 `.alm` maps (`M7R\0`)
 
+Header, terrain and the container are specified in [formats/map.md](formats/map.md);
+this section keeps the byte accounting.
+
 46 campaign maps (`scenario/<n>.alm`, 41,060–306,948 bytes, all
 distinct). Container CONFIRMED by data (walks to EOF on all 46,
 `allods2/alm.py`); field meanings INFERRED unless marked.
@@ -127,7 +130,7 @@ bytes beyond its declared 644. IDs always in order 0, 1, 2, 3, 5, 11, 4,
 
 | ID | Size | Observations |
 |---|---|---|
-| 0 | 644 (+16) | general info: u32 width, height at data +0x00/+0x04 (file 0x28/0x2c): 144² (32), 80² (13), 256² (1); at +0x08 f32 0x3f490fda (π/4) |
+| 0 | 644 (+16) | General block, [map § Section 0](formats/map.md#section-0-general-block-644-bytes--16); first fields: u32 width, height at data +0x00/+0x04 (file 0x28/0x2c): 144² (32), 80² (13), 256² (1); at +0x08 f32 0x3f490fda (π/4) |
 | 1 | w·h·2 | u16 terrain tiles ("Tiles block", CONFIRMED by the error string "Tiles block not found" in `FUN_005606aa`; [terrain](formats/terrain.md)) |
 | 2 | w·h | u8 heights ("Altitudes block", CONFIRMED); copied verbatim to `+0x10`, read **signed** ([terrain](formats/terrain.md#heights)) |
 | 3 | w·h | u8 object layer: copied to runtime `+0x14` inside an 8-cell border, byte = object index + 1 (CONFIRMED, [animation §1.7](formats/animation.md#17-map-placement-of-objects)) |
