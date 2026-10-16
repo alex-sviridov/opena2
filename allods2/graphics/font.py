@@ -51,6 +51,27 @@ def map_char(c, cyrillic=False):
     return c
 
 
+# INFERRED: Windows best-fit for characters cp866 lacks (only ’ occurs, en/town.txt)
+_OEM_BEST_FIT = {"‘": "'", "’": "'", "“": '"', "”": '"',
+                 "–": "-", "—": "-", "«": '"', "»": '"'}
+
+
+def ansi_to_oem(data):
+    """Locale .txt bytes -> font text: CharToOemA, which the loaders
+    FUN_004799f5 / FUN_0047961d apply in place.  Win32 converts system ANSI
+    to OEM; on the Russian locale the game expects that is cp1251 -> cp866
+    (А 0xC0 -> 0x80, Ё 0xA8 -> 0xF0, ё 0xB8 -> 0xF1).  Unmappable -> '?'."""
+    out = bytearray()
+    for b in data:
+        if b < 0x80:
+            out.append(b)
+            continue
+        ch = bytes([b]).decode("cp1251", errors="replace")
+        ch = _OEM_BEST_FIT.get(ch, ch)
+        out += ch.encode("cp866", errors="replace")
+    return bytes(out)
+
+
 def escape_ramp(r, g, b):
     """The 16-entry RGB565 table a2mgr builds for %[...] (FUN_10005a20):
     entry k = (k·c / 15) scaled by 31/255 or 63/255, packed with OR."""

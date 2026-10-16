@@ -6,7 +6,7 @@ Specs: docs/formats/.
 from .bmp import Bitmap, load_bmp
 from .canvas import Canvas, checker, over_checker
 from .font import (ALIGN_BOTTOM, ALIGN_CENTER, ALIGN_MIDDLE, ALIGN_RIGHT, Font,
-                   escape_ramp, last_ink_columns, map_char, parse_escape, read_metrics)
+                   ansi_to_oem, escape_ramp, last_ink_columns, map_char, parse_escape, read_metrics)
 from .lighting import (Daylight, daylight, daylight_tint, lit_terrain_corner,
                        object_light_row, object_light_row_lit, projectile_light,
                        shadow_angle, shadow_pixel, shadow_row_offsets, shadow_shear,

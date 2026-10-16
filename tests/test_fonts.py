@@ -50,6 +50,14 @@ def test_char_map_cyrillic_cp866():
     assert (m(0x41), m(0xB0), m(0xFF)) == (0x41, 0xB0, 0xFF)
 
 
+def test_locale_text_cp1251_to_cp866():
+    # CharToOemA in FUN_004799f5 / FUN_0047961d (Russian system locale)
+    src = "Атака ёЁ я ~Ok’".encode("cp1251")
+    assert gfx.ansi_to_oem(src) == b"\x80\xe2\xa0\xaa\xa0 \xf1\xf0 \xef ~Ok'"
+    # the font map then reaches the Cyrillic glyphs (А -> glyph 0xB0)
+    assert gfx.map_char(gfx.ansi_to_oem("А".encode("cp1251"))[0], cyrillic=True) == 0xB0
+
+
 def test_font_remap_on_by_default():
     # a2mgr Ordinal_81 forces DAT_0062c9c4 = 1; 0xC1 = the star glyph 0x80
     f = font16([0] * 224)

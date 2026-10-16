@@ -75,7 +75,8 @@ DEST`; contact sheets `tools/*_contact.py` → out/contact/.
 - Terrain: CONFIRMED incl. signed relief and displaced blit; all maps load
   every set; terrain.3d dead code. terrain.md
 - Fonts: CONFIRMED (widths, cp866 remap forced on by a2mgr, `~`, `%[RGB]`,
-  shadow, 0xC1 star). fonts.md
+  shadow, 0xC1 star; locale .txt via CharToOemA = cp1251→cp866
+  `ansi_to_oem`). fonts.md
 - PNG: CONFIRMED a2mgr paper-doll lookup and 160×240 blend. png.md
 - Animation: CONFIRMED sources, layout, client/server timing (VERIFY IN GAME
   list §3.6), `allods2/anim` API for every animated class, whole-install

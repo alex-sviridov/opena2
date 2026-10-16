@@ -4,11 +4,6 @@ Index of everything not yet known; each spec's "Open questions" section is
 the source of truth (rules in CLAUDE.md: add a line when raised, delete it
 from both places when answered).
 
-## Fonts
-
-- Where cp1251 locale `.txt` text is converted to cp866 (typed input:
-  `FUN_0047a0f5`; loader not found). [fonts](formats/fonts.md#open-questions)
-
 ## PNG / paper doll (a2mgr)
 
 - Which exe routine draws the 12 doll layers and in what order (after

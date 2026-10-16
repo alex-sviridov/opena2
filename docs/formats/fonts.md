@@ -92,6 +92,30 @@ Other users of the flag (CONFIRMED):
 a2mgr's own edit fields (`0x1002a740`) apply the same 1251 → 866
 conversion.
 
+### Locale text: `CharToOemA`
+
+CONFIRMED: every locale `.txt` goes through one of two exe loaders, and
+both call `CharToOemA(buf, buf)` (user32, IAT `0x6dc048`) in place:
+
+| Loader | Result | Files (a2mgr stubs `0x10012950`–`0x10012b60`, e.g. Ordinal_52 `0x100129a0`) |
+|---|---|---|
+| `FUN_004799f5` (ecx = list) | split at each CR (CR → NUL, the next byte skipped unchecked), each line converted | main, heropicture, stats, spells, spell, dialogs, unitname, building, itemname, npcnames, cutscene, cutpaths, tunes, patch, credits |
+| `FUN_0047961d(path, CString*)` | whole file, NUL-terminated, converted | help, globalmap, town (3 callers), quest, `mission%d`, `docs\%d` |
+
+a2mgr only swaps the path (`locale\<lang>\…`, table `0x1007b828`–`0x1007b878`)
+and calls these loaders; its own chat printf `0x100371e0` also calls
+`CharToOemA`. The reverse `OemToCharA` (`0x6dc044`) has 6 exe sites (e.g.
+`0x486db5`, main.txt line 0x96) and 2 in a2mgr (`0x10035316`,
+`0x10035426`). INFERRED: text handed back to Windows.
+
+`CharToOemA` converts the **system** ANSI code page to the OEM one, so
+the result depends on the Windows locale. With the Russian locale the
+game assumes, that is cp1251 → cp866, the encoding the forced remap
+expects (Ё 0xA8 → 0xF0, ё 0xB8 → 0xF1, as the typed-input rule). Every
+shipped locale file converts without loss except the one `’` (0x92,
+en/town.txt), which cp866 lacks. INFERRED: Windows best-fit gives `'`.
+The implementation is `ansi_to_oem` (cp1251 → cp866, fixed).
+
 ### 0xC1: the star
 
 CONFIRMED (a2mgr `FUN_1002c700` via Ordinal_122 at `0x43bce4`; patch 28
@@ -255,6 +279,4 @@ also gives 22, so hotkey labels centre correctly. (Shipped font1 values;
 
 ## Open questions
 
-- Where cp1251 locale files (`data/locale/*/*.txt`, Russian in 0xC0–0xFF)
-  are converted to cp866 for the font map; typed input uses
-  `FUN_0047a0f5`; no conversion found in the loader yet.
+None.
