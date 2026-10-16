@@ -152,6 +152,12 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   (`--no-shadows --no-light --no-smoothing --no-objects --debug`); pixel parity with `map render --relief` at
   shadows/light off; goldens `tests/golden.json["screenshots"]`; fog, burnt ground, lights not drawn.
   docs/engine/rendering.md
+- Engine G2c (minimap) done: exe builds it at load, no .alm data (`FUN_004ab96c`): colour = 52x14
+  `MiniMapData.bmp[13 - (v & 15)][v >> 4]` per cell, 8-cell border cut, scale `k` from the longer side
+  (>144 -1, >80 0, >48 1, else 2; 80/144 maps = 128 px), camera rectangle white outline, fog and units drawn
+  later (`FUN_004ac414`); picture never depends on passability/objects. Cheap variant: `allods2/minimap.py`,
+  `engine/view/minimap.py`, `engine/ui/minimap.py` (click/drag = camera), `engine run` shows it top right,
+  `python -m engine minimap MAP DEST.png`; no fog/units/final pass; goldens `["minimaps"]`. rendering.md §12
 - Not started: saves, Scenario.dll, item names, units/items/players in the engine.
-- Next: G2c (engine: minimap). Also (docs/open-questions.md): .alm sections 5–12 (server reader
+- Next: E5 (per the brief of 2026-10-16). Also (docs/open-questions.md): .alm sections 5–12 (server reader
   `FUN_00534ad4`), town-scene animations, text conventions.

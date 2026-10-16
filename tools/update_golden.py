@@ -71,10 +71,19 @@ def shot_hashes(install=None):
     return out
 
 
+def minimap_hashes(install=None):
+    """{map: sha256 of the minimap RGB bytes} for MAPS (no pygame)."""
+    from allods2.common import as_fs
+    from allods2.minimap import load_color_table, minimap_rgb
+    table = load_color_table(as_fs(install))
+    return {m: rgb_hash(minimap_rgb(open_map(m, install).runtime_terrain(), table)) for m in MAPS}
+
+
 def main(argv):
     install = argv[1] if len(argv) > 1 else None
     out = {m: golden_hash(m, install) for m in MAPS}
     out["screenshots"] = shot_hashes(install)
+    out["minimaps"] = minimap_hashes(install)
     with open(GOLDEN, "w", encoding="ascii") as f:
         json.dump(out, f, indent=1, sort_keys=True)
         f.write("\n")

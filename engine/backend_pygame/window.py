@@ -3,7 +3,7 @@
 import pygame
 
 from engine.sim import DEFAULT_SPEED, CommandQueue, Simulation, tick_period_ms
-from engine.ui import DebugFlags, ScrollInput
+from engine.ui import DebugFlags, MinimapPanel, ScrollInput
 from engine.view import DrawOptions, build_draw_list, build_terrain_items
 
 from .render import Caches, draw_frame
@@ -26,13 +26,15 @@ def ensure_display(w, h):
 
 
 def run(world, terrain_view, camera, speed=DEFAULT_SPEED, title="Allods 2", max_frames=None,
-        assets=None, options=None, debug=None):
+        assets=None, options=None, debug=None, minimap=None):
     """Accumulator main loop: fixed-step sim, variable-rate drawing.  Returns when
     the window closes (or after `max_frames`, for tests).  `assets` (an AssetCache)
-    turns on objects and structures; F1/F2/F3 toggle the debug overlays."""
+    turns on objects and structures; F1/F2/F3 toggle the debug overlays.
+    `minimap` (an `engine.view.Minimap`) draws the minimap top right; click or drag moves the camera."""
     options, debug = options or DrawOptions(), debug or DebugFlags()
     screen = ensure_display(camera.view_w, camera.view_h)
     pygame.display.set_caption(title)
+    panel = MinimapPanel.at_top_right(minimap.geometry, camera.view_w) if minimap else None
     sim, queue, scroll = Simulation(world), CommandQueue(), ScrollInput()
     caches = Caches(SurfaceCache(terrain_view), SpriteCache(assets) if assets is not None else None)
     period = tick_period_ms(speed)
@@ -49,6 +51,12 @@ def run(world, terrain_view, camera, speed=DEFAULT_SPEED, title="Allods 2", max_
                 debug.toggle(DEBUG_KEYS[ev.key])
             elif ev.type in (pygame.KEYDOWN, pygame.KEYUP) and ev.key in KEYS:
                 (held.add if ev.type == pygame.KEYDOWN else held.discard)(KEYS[ev.key])
+            elif panel and ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                panel.press(camera, *ev.pos)
+            elif panel and ev.type == pygame.MOUSEMOTION and ev.buttons[0]:
+                panel.drag(camera, *ev.pos)
+            elif panel and ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
+                panel.release()
         mouse = pygame.mouse.get_pos() if pygame.mouse.get_focused() else None
         scroll.update(camera, dt, held, mouse)
         while acc >= period:
@@ -56,6 +64,10 @@ def run(world, terrain_view, camera, speed=DEFAULT_SPEED, title="Allods 2", max_
             acc -= period
         items = build_draw_list(world, camera, world.tick, assets, options, debug) if assets is not None else ()
         draw_frame(screen, caches, build_terrain_items(terrain_view, camera, world.tick), items, camera)
+        if panel:
+            img = minimap.image(camera)
+            screen.blit(pygame.image.frombuffer(img.tobytes(), (img.shape[1], img.shape[0]), "RGB"),
+                        (panel.left, panel.top))
         pygame.display.flip()
         frames += 1
         if max_frames is not None and frames >= max_frames:

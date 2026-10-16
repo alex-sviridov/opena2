@@ -152,6 +152,35 @@ NOT parity, there is no reference). Regenerate with `tools/update_golden.py` (po
 The numpy blends dominate (about 0.15 ms per shadow or overlay item); a shadow-heavy forest runs
 at about 12 frames per second, the game's tick rate is at most 32 per second.
 
+## 12. Minimap
+
+Spec: [minimap design](../superpowers/specs/2026-10-16-minimap-design.md) (cheap variant, decided
+2026-10-16). Code: `allods2/minimap.py` (image), `engine/view/minimap.py` (geometry, camera
+rectangle), `engine/ui/minimap.py` (click/drag), `python -m engine minimap MAP DEST.png`.
+
+| Fact | Where in the exe | |
+|---|---|---|
+| Generated at load, nothing in the `.alm`; builder | `FUN_004ab96c` (from `FUN_004ab896`) | CONFIRMED |
+| Surfaces on the view object: base `+0x60`, fogged copy `+0x64`, shift `k` `+0x68` | same | CONFIRMED |
+| Cell colour `table[13 - (v & 0xf)][v >> 4]`, `v = cell & 0x1fff`; table = `graphics\interface\MiniMapData.bmp`, 52 x 14, global `0x626cb0`, path `0x5f2260` | `0x4abb45`-`0x4abc3a` | CONFIRMED |
+| Cells `8 <= x < w-8`, `8 <= y < h-8` only | `0x4abb53`, `0x4abb79` | CONFIRMED |
+| `k` from `max(w, h)`: `> 0x90` -1, `> 0x50` 0, `> 0x30` 1, else 2; image `((w-16) << k, (h-16) << k)`, for -1 `(w-16) >> 1` with a 2x2 average | `0x4abc44`-`0x4abd82`, `0x4abe65`-`0x4ac01d` | CONFIRMED |
+| 80x80 and 144x144 maps give 128x128; 256x256 gives 120x120 | same | CONFIRMED (computed) |
+| Base never depends on passability, objects or units; only fog changes it (dirty flag `view+0xdc`, redraw at most every 10 view-clock ticks) | `FUN_004ac414` | CONFIRMED |
+| Image centred on panel point (72, 82): `x = 72 - W/2`, `y = 82 - H/2`; panel origin `FUN_004d3a23(this+8)` | `FUN_004ac414` | CONFIRMED |
+| Fog: OR of the `0xc000` bits of cells (c,r), (c+1,r), (c,r+1), (c+1,r+1); 0 -> pixel of surface `DAT_00626be0`, `0x8000` -> 50 % blend with it, else base | `FUN_004ac414` | CONFIRMED |
+| Minimap objects draw themselves after the image (vtable `+0x34`, args origin, `k`) | `FUN_004ac414` (list `FUN_00420140`) | CONFIRMED |
+| Camera rectangle: white 1 px outline from `((view+0x5c) - 8) * s` , `((view+0x60) - 8) * s`, size `(view+0x64, view+0x68) * s - 1`; `/2` for `k = -1` | `FUN_004569a3` call | CONFIRMED |
+| Final per-channel pass | `0x4ac030`-`0x4ac413` | not identified |
+
+Engine deviations (DECISION): `k = -1` takes every second pixel; no final pass, no fog, no unit dots;
+camera position is `camera / 32` in cells with relief ignored; panel at the window's top-right
+corner with an 8 px margin (INFERRED until the G3b interface frame). The image is built once per
+`Minimap` (no World hook: the exe's picture never depends on passability or objects);
+`invalidate()` is there for terrain edits. Click or drag centres the camera on the cell under the
+pointer: view state, not a command. Tests: `tests/test_engine_minimap.py`, goldens
+`tests/golden.json["minimaps"]` (maps 10, 20, 52).
+
 ## Open questions
 
 - Window origin: the exe's `(vx, vy)` (`view+0x5c/+0x60`) against our camera with relief (here floor
@@ -161,3 +190,5 @@ at about 12 frames per second, the game's tick rate is at most 32 per second.
 - Burnt ground (tile bit 0x2000, `DeadObject` frame), fog gates, light-map lights on objects
   (structure `LightRadius`, burning cells), day/night: not drawn; see
   [lighting.md](../mechanics/lighting.md). Starting routine `FUN_00404a2a`.
+- Minimap: the final channel pass `0x4ac030`-`0x4ac413`, surface `DAT_00626be0` (fog background),
+  the minimap objects (vtable `+0x34`: which register, how they draw). Starting routine `FUN_004ac414`.

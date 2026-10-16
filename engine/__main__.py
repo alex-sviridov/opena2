@@ -2,6 +2,7 @@
    python -m engine screenshot MAP X Y DEST.png [--tick N] [--size WxH] [--install DIR]
    python -m engine world-info MAP [--install DIR] [--strict]
    python -m engine world-dump MAP DEST.json [--install DIR]
+   python -m engine minimap MAP DEST.png [--install DIR]
 
 MAP as for `python -m allods2 map` (10, scenario/10.alm, or a file).  X, Y =
 the viewport's top-left in world pixels (x = 32*col, y = 32*row - height).
@@ -11,7 +12,8 @@ passability / markers / depth; Esc quits.  --debug takes a comma list of those
 names (screenshot: drawn in the PNG).  Objects and structures are drawn with the
 game's default options; --no-* switch shadows, the BRIGHT2 light row, the b.256
 smoothing, or both layers off.  `screenshot` writes a PNG
-with no window (SDL dummy driver).  Docs: docs/engine/architecture.md.
+with no window (SDL dummy driver).  `run` shows the minimap top right (click or
+drag moves the camera; --no-minimap hides it); `minimap` writes its base image (no pygame).  Docs: docs/engine/architecture.md.
 """
 
 import argparse
@@ -62,6 +64,19 @@ def world_dump(a):
     return 0
 
 
+def minimap_cmd(a):
+    """Write the minimap image of a map (no pygame, no camera rectangle)."""
+    from allods2.common import as_fs
+    from allods2.graphics import write_png
+    from allods2.cli import open_map
+    from allods2.minimap import load_color_table, minimap_rgb
+    m = open_map(a.map, a.install)
+    rgb = minimap_rgb(m.runtime_terrain(), load_color_table(as_fs(a.install)))
+    write_png(a.dest, rgb)
+    print("%s: %d x %d cells -> %s (%dx%d)" % (m.name, m.width, m.height, a.dest, rgb.shape[1], rgb.shape[0]))
+    return 0
+
+
 def _setup(a):
     from allods2.assets import AssetCache
     from allods2.cli import open_map
@@ -108,7 +123,14 @@ def main(argv=None):
     d.add_argument("map")
     d.add_argument("dest")
     d.add_argument("--install")
+    m = sub.add_parser("minimap")
+    m.add_argument("map")
+    m.add_argument("dest")
+    m.add_argument("--install")
+    r.add_argument("--no-minimap", action="store_true")
     a = p.parse_args(argv)
+    if a.cmd == "minimap":
+        return minimap_cmd(a)
     if a.cmd == "world-info":
         return world_info(a)
     if a.cmd == "world-dump":
@@ -121,8 +143,12 @@ def main(argv=None):
         p.error(str(e))
     from engine.backend_pygame import render, window
     if a.cmd == "run":
+        from allods2.common import as_fs
+        from allods2.minimap import load_color_table
+        from engine.view import Minimap
+        mm = None if a.no_minimap else Minimap(world, load_color_table(as_fs(a.install)))
         window.run(world, tv, camera, a.speed, "Allods 2 - " + world.name,
-                   assets=assets, options=opts, debug=debug)
+                   assets=assets, options=opts, debug=debug, minimap=mm)
     else:
         rgb = render.screenshot(tv, camera, a.tick, a.dest, assets=assets, options=opts, debug=debug)
         print("%s at (%d, %d) tick %d -> %s (%dx%d)"

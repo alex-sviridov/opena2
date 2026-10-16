@@ -55,3 +55,4 @@ from both places when answered).
   its own cells. [architecture](engine/architecture.md#open-questions)
 - [Cell effects `FUN_0040af69`, unit shadow `FUN_00464487`](formats/map.md#open-questions): what the two effect passes draw; start at `FUN_0040af69`.
 - [Engine object drawing](engine/rendering.md#open-questions): window origin vs. relief, structure `ShadowY` +-20000, shadows of destroyed/flat structures, burnt ground, light-map lights on objects; start at `FUN_00406f43`, `FUN_00461890`.
+- [Engine minimap](engine/rendering.md#open-questions): final channel pass `0x4ac030`, fog background surface `DAT_00626be0`, minimap objects (units); start at `FUN_004ac414`.

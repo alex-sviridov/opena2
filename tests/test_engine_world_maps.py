@@ -148,7 +148,7 @@ def test_cli_world_info_without_pygame():
 def test_golden_world_dumps():
     gold = json.load(open(os.path.join(ROOT, "tests", "golden.json")))
     for name, want in gold.items():
-        if name == "screenshots":            # object drawing goldens: test_engine_objects.py
+        if name in ("screenshots", "minimaps"):   # drawing goldens: test_engine_objects.py, test_engine_minimap.py
             continue
         w = World.from_map(Map.load("scenario/%s.alm" % name, GFS), ASSETS)
         assert w.dump_hash() == want, (
