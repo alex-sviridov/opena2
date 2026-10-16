@@ -7,7 +7,9 @@ from .bmp import Bitmap, load_bmp
 from .canvas import Canvas, checker, over_checker
 from .font import (ALIGN_BOTTOM, ALIGN_CENTER, ALIGN_MIDDLE, ALIGN_RIGHT, Font,
                    ansi_to_oem, escape_ramp, last_ink_columns, map_char, parse_escape, read_metrics)
-from .lighting import (Daylight, daylight, daylight_tint, lit_terrain_corner,
+from .lighting import (FOG_EXPLORED, FOG_SEEN, FOG_UNSEEN, Daylight, daylight, daylight_tint,
+                       draw_fog, fog_level, fog_quad_columns, fog_runs, fog_shade,
+                       lit_terrain_corner,
                        object_light_row, object_light_row_lit, projectile_light,
                        shadow_angle, shadow_pixel, shadow_row_offsets, shadow_shear,
                        stamp_light, terrain_light)
@@ -16,7 +18,8 @@ from .palette import (Palette, check_palette_file, code_palettes, code_ramps16, 
                       load_pal_file, load_palettes, pack16, player_text_ramp,
                       read_palette,
                       shade_table, unpack16)
-from .png import (PAPERDOLL_H, PAPERDOLL_W, blend_png_layer, load_png, png_hit_mask,
+from .png import (PAPERDOLL_H, PAPERDOLL_W, TWO_HANDED_CLASSES, blend_menu_png, blend_png_layer,
+                  doll_layer_order, doll_mask_order, load_png, png_hit_mask,
                   write_png)
 from .sprites import (PALETTE_FLAG, Decoded, Sprite, SpriteFile, alpha_coverage,
                       check_sprite, decode, decode_16, decode_16a, decode_256,

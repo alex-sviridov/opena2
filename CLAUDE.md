@@ -66,23 +66,27 @@ DEST`; contact sheets `tools/*_contact.py` → out/contact/.
   = text colours; effect id = 2·spell + 8; low-memory flag not reproduced
   (user decision). palettes.md
 - Lighting: CONFIRMED day/night, terrain light, light map + stamps, object
-  rows, shadows, options. Open: fog overlay drawing. mechanics/lighting.md
+  rows, shadows, options, fog draw (bilinear blend-table rows over relief
+  quads, `draw_fog`). mechanics/lighting.md
 - BMP: CONFIRMED (8-bit flips, 64k class doesn't; pack16; price bar;
   portrait canvas + crop table). bitmaps.md
 - .reg: CONFIRMED; trailing-space names unreachable (units.reg File0). reg.md
 - Units: CONFIRMED units.reg + frame layout, facing clockwise from up,
-  Flip, events; 59/62 + 30/30 hero files. units.md, animation.md §2
+  Flip, events; 59/62 + 30/30 hero files; palette variant = data.bin
+  monster param 30. units.md, animation.md §2
 - Terrain: CONFIRMED incl. signed relief and displaced blit; all maps load
   every set; terrain.3d dead code. terrain.md
 - Fonts: CONFIRMED (widths, cp866 remap forced on by a2mgr, `~`, `%[RGB]`,
   shadow, 0xC1 star; locale .txt via CharToOemA = cp1251→cp866
   `ansi_to_oem`). fonts.md
-- PNG: CONFIRMED a2mgr paper-doll lookup and 160×240 blend. png.md
+- PNG: CONFIRMED a2mgr paper-doll lookup, 160×240 blend (straight alpha,
+  SSE precision), exe layer order `FUN_0046dd6a`, menu PNG blit. png.md
 - Animation: CONFIRMED sources, layout, client/server timing (VERIFY IN GAME
   list §3.6), `allods2/anim` API for every animated class, whole-install
   check (546 sets; 668/695 files + 27 exclusions), combat handoff §5.3,
   suggested work §5.4; sight mask (exe + a2mgr), data-driven speeds, map
-  flags, Blind/world-map timing. Open: chargen cube. animation.md
+  flags, Blind/world-map/inn timing; chargen cube never drawn; world map
+  can't open in this install (INFERRED). animation.md
 - Install, binary triage, reversing plan: docs/inventory.md (no .res,
   music, .smk; data/version = SHA-1 manifest). .alm: 216 maps; container
   walks all; sections 1–3 CONFIRMED (tiles, heights, objects), rest open.
@@ -91,5 +95,5 @@ DEST`; contact sheets `tools/*_contact.py` → out/contact/.
   tools/validate_databin.py); monster/item/spell params, stat names =
   effect kinds, modifier text. Humans/structures open. databin.md
 - Not started: saves, game layer.
-- Next (docs/open-questions.md): fog overlay draw, .alm sections 0, 4–12
-  (server reader `FUN_0053ea3a`), data.bin humans/structures, chargen cube.
+- Next (docs/open-questions.md): .alm sections 0, 4–12 (server reader
+  `FUN_0053ea3a`), data.bin humans/structures.

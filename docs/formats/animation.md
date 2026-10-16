@@ -761,6 +761,8 @@ at stage 5.
    "Dynamic lighting".
 8. Fireball on a forest: flames last ~1.4 s, shorter while the mouse
    moves (§4.6).
+9. The campaign world map cannot be opened in the allods2.eu install
+   (missing `Global.Map/Flag1`, `Flag`, `Cross`, `FlagOnMap`, §4.9).
 
 ## 4. Implementation
 
@@ -1008,10 +1010,10 @@ All `.16a` (FADE16), loaders CONFIRMED. UI timing is wall-clock
 
 | Sprite | Frames | Loader | Timing |
 |---|---|---|---|
-| `interface/chrgen/cube` (chargen dice) | 16 | `FUN_004313db` (`+0x8c`) | not found (no frame-advancing draw of `+0x8c`; preview 100 ms) |
+| `interface/chrgen/cube` (chargen dice) | 16 | `FUN_004313db` (`+0x8c`) | never drawn (below; preview 100 ms) |
 | `interface/chrgen/PreCreate/Blind` | 15 | `FUN_004364c3` (`+0x70`) | below |
 | `Global.Map/MissionFlag`, `YourFlag` | 9, 4 | `FUN_00474320` (`+0x80`, `+0x88`) | below |
-| `interface/inn/<unit>/sprites` (hire previews) | 8 (unit26: 5) | not found: no path string in exe or a2mgr | preview 100 ms |
+| `interface/inn/<unit>/sprites` (hire previews) | 8 (unit26: 5) | `FUN_004a0f02` | below |
 
 **Blind** (CONFIRMED `FUN_00437ea4`, the PreCreate screen draw): the
 screen redraws when ≥ 68 ms (`> 0x43`) have passed. Blind is idle
@@ -1023,15 +1025,41 @@ never drawn.** The same draw also steps a counter `+0x1b0` once per
 redraw and shows image `+0x1b0 mod 15` and `(+0x1b0 + 8) mod 15` of a
 15-entry list at two fixed positions.
 
+**Chargen cube** (CONFIRMED): `FUN_004313db` loads it with the stats
+panel's `FullStat` and `loader` pictures, converts it (FADE16), and the
+destructor (`0x4315a4`) frees it; no method of the class (vtable
+`0x5d5748`, all 16 slots checked) reads `+0x8c` otherwise. A dead asset.
+
+**Inn pictures** (CONFIRMED): `FUN_004a0f02` formats
+`graphics\interface\inn\Unit%d\sprites.16a` with the unit type id
+(`unit+0x24`) for every hire candidate (list `parent+0xc0` → array
+`+0x224`) and every party member (`parent+0xe8` → `+0x238`; heroes,
+`+0x1b8 & 1`, use `HeroMage` when `& 2`, else `HeroFighter`), FADE16.
+The inn draw `FUN_0049f25e` draws each over its slot background
+(`+0x274` / `+0x278`) with its own frame (`+0x24c` / `+0x260`, starting
+at 0); only the selected entry (`parent+0xb8`: candidates first, then
+party) advances, `(f + 1) mod frames`, when more than 125 ms (`> 0x7d`,
+`timeGetTime`) passed since the last step (one timer `0x6317a0` for both
+lists; candidates step after drawing, party before). So ≤ 8 frames/s,
+the others hold their frame.
+
 **World-map flags** (CONFIRMED `FUN_00475245` map draw, `FUN_00476a15`):
 the window redraws on message `0x402` at most every 100 ms (`> 99`);
 each draw advances MissionFlag `+0x128 = (+0x128 + 1) mod frames(Flag1)`
 and YourFlag/Flag `+0x130 = (+0x130 + 1) mod frames(Flag)`: **the moduli
 come from `Flag1` (`+0x74`) and `Flag` (`+0x78`)**, not from the sprites
 drawn (`Flag`, `Flag1` are absent from this install, and the generic
-`.16a` loader `FUN_00426da9` reports a fatal error for missing files; how
-the map screen opens anyway is not traced). Flag (`+0x78`) is
+`.16a` loader `FUN_00426da9` shows `FATAL ERROR: can't load` for a
+missing file; a2mgr's hook of the file open (`0x4ebeda` → Ordinal 1)
+only retries with `data\patch\` and `data\` in front). Flag (`+0x78`) is
 drawn instead of YourFlag when `+0x1b0 ≠ 0`. So ≤ 10 frames/s.
+
+The map window (0x1b4 bytes, id `0x41a`, vtable `0x5d7910`) is built
+with every other screen at start-up (`FUN_0048874a`) but loads its
+sprites only in `FUN_00474ebb` (vtable `+0x80`) → `FUN_00474320`, which
+loads `Flag1`, `Flag`, `Cross` and `FlagOnMap` unconditionally (CONFIRMED).
+With them absent the map screen cannot open in this install (INFERRED:
+the online-only allods2.eu build never shows it; VERIFY IN GAME §3.6).
 
 `FUN_00474320` also names `Global.Map/Flag1`, `Flag`, `Cross`,
 `FlagOnMap`, absent from this install.
@@ -1048,7 +1076,7 @@ drawn instead of YourFlag when `+0x1b0 ≠ 0`. So ≤ 10 frames/s.
 | burning cells | list `view+0xa94` | firewall / steam | counter per view draw, 22 | `.16a` alpha | `BurningSet` |
 | water | tile sets 8–11 | 4 sets | `clock >> 2` | tile copy | `WaterSet` |
 | cursors | exe table | `.16a` / `.256` | ms, `timeGetTime` | alpha / opaque | `CursorSet` |
-| other UI | exe loaders | `.16a` | not traced | alpha | `UiSequenceSet` |
+| other UI | exe loaders | `.16a` | ms, `timeGetTime`, per screen | alpha | `UiSequenceSet` |
 
 ## 5. Verification and engine use
 
@@ -1181,8 +1209,4 @@ In order of need; none required by the coverage check.
 
 ## Open questions
 
-- Chargen cube frame timing (`FUN_004313db` `+0x8c`; no frame-advancing
-  draw found) and the inn picture loader. [§4.9](#49-other-ui-sequences)
-- How the world map opens with `Global.Map/Flag1`, `Flag` absent while
-  their frame counts drive the flag animation (`FUN_00474320`,
-  `FUN_00426da9`). [§4.9](#49-other-ui-sequences)
+None.

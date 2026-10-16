@@ -133,8 +133,53 @@ Implementation: `stamp_light`, `projectile_light`, `BURNING_LIGHT_PHASES`
 (`0xc000`), 8 explored (`0x8000` alone), 16 never seen; then copied to
 `view+0xa4` (previous frame). For cells in sight the loop also adds a
 redraw rectangle from `view+0xb8/+0xbc` (± 0x60 px) when "Object
-animations" is on. The view draw reads each cell's and its neighbours'
-levels at `0x40a1b3`–`0x40a420`.
+animations" is on. `fog_level`.
+
+**Fog draw** (CONFIRMED, pass `0x40a111`–`0x40a663` of the view draw
+`FUN_00406fea`, after the object layers): columns `c = 0 … W−1` left to
+right, cells `r = 0 … Hv+3` top to bottom. Cell `(c, r)` is drawn over
+its own screen quad (x `32c … 32c+31`, corner y from the vertex table
+`view+0xb4`, [terrain](../formats/terrain.md#vertex-table-fun_00406658))
+but its corners take the levels of cells `(c, r)`, `(c+1, r)`,
+`(c, r+1)`, `(c+1, r+1)`, so fog edges sit half a cell down-right of the
+cells.
+
+- **Merge**: while column `c` and `c+1` levels satisfy
+  `L[r] = L[r+1] = L[r+2]` and `r ≠ Hv+3`, the run grows; its quad spans
+  the first cell's top vertices to the last cell's bottom vertices.
+- All four levels 0 → nothing. All 16 → black fill, `FUN_0045cc14` (flat:
+  `yTL = yTR`, `yBL = yBR`, `yTL + 32 = yBL`) or `FUN_0045cd1d`; all 8 →
+  halve (`px >> 1 & 0x62c9c0`), `FUN_0045d58c` / `FUN_0045d7a0`; mixed →
+  `FUN_0045d077` (flat) / `FUN_0045d22b`. The relief fills fall back to
+  `FUN_0045d22b` with four equal levels when the top and bottom edges
+  overlap in y.
+- Every routine covers `top(c) ≤ y < bot(c)` with the terrain blit's edge
+  steps and applies **blend-table row k** (`FUN_0045752b`, `DAT_00629780`,
+  rows 0–16, each 16-bit channel `v → v·(16 − k) >> 4`, the shadow table
+  of §5); black and halving equal rows 16 and 8. Per column (`K =
+  0x10000`, one row = `2K` bytes):
+
+```
+t = TL·2K + c·((TR − TL)·2K >> 5)        # top-edge walk
+b = BL·2K + c·((BR − BL)·2K >> 5)        # bottom-edge walk
+step = (b − t) / span                     # C division, span = bot(c) − top(c) > 0
+k(i) = (t + K + i·step) >> 17             # pixel top(c) + i
+```
+
+  i.e. `k = floor(walk + ½)` of a bilinear walk over the corner levels.
+- Clipping (`0x625768…774`): flat uniform cells test only y; any other
+  quad is skipped unless `32c … 32c+32` is inside the clip x range, and
+  needs `yTL` or `yTR` above the clip bottom and `yBL` or `yBR` at or
+  below its top. Clipped rows still advance the walk.
+- Each fill darkens what is already there. Top and bottom edge steps
+  agree for every `n ≤ 127` except 63 and 127, where the bottom edge sits
+  1 px lower so along such an edge one
+  pixel row is darkened by both cells.
+
+Example, flat cell with TL = 16 and TR = BL = BR = 0: column 0 rows
+`16 16 15 15 … 1 1`, column 1 `16 15 15 … 1 0`, column 16 starts at 8,
+column 31 is 1 then 0. `fog_shade`, `fog_quad_columns`, `fog_runs`,
+`draw_fog`; `tools/terrain_render.py MAP --fog CX CY R`.
 
 ## 4. Object light rows (`FUN_00404ad1`), CONFIRMED
 
@@ -192,5 +237,4 @@ default to 1 (`.data`). CONFIRMED:
 
 ## Open questions
 
-1. How the view draw (`0x40a1b3`–`0x40a420`) turns the fog levels of a
-   cell and its neighbours (with `view+0xb4`) into the drawn fog.
+None.

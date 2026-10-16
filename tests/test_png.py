@@ -79,3 +79,56 @@ def test_game_equipment_pngs_are_paperdoll_layers():
         rgba = gfx.load_png(p)
         assert rgba.shape == (H, W, 4), p
         assert os.path.basename(p)[:-4].isdigit() and not os.path.exists(p[:-4] + ".256")
+
+
+def test_partial_alpha_uses_sse_mixed_precision():
+    # dst term in double, src term in single: A 65, green 51 under black
+    # gives 38 (all-single arithmetic would give 37)
+    dst = np.full((H, W), rgb565(0, 51, 0), np.uint16)
+    gfx.blend_png_layer(dst, layer(0, 0, 0, 65))
+    assert (int(dst[0, 0]) >> 5) & 63 == 38
+
+
+# --- compositing order and menu blit (png.md) ---------------------------------
+
+def test_doll_order_mage():
+    order = gfx.doll_layer_order(mage=True, two_handed=False)
+    assert order[:3] == [("P", 7), ("B",), ("P", 11)] and order[-1] == ("S", 7)
+    assert ("P", 8) not in order and ("P", 2) not in order
+    mask = gfx.doll_mask_order(mage=True, two_handed=False)
+    assert (("P", 8), 9) in mask and (("B",), 0) in mask
+    assert [m[0] for m in mask].index(("P", 8)) == [m[0] for m in mask].index(("P", 0)) - 1
+
+
+def test_doll_order_fighter_two_handed():
+    one = gfx.doll_layer_order(mage=False, two_handed=False)
+    two = gfx.doll_layer_order(mage=False, two_handed=True)
+    assert one[0] == ("B",) and one[8] == ("P", 0) and one[-1] == ("P", 1)
+    assert two[-1] == ("P", 0) and ("P", 1) not in two and two.count(("P", 0)) == 1
+    mask = gfx.doll_mask_order(mage=False, two_handed=True)
+    assert ("B",) not in [m[0] for m in mask] and mask[-1] == (("P", 0), 1)
+
+
+def test_menu_blit_opaque_has_no_floor_and_clamps():
+    dst = np.full((10, 20), 0xFFFF, np.uint16)
+    img = np.zeros((2, 2, 4), np.uint8)
+    img[0, 0] = (0, 0, 0, 255)                # opaque black stays 0 (doll would give 1)
+    img[0, 1] = (255, 255, 255, 0)            # skipped
+    img[1, 0] = (0, 0, 0, 100)                # hard: <= 127 skipped
+    img[1, 1] = (0, 0, 0, 200)                # hard: opaque
+    gfx.blend_menu_png(dst, img, 3, 4, hard=True)
+    assert dst[4, 3] == 0 and dst[4, 4] == 0xFFFF and dst[5, 3] == 0xFFFF and dst[5, 4] == 0
+
+
+def test_menu_blit_partial_alpha_and_edges():
+    dst = np.zeros((4, 4), np.uint16)
+    img = np.zeros((1, 1, 4), np.uint8)
+    img[0, 0] = (255, 255, 255, 128)
+    gfx.blend_menu_png(dst, img, 0, 0)
+    assert dst[0, 0] == rgb565(15, 31, 15)     # no "< 2 -> 1" rule either
+    wide = np.full((1, 3, 4), 255, np.uint8)
+    dst[:] = 0
+    gfx.blend_menu_png(dst, wide, 2, 0)        # would cross the right edge: dropped
+    assert (dst == 0).all()
+    gfx.blend_menu_png(dst, wide, -1, 0)       # negative x skips source columns
+    assert (dst[0, :2] == 0xFFFF).all() and dst[0, 2] == 0

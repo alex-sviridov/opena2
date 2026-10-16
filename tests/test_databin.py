@@ -115,3 +115,13 @@ def test_install_databin():
     assert tid == 64 and goblin.params[D.MONSTER["unitType"]] == 64
     assert goblin.params[D.MONSTER["speed"]] == 24
     assert goblin.params[D.MONSTER["attackWindup"]] == 7
+
+
+@needs_databin
+def test_monster_palette_variant():
+    db = D.databin(DATA)
+    pv = D.MONSTER["paletteVariant"]
+    assert pv == 30
+    assert db.monster("Goblin_Pike.3")[1].params[pv] == 3
+    assert db.monster("F_Zombie.5")[1].params[pv] == 2
+    assert {r.params[pv] for r in db.monsters if r.name and len(r.params) > pv} == set(range(1, 8))

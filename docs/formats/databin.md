@@ -95,7 +95,7 @@ Example: Haste `speed=+2: duration 30` → kind 17, +2 speed for
 | 4 | max HP `+0x96` (and HP `+0x94`) | 19–23 | `+0xc4 … +0xcc` (5 × s16) |
 | 5 | `+0x98` | 24–28 | bytes `+0xcf … +0xd3` |
 | 6 | max mana `+0x9c` (`+0x9a`, `+0xa0`) | 29 | `+0xe` = units.reg type ID (Goblin_Pike 64) |
-| 7 | `+0x9e` | 30–32 | bytes `+0x4b`, `+0x49`, `+0x4a` |
+| 7 | `+0x9e` | 30–32 | bytes `+0x4b` (palette variant, [units](units.md)), `+0x49`, `+0x4a` |
 | 8 | **speed** `+0x8c` | 33 | read, unused |
 | 9 | **turn rate** `mover+0xa` | 34–36 | `+0x1c4` object `+0x40`, `+0x44`, `+0x71` |
 | 10 | `+0xa5` | 37 | `+0x1c` (also re-read by `FUN_0051b595`) |

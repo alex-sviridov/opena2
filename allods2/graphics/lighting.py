@@ -213,3 +213,115 @@ def shadow_pixel(dst_rgb, level):
     (16 - level) / 16 per channel.  `level` is Daylight.shadow1 (or
     shadow2 for the lighter variant)."""
     return tuple(c * (16 - level) // 16 for c in dst_rgb)
+
+
+# --- fog of war (§3 fog levels, §4.1 fog draw) -------------------------------
+
+FOG_SEEN, FOG_EXPLORED, FOG_UNSEEN = 0, 8, 16
+_FOG_K = 0x10000           # DAT_00625650: entries per blend-table row (bytes = 2·K)
+
+
+def fog_level(bits):
+    """FUN_004040e2: a cell's fog level from its tile visibility bits."""
+    b = bits & 0xC000
+    return FOG_SEEN if b == 0xC000 else FOG_EXPLORED if b == 0x8000 else FOG_UNSEEN
+
+
+def fog_shade(px, k, bits=(5, 6, 5)):
+    """Blend-table row k (FUN_0045752b) on 16-bit pixels: every channel
+    v -> v·(16 − k) >> 4 in its own bit width.  Row 8 equals the game's
+    `(px >> 1) & mask` fast path, row 16 its black fill."""
+    px = np.asarray(px, np.uint32)
+    k = np.asarray(k, np.uint32)
+    rb, gb, bb = bits
+    out = np.zeros(np.broadcast(px, k).shape, np.uint32)
+    for shift, n in ((gb + bb, rb), (bb, gb), (0, bb)):
+        v = (px >> shift) & ((1 << n) - 1)
+        out |= ((v * (16 - k)) >> 4) << shift
+    return out.astype(np.uint16)
+
+
+def fog_quad_columns(ytl, ytr, ybl, ybr, levels):
+    """One fog quad as FUN_0045d22b draws it: yields (c, y_top, rows) for
+    each column with pixels; rows[i] is the blend row at y_top + i.
+
+    Edges step like the terrain blit (terrain.edge_offsets).  The levels
+    (tl, tr, bl, br) walk linearly along x on the top and bottom edges,
+    then down each column; a pixel takes the row its walk value + ½ falls
+    in.  Uniform levels give that level everywhere, so this also describes
+    the solid fast paths (FUN_0045cc14/cd1d black, FUN_0045d58c/d7a0 half)
+    and the flat variant FUN_0045d077."""
+    from ..common import cdiv
+    from .terrain import TILE, edge_offsets
+    ftl, ftr, fbl, fbr = (int(v) for v in levels)
+    top = ytl + edge_offsets(ytl, ytr)
+    bot = ybl + edge_offsets(ybl, ybr, bottom=True)
+    t, b = ftl * 2 * _FOG_K, fbl * 2 * _FOG_K
+    for c in range(TILE):
+        span = int(bot[c] - top[c])
+        if span > 0:
+            step = cdiv(b - t, span)
+            i = np.arange(span, dtype=np.int64)
+            yield c, int(top[c]), (t + _FOG_K + i * step) >> 17
+        t += ((ftr - ftl) * _FOG_K * 2) >> 5
+        b += ((fbr - fbl) * _FOG_K * 2) >> 5
+
+
+def fog_runs(levels, vy, cols, rows):
+    """The fog pass of the view draw (0x40a111-0x40a663) as a list of
+    (x, ytl, ytr, ybl, ybr, (tl, tr, bl, br), solid) quads in draw order.
+
+    levels[r][c] = fog level of view cell (c, r) and vy[r][c] = screen y of
+    vertex (c, r) (terrain vertex table), both at least (rows + 1) ×
+    (cols + 1).  Columns go left to right, cells top to bottom.  Cell
+    (c, r) is drawn over its own screen quad but its corners take the
+    levels of cells (c, r), (c+1, r), (c, r+1), (c+1, r+1).  Cells whose
+    left and right levels match the next cell's are merged into one tall
+    quad; all-seen quads are skipped.  `solid` marks the flat 32-px-high
+    uniform case that the game fills without an x clip test."""
+    L = np.asarray(levels)
+    out = []
+    for c in range(cols):
+        r = 0
+        while r < rows:
+            r0 = r
+            while (r < rows - 1 and r + 2 < L.shape[0]
+                   and L[r, c] == L[r + 1, c] == L[r + 2, c]
+                   and L[r, c + 1] == L[r + 1, c + 1] == L[r + 2, c + 1]):
+                r += 1
+            ytl, ytr = int(vy[r0][c]), int(vy[r0][c + 1])
+            ybl, ybr = int(vy[r + 1][c]), int(vy[r + 1][c + 1])
+            lv = (int(L[r0, c]), int(L[r0, c + 1]), int(L[r + 1, c]), int(L[r + 1, c + 1]))
+            r += 1
+            if lv == (0, 0, 0, 0):
+                continue
+            uniform = lv[0] == lv[1] == lv[2] == lv[3] and lv[0] in (8, 16)
+            flat = ytl == ytr and ybl == ybr and ytl + 32 == ybl
+            out.append((32 * c, ytl, ytr, ybl, ybr, lv, uniform and flat))
+    return out
+
+
+def draw_fog(surface, levels, vy, cols, rows, clip=None, bits=(5, 6, 5)):
+    """Darken a 16-bit view surface (H × W uint16, in place) with the fog
+    pass.  Quads overlap where relief folds, and each draw darkens again.
+    clip = (left, top, right, bottom), default the whole surface.  A quad
+    is skipped unless x .. x+32 lies inside left .. right, except the
+    solid flat case (the game does not test x there; here it is clamped)."""
+    H, W = surface.shape
+    left, top, right, bottom = clip or (0, 0, W, H)
+    for x, ytl, ytr, ybl, ybr, lv, solid in fog_runs(levels, vy, cols, rows):
+        if solid:
+            y0, y1 = max(ytl, top), min(ybl, bottom)
+            x0, x1 = max(x, 0), min(x + 32, W)
+            if y0 < y1 and x0 < x1:
+                surface[y0:y1, x0:x1] = fog_shade(surface[y0:y1, x0:x1], lv[0], bits)
+            continue
+        if x < left or x + 32 > right:
+            continue
+        if not ((ytl < bottom or ytr < bottom) and (ybl >= top or ybr >= top)):
+            continue
+        for c, y0, k in fog_quad_columns(ytl, ytr, ybl, ybr, lv):
+            yy = y0 + np.arange(len(k))
+            ok = (yy >= top) & (yy < bottom)
+            col = surface[yy[ok], x + c]
+            surface[yy[ok], x + c] = fog_shade(col, k[ok], bits)

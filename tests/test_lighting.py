@@ -79,3 +79,86 @@ def test_structure_light_pulse():
     assert structure_light_value(8, 16) == 28
     assert structure_light_vertices(2, 3, 3, 4, 1) == [(2, 3), (3, 3), (4, 3), (2, 4), (3, 4),
                                                        (4, 4), (2, 5), (3, 5), (4, 5)]
+
+
+# --- fog (lighting.md §3, fog draw) ------------------------------------------
+
+def test_fog_level_bits():
+    assert [gfx.fog_level(b) for b in (0xC000, 0x8000, 0x4000, 0, 0xC123)] == [0, 8, 16, 16, 0]
+
+
+def test_fog_shade_rows():
+    px = np.array([0xFFFF, 0x1234, 0xF81F], np.uint16)
+    assert (gfx.fog_shade(px, 0) == px).all()
+    assert (gfx.fog_shade(px, 16) == 0).all()
+    assert (gfx.fog_shade(px, 8) == (px >> 1) & 0x7BEF).all()     # halving fast path
+    assert int(gfx.fog_shade(0xFFFF, 4)) == (23 << 11) | (47 << 5) | 23
+
+
+def test_fog_uniform_quad_is_constant():
+    cols = list(gfx.fog_quad_columns(0, 0, 32, 32, (8, 8, 8, 8)))
+    assert len(cols) == 32
+    assert all(y0 == 0 and len(k) == 32 and set(k.tolist()) == {8} for _, y0, k in cols)
+
+
+def test_fog_gradient_worked_example():
+    cols = list(gfx.fog_quad_columns(0, 0, 32, 32, (16, 0, 0, 0)))
+    assert cols[0][2].tolist() == [16 - i // 2 for i in range(32)]
+    assert cols[1][2].tolist()[:3] == [16, 15, 15] and cols[1][2][-1] == 0
+    assert cols[16][2][0] == 8
+    assert cols[31][2].tolist() == [1] + [0] * 31
+
+
+def test_fog_quad_follows_terrain_edges():
+    # top edge rising 2 px to the right: same steps as the terrain blit
+    cols = list(gfx.fog_quad_columns(0, -2, 32, 32, (16, 16, 16, 16)))
+    assert [cols[c][1] for c in (0, 10, 11, 20, 21, 31)] == [0, 0, -1, -1, -2, -2]
+    assert len(cols[21][2]) == 34
+
+
+def test_fog_runs_merge_skip_and_corner_shift():
+    L = np.zeros((4, 3), int)
+    L[:, 1] = 16                          # column 1 never seen
+    vy = np.arange(4)[:, None] * 32 + np.zeros((1, 3), int)
+    runs = gfx.fog_runs(L, vy, 2, 3)
+    # column 0 gets a TL=0/TR=16 gradient (corners shifted), merged over 3 rows
+    assert runs[0] == (0, 0, 0, 96, 96, (0, 16, 0, 16), False)
+    # column 1 uniform 16 but merged (96 px high) so not the flat fast path
+    assert runs[1] == (32, 0, 0, 96, 96, (16, 0, 16, 0), False)
+    L2 = np.zeros((3, 3), int)
+    assert gfx.fog_runs(L2, vy, 2, 2) == []           # all in sight: nothing
+
+
+def test_fog_last_row_does_not_merge():
+    L = np.full((4, 2), 16)
+    vy = np.arange(4)[:, None] * 32 + np.zeros((1, 2), int)
+    runs = gfx.fog_runs(L, vy, 1, 2)
+    assert [(r[1], r[3]) for r in runs] == [(0, 64)]   # rows 0-1 merged, stops at rows-1
+    runs = gfx.fog_runs(L[:2], vy, 1, 1)
+    assert runs == [(0, 0, 0, 32, 32, (16, 16, 16, 16), True)]
+
+
+def test_draw_fog_clip():
+    s = np.full((40, 40), 0xFFFF, np.uint16)
+    L = np.full((2, 3), 8)
+    vy = np.array([[0, 0, 0], [32, 32, 32]])
+    gfx.draw_fog(s, L, vy, 2, 1, clip=(0, 0, 40, 40))
+    assert s[0, 0] == 0x7BEF                      # flat uniform: no x clip test
+    assert s[0, 39] == 0x7BEF
+    s[:] = 0xFFFF
+    L = np.array([[8, 0, 0], [8, 0, 0]])
+    gfx.draw_fog(s, L, vy, 2, 1, clip=(0, 0, 40, 40))
+    assert s[0, 0] != 0xFFFF and s[0, 33] == 0xFFFF   # mixed quad at x=32 sticks out: skipped
+
+
+def test_fog_column_quads_overlap_only_on_63_and_127():
+    from allods2.graphics.terrain import edge_offsets
+    for n in range(1, 128):
+        for a, b in ((0, n), (n, 0)):
+            d = edge_offsets(a, b, bottom=True) - edge_offsets(a, b)
+            assert set(d.tolist()) == ({1} if n in (63, 127) else {0})
+    s = np.full((200, 32), 0xFFFF, np.uint16)
+    L = np.array([[8, 8], [8, 8], [16, 16]])  # L[2] differs: no merge
+    vy = np.array([[0, 0], [32, 95], [96, 160]])
+    gfx.draw_fog(s, L, vy, 1, 2)
+    assert s[31, 0] == 0x7BEF and s[32, 0] == 0x39E7 and s[33, 0] == 0x7BEF

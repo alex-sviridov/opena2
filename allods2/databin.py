@@ -27,7 +27,7 @@ MONSTER_PARAMS = (
     "protectionEarth", "protectionAstral",
     "unit+0xcf", "unit+0xd0", "unit+0xd1", "unit+0xd2", "unit+0xd3",
     "unitType",                                                # +0xe, units.reg ID
-    "unit+0x4b", "unit+0x49", "unit+0x4a", "unused33",
+    "paletteVariant", "unit+0x49", "unit+0x4a", "unused33",   # +0x4b (units.md), +0x49, +0x4a
     "ai+0x40", "ai+0x44", "ai+0x71", "unit+0x1c",              # +0x1c4 object; 37 also FUN_0051b595
 )
 MONSTER = {name: i for i, name in enumerate(MONSTER_PARAMS)}

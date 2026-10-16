@@ -123,6 +123,16 @@ data from this install's `units.reg`:
 it to `FUN_0046f540`, stored as is (heroes use it for portrait/flags);
 the constructor `FUN_0046838e` first sets it to the type ID.
 
+Server side (CONFIRMED): the unit message builder `FUN_0050ac91` writes,
+under flag `0x20`, the type ID (`FUN_0054a7b0`, client `0x60e4c4` →
+`obj+0x24`) and then the server unit byte `+0x4b` (`0x50b180`, client
+`0x60e4c8` → `obj+0x28`). For monsters `+0x4b` is data.bin monster
+param 30 (`FUN_0051b12f`, [databin](databin.md#parameter-maps)): 1–7,
+usually the `.N` suffix of the record (`Goblin_Pike.3` → 3, but undead
+`F_Zombie.2…4` → 1, `.5` → 2); 65 records use 1 (palette 0). The hero
+builder (`0x51e7e5`–`0x51e829`) stores its own value and ORs a flag into
+bit 7. `MONSTER["paletteVariant"]`.
+
 ## Worked example
 
 Unit1 (ID 4, swordsman with shield, Parent 3) inherits B 2, M 8, A 7;
@@ -133,5 +143,4 @@ D 4, Bone 3, Flip 0, Dying 4 (itself). File `humans\swordsman_\swordsman_`:
 
 ## Open questions
 
-- Where the server takes a monster's palette variant byte (`obj+0x28`,
-  create message): map unit records or `data.bin`.
+None.

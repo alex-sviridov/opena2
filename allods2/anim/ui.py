@@ -10,10 +10,16 @@ the frame count; the cursor is drawn at (mouse x - hot x, mouse y - hot y)
 with the sprite's own table (.16a alpha, or opaque .256).  Period
 2000000000 = a still cursor.  Time is in milliseconds here.
 
-Other UI sequences (chargen dice cube, PreCreate "blind", world-map flags,
-inn unit pictures): files, loaders and frame counts are known; their frame
-timing is not traced, so previews play them at a nominal 100 ms per frame
-and the sets say `timed = False`.
+Other UI sequences (CONFIRMED, §4.9), wall-clock ms with the screen
+polled every millisecond:
+- PreCreate "blind": frames 1..14 (frame 0 never drawn), one per redraw,
+  a redraw when more than 0x43 ms passed (68 ms); the random idle gaps
+  between runs are not modelled.
+- World-map flags: one frame per redraw, at most one per 100 ms.
+- Inn pictures (FUN_004a0f02 / draw FUN_0049f25e): only the selected one
+  advances, when more than 0x7d ms passed (126 ms); the others hold.
+- Chargen cube: loaded but never drawn (dead asset); previews play it at a
+  nominal 100 ms per frame and the set says `timed = False`.
 """
 
 import os
@@ -43,12 +49,26 @@ CURSORS_DIR = "graphics/cursors"
 
 # UI .16a sequences: (name, path under data/, loader)
 UI_SEQUENCES = (
-    ("chrgen_cube", "graphics/interface/chrgen/cube/sprites.16a", "FUN_004313db"),
+    ("chrgen_cube", "graphics/interface/chrgen/cube/sprites.16a", "FUN_004313db (never drawn)"),
     ("chrgen_blind", "graphics/interface/chrgen/PreCreate/Blind/sprites.16a", "FUN_004364c3"),
     ("map_missionflag", "graphics/Global.Map/MissionFlag/sprites.16a", "FUN_00474320"),
     ("map_yourflag", "graphics/Global.Map/YourFlag/sprites.16a", "FUN_00474320"),
 )
 UI_NOMINAL_MS = 100
+# name or name prefix -> (ms per frame, first frame drawn); missing = untimed
+UI_TIMING = {
+    "chrgen_blind": (0x43 + 1, 1),        # FUN_00437ea4: redraw when > 0x43 ms
+    "map_missionflag": (99 + 1, 0),       # FUN_00476a15: redraw when > 99 ms
+    "map_yourflag": (99 + 1, 0),
+    "inn_": (0x7d + 1, 0),                # FUN_0049f25e: selected entry, > 0x7d ms
+}
+
+
+def ui_timing(name):
+    for key, timing in UI_TIMING.items():
+        if name == key or (key.endswith("_") and name.startswith(key)):
+            return timing
+    return None
 
 
 def cursor_name(path):
@@ -84,20 +104,24 @@ class CursorSet(AnimationSet):
 
 
 class UiSequenceSet(AnimationSet):
-    """A UI .16a sequence played frame by frame; timing not traced."""
+    """A UI .16a sequence played frame by frame at its screen's rate
+    (UI_TIMING); untimed ones (the never-drawn cube) at UI_NOMINAL_MS."""
     kind = "ui"
     clock = "ms"
-    timed = False
-    preview_step_ms = UI_NOMINAL_MS
     blit_mode = "alpha"
 
     def __init__(self, name, loader, sprites=None, paths=None):
         super().__init__(name, sprites, paths)
         self.loader = loader
-        self.actions = {"frames": Action("frames", list(range(max(self.count(), 1))), clock="ms")}
+        timing = ui_timing(name)
+        self.timed = timing is not None
+        self.preview_step_ms, first = timing or (UI_NOMINAL_MS, 0)
+        n = max(self.count(), 1)
+        self.frames = list(range(min(first, n - 1), n))
+        self.actions = {"frames": Action("frames", self.frames, clock="ms")}
 
     def frame_at(self, action, facing, ms, **kw):
-        i = (ms // UI_NOMINAL_MS) % max(self.count(), 1)
+        i = self.frames[(ms // self.preview_step_ms) % len(self.frames)]
         wh = self.size("main", i) or (0, 0)
         return FrameRef("main", i, False, (wh[0] // 2, wh[1] // 2), action, i)
 
@@ -112,7 +136,8 @@ def load_cursor_set(key, data_dir):
 
 def ui_sequence_paths(data_dir):
     """[(name, path, loader)] of every animated UI sequence present: the
-    named ones, then each interface/inn/*/sprites.16a (loader not found)."""
+    named ones, then each interface/inn/*/sprites.16a (FUN_004a0f02: Unit%d
+    by unit type id, HeroFighter / HeroMage for heroes)."""
     out = []
     for name, rel, loader in UI_SEQUENCES:
         p = find_file(data_dir, rel)
@@ -123,7 +148,7 @@ def ui_sequence_paths(data_dir):
         for d in sorted(os.listdir(inn)):
             p = os.path.join(inn, d, "sprites.16a")
             if os.path.isfile(p):
-                out.append(("inn_" + d.lower(), p, "not found"))
+                out.append(("inn_" + d.lower(), p, "FUN_004a0f02"))
     return out
 
 
