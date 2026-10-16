@@ -71,13 +71,17 @@ def anim_preview(a):
 
 def anim_preview_all(a):
     from . import anim, anim_preview as P
-    total = 0
+    total, used = 0, set()
     for cls, keys in anim.all_keys(a.data).items():
         if a.only and cls not in a.only:
             continue
         for key in keys:
             aset = anim.load_set(key, a.data)
-            d = os.path.join(a.dest, cls, aset.name)
+            name = aset.name
+            if (cls, name) in used:         # e.g. units.reg IDs 1 and 2 share humans/unarmed
+                name = "%s_%s" % (name, key.replace(":", "_").replace("/", "_"))
+            used.add((cls, name))
+            d = os.path.join(a.dest, cls, name)
             n = len(P.write_gifs(aset, d, a.speed))
             P.grid(aset).save(os.path.join(d, "grid.png"))
             total += n
