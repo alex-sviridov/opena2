@@ -80,12 +80,15 @@ DEST`; contact sheets `tools/*_contact.py` → out/contact/.
 - Animation: CONFIRMED sources, layout, client/server timing (VERIFY IN GAME
   list §3.6), `allods2/anim` API for every animated class, whole-install
   check (546 sets; 668/695 files + 27 exclusions), combat handoff §5.3,
-  suggested work §5.4. animation.md
+  suggested work §5.4; sight mask (exe + a2mgr), data-driven speeds, map
+  flags, Blind/world-map timing. Open: chargen cube. animation.md
 - Install, binary triage, reversing plan: docs/inventory.md (no .res,
   music, .smk; data/version = SHA-1 manifest). .alm: 216 maps; container
   walks all; sections 1–3 CONFIRMED (tiles, heights, objects), rest open.
 - Graphics overview: ranks 1–10 CONFIRMED. graphics-overview.md
-- Not started: data.bin, saves, game layer.
-- Next (docs/open-questions.md): sprite/animation open questions one by
-  one (user request), fog overlay draw, UI sequence timing, server hit
-  timing, data.bin, .alm sections 0, 4–12.
+- data.bin: CONFIRMED MFC archive, consumed exactly (`allods2.databin`,
+  tools/validate_databin.py); monster/item/spell params, stat names =
+  effect kinds, modifier text. Humans/structures open. databin.md
+- Not started: saves, game layer.
+- Next (docs/open-questions.md): fog overlay draw, .alm sections 0, 4–12
+  (server reader `FUN_0053ea3a`), data.bin humans/structures, chargen cube.

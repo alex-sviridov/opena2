@@ -201,7 +201,7 @@ followed by 16 bytes beyond its declared 644. IDs always in order 0, 1, 2,
 | File | Observations |
 |---|---|
 | `fontN.dat` | decoded, [fonts](formats/fonts.md) |
-| `world/data/data.bin` (153,528 B) | starts `00 00 07 00 00 00 06 "Common"`: length-prefixed names (`Common`, `Uncommon`, `Rare`, …) + f64 multipliers (1.0, 0.2, …); compiled item/material/class/spell/unit database, the most depended-on data |
+| `world/data/data.bin` (153,528 B) | MFC archive: qualities, materials, stat names, item classes, special items, monsters, humans, structures, spells; CONFIRMED, [databin](formats/databin.md) |
 | `world/data/itemname.bin` (1,402 B) | u16 pairs (`02 01 03 01 …`), like (id, class) keys |
 | `world/data/itemname.pkt` (10,629 B) | `00 00 00 bd 02 00 00 7c 29 …`: packed item-name records, repeated `0d 0X 0e 0X 0c` tags |
 | `world/data/itemex.txt` | rule text: `ignore material Bone type not Staff …` |
@@ -218,9 +218,9 @@ sprites, palettes, BMP, `.reg` (step 1), font metrics (step 2), the
 
 3. **Locale `.txt` conventions**: line-indexed vs `#key`/`<part>`, cp1251;
    needed by UI, items, quests.
-4. **`world/data/data.bin`**: core rules database; depends on nothing,
-   almost everything depends on it. Reader via the `Data.bin` string at
-   `0x6072d4`.
+4. **`world/data/data.bin`**: done, container CONFIRMED and decoded
+   ([databin](formats/databin.md)); monster, item and spell parameter maps
+   partly, humans and structures open.
 5. **`itemname.bin` / `.pkt` / `itemex.txt`**: item IDs → names/sprites;
    need the data.bin item model.
 6. **`famehall.dat`**: tiny, self-contained, low priority.

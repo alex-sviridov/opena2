@@ -20,6 +20,7 @@ file) or INFERRED, with the routines they came from.
 | `fontN.dat` + `.16`/`.16a` fonts, `~` hotkeys, `%[...]` colours | [fonts.md](fonts.md) | CONFIRMED, all 4 fonts |
 | `.reg` registry | [reg.md](reg.md) | CONFIRMED, all 17 files |
 | `units.reg`, unit frame blocks, facing, placement | [units.md](units.md) | CONFIRMED, 59/62 types + 30/30 hero files |
+| `world/data/data.bin` game database: records, monster/item/spell parameters, modifier text | [databin.md](databin.md) | CONFIRMED container (file consumed exactly); maps partial |
 | Animation: sources, unit layout, timing (client and server), `allods2/anim` API, whole-install check, combat handoff | [animation.md](animation.md) | CONFIRMED; 546 sets, 668/695 multi-frame files + 27 documented exclusions |
 
 Open questions: [../open-questions.md](../open-questions.md). Mechanics:

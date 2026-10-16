@@ -23,8 +23,9 @@ hero frames (formulas in [units](units.md)); 3 timing rules; 4 the
 Not a source: no `.txt/.ini/.cfg` in the install mentions phases, frames,
 speeds or directions (English and cp1251; only spell descriptions match
 "anim"; CONFIRMED by grep). No binary table keyed by sprite file; every
-sprite-kind table is a `.reg` read by name; `world/data/data.bin` (not
-decoded) is read by none of the loaders/draws below. `video/*/*.reg` hold
+sprite-kind table is a `.reg` read by name; `world/data/data.bin`
+([databin](databin.md)) is read by none of the loaders/draws below (it
+feeds the server's speeds, §3.4). `video/*/*.reg` hold
 only fade ranges (`Common/startx`, `FadingN/startframe`, `endframe`,
 `startfade`, `endfade`) for absent videos. Shop animations
 (`movies/shop*/` numbered `.bmp`) are not covered.
@@ -236,6 +237,36 @@ tiles at column `x + w/2 − 20 + i`, row `y + h/2 − 20 + j` (`w, h` =
 vtable `+0x20/+0x24`). So `0xc000` = seen in the last refresh, `0x8000`
 alone = explored (never cleared), 0 = never seen. Structure/object
 animation freezes outside sight, up to 32 ticks after a unit leaves.
+
+**Sight mask** (CONFIRMED: exe `FUN_00403d47` body `0x403d4d`–`0x403fac`
+with `FUN_00403c36` and tables from `FUN_004037d7`; a2mgr
+`FUN_10023720` with tables from `FUN_10023560`). A height-aware ray
+flood over a 41 × 41 window centred on the unit, `(dx, dy)` ∈ −20 … 20,
+`s = 7` (`view+0x3f50`, `1 << s` = 128 at `+0x3f4c`):
+
+```
+cost(dx,dy)  = trunc(128 · sqrt(dx² + dy²) / max(|dx|,|dy|))   # 128 straight, 181 diagonal
+pred(dx,dy)  = one step toward the centre, a = |dx|, b = |dy|:
+               x only if b < a >> 1;  else y only if 2a < b;  else both
+               (so (±1, 0) would step diagonally; the table builder patches
+               those two cells to x-only; the rule is asymmetric for odd a)
+M(0,0)       = (sight >> (8 − s)) + (1 << (s − 1))  = sight/2 + 64      # sight = s16 obj+0x10a
+for r = 1 … 19:                                   # rings, sides in order top, bottom, left, right
+    for each cell of ring r inside the map (7 ≤ x < w−7, 7 ≤ y < h−7):
+        M(c) = M(pred c) − cost(c) − (H(c) − H(unit))                  # H = height byte, map +0x10
+    stop after a ring in which no cell kept M ≥ 1 (a2mgr: M ≥ 0)
+visible = M > 0                                    # FUN_00465e36 then ORs 0xc000
+```
+
+Cells outside the map keep 0. On flat ground a cell at distance `d`
+(straight) is visible while `128·d < sight/2 + 64`: `sight ≈ 256 · cells`
+of radius (INFERRED unit); the window caps the radius at 19. Climbing
+costs one point per height unit; looking downhill gains it. Exe vs a2mgr
+(the one that runs): same tables and update; a2mgr reads heights
+**unsigned** (`movzx`; exe `movsx`), so the 777 negative-height cells of
+`sc_an_twins2_4_4` ([terrain](terrain.md#heights)) count as 128–143
+there; a2mgr keeps expanding while some cell is ≥ 0 (exe ≥ 1) and sets
+the centre cost to 0 explicitly. Implement the a2mgr variant.
 
 ### 1.7 Map placement of objects
 
@@ -528,7 +559,7 @@ The client plays what the server sends.
 unit busy until `tick + msg[+0xd]`, `unit+0x138`):
 
 ```
-base  = template_speed (unit+0x70 → +0x3c → byte +0x44) if non-zero,
+base  = group speed (unit+0x70 → +0x3c → byte +0x44) if non-zero,
         else unit speed stat (s16 unit+0x8c)                 // FUN_0056314a
 dir8  = (angle + 16) >> 5                                    // 8 compass steps
 if ground unit (vtable +0x20 == 1):
@@ -573,7 +604,7 @@ elif row < 14:
 else:
     type = 0xff, cost = 8
 cost[cell] = cost if type < 13 else Cost[0] (= 0xff, impassable)
-flags[cell] = 1 if v & 0x2000 (dirt overlay), type == 8 (mountain) or water; 5 if the map's +0x10 byte ≠ 0
+flags[cell] = 1 if v & 0x2000 (dirt overlay), type == 8 (mountain) or water; 5 if the object layer ≠ 0
 ```
 
 Pairs `(A, B)` per set: 0 Grass/Land, 1 Cracked/Land, 2 Sand/Land,
@@ -588,10 +619,24 @@ strip 2: 2 3 2 4 3 4 2 4 2 2 4 2 4 4
 strip 3: 5 5 5 5 5 5 2 2 2 2 4 4 4 4
 ```
 
-INFERRED: the input map has the client's `+0xc` tiles, its `+0x10` byte
-marks blocked cells (flag 5, e.g. objects) and `+0x14` is the height
-copied to `map+0x944f4`. Flag `0x20` (tested by `FUN_00564137`) is set
-elsewhere (not traced).
+Inputs (CONFIRMED): `FUN_005570f4` passes the server's own `.alm` reader
+object (`FUN_0053ea3a`: section 1 → `+0xc`, section 2 → `+0x14`,
+section 3 → `+0x10`, zero-filled when absent); tiles come from the
+runtime map (`FUN_004adbe0`). So `map+0x944f4` = the section-2 height
+byte and flag 5 = any object-layer byte ≠ 0, over the whole map (the
+client copies section 3 only inside an 8-cell border,
+[terrain](terrain.md#heights)).
+
+Flag bits (CONFIRMED, all writes to `map+0x10000`/`+0x20000`, direct
+and via `FUN_0054cdb0`/`FUN_00569a60`): `|5`/`&~5` structures and
+objects (`FUN_0055aa86`, `FUN_0056299b`), `|0x10`/`&~0x10` unit
+occupancy (`FUN_00563c18`/`FUN_00563cd5`, `FUN_0055a956`), `0x1f` the
+map border (`FUN_0055db20`; `FUN_00557516`), save/load copies
+(`FUN_00559ff8`). **No code sets `0x20`** except by accident:
+`FUN_00562a9b`, a one-shot scripted block (cells x 62–65, y 24–26,
+called once from `FUN_005792ee`), does `flags += 5` instead of `|= 5`,
+and `0x1f + 5 = 0x24` on a border cell. The `0x20` branch of
+`FUN_00564137` (cost from a special-cell list) is otherwise dead.
 
 Example (flat grass, `base` 18 = hero with default `+0x86 = 30`:
 `12 + 30/5`): orthogonal 15 ticks/cell = 0.93 s; diagonal
@@ -606,9 +651,10 @@ plays 1.41 cycles (CONFIRMED arithmetic).
 | Source | Rule | Status |
 |---|---|---|
 | hero defaults | `FUN_00518863`: `+0x8c = 10`, turn rate `mover+0xa = 8`, attack bytes `+0x134 = 8`, `+0x135 = 4` | CONFIRMED |
-| hero recompute | `FUN_0051d2a7` (`0x51d6b4`–`0x51d7fa`): `s = A` if `A < 12` else `12 + A/5`, `A = s16 +0x86`; `+10` when `+0xe` is 0x13 or 0x15; if load `+0x90 ≥` capacity `+0x92`: `s −= load / capacity`, min 6; then effect block `+0xd4` adds its delta (`FUN_0051b023`) | CONFIRMED; INFERRED `+0x86` = Reaction/Dexterity, `+0xe` mount/class id |
-| monsters | stat block virtual `FUN_0051aed6` (`+0x8c = block+4`) | CONFIRMED write; values from `data.bin` |
-| effects (Haste/Slow, …) | effect kind 17 (`FUN_00527122` case 0x11, `0x527757`): `delta = strength · effect+0x40`; heroes add to modifier `+0xd8` (recomputed), others to `+0x8c` | CONFIRMED path; spells/magnitudes are data (open) |
+| hero recompute | `FUN_0051d2a7` (`0x51d6b4`–`0x51d7fa`): `s = A` if `A < 12` else `12 + A/5`, `A` = Reaction (s16 `+0x86`); `+10` for cavalry (`+0xe` = units.reg 19 or 21); load `+0x90 = +0x8e + pack/2` (pack = Σ item weight · count); if load ≥ capacity `+0x92 = Body·10 + 1`: `s −= load / capacity`, min 6; then effect block `+0xd4` adds its delta (`FUN_0051b023`) | CONFIRMED |
+| monsters | `data.bin` monster `param[8]` → `+0x8c` (`FUN_0051b12f`; [databin](databin.md#parameter-maps)): Goblin_Pike 24, Ogre 15, Troll 8, Catapult 8 | CONFIRMED |
+| groups | in formation the group order's byte `+0x44` = min member `+0x8c` (from 250), so all walk at the slowest member's speed (`FUN_0057a3f9`); 0 when the order ends (`FUN_0057ae5b`); `unit+0x70` = group (`FUN_00534cae`) | CONFIRMED |
+| effects (Haste/Slow, …) | effect kind 17 = stat `speed` (`FUN_00527122` case 0x11, `0x527757`): `delta = ±effect+0x40`; heroes add to modifier `+0xd8` (recomputed), others to `+0x8c`. Haste `speed=+2`, Slow `speed=-2`, both `duration 30` = 480 ticks ([databin](databin.md#stat-names-and-modifier-text)) | CONFIRMED |
 
 **Spell projectile flight time** (CONFIRMED `FUN_0052365f` →
 `FUN_0050ce4e`/`FUN_0050cf32`; `0x86` with target object, `0x8b` with
@@ -625,8 +671,10 @@ else:
 ```
 
 `spell.param[k]` = template parameter array (`FUN_00421110(k)` on
-`template+0x3c+8`) from `data.bin`; `param[7]` = missile speed in 1/256
-cell per tick. Spell 11 (`spell+8` byte `0x0b`) goes via `FUN_005238cb`
+`template+0x3c+8`) from [data.bin](databin.md); `param[7]` = missile
+speed in 1/256 cell per tick: Fire Arrow, Ice Missile, Diamond Dust 200
+(1.28 ticks per cell), Fire Ball 384, Lightning and Prismatic Spray 60;
+the other spells have `param[5] = 1` (CONFIRMED data). Spell 11 (`spell+8` byte `0x0b`) goes via `FUN_005238cb`
 and sends no `0x86`. Arrows and catapult shots are client-timed
 (`dist / 200`, §1.4).
 
@@ -635,7 +683,8 @@ and sends no `0x86`. Arrows and catapult shots are client-timed
 `diff = |target − current|` folded to ≤ 128. If `diff < 33` (or
 `256 − diff < 33`, ~45°) the facing snaps, 1 tick; else
 `ceil(diff / turn_rate)`, `turn_rate = mover+0xa` (8 for heroes; 180° =
-16 ticks ≈ 1 s). Client: `facing256 += (target − facing256) / ticks_left`
+16 ticks ≈ 1 s; monsters `data.bin` `param[9]`, e.g. Goblin_Pike 16,
+Troll 8, Spider 24; effect kind 18 `rotationSpeed` adds to it). Client: `facing256 += (target − facing256) / ticks_left`
 per tick (§2.2).
 
 **Attack cadence and hit time** (CONFIRMED `FUN_00518d2f`, server unit
@@ -654,7 +703,8 @@ phase 5 (windup): countdown −= 1; at 0:
                   countdown = +0x135 + rand(0..3) + hero_delay [+ spell param[0] for
                               a weapon's spell]; phase = 7
 phase 7 (recovery): countdown −= 1; at 0: phase = 0, ready flag +0x136 = 1
-hero_delay = clamp((weapon+0x4a + (30 − unit+0x86)·5) / 12, 0, 12)   // heroes with a weapon (+0x74)
+hero_delay = clamp((weight + (30 − reaction)·5) / 12, 0, 12)   // heroes with a weapon (+0x74):
+             weight = weapon+0x4a, reaction = unit+0x86 (Body/Reaction/Mind/Spirit = +0x84…+0x8a)
 rand(n) = rand()·(n+1) >> 15                                        // FUN_005296f6
 ```
 
@@ -666,9 +716,19 @@ call per server tick). `0x71/0x72` also set `unit+0x138 = tick + +0x134 +
 +0x135` (`FUN_0050cd3c`/`FUN_0050cdcd`); for melee that sum is also in
 `msg[+0xd]`, ignored by the client (it plays `AttackAnim`). Heroes'
 `+0x134/+0x135` come from the weapon (`FUN_00532dee`: item params 12 and
-13, kept when −1; defaults 8 and 4, `FUN_00518863`); monsters' from data
-(open). Sound (client `AttackDelay`) and hit are on different ticks: hero
-swordsman sound at tick 4, damage at 8. INFERRED: a cycle longer than the
+13, kept when −1; defaults 8 and 4, `FUN_00518863`); monsters' from
+`data.bin` `param[17]`, `[18]` (Goblin_Pike 7 + 3, Ogre 12 + 6, Catapult
+2 + 38). Weapon weight = `round(param[3] · quality · material factor)`
+(Long Sword 20 in iron; [databin](databin.md#parameter-maps)); the stat
+names are CONFIRMED by use: `+0x84` sets max HP and capacity, `+0x86`
+speed and `+0xbe = /3`, `+0x8a` mana and resistances, and effect kinds 2–5
+(`body, mind, reaction, spirit`) write `+0x84, +0x88, +0x86, +0x8a`.
+Caps (`FUN_0051d2a7`): 52/50/48/46 (Body/Reaction/Mind/Spirit) for male
+warriors, 50/52/46/48 female warriors, 48/46/52/50 male mages, 46/48/50/52
+female mages (warrior = `+0x4c & 4` clear; female = `+0xe` 0x22/0x24,
+INFERRED). Example: Long Sword (20), Reaction 30 → `hero_delay = 1`;
+Reaction 20 → 5. Sound (client `AttackDelay`) and hit are on different ticks: hero
+swordsman sound at tick 4, damage at 7 with a Long Sword (8 unarmed default). INFERRED: a cycle longer than the
 animation shows stand frames between swings; a shorter one restarts at
 phase 0 (handler zeroes `+0x9c`) (VERIFY #4).
 
@@ -689,12 +749,13 @@ at stage 5.
    timer quantisation (≈1 or ≈15.6 ms, no `timeBeginPeriod`).
 2. One stand frame or none at cell borders on a long straight walk.
 3. Corpse twitch: hit a fresh corpse (HP 0 … −10) with an area spell.
-4. Hero swordsman (`AttackAnim` 11, cycle 8 + 4 + 0..3 + 1 = 13–16 +
-   `hero_delay`) shows ≥ 2–5 stand frames between swings; target HP drops
-   ~0.5 s after the swing starts (tick 8), after the clang (tick 4).
+4. Hero with a Long Sword (`AttackAnim` 11, weapon windup/recovery 7 + 4,
+   cycle 7 + 4 + 0..3 + 1 = 12–15 + `hero_delay`) shows ≥ 2–5 stand frames between swings; target HP drops
+   ~0.45 s after the swing starts (tick 7), after the clang (tick 4).
 5. Hero walking 10 grass vs 10 road cells ≈ `15 : 11` (base 18; measure
    the speed stat first).
-6. Haste/Slow change walk time but not attack animation length.
+6. Haste/Slow (speed ±2 for 30 s) change walk time but not attack
+   animation length.
 7. Water ripples every ~¼ s at default speed; water, buildings, trees stop
    with Options → "Object animations" off, which also switches off
    "Dynamic lighting".
@@ -942,15 +1003,35 @@ four truncated.
 
 ### 4.9 Other UI sequences
 
-All `.16a` (FADE16), loaders CONFIRMED, timing **not traced** (previews:
-100 ms/frame, marked untimed):
+All `.16a` (FADE16), loaders CONFIRMED. UI timing is wall-clock
+(`timeGetTime`), not game ticks:
 
-| Sprite | Frames | Loader |
-|---|---|---|
-| `interface/chrgen/cube` (chargen dice) | 16 | `FUN_004313db` (`+0x8c`) |
-| `interface/chrgen/PreCreate/Blind` | 15 | `FUN_004364c3` |
-| `Global.Map/MissionFlag`, `YourFlag` | 9, 4 | `FUN_00474320` |
-| `interface/inn/<unit>/sprites` (hire previews) | 8 (unit26: 5) | not found: no path string in exe or a2mgr |
+| Sprite | Frames | Loader | Timing |
+|---|---|---|---|
+| `interface/chrgen/cube` (chargen dice) | 16 | `FUN_004313db` (`+0x8c`) | not found (no frame-advancing draw of `+0x8c`; preview 100 ms) |
+| `interface/chrgen/PreCreate/Blind` | 15 | `FUN_004364c3` (`+0x70`) | below |
+| `Global.Map/MissionFlag`, `YourFlag` | 9, 4 | `FUN_00474320` (`+0x80`, `+0x88`) | below |
+| `interface/inn/<unit>/sprites` (hire previews) | 8 (unit26: 5) | not found: no path string in exe or a2mgr | preview 100 ms |
+
+**Blind** (CONFIRMED `FUN_00437ea4`, the PreCreate screen draw): the
+screen redraws when ≥ 68 ms (`> 0x43`) have passed. Blind is idle
+(`+0x74 = 0`) until `rand()/65 + 500` ms (500–1004) after its last frame,
+then picks a random position (`rand` scaled to the area) and plays frames
+1, 2 … 14, advancing when > 63 ms have passed at a redraw (so one frame
+per redraw, ≈ 68 ms); `(f + 1) mod 15 = 0` ends the run. **Frame 0 is
+never drawn.** The same draw also steps a counter `+0x1b0` once per
+redraw and shows image `+0x1b0 mod 15` and `(+0x1b0 + 8) mod 15` of a
+15-entry list at two fixed positions.
+
+**World-map flags** (CONFIRMED `FUN_00475245` map draw, `FUN_00476a15`):
+the window redraws on message `0x402` at most every 100 ms (`> 99`);
+each draw advances MissionFlag `+0x128 = (+0x128 + 1) mod frames(Flag1)`
+and YourFlag/Flag `+0x130 = (+0x130 + 1) mod frames(Flag)`: **the moduli
+come from `Flag1` (`+0x74`) and `Flag` (`+0x78`)**, not from the sprites
+drawn (`Flag`, `Flag1` are absent from this install, and the generic
+`.16a` loader `FUN_00426da9` reports a fatal error for missing files; how
+the map screen opens anyway is not traced). Flag (`+0x78`) is
+drawn instead of YourFlag when `+0x1b0 ≠ 0`. So ≤ 10 frames/s.
 
 `FUN_00474320` also names `Global.Map/Flag1`, `Flag`, `Cross`,
 `FlagOnMap`, absent from this install.
@@ -1076,8 +1157,9 @@ frame 0's size minus the projectile's current `obj+0x6c + obj+0x10`. (x ≥
    per frame; created by spell code (combat).
 8. **Invisibility**: effect `0x20` (relation bit 8, [sprites](sprites.md));
    combat owns the flag; needs a translucent unit draw (§5.4).
-9. **Open server timing**: monster `+0x134/+0x135`, spell `param[7]` (in
-   `data.bin`); take them from messages until decoded.
+9. **Server timing data**: monster `+0x134/+0x135`, speed, turn rate and
+   spell `param[7]` come from `data.bin` (`allods2.databin`, §3.4); the
+   client still takes durations from messages.
 
 ### 5.4 Suggested engine work on the animation layer
 
@@ -1094,22 +1176,13 @@ In order of need; none required by the coverage check.
 5. Lens (post-process) and trails (need map positions) in previews.
 6. Dropped sacks and mission flags (`0x46647f`, §5.1) as a small static
    `AnimationSet`.
-7. UI sequence timing (open) before the chargen and world-map screens.
+7. UI sequence timing (§4.9: Blind, world-map flags; cube still open)
+   before the chargen and world-map screens.
 
 ## Open questions
 
-- Sight mask algorithm (line of sight, radius shape): a2mgr Ordinal_93 →
-  `FUN_10023720`, callbacks `0x10033cc0`/`0x10033c60`; and what the
-  original exe did before a2mgr replaced it. [§1.6](#16-visibility-gates)
-- Data-driven speeds: monster `+0x8c`, turn rate `mover+0xa`, monster
-  `+0x134/+0x135`, `template+0x44` override, spell `param[5]`/`param[7]`,
-  which spells create effect kind 17 (Haste/Slow) and their strength; all
-  `world/data/data.bin` ([§3.4](#34-where-the-speeds-come-from);
-  `FUN_0051aed6`, `FUN_00527122`).
-- Server map fill `FUN_0055e616`: input layers `+0x10`/`+0x14`; who sets
-  cell flag `0x20` (`FUN_00564137` path). [§3.4](#34-where-the-speeds-come-from)
-- UI sequence timing (chrgen cube, PreCreate Blind, world-map flags) and
-  the inn picture loader (`FUN_004313db`, `FUN_004364c3`,
-  `FUN_00474320`). [§4.9](#49-other-ui-sequences)
-- `weapon+0x4a` and `unit+0x86` in the hero recovery delay (INFERRED:
-  weapon speed and a hero stat). [§3.4](#34-where-the-speeds-come-from)
+- Chargen cube frame timing (`FUN_004313db` `+0x8c`; no frame-advancing
+  draw found) and the inn picture loader. [§4.9](#49-other-ui-sequences)
+- How the world map opens with `Global.Map/Flag1`, `Flag` absent while
+  their frame counts drive the flag animation (`FUN_00474320`,
+  `FUN_00426da9`). [§4.9](#49-other-ui-sequences)

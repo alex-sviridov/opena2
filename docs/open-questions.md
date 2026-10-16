@@ -32,24 +32,24 @@ from both places when answered).
 
 ## Animation
 
-- Sight mask algorithm (a2mgr Ordinal_93 → `FUN_10023720`, callbacks
-  `0x10033cc0`/`0x10033c60`). [animation](formats/animation.md#16-visibility-gates)
-- Data-driven speeds: monster speed, turn rate, monster attack bytes,
-  spell missile speed `param[7]`, Haste/Slow (effect kind 17) strengths —
-  data.bin (`FUN_0051aed6`, `FUN_00527122`). [animation](formats/animation.md#34-where-the-speeds-come-from)
-- Server map fill `FUN_0055e616`: input layers `+0x10`/`+0x14`; who sets
-  cell flag `0x20` (`FUN_00564137`). [animation](formats/animation.md#34-where-the-speeds-come-from)
-- UI sequence timing (chrgen cube, Blind, map flags) and the inn pictures'
-  loader (`FUN_004313db`, `FUN_004364c3`, `FUN_00474320`).
+- Chargen cube frame timing (`FUN_004313db` `+0x8c`) and the inn
+  pictures' loader. [animation](formats/animation.md#49-other-ui-sequences)
+- How the world map opens with `Flag1`/`Flag` absent while their frame
+  counts drive the flags (`FUN_00474320`, `FUN_00426da9`).
   [animation](formats/animation.md#49-other-ui-sequences)
-- `weapon+0x4a` and `unit+0x86` in the hero attack recovery
-  (`FUN_00518d2f`). [animation](formats/animation.md#34-where-the-speeds-come-from)
+
+## data.bin
+
+- Human and structure parameter maps (`FUN_004ade80`, `FUN_004adea0`
+  users), item-class i16s, factor doubles, `castSpell`/`damage*` modifier
+  values (`FUN_00528e94`, `FUN_00528d43`). [databin](formats/databin.md#open-questions)
 
 ## Not started (from the reversing plan)
 
 - `.alm` sections 0 and 4–12 (general info, structures, units, triggers,
-  …). [inventory §5.2](inventory.md#52-alm-maps-m7r0)
-- `world/data/data.bin`, `itemname.bin` / `.pkt`, `famehall.dat`, saves.
+  …); the server reader `FUN_0053ea3a` parses all of them (switch on the
+  section id). [inventory §5.2](inventory.md#52-alm-maps-m7r0)
+- `itemname.bin` / `.pkt`, `famehall.dat`, saves.
   [inventory §5.3, §6](inventory.md#6-plan-custom-formats-to-reverse-in-order)
 - Locale `.txt` conventions. [inventory §6](inventory.md#6-plan-custom-formats-to-reverse-in-order)
 - a2mgr's mapping of `.res` paths onto loose `data/` files (INFERRED).
