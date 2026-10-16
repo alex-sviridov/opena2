@@ -7,6 +7,7 @@ Spec: docs/formats/units.md.  Parser FUN_0047f108, sprite files FUN_00480717
 import os
 from dataclasses import dataclass, field
 
+from .graphics import load_human_palettes, load_pal_file
 from .reg import load_reg
 
 UNITS_DIR = "graphics/units"
@@ -66,13 +67,35 @@ class UnitType:
         return [os.path.join(folder, "palette%s.pal" % ("" if k == 0 else k + 1))
                 for k in range(self.Palette)]
 
+    def palette_spec(self, data_dir):
+        """("pal", [palette<N>.pal]) when Palette > 0, else ("human",
+        [human.pal]).  The exe opens only graphics\\units\\humans\\human.pal
+        (units.reg loader 0x480380), also for heroes; heroes*/human.pal is
+        never read."""
+        if self.Palette > 0:
+            return "pal", self.palette_paths(data_dir)
+        return "human", [human_pal_path(data_dir)]
+
+    def palette(self, data_dir, player=0, variant=0):
+        """RGB palette per units.md: human.pal player colour (Palette = 0),
+        else palette<variant>.pal of the type's folder."""
+        return load_palette_spec(self.palette_spec(data_dir), player, variant)
+
+
+def human_pal_path(data_dir):
+    return os.path.join(data_dir, UNITS_DIR, "humans", "human.pal")
+
+
+def load_palette_spec(spec, player=0, variant=0):
+    kind, files = spec
+    if kind == "pal":
+        return load_pal_file(files[min(variant, len(files) - 1)])
+    return load_human_palettes(files[0])[player]
+
 
 def expand_sequence(times, frames):
     """FUN_0047f108: each (time, frame) pair adds `frame` `time` times."""
-    out = []
-    for t, f in zip(times, frames):
-        out.extend([f] * t)
-    return out
+    return [f for t, f in zip(times or [], frames or []) for _ in range(t)]
 
 
 def load_unit_types(path):
@@ -102,6 +125,11 @@ def load_unit_types(path):
         types.append(t)
         by_id[uid] = t
     return types
+
+
+def unit_types(data_dir):
+    """load_unit_types of the install's graphics/units/units.reg."""
+    return load_unit_types(os.path.join(data_dir, UNITS_DIR, "units.reg"))
 
 
 def by_id(types):
@@ -151,8 +179,7 @@ def _mb(t):
 
 
 def stand_frame(t, d):
-    i, m = dir16(d, t.Flip)
-    return i, m
+    return dir16(d, t.Flip)
 
 
 def move_frame(t, d, phase):
@@ -203,11 +230,17 @@ def expected_frames(t):
     return t.stand_frames + (_mb(t) + t.AttackPhases + dying + tail) * t.dirs
 
 
+def center_anchor(cx, cy, width, height, w, h):
+    """Anchor inside a w x h frame of a record with CenterX/Y, Width,
+    Height (units, objects): ((CenterX - Width/2) + w/2, (CenterY -
+    Height/2) + h/2)."""
+    return (cx - width // 2) + w // 2, (cy - height // 2) + h // 2
+
+
 def placement(t, x, y, frame_w, frame_h, z=0):
     """Top-left of a frame for an object at screen (x, y), FUN_00468640."""
-    left = x - ((t.CenterX - t.Width // 2) + frame_w // 2)
-    top = y - ((t.CenterY - t.Height // 2) + frame_h // 2) - z
-    return left, top
+    ax, ay = center_anchor(t.CenterX, t.CenterY, t.Width, t.Height, frame_w, frame_h)
+    return x - ax, y - ay - z
 
 
 # --------------------------------------------------------------------------

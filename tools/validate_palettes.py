@@ -7,7 +7,6 @@ Exit status 0 when every rule holds on every file.
 """
 
 import collections
-import glob
 import os
 import struct
 import sys
@@ -15,29 +14,7 @@ import sys
 import numpy as np
 
 from allods2 import graphics as gfx
-
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_DATA = os.path.join(ROOT, "samples", "Allods2_en_251005", "Allods2_en", "data")
-EXTS = (".pal", ".256", ".16a", ".16", ".bmp")
-
-
-def source_kind(path):
-    ext = os.path.splitext(path)[1].lower()
-    if ext == ".pal":
-        return "human.pal" if os.path.basename(path).lower() == "human.pal" else ".pal"
-    if ext == ".256" and path.lower().endswith("b.256"):
-        return "*b.256"
-    return ext
-
-
-def find_palettes(data_dir):
-    """Yield (relative path, kind, [Palette]) for every file that has palettes."""
-    for path in sorted(glob.glob(os.path.join(data_dir, "**", "*"), recursive=True)):
-        if not path.lower().endswith(EXTS) or not os.path.isfile(path):
-            continue
-        pals = gfx.load_palettes(path)
-        if pals:
-            yield os.path.relpath(path, data_dir), source_kind(path), pals
+from allods2.common import DATA
 
 
 def check_file(path, kind, pals):
@@ -70,14 +47,14 @@ def check_file(path, kind, pals):
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    data_dir = argv[0] if argv else DEFAULT_DATA
+    data_dir = argv[0] if argv else DATA
     files = collections.Counter()
     count = collections.Counter()
     distinct = collections.defaultdict(set)
     zero = collections.Counter()
     reserved = collections.Counter()
     problems = []
-    for rel, kind, pals in find_palettes(data_dir):
+    for rel, kind, pals in gfx.find_palettes(data_dir):
         files[kind] += 1
         for p in pals:
             count[kind] += 1

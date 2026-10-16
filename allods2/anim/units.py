@@ -23,7 +23,7 @@ import math
 import os
 
 from .. import units as U
-from ..graphics import load_human_palettes, load_pal_file
+from ..common import cdiv
 from .base import (CELL_UNITS, COMPASS, FACINGS, UNITS_PER_PIXEL, Action, AnimationSet,
                    FrameRef)
 
@@ -39,11 +39,6 @@ def walk_ticks_per_cell(v=HERO_SPEED, diagonal=False):
     return -(-CELL_UNITS // step)
 
 
-def _trunc_div(a, b):
-    q = abs(a) // abs(b)
-    return q if (a >= 0) == (b > 0) else -q
-
-
 def walk_odometer(facing, tick, ticks_per_cell, start=0):
     """Client odometer obj+0x9c after `tick + 1` ticks of walking cell after
     cell (FUN_0046b5ef case 1): each tick moves remaining // ticks_left on
@@ -55,7 +50,7 @@ def walk_odometer(facing, tick, ticks_per_cell, start=0):
         left = ticks_per_cell - k % ticks_per_cell
         if left == ticks_per_cell:
             rx, ry = dx * CELL_UNITS, dy * CELL_UNITS
-        sx, sy = _trunc_div(rx, left), _trunc_div(ry, left)
+        sx, sy = cdiv(rx, left), cdiv(ry, left)
         rx, ry = rx - sx, ry - sy
         px, py = px + sx, py + sy
         odo = int(odo + math.sqrt(sx * sx + sy * sy))
@@ -236,7 +231,7 @@ class UnitSet(AnimationSet):
         """Hotspot of any w x h frame of this type (also b.256 overlays,
         which use the same formula with their own size)."""
         t = self.t
-        return ((t.CenterX - t.Width // 2) + w // 2, (t.CenterY - t.Height // 2) + h // 2)
+        return U.center_anchor(t.CenterX, t.CenterY, t.Width, t.Height, w, h)
 
     def placement(self, ref, x, y, z=0):
         """Top-left of the frame for an object at screen (x, y)."""
@@ -250,41 +245,23 @@ class UnitSet(AnimationSet):
             spec = self.paths.get(source + "_pal")
             if spec is None:
                 return self.sprites(source).palette
-            kind, files = spec
-            path = files[min(variant, len(files) - 1)] if kind == "pal" else files[0]
-            self.palettes[key] = (load_pal_file(path) if kind == "pal"
-                                  else load_human_palettes(path)[player])
+            self.palettes[key] = U.load_palette_spec(spec, player, variant)
         return self.palettes[key]
 
     def draw(self, canvas, ref, x, y, palette=None, smoothing=True, z=0):
         """Draw a frame anchored at (x, y) the way FUN_00468640 does: the
         sprite (mirrored in place when ref.mirrored), then its b.256 overlay
         at 50 % with the main sprite's palette."""
-        sf = self.sprites(ref.source)
-        if sf is None or ref.index >= len(sf):
+        if self.sprites(ref.source) is None:
             return
         pal = palette if palette is not None else self.palette(ref.source, self.player, self.variant)
-        left, top = self.placement(ref, x, y, z)
-        canvas.draw_256(sf[ref.index], left, top, pal, mirror=ref.mirrored)
-        ov = self.overlay(ref.source) if smoothing else None
-        if ov is not None and ref.index < len(ov):
-            o = ov[ref.index]
-            ax, ay = self.anchor(o.width, o.height)
-            ox, oy = x - ax, y - ay - z
-            canvas.draw_256_translucent(o, ox, oy, pal, mirror=ref.mirrored)
+        if self.blit_ref(canvas, ref, x, y, pal, "opaque", z) and smoothing:
+            self.blit_overlay(canvas, ref, x, y, pal, z)
 
 
 # --------------------------------------------------------------------------
 # Loading from the install
 # --------------------------------------------------------------------------
-
-def _palette_spec(t, data_dir):
-    if t.Palette > 0:
-        return ("pal", t.palette_paths(data_dir))
-    # The exe opens only graphics\\units\\humans\\human.pal (units.reg loader
-    # 0x480380), also for heroes; heroes*/human.pal is never read.
-    return ("human", [os.path.join(data_dir, U.UNITS_DIR, "humans", "human.pal")])
-
 
 def _norm(p):
     return p.replace("\\", "/").lower().strip("/")
@@ -299,8 +276,7 @@ def load_unit_set(key, data_dir, types=None):
     bones come from heroes/mage_st (type 24) or heroes_l/unarmed (type 1).
     Others: dying from the type named by Dying.
     """
-    if types is None:
-        types = U.load_unit_types(os.path.join(data_dir, U.UNITS_DIR, "units.reg"))
+    types = types or U.unit_types(data_dir)
     ids = U.by_id(types)
     root = os.path.join(data_dir, U.UNITS_DIR)
     k = str(key)
@@ -314,7 +290,7 @@ def load_unit_set(key, data_dir, types=None):
         for src, f in (("main", folder), ("death", dfolder)):
             base = os.path.join(root, kind, f, "sprites")
             paths[src], paths[src + "_b"] = base + ".256", base + "b.256"
-        paths["main_pal"] = paths["death_pal"] = _palette_spec(t, data_dir)
+        paths["main_pal"] = paths["death_pal"] = t.palette_spec(data_dir)
         return UnitSet("%s_%s" % (kind, folder), t, td, paths=paths)
     if k.lstrip("-").isdigit():
         t = ids[int(k)]
@@ -335,7 +311,7 @@ def load_unit_set(key, data_dir, types=None):
         if ty is None:
             continue
         paths[src], paths[src + "_b"] = ty.sprite_paths(data_dir)
-        paths[src + "_pal"] = _palette_spec(ty, data_dir)
+        paths[src + "_pal"] = ty.palette_spec(data_dir)
     name = os.path.basename(os.path.dirname(t.file.replace("\\", "/"))) or t.file
     return UnitSet(name, t, td, paths=paths)
 
@@ -343,8 +319,7 @@ def load_unit_set(key, data_dir, types=None):
 def unit_keys(data_dir, types=None):
     """Every animation set in the install: units.reg IDs with a file, then
     the hero folders."""
-    if types is None:
-        types = U.load_unit_types(os.path.join(data_dir, U.UNITS_DIR, "units.reg"))
+    types = types or U.unit_types(data_dir)
     keys = [t.id for t in types if t.file]
     root = os.path.join(data_dir, U.UNITS_DIR)
     for kind in ("heroes", "heroes_l"):

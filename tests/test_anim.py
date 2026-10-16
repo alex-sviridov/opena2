@@ -10,11 +10,9 @@ import pytest
 from allods2 import anim as A
 from allods2 import cli
 from allods2 import units as U
+from allods2.common import DATA
 from allods2.graphics import Canvas, SpriteFile
 
-DATA = os.environ.get("ALLODS2_DATA", os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "samples", "Allods2_en_251005", "Allods2_en", "data"))
 needs_data = pytest.mark.skipif(not os.path.isfile(os.path.join(DATA, U.UNITS_DIR, "units.reg")),
                                 reason="game files not present")
 

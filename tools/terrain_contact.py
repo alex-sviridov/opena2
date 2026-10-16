@@ -12,17 +12,14 @@ Output contains game data: out/ only.
 import argparse
 import glob
 import os
-import sys
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from allods2.alm import load_alm
+from allods2.common import INSTALL, OUT
 from allods2.graphics import shade_table, terrain as tr
 from allods2.graphics.palette import BRIGHT32
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from validate_terrain import DEFAULT  # noqa: E402
 
 DAY_ROW = 46
 
@@ -44,9 +41,8 @@ def thumbnail(m, terrain, table):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("base", nargs="?", default=DEFAULT)
-    ap.add_argument("-o", "--out", default=os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "out", "contact", "terrain.png"))
+    ap.add_argument("base", nargs="?", default=INSTALL)
+    ap.add_argument("-o", "--out", default=os.path.join(OUT, "contact", "terrain.png"))
     ap.add_argument("-n", type=int, default=30)
     a = ap.parse_args(argv)
     terrain = tr.TerrainSet.load(os.path.join(a.base, "data", "graphics", "terrain"))

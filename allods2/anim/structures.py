@@ -13,34 +13,24 @@ at (32 col, 32 (row - (FH - TileHeight))) from it.
 
 import os
 
+from ..common import find_file
 from ..reg import load_reg
-from .base import CELL, Action, AnimationSet, FrameRef, Part, blit, find_file
+from ..units import expand_sequence
+from .base import CELL, Action, AnimationSet, FrameRef, Part, blit, record_name
 
 STRUCTURES_DIR = "graphics/structures"
 BRIDGE9_ID = 0x21           # map loader 0x4abf1b: class 0x5d8c50 (FUN_004679f3)
 BRIDGE14_ID = 0x25          # class 0x5d8ca8 (FUN_00467bdb)
 
 
-def _seq(times, frames):
-    out = []
-    for t, f in zip(times or [], frames or []):
-        out.extend([f] * t)
-    return out
-
-
 def load_structure_records(data_dir):
     """structures.reg records by ID (FUN_00482e99 fields as dicts)."""
     reg = load_reg(os.path.join(data_dir, STRUCTURES_DIR, "structures.reg"))
     out = {}
-    for n in range(reg.get("Global/Count", 0)):
-        sec = reg.get("Structure%d" % n)
-        if sec is None:
-            continue
-        r = sec.to_dict()
-        r.setdefault("Phases", -1)
-        r["seq"] = _seq(r.get("AnimTime"), r.get("AnimFrame")) if r["Phases"] > 1 else []
-        mask = r.get("AnimMask") or ""
-        r["mask"] = mask if r["Phases"] > 1 else ""
+    for r in reg.records("Structure", "Count"):
+        animated = r.setdefault("Phases", -1) > 1
+        r["seq"] = expand_sequence(r.get("AnimTime"), r.get("AnimFrame")) if animated else []
+        r["mask"] = (r.get("AnimMask") or "") if animated else ""
         out[r.get("ID", -1)] = r
     return out
 
@@ -58,7 +48,7 @@ class StructureSet(AnimationSet):
     kind = "structures"
 
     def __init__(self, rec, sprites=None, paths=None):
-        super().__init__("%d_%s" % (rec["ID"], rec["File"].replace("\\", "_")), sprites, paths)
+        super().__init__(record_name(rec), sprites, paths)
         self.rec = rec
         self.W, self.TH, self.FH = rec["TileWidth"], rec["TileHeight"], rec["FullHeight"]
         self.seq = rec["seq"]
@@ -147,9 +137,9 @@ class BridgeSet(StructureSet):
 
 
 def structure_paths(rec, data_dir):
-    base = find_file(os.path.join(data_dir, STRUCTURES_DIR), rec["File"] + ".256")
-    over = find_file(os.path.join(data_dir, STRUCTURES_DIR), rec["File"] + "b.256")
-    return {"main": base, "main_b": over}
+    root = os.path.join(data_dir, STRUCTURES_DIR)
+    return {"main": find_file(root, rec["File"] + ".256"),
+            "main_b": find_file(root, rec["File"] + "b.256")}
 
 
 def load_structure_set(sid, data_dir, records=None, **kw):

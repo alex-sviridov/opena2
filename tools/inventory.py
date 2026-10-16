@@ -11,8 +11,7 @@ import os
 import sys
 from pathlib import Path
 
-# The install root (one level above data/), so exe/dll/cfg are included too.
-DEFAULT_ROOT = Path("samples/Allods2_en_251005/Allods2_en")
+from allods2.common import INSTALL, OUT
 
 
 def iter_files(root: Path):
@@ -29,8 +28,9 @@ def extension(path: Path) -> str:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("root", nargs="?", type=Path, default=DEFAULT_ROOT)
-    ap.add_argument("-o", "--output", type=Path, default=Path("out/inventory.csv"))
+    # the install root (one level above data/), so exe/dll/cfg are included too
+    ap.add_argument("root", nargs="?", type=Path, default=Path(INSTALL))
+    ap.add_argument("-o", "--output", type=Path, default=Path(OUT, "inventory.csv"))
     args = ap.parse_args(argv)
 
     if not args.root.is_dir():

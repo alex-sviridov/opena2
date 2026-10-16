@@ -70,6 +70,14 @@ class Registry:
     def to_dict(self):
         return self.root.to_dict()
 
+    def records(self, prefix, count_key):
+        """to_dict() of each section <prefix><n>, n < Global/<count_key>
+        (missing sections skipped)."""
+        for n in range(self.get("Global/" + count_key, 0)):
+            sec = self.get("%s%d" % (prefix, n))
+            if sec is not None:
+                yield sec.to_dict()
+
 
 class Section:
     def __init__(self, reg, entry):

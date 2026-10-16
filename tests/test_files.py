@@ -8,10 +8,8 @@ import pytest
 from PIL import Image
 
 from allods2 import graphics as gfx
+from allods2.common import DATA
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA = os.environ.get("ALLODS2_DATA", os.path.join(
-    ROOT, "samples", "Allods2_en_251005", "Allods2_en", "data"))
 GRAPHICS = os.path.join(DATA, "graphics")
 
 needs_samples = pytest.mark.skipif(not os.path.isdir(GRAPHICS),

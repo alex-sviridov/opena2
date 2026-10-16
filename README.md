@@ -20,15 +20,16 @@ python3 -m venv .venv
 ```
 
 Put a game install under `samples/`. The tests and tools expect
-`samples/Allods2_en_251005/Allods2_en/`; set `ALLODS2_DATA` to point the tests
-at another `data/` directory. Tests that need game files are skipped when the
+`samples/Allods2_en_251005/Allods2_en/`; set `ALLODS2_INSTALL` (install root)
+or `ALLODS2_DATA` (its `data/` directory) to point them elsewhere
+(`allods2/common.py`). Tests that need game files are skipped when the
 install is absent.
 
 ## Usage
 
 ```sh
 .venv/bin/pytest
-.venv/bin/python tools/a2export.py samples/.../graphics/units/heroes/archer/sprites.256 out/archer.png
+.venv/bin/python -m allods2 gfx export samples/.../graphics/units/heroes/archer/sprites.256 out/archer.png --sheet
 .venv/bin/python tools/validate_sprites.py
 ```
 

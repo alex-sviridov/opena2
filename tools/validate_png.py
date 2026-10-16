@@ -14,14 +14,12 @@ import os
 import sys
 
 from allods2 import graphics as gfx
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from validate_sprites import DEFAULT_DATA  # noqa: E402
+from allods2.common import DATA
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    data_dir = argv[0] if argv else DEFAULT_DATA
+    data_dir = argv[0] if argv else DATA
     stats = collections.Counter()
     problems = []
     for path in sorted(glob.glob(os.path.join(data_dir, "**", "*.png"), recursive=True)):

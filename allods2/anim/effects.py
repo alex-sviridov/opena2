@@ -9,10 +9,8 @@ record's Width/Height halves.  The light it stamps is
 graphics.lighting.BURNING_LIGHT_PHASES[counter >> 1].
 """
 
-import os
-
 from ..graphics.lighting import BURN_TICKS, BURNING_LIGHT_PHASES
-from .base import Action, AnimationSet, FrameRef, blit
+from .base import Action, AnimationSet, FrameRef
 from .projectiles import load_projectile_records, projectile_paths
 
 FIRE_ID, STEAM_ID = 0x0F, 8
@@ -24,13 +22,13 @@ class BurningSet(AnimationSet):
     cell centre (32 X + 16, 32 Y + 16 - relief).  ref.events carries the
     light value as ("light=<v>",)."""
     kind = "effects"
+    blit_mode = "alpha"
 
     def __init__(self, fire, steam, sprites=None, paths=None):
         super().__init__("burning_cells", sprites, paths)
         self.recs = {"fire": fire, "steam": steam}
-        self.actions = {"fire": Action("fire", [k >> 1 for k in range(BURN_TICKS)], end="once", source="fire"),
-                        "steam": Action("steam", [k >> 1 for k in range(STEAM_TICKS)], end="once",
-                                        source="steam")}
+        self.actions = {name: Action(name, [k >> 1 for k in range(n)], end="once", source=name)
+                        for name, n in (("fire", BURN_TICKS), ("steam", STEAM_TICKS))}
 
     def frame_at(self, action, facing, tick, **kw):
         a = self.actions[action]
@@ -41,12 +39,6 @@ class BurningSet(AnimationSet):
         light = BURNING_LIGHT_PHASES[ph] if ph < len(BURNING_LIGHT_PHASES) else None
         return FrameRef(a.source, ph, False, (r["Width"] // 2, r["Height"] // 2), action, ph,
                         events=("light=%d" % light,) if light is not None else ())
-
-    def draw(self, canvas, ref, x, y):
-        sf = self.sprites(ref.source)
-        if sf is None or not 0 <= ref.index < len(sf):
-            return
-        blit(canvas, sf, ref.index, x - ref.hotspot[0], y - ref.hotspot[1], sf.palette, "alpha")
 
 
 def load_burning_set(key, data_dir):

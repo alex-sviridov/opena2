@@ -13,7 +13,7 @@ import os
 import numpy as np
 
 from ..alm import load_alm
-from ..graphics.terrain import TILE, WATER, TerrainSet, decode_cell
+from ..graphics.terrain import TILE, WATER, TerrainSet, decode_cell, water_set
 from .base import Action, AnimationSet, FrameRef
 
 TERRAIN_DIR = "graphics/terrain"
@@ -43,11 +43,8 @@ class WaterSet(AnimationSet):
         out = np.zeros((h, w), np.int32)
         for y in range(h):
             for x in range(w):
-                c = decode_cell(self.tiles[y, x])
-                s = c.set
-                if s in WATER:
-                    s = 8 + ((s + (self.x0 + x + 1) * (self.y0 + y) + (tick >> 2)) & 3) if animate else 8
-                out[y, x] = s
+                s = decode_cell(self.tiles[y, x]).set
+                out[y, x] = water_set(s, self.x0 + x, self.y0 + y, tick, animate) if s in WATER else s
         return out
 
     def draw(self, canvas, ref, x, y):
@@ -64,10 +61,6 @@ class WaterSet(AnimationSet):
                     canvas.pix[py:py + TILE, px:px + TILE] = self.terrain.palette[t]
 
 
-def _water_mask(tiles):
-    return ((tiles & 0x1FFF) >> 6 >= 8) & ((tiles & 0x1FFF) >> 6 < 12)
-
-
 def find_water_window(data_dir, w=12, h=8, maps_dir=None):
     """(map path, x0, y0): the first map window (in name order, 4-cell
     steps, inside the loader's copied area) whose cells are 40-70 % water,
@@ -77,7 +70,8 @@ def find_water_window(data_dir, w=12, h=8, maps_dir=None):
         if not name.lower().endswith(".alm"):
             continue
         tiles = load_alm(os.path.join(maps_dir, name)).tiles
-        m = _water_mask(tiles)
+        sets = (tiles & 0x1FFF) >> 6
+        m = (sets >= WATER.start) & (sets < WATER.stop)
         for y0 in range(8, tiles.shape[0] - h - 5, 4):
             for x0 in range(8, tiles.shape[1] - w - 9, 4):
                 f = m[y0:y0 + h, x0:x0 + w].mean()

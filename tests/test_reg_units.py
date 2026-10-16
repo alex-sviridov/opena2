@@ -6,11 +6,9 @@ import struct
 import pytest
 
 from allods2 import units as U
+from allods2.common import DATA
 from allods2.reg import parse_reg, load_reg
 
-DATA = os.environ.get("ALLODS2_DATA", os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "samples", "Allods2_en_251005", "Allods2_en", "data"))
 UNITS_REG = os.path.join(DATA, "graphics", "units", "units.reg")
 
 

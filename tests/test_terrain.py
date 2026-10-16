@@ -8,12 +8,10 @@ import numpy as np
 import pytest
 
 from allods2.alm import load_alm, parse_alm
+from allods2.common import INSTALL
 from allods2.graphics import terrain as tr
 
-BASE = os.environ.get("ALLODS2_INSTALL", os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "samples", "Allods2_en_251005", "Allods2_en"))
-MAPS = sorted(glob.glob(os.path.join(BASE, "maps", "*.alm")))
+MAPS = sorted(glob.glob(os.path.join(INSTALL, "maps", "*.alm")))
 
 
 # --- .alm container ----------------------------------------------------------
@@ -140,7 +138,7 @@ def test_render_uses_palette_and_light():
 
 @pytest.mark.skipif(not MAPS, reason="game files not available")
 def test_game_maps_tiles_name_existing_sets():
-    T = tr.TerrainSet.load(os.path.join(BASE, "data", "graphics", "terrain"))
+    T = tr.TerrainSet.load(os.path.join(INSTALL, "data", "graphics", "terrain"))
     assert len(T.strips) == 52
     for p in MAPS:
         t = load_alm(p).tiles.astype(int)

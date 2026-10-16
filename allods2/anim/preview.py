@@ -11,26 +11,14 @@ the ground.  Output contains game data: write it to out/ or outside the repo.
 
 import os
 
-import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-from . import anim as A
-from . import units as U
-from .graphics import Canvas
+from .. import units as U
+from ..graphics import Canvas, checker
+from .base import DEFAULT_SPEED, period_ms
 
-CHECK = 8                                   # checker square, pixels
-CHECK_COLOURS = ((150, 150, 150), (110, 110, 110))
 MARK = {None: (255, 0, 255), "impact": (255, 40, 40), "release": (255, 220, 0)}
 MARGIN = 8
-
-
-def checker(h, w, ox=0, oy=0):
-    yy = (np.arange(h)[:, None] + oy) // CHECK
-    xx = (np.arange(w)[None, :] + ox) // CHECK
-    out = np.empty((h, w, 3), np.uint8)
-    out[...] = CHECK_COLOURS[0]
-    out[(xx + yy) % 2 == 1] = CHECK_COLOURS[1]
-    return out
 
 
 def bounds(aset, clips=None):
@@ -50,7 +38,7 @@ def render(aset, ref, box, anchor, shift=(0, 0), mark=True):
     shift: ground displacement in pixels (the checkerboard scrolls with it)."""
     w, h = box
     cv = Canvas(w, h)
-    cv.pix[...] = checker(h, w, *shift)
+    cv.pix[...] = checker(h, w, ox=shift[0], oy=shift[1])
     aset.draw(cv, ref, anchor[0], anchor[1])
     if mark:
         colour = MARK.get(ref.events[0] if ref.events else None, MARK[None])
@@ -60,10 +48,10 @@ def render(aset, ref, box, anchor, shift=(0, 0), mark=True):
     return cv.pix
 
 
-def durations(n, speed=A.DEFAULT_SPEED, step_ms=None):
+def durations(n, speed=DEFAULT_SPEED, step_ms=None):
     """GIF delays (10 ms steps) whose running sum tracks n steps of
     `step_ms` (default: the game tick period)."""
-    p = A.period_ms(speed) if step_ms is None else step_ms
+    p = period_ms(speed) if step_ms is None else step_ms
     out, prev = [], 0
     for k in range(1, n + 1):
         t = round(k * p, -1)
@@ -72,12 +60,12 @@ def durations(n, speed=A.DEFAULT_SPEED, step_ms=None):
     return out
 
 
-def write_gifs(aset, dest, speed=A.DEFAULT_SPEED, mark=True):
+def write_gifs(aset, dest, speed=DEFAULT_SPEED, mark=True):
     """dest/<action>_d<facing>.gif for every action and preview facing."""
     os.makedirs(dest, exist_ok=True)
     clips = {(a, d): aset.preview_clip(a, d) for a in aset.actions for d in aset.preview_facings}
     box, anchor = bounds(aset, clips.values())
-    step = getattr(aset, "preview_step_ms", None)
+    step = aset.preview_step_ms if aset.clock == "ms" else None
     paths = []
     for (name, d), clip in clips.items():
         frames = [Image.fromarray(render(aset, ref, box, anchor, shift, mark))

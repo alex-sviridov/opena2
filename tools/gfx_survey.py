@@ -14,8 +14,7 @@ import collections
 import os
 import statistics
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_DATA = os.path.join(ROOT, "samples", "Allods2_en_251005", "Allods2_en", "data")
+from allods2.common import DATA, OUT
 
 # Graphics extensions; "b.256" separates smoothing overlays from plain .256.
 KINDS = (".256", "b.256", ".16a", ".16", ".pal", ".bmp", ".png", ".dat")
@@ -60,8 +59,8 @@ def folder_of(rel):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("data", nargs="?", default=DEFAULT_DATA)
-    ap.add_argument("-o", "--out", default=os.path.join(ROOT, "out", "gfx"))
+    ap.add_argument("data", nargs="?", default=DATA)
+    ap.add_argument("-o", "--out", default=os.path.join(OUT, "gfx"))
     a = ap.parse_args(argv)
     files = collect(a.data)
     lines = []

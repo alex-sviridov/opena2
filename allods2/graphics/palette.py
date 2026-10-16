@@ -6,6 +6,7 @@ game's palette -> brightness-level table builder (FUN_00425bee); `pack16`
 is its final RGB888 -> 16-bit step.
 """
 
+import glob
 import os
 import struct
 
@@ -19,8 +20,7 @@ TEAM_COLOR_INDEX = 164      # 0x148 / 2, cached per player colour (FUN_0048392f)
 
 def read_palette(buf, offset=0):
     """Parse 256 RGBQUAD entries (B, G, R, reserved) into RGB."""
-    quads = np.frombuffer(buf, np.uint8, PALETTE_BYTES, offset).reshape(256, 4)
-    return quads[:, 2::-1].copy()
+    return Palette.from_bytes(buf, offset).rgb.copy()
 
 
 def grayscale_palette():
@@ -139,6 +139,29 @@ def load_palettes(path):
         table = data[14 + hsize:14 + hsize + 4 * n].ljust(PALETTE_BYTES, b"\0")
         return [Palette.from_bytes(table, 0, path)]
     raise ValueError("no palette rule for %s" % path)
+
+
+PALETTE_EXTS = (".pal", ".256", ".16a", ".16", ".bmp")
+
+
+def source_kind(path):
+    """Palette source class: "human.pal", ".pal", "*b.256", or the extension."""
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".pal":
+        return "human.pal" if os.path.basename(path).lower() == "human.pal" else ".pal"
+    if ext == ".256" and path.lower().endswith("b.256"):
+        return "*b.256"
+    return ext
+
+
+def find_palettes(data_dir):
+    """Yield (path relative to data_dir, source_kind, [Palette]) for every
+    file under data_dir that has palettes, in sorted path order."""
+    for path in sorted(glob.glob(os.path.join(data_dir, "**", "*"), recursive=True)):
+        if path.lower().endswith(PALETTE_EXTS) and os.path.isfile(path):
+            pals = load_palettes(path)
+            if pals:
+                yield os.path.relpath(path, data_dir), source_kind(path), pals
 
 
 # --- shade tables (FUN_00425bee) ---------------------------------------------

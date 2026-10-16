@@ -8,11 +8,9 @@ import numpy as np
 import pytest
 
 from allods2 import graphics as gfx
+from allods2.common import DATA
 from allods2.graphics.sprites import Sprite, SpriteFile
 
-DATA = os.environ.get("ALLODS2_DATA", os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "samples", "Allods2_en_251005", "Allods2_en", "data"))
 FONTS = sorted(glob.glob(os.path.join(DATA, "graphics", "font*", "font*.dat")))
 
 DOT = b"\x01\x0f"            # .16 stream: one pixel, colour slot 15

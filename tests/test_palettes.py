@@ -11,12 +11,10 @@ import pytest
 from PIL import Image
 
 from allods2 import graphics as gfx
+from allods2.common import DATA, ROOT
 from allods2.graphics.palette import (BRIGHT2, BRIGHT32, FADE16, GRAY, MASK, PLAIN,
                                       TEAM_COLOR_INDEX)
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA = os.environ.get("ALLODS2_DATA", os.path.join(
-    ROOT, "samples", "Allods2_en_251005", "Allods2_en", "data"))
 GRAPHICS = os.path.join(DATA, "graphics")
 needs_samples = pytest.mark.skipif(not os.path.isdir(GRAPHICS),
                                    reason="game install not present in samples/")
@@ -267,7 +265,7 @@ def test_every_palette_in_install_parses():
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import validate_palettes
     seen = 0
-    for rel, kind, pals in validate_palettes.find_palettes(DATA):
+    for rel, kind, pals in gfx.find_palettes(DATA):
         assert validate_palettes.check_file(os.path.join(DATA, rel), kind, pals) == [], rel
         for p in pals:
             assert p.rgb.shape == (256, 3) and p.rgb.dtype == np.uint8

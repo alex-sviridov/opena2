@@ -11,13 +11,33 @@ import numpy as np
 from .sprites import decode_16, decode_16a, decode_256
 
 
-def _mirror(d, mirror):
-    """The mirrored blitters write each row from x + w - 1 leftward: a
-    horizontal flip in the same rectangle."""
+def _decode(decoder, sprite, mirror=False):
+    """Decode a sprite; mirrored blitters write each row from x + w - 1
+    leftward: a horizontal flip in the same rectangle."""
+    d = decoder(sprite.data, sprite.width, sprite.height)
     if not mirror:
         return d
     flip = lambda a: None if a is None else a[:, ::-1]
     return dataclasses.replace(d, index=flip(d.index), mask=flip(d.mask), alpha=flip(d.alpha))
+
+
+def checker(h, w, size=8, colours=((150, 150, 150), (110, 110, 110)), ox=0, oy=0):
+    """(h, w, 3) checkerboard of size-pixel squares, shifted by (ox, oy);
+    colours = (even square, odd square).  Background for previews."""
+    yy = (np.arange(h)[:, None] + oy) // size
+    xx = (np.arange(w)[None, :] + ox) // size
+    out = np.empty((h, w, 3), np.uint8)
+    out[...] = colours[0]
+    out[(xx + yy) % 2 == 1] = colours[1]
+    return out
+
+
+def over_checker(rgba, size=4, colours=((150, 150, 150), (200, 200, 200))):
+    """RGB of an (h, w, 4) RGBA image composited over a checkerboard."""
+    h, w = rgba.shape[:2]
+    a = rgba[..., 3:4].astype(np.uint16)
+    bg = checker(h, w, size, colours).astype(np.uint16)
+    return ((rgba[..., :3] * a + bg * (255 - a)) // 255).astype(np.uint8)
 
 
 class Canvas:
@@ -52,7 +72,7 @@ class Canvas:
 
     def draw_256(self, sprite, x, y, palette, mirror=False):
         """Opaque palette sprite (0x459614; mirrored 0x45a64d)."""
-        d = _mirror(decode_256(sprite.data, sprite.width, sprite.height), mirror)
+        d = _decode(decode_256, sprite, mirror)
         pal = np.asarray(palette, np.uint8)
         self._apply(x, y, d, lambda dst, s, m: pal[d.index[s][m]])
 
@@ -60,7 +80,7 @@ class Canvas:
         """50 % blend, (src >> 1) + (dst >> 1) per channel (0x459926; mirrored
         0x45a8e7).  Used for *b.256 smoothing overlays and for units with
         effect 0x20."""
-        d = _mirror(decode_256(sprite.data, sprite.width, sprite.height), mirror)
+        d = _decode(decode_256, sprite, mirror)
         pal = np.asarray(palette, np.uint16)
         self._apply(x, y, d, lambda dst, s, m: (pal[d.index[s][m]] >> 1) + (dst >> 1))
 
@@ -69,13 +89,13 @@ class Canvas:
         +0x1c): the pixel values are skipped, dst = dst * (16 - level) / 16.
         The game uses it for UI drop shadows (lm.256 level 6, scrlbars.256
         and radiob.256 level 4, an inventory indicator level 8)."""
-        d = _mirror(decode_256(sprite.data, sprite.width, sprite.height), mirror)
+        d = _decode(decode_256, sprite, mirror)
         self._apply(x, y, d, lambda dst, s, m: (dst * (16 - level)) >> 4)
 
     def draw_16a(self, sprite, x, y, palette, mirror=False):
         """Alpha sprite (0x45db6b; mirrored 0x45dee0):
         src * (a + 1) / 16 + dst * (15 - a) / 16."""
-        d = _mirror(decode_16a(sprite.data, sprite.width, sprite.height), mirror)
+        d = _decode(decode_16a, sprite, mirror)
         pal = np.asarray(palette, np.uint16)
 
         def blend(dst, s, m):
@@ -86,6 +106,6 @@ class Canvas:
 
     def draw_16(self, sprite, x, y, colors):
         """4-bit glyph (0x4593a1); colors: 16 RGB entries (the text colour table)."""
-        d = decode_16(sprite.data, sprite.width, sprite.height)
+        d = _decode(decode_16, sprite)
         cols = np.asarray(colors, np.uint8)
         self._apply(x, y, d, lambda dst, s, m: cols[d.index[s][m]])

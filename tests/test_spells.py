@@ -5,10 +5,8 @@ import os
 import pytest
 
 from allods2 import spells
+from allods2.common import DATA
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA = os.environ.get("ALLODS2_DATA", os.path.join(
-    ROOT, "samples", "Allods2_en_251005", "Allods2_en", "data"))
 PROJ_REG = os.path.join(DATA, "graphics", "projectiles", "projectiles.reg")
 
 

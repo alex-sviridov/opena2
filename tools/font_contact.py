@@ -12,16 +12,12 @@ Transparent areas show a checkerboard. Output contains game data: out/ only.
 import argparse
 import glob
 import os
-import sys
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from allods2 import graphics as gfx
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from sprite_contact import over_checker  # noqa: E402
-from validate_sprites import DEFAULT_DATA, ROOT  # noqa: E402
+from allods2.common import DATA, OUT
 
 SAMPLES = [b"The quick brown fox jumps over the lazy dog 0123456789",
            b"~Load game  ~~tilde~~  %[F80]orange%[*] back  %[64,255,64]green",
@@ -51,8 +47,8 @@ def glyph_grid(font, colours):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("data", nargs="?", default=DEFAULT_DATA)
-    ap.add_argument("-o", "--out", default=os.path.join(ROOT, "out", "contact", "fonts.png"))
+    ap.add_argument("data", nargs="?", default=DATA)
+    ap.add_argument("-o", "--out", default=os.path.join(OUT, "contact", "fonts.png"))
     a = ap.parse_args(argv)
     ramps = gfx.code_ramps16()
     grey, gold = gfx.pack16(ramps[0x629c48]), gfx.pack16(ramps[0x62af58])
@@ -75,7 +71,7 @@ def main(argv=None):
     for label, rgba in blocks:
         draw.text((6, y), label, fill=(230, 230, 230), font=label_font)
         y += 14
-        tile = Image.fromarray(over_checker(rgba)).resize(
+        tile = Image.fromarray(gfx.over_checker(rgba)).resize(
             (rgba.shape[1] * SCALE, rgba.shape[0] * SCALE), Image.NEAREST)
         sheet.paste(tile, (10, y))
         y += tile.height + 4

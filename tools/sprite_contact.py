@@ -13,15 +13,12 @@ game data, so it belongs in the gitignored out/.
 import argparse
 import glob
 import os
-import sys
 
-import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from allods2 import graphics as gfx
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from validate_sprites import DEFAULT_DATA, ROOT  # noqa: E402
+from allods2.common import DATA, OUT
+from allods2.units import human_pal_path
 
 TYPES = {"256": "256", "b.256": "smooth", "16a": "16a", "16": "16", "png": "png"}
 
@@ -44,7 +41,7 @@ def folder_palette(path, data_dir):
     pals = sorted(glob.glob(os.path.join(d, "*.pal")))
     if pals:
         return gfx.load_palettes(pals[0])[0].rgb
-    human = os.path.join(data_dir, "graphics", "units", "humans", "human.pal")
+    human = human_pal_path(data_dir)
     if "humans" in path and os.path.exists(human):
         return gfx.load_human_palettes(human)[0]
     return None
@@ -63,22 +60,6 @@ def palette_for(path, sf, data_dir):
     return folder_palette(path, data_dir)
 
 
-def checker(h, w, size=4):
-    yy, xx = np.indices((h, w))
-    on = ((yy // size + xx // size) % 2).astype(bool)
-    out = np.empty((h, w, 3), np.uint8)
-    out[on] = (200, 200, 200)
-    out[~on] = (150, 150, 150)
-    return out
-
-
-def over_checker(rgba):
-    h, w = rgba.shape[:2]
-    a = rgba[..., 3:4].astype(np.uint16)
-    bg = checker(h, w).astype(np.uint16)
-    return ((rgba[..., :3] * a + bg * (255 - a)) // 255).astype(np.uint8)
-
-
 def sheet(entries, cols=10, cell=128, label_h=26):
     font = ImageFont.load_default(10)
     rows = -(-len(entries) // cols)
@@ -86,7 +67,7 @@ def sheet(entries, cols=10, cell=128, label_h=26):
     draw = ImageDraw.Draw(img)
     for i, (label, rgba) in enumerate(entries):
         x, y = (i % cols) * cell, (i // cols) * (cell + label_h)
-        tile = Image.fromarray(over_checker(rgba)) if rgba.size else None
+        tile = Image.fromarray(gfx.over_checker(rgba)) if rgba.size else None
         if tile is not None:
             tile.thumbnail((cell - 4, cell - 4))
             img.paste(tile, (x + (cell - tile.width) // 2, y + (cell - tile.height) // 2))
@@ -97,8 +78,8 @@ def sheet(entries, cols=10, cell=128, label_h=26):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("data", nargs="?", default=DEFAULT_DATA)
-    ap.add_argument("-o", "--out", default=os.path.join(ROOT, "out", "contact"))
+    ap.add_argument("data", nargs="?", default=DATA)
+    ap.add_argument("-o", "--out", default=os.path.join(OUT, "contact"))
     ap.add_argument("-n", type=int, default=100)
     a = ap.parse_args(argv)
     os.makedirs(a.out, exist_ok=True)
@@ -113,7 +94,6 @@ def main(argv=None):
             sf = gfx.SpriteFile.load(path)
             if not len(sf):
                 continue
-            rel = os.path.relpath(path, os.path.join(a.data, "graphics")).replace(os.sep, "/")
             entries.append(("%s (%d)" % (rel, len(sf)), sf.to_rgba(0, palette_for(path, sf, a.data))))
         out = os.path.join(a.out, label + ".png")
         sheet(entries).save(out)

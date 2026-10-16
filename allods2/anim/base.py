@@ -11,6 +11,8 @@ cursors) is an AnimationSet subclass with the same surface:
     aset.draw(canvas, ref, x, y)     draw anchored at (x, y)
     aset.extent(ref)                 (x0, y0, x1, y1) drawn area around the anchor
     aset.preview_clip(action, facing)  [(FrameRef, (dx, dy) ground shift)] for one pass
+
+Sets whose clock is "ms" step previews by `preview_step_ms`.
 """
 
 import os
@@ -38,25 +40,9 @@ def tick_at_ms(ms, speed=DEFAULT_SPEED):
     return int(ms) // period_ms(speed)
 
 
-def find_file(root, rel):
-    """Path of `rel` (backslashes allowed) under `root`, matching each
-    component case-insensitively as Windows does; None when absent."""
-    path = root
-    for part in rel.replace("\\", "/").split("/"):
-        if not part:
-            continue
-        exact = os.path.join(path, part)
-        if os.path.exists(exact):
-            path = exact
-            continue
-        try:
-            names = {n.lower(): n for n in os.listdir(path)}
-        except OSError:
-            return None
-        if part.lower() not in names:
-            return None
-        path = os.path.join(path, names[part.lower()])
-    return path
+def record_name(rec, file_key="File"):
+    """Set name of a .reg record: "<ID>_<file with \\ as _>"."""
+    return "%d_%s" % (rec["ID"], rec[file_key].replace("\\", "_"))
 
 
 @dataclass
@@ -117,6 +103,8 @@ class AnimationSet:
     kind = ""
     clock = "tick"
     preview_facings = (0,)
+    preview_step_ms = 1
+    blit_mode = "opaque"
 
     def __init__(self, name, sprites=None, paths=None):
         self.name = name
@@ -163,8 +151,33 @@ class AnimationSet:
         return x0, y0, x1, y1
 
     def preview_clip(self, action, facing):
-        a = self.actions[action]
-        return [(self.frame_at(action, facing, k), (0, 0)) for k in range(max(a.ticks, 1))]
+        step = self.preview_step_ms if self.clock == "ms" else 1
+        return [(self.frame_at(action, facing, k * step), (0, 0))
+                for k in range(max(self.actions[action].ticks, 1))]
+
+    def draw(self, canvas, ref, x, y):
+        """The frame's sprite with its file's own palette, in blit_mode."""
+        self.blit_ref(canvas, ref, x, y, None, self.blit_mode)
+
+    def blit_ref(self, canvas, ref, x, y, palette=None, mode="opaque", z=0):
+        """Blit ref's sprite with its hotspot at (x, y - z); palette None =
+        the file's own.  False when the file or frame is missing (the game
+        draws nothing)."""
+        sf = self.sprites(ref.source)
+        if sf is None or not 0 <= ref.index < len(sf):
+            return False
+        blit(canvas, sf, ref.index, x - ref.hotspot[0], y - ref.hotspot[1] - z,
+             sf.palette if palette is None else palette, mode, ref.mirrored)
+        return True
+
+    def blit_overlay(self, canvas, ref, x, y, palette, z=0):
+        """ref's b.256 smoothing overlay at 50 %, placed by self.anchor with
+        the overlay frame's own size."""
+        ov = self.overlay(ref.source)
+        if ov is not None and 0 <= ref.index < len(ov):
+            o = ov[ref.index]
+            ax, ay = self.anchor(o.width, o.height)
+            blit(canvas, ov, ref.index, x - ax, y - ay - z, palette, "half", ref.mirrored)
 
     def missing_frames(self):
         """[(action, facing, source, index)] the set can ask for past the end

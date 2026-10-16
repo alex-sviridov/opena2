@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..common import cdiv
 from .bmp import load_bmp
 from .palette import BRIGHT32, shade_table
 
@@ -137,12 +138,6 @@ def light_rows(corners):
     return out
 
 
-def _cdiv(a, b):
-    """C integer division (truncates toward zero)."""
-    q = abs(a) // abs(b)
-    return q if (a >= 0) == (b > 0) else -q
-
-
 def _step_row(n):
     """FUN_0045752b: T[n][k], k = 0..n, the column where an edge that moves
     n pixels over the tile takes its (k+1)-th 1-pixel step."""
@@ -193,7 +188,7 @@ def tile_columns(ytl, ytr, ybl, ybr, lights):
         span = int(bot[c] - top[c])
         if span > 0:
             vstep = 0x200000 // span
-            lstep = _cdiv(lb - lt, span)
+            lstep = cdiv(lb - lt, span)
             i = np.arange(span, dtype=np.int64)
             yield c, int(top[c]), (i * vstep) >> 16, (lt + 0x100 + i * lstep) >> 9
         lt += (ltr - ltl) * 16

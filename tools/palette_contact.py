@@ -10,15 +10,12 @@ contains game data, so it belongs in the gitignored out/.
 
 import argparse
 import os
-import sys
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from allods2 import graphics as gfx
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from validate_palettes import DEFAULT_DATA, ROOT, find_palettes  # noqa: E402
+from allods2.common import DATA, OUT
 
 ORDER = ["code", "human.pal", ".pal", ".bmp", ".256", "*b.256", ".16a"]
 
@@ -26,7 +23,7 @@ ORDER = ["code", "human.pal", ".pal", ".bmp", ".256", "*b.256", ".16a"]
 def collect(data_dir):
     """[(kind, label, rgb)] with identical colours merged per first source."""
     entries = [("code", p.name, p.rgb) for p in gfx.code_palettes()]
-    for rel, kind, pals in find_palettes(data_dir):
+    for rel, kind, pals in gfx.find_palettes(data_dir):
         rel = rel.replace(os.sep, "/").removeprefix("graphics/")
         for i, p in enumerate(pals):
             entries.append((kind, rel if len(pals) == 1 else "%s[%d]" % (rel, i), p.rgb))
@@ -73,8 +70,8 @@ def sheet(items, ramps, cols=24, cell=4):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("data", nargs="?", default=DEFAULT_DATA)
-    ap.add_argument("-o", "--out", default=os.path.join(ROOT, "out", "contact", "palettes.png"))
+    ap.add_argument("data", nargs="?", default=DATA)
+    ap.add_argument("-o", "--out", default=os.path.join(OUT, "contact", "palettes.png"))
     a = ap.parse_args(argv)
     items = collect(a.data)
     img = sheet(items, gfx.code_ramps16())

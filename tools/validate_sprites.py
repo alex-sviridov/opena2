@@ -12,15 +12,12 @@ import os
 import sys
 
 from allods2 import graphics as gfx
-
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-DEFAULT_DATA = os.path.join(ROOT, "samples", "Allods2_en_251005", "Allods2_en", "data")
+from allods2.common import DATA
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    data_dir = argv[0] if argv else DEFAULT_DATA
+    data_dir = argv[0] if argv else DATA
     stats = collections.Counter()
     problems = []
     for path in sorted(glob.glob(os.path.join(data_dir, "**", "*"), recursive=True)):

@@ -16,15 +16,13 @@ import sys
 import numpy as np
 
 from allods2.alm import load_alm
+from allods2.common import INSTALL
 from allods2.graphics import terrain as tr
-
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT = os.path.join(ROOT, "samples", "Allods2_en_251005", "Allods2_en")
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    base = argv[0] if argv else DEFAULT
+    base = argv[0] if argv else INSTALL
     terrain = tr.TerrainSet.load(os.path.join(base, "data", "graphics", "terrain"))
     rows = np.zeros((16, 4), int)
     for (s, j), a in terrain.strips.items():

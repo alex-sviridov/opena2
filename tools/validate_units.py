@@ -16,9 +16,7 @@ import sys
 
 from allods2 import graphics as gfx
 from allods2 import units as U
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from validate_sprites import DEFAULT_DATA  # noqa: E402
+from allods2.common import DATA
 
 
 def frames_used(t, td):
@@ -45,8 +43,8 @@ def frames_used(t, td):
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    data = argv[0] if argv else DEFAULT_DATA
-    types = U.load_unit_types(os.path.join(data, U.UNITS_DIR, "units.reg"))
+    data = argv[0] if argv else DATA
+    types = U.unit_types(data)
     ids = U.by_id(types)
     counts, problems = {}, []
 

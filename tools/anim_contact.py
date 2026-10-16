@@ -21,15 +21,11 @@ import argparse
 import os
 import sys
 
-import numpy as np
 from PIL import Image, ImageDraw
 
 from allods2 import graphics as gfx
 from allods2 import units as U
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from sprite_contact import over_checker  # noqa: E402
-from validate_sprites import DEFAULT_DATA, ROOT  # noqa: E402
+from allods2.common import DATA, OUT
 
 SPECIMENS = [("hero_swordsman", "heroes/swordsman/sprites", 3),
              ("goblin", "monsters/goblin/sprites", 64),
@@ -45,7 +41,7 @@ def palette(path, data):
         p = os.path.join(d, "palette.pal")
         if os.path.isfile(p):
             return gfx.load_pal_file(p)
-    return gfx.load_human_palettes(os.path.join(data, U.UNITS_DIR, "humans", "human.pal"))[0]
+    return gfx.load_human_palettes(U.human_pal_path(data))[0]
 
 
 def blocks(t, own_death, n):
@@ -79,7 +75,7 @@ def facings(t, i, stand):
 
 def cell_image(sf, pal, idx, cw, ch, label, colour):
     im = Image.new("RGB", (cw, ch + LABEL_H), (40, 40, 40))
-    fr = Image.fromarray(over_checker(sf.to_rgba(idx, pal)))
+    fr = Image.fromarray(gfx.over_checker(sf.to_rgba(idx, pal)))
     if fr.width > cw or fr.height > ch:
         fr.thumbnail((cw, ch))
     im.paste(fr, ((cw - fr.width) // 2, (ch - fr.height) // 2))
@@ -101,7 +97,7 @@ def sheet(rows, cw, ch, left=0):
 
 
 def make(name, rel, type_id, data, out_dir):
-    types = U.by_id(U.load_unit_types(os.path.join(data, U.UNITS_DIR, "units.reg")))
+    types = U.by_id(U.unit_types(data))
     t = types[type_id]
     path = os.path.join(data, U.UNITS_DIR, rel + ".256")
     sf = gfx.SpriteFile.load(path)
@@ -140,9 +136,9 @@ def make(name, rel, type_id, data, out_dir):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("spec", nargs="*", help="NAME FILE TYPE_ID [DATA_DIR]")
-    ap.add_argument("-o", "--out", default=os.path.join(ROOT, "out", "contact"))
+    ap.add_argument("-o", "--out", default=os.path.join(OUT, "contact"))
     a = ap.parse_args(argv)
-    data = a.spec[3] if len(a.spec) > 3 else DEFAULT_DATA
+    data = a.spec[3] if len(a.spec) > 3 else DATA
     specs = [(a.spec[0], a.spec[1], int(a.spec[2]))] if a.spec else SPECIMENS
     for name, rel, tid in specs:
         make(name, rel, tid, data, a.out)

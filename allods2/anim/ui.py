@@ -18,7 +18,8 @@ and the sets say `timed = False`.
 
 import os
 
-from .base import Action, AnimationSet, FrameRef, blit, find_file
+from ..common import find_file
+from .base import Action, AnimationSet, FrameRef
 
 STILL = 2000000000
 # FUN_00480f17: (path under graphics/cursors, hot x, hot y, period ms, global)
@@ -71,7 +72,7 @@ class CursorSet(AnimationSet):
     def __init__(self, path, hx, hy, period, sprites=None, paths=None):
         super().__init__(cursor_name(path), sprites, paths)
         self.hot, self.period = (hx, hy), period
-        self.alpha = path.endswith(".16a")
+        self.blit_mode = "alpha" if path.endswith(".16a") else "opaque"
         n = self.count() or 1
         still = period >= STILL or n <= 1
         self.actions = {"cursor": Action("cursor", [0] if still else list(range(n)), clock="ms")}
@@ -81,18 +82,6 @@ class CursorSet(AnimationSet):
         i = cursor_frame(ms, self.period, self.count())
         return FrameRef("main", i, False, self.hot, action, i)
 
-    def preview_clip(self, action, facing):
-        step = self.preview_step_ms
-        return [(self.frame_at(action, facing, k * step), (0, 0))
-                for k in range(self.actions[action].ticks)]
-
-    def draw(self, canvas, ref, x, y):
-        sf = self.sprites()
-        if sf is None or not 0 <= ref.index < len(sf):
-            return
-        blit(canvas, sf, ref.index, x - self.hot[0], y - self.hot[1],
-             sf.palette, "alpha" if self.alpha else "opaque")
-
 
 class UiSequenceSet(AnimationSet):
     """A UI .16a sequence played frame by frame; timing not traced."""
@@ -100,6 +89,7 @@ class UiSequenceSet(AnimationSet):
     clock = "ms"
     timed = False
     preview_step_ms = UI_NOMINAL_MS
+    blit_mode = "alpha"
 
     def __init__(self, name, loader, sprites=None, paths=None):
         super().__init__(name, sprites, paths)
@@ -110,16 +100,6 @@ class UiSequenceSet(AnimationSet):
         i = (ms // UI_NOMINAL_MS) % max(self.count(), 1)
         wh = self.size("main", i) or (0, 0)
         return FrameRef("main", i, False, (wh[0] // 2, wh[1] // 2), action, i)
-
-    def preview_clip(self, action, facing):
-        return [(self.frame_at(action, facing, k * UI_NOMINAL_MS), (0, 0))
-                for k in range(self.actions[action].ticks)]
-
-    def draw(self, canvas, ref, x, y):
-        sf = self.sprites()
-        if sf is None or not 0 <= ref.index < len(sf):
-            return
-        blit(canvas, sf, ref.index, x - ref.hotspot[0], y - ref.hotspot[1], sf.palette, "alpha")
 
 
 def load_cursor_set(key, data_dir):

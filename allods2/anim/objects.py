@@ -20,8 +20,10 @@ palette (+0x14 with main+0x14), b.256 overlay at 50 % when Smoothing is on.
 
 import os
 
+from ..common import find_file
 from ..reg import load_reg
-from .base import Action, AnimationSet, FrameRef, blit, find_file
+from ..units import center_anchor, expand_sequence
+from .base import Action, AnimationSet, FrameRef, record_name
 
 OBJECTS_DIR = "graphics/objects"
 INT_KEYS = ("File", "Index", "Phases", "Width", "Height", "CenterX", "CenterY",
@@ -35,11 +37,7 @@ def load_object_records(data_dir):
     reg = load_reg(os.path.join(data_dir, OBJECTS_DIR, "objects.reg"))
     files = reg["Files"].to_dict()
     out = {}
-    for n in range(reg.get("Global/ObjectCount", 0)):
-        sec = reg.get("Object%d" % n)
-        if sec is None:
-            continue
-        raw = sec.to_dict()
+    for raw in reg.records("Object", "ObjectCount"):
         parent = out.get(raw.get("Parent", -1))
         r = {"ID": raw.get("ID", -1), "DescText": raw.get("DescText", "")}
         for k in INT_KEYS:
@@ -47,7 +45,7 @@ def load_object_records(data_dir):
         for k in ("AnimationTime", "AnimationFrame"):
             v = raw.get(k)
             r[k] = v if v else (parent[k] if parent else [])
-        r["seq"] = [f for t, f in zip(r["AnimationTime"], r["AnimationFrame"]) for _ in range(t)]
+        r["seq"] = expand_sequence(r["AnimationTime"], r["AnimationFrame"])
         r["file"] = files.get("File%d" % r["File"], "") if r["File"] >= 0 else ""
         out[r["ID"]] = r
     return out
@@ -60,7 +58,7 @@ class ObjectSet(AnimationSet):
     kind = "objects"
 
     def __init__(self, rec, dead=None, sprites=None, paths=None):
-        super().__init__("%d_%s" % (rec["ID"], rec["file"].replace("\\", "_")), sprites, paths)
+        super().__init__(record_name(rec, "file"), sprites, paths)
         self.rec, self.dead = rec, dead
         acts = []
         if rec["seq"]:
@@ -72,7 +70,7 @@ class ObjectSet(AnimationSet):
 
     def anchor(self, w, h):
         r = self.rec
-        return ((r["CenterX"] - r["Width"] // 2) + w // 2, (r["CenterY"] - r["Height"] // 2) + h // 2)
+        return center_anchor(r["CenterX"], r["CenterY"], r["Width"], r["Height"], w, h)
 
     def frame_at(self, action, facing, tick, *, x=0, y=0, animate=True):
         r = self.rec
@@ -88,21 +86,10 @@ class ObjectSet(AnimationSet):
         wh = self.size(src, i)
         return FrameRef(src, i, False, self.anchor(*wh) if wh else (0, 0), action, ph)
 
-    def preview_clip(self, action, facing):
-        return [(self.frame_at(action, facing, k), (0, 0))
-                for k in range(max(self.actions[action].ticks, 1))]
-
     def draw(self, canvas, ref, x, y, smoothing=True, palette=None):
-        sf = self.sprites(ref.source)
-        if sf is None or ref.index >= len(sf):
-            return
-        pal = palette if palette is not None else sf.palette
-        blit(canvas, sf, ref.index, x - ref.hotspot[0], y - ref.hotspot[1], pal, "opaque")
-        ov = self.overlay(ref.source) if smoothing else None
-        if ov is not None and ref.index < len(ov):
-            o = ov[ref.index]
-            ax, ay = self.anchor(o.width, o.height)
-            blit(canvas, ov, ref.index, x - ax, y - ay, pal, "half")
+        if self.blit_ref(canvas, ref, x, y, palette) and smoothing:
+            pal = palette if palette is not None else self.sprites(ref.source).palette
+            self.blit_overlay(canvas, ref, x, y, pal)
 
 
 def object_paths(rec, data_dir, prefix="main"):

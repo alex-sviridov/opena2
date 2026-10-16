@@ -13,15 +13,13 @@ import glob
 import os
 import sys
 
+from allods2.common import DATA
 from allods2.reg import T_FLOAT, T_INTS, T_STRING, load_reg
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from validate_sprites import DEFAULT_DATA  # noqa: E402
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    data = argv[0] if argv else DEFAULT_DATA
+    data = argv[0] if argv else DATA
     bad, types, odd = [], collections.Counter(), []
     paths = sorted(glob.glob(os.path.join(data, "**", "*.reg"), recursive=True))
     for p in paths:

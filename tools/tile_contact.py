@@ -11,14 +11,11 @@ Output contains game data: out/ only.
 
 import argparse
 import os
-import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
+from allods2.common import INSTALL, OUT
 from allods2.graphics import terrain as tr
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from validate_terrain import DEFAULT  # noqa: E402
 
 PAD = 4
 HEAD = 16
@@ -47,9 +44,8 @@ def sheet(terrain, s, scale, font):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("base", nargs="?", default=DEFAULT)
-    ap.add_argument("-o", "--out", default=os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "out", "contact"))
+    ap.add_argument("base", nargs="?", default=INSTALL)
+    ap.add_argument("-o", "--out", default=os.path.join(OUT, "contact"))
     ap.add_argument("--scale", type=int, default=2)
     a = ap.parse_args(argv)
     terrain = tr.TerrainSet.load(os.path.join(a.base, "data", "graphics", "terrain"))

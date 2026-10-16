@@ -24,20 +24,31 @@ Draw (anchor = (x, y - z), box = record Width x Height, default 64):
 Special draws: 7 = screen lens (allods2.anim.lens), 0x17 = frame 8 falling
 from 28 px above while age < 8, then frame age - 8; 0x1c / 0x1e = one sprite
 per point of a list (0x1e: + 5 * colour); 0x38 = nothing.
+Trails (10 firebolt, 12 fireball): each tick, before moving, the position
+(obj+0x8, obj+0xc) is packed as (y << 16 | x) into the list obj+0x144
+after dropping the oldest point when it already holds 6 (tick
+0x471e43-0x471ee6); the draw (0x4723a4-0x4724d5) blits frame i of
+smoke0 (10) / smoke1 (12) .16a at point i, oldest first, centred with
+frame 0's half size and raised by the projectile's current obj+0x6c +
+obj+0x10.
 Lifetime: obj+0xa8 ticks; flight time from distance or the server
 (animation.md §1.4); the object is gone when it reaches 0.
 """
 
 import os
 
+from ..common import find_file
 from ..graphics import load_palettes
 from ..reg import load_reg
-from .base import COMPASS, Action, AnimationSet, FrameRef, blit, find_file
+from .base import COMPASS, Action, AnimationSet, FrameRef, blit, record_name
+from .lens import LENS_SIZE, apply_lens
 
 PROJECTILES_DIR = "graphics/projectiles"
 PING_PONG = (4, 3, 2, 1, 0, 1, 2, 1, 0, 1, 2, 3, 4)       # jump table 0x471fba
 HIT_IDS = (0x10, 0x14, 0x18, 0x22, 0x2c, 0x2e, 0x30, 0x32, 0x38, 0x3c, 0x3e, 0x40, 0x42)
 LENS_ID, HAIL_ID, LIGHTNING_ID, CHAIN_ID, TELEPORT_ID, HEAL_ID = 7, 0x17, 0x1c, 0x1e, 0x36, 0x38
+TRAIL_SOURCES = {10: "smoke0", 12: "smoke1"}     # DAT_0062cb58[0..1]
+TRAIL_POINTS = 6
 # fixed lifetimes set by the client (FUN_0046c4f1 / message 0x8c), ticks
 FIXED_LIFETIME = {LIGHTNING_ID: 13, CHAIN_ID: 13, TELEPORT_ID: 21, 0x38: 1, 0x3c: 1}
 
@@ -45,11 +56,7 @@ FIXED_LIFETIME = {LIGHTNING_ID: 13, CHAIN_ID: 13, TELEPORT_ID: 21, 0x38: 1, 0x3c
 def load_projectile_records(data_dir):
     reg = load_reg(os.path.join(data_dir, PROJECTILES_DIR, "projectiles.reg"))
     out = {}
-    for n in range(reg.get("Global/Count", 0)):
-        sec = reg.get("Projectile%d" % n)
-        if sec is None:
-            continue
-        r = sec.to_dict()
+    for r in reg.records("Projectile", "Count"):
         for k, d in (("Phases", -1), ("RotationPhases", 16), ("Width", 64), ("Height", 64),
                      ("SFX", 0), ("Palette", 0), ("Homing", 0), ("Flip", 0), ("A16", 0)):
             r.setdefault(k, d)
@@ -74,7 +81,7 @@ class ProjectileSet(AnimationSet):
     kind = "projectiles"
 
     def __init__(self, rec, sprites=None, paths=None, shade_palette=None):
-        super().__init__("%d_%s" % (rec["ID"], rec["File"].replace("\\", "_")), sprites, paths)
+        super().__init__(record_name(rec), sprites, paths)
         self.rec = rec
         self.pid = rec["ID"]
         self.rule = phase_rule(self.pid)
@@ -134,43 +141,66 @@ class ProjectileSet(AnimationSet):
             index = ph
         return FrameRef("main", index, mirrored, hot, action, ph)
 
-    def preview_clip(self, action, facing):
-        n = self.actions[action].ticks
-        return [(self.frame_at(action, facing, k), (0, 0)) for k in range(n)]
+    # -- trails (10, 12) ----------------------------------------------------
+
+    @property
+    def has_trail(self):
+        return self.pid in TRAIL_SOURCES
+
+    @staticmethod
+    def record_trail(points, x, y):
+        """Tick step: append the pre-move position (map units) to `points`
+        (packed u32 list, oldest first), dropping the oldest at 6."""
+        if len(points) >= TRAIL_POINTS:
+            del points[0]
+        points.append(((y << 16) | x) & 0xFFFFFFFF)
+        return points
+
+    def trail(self, points):
+        """[(FrameRef, (px, py))]: frame i at point i in map pixels
+        ((p & 0xffff) >> 3, p >> 19), drawn in this order."""
+        sf = self.sprites("trail")
+        w, h = (sf[0].width, sf[0].height) if sf is not None and len(sf) else (0, 0)
+        return [(FrameRef("trail", i, False, (w // 2, h // 2), "trail", i),
+                 ((p & 0xFFFF) >> 3, p >> 19)) for i, p in enumerate(points)]
+
+    def draw_trail(self, canvas, points, ox=0, oy=0, z=0):
+        """Draw the trail with the view's top-left at map pixel (ox, oy);
+        z = the projectile's current obj+0x6c + obj+0x10."""
+        for ref, (px, py) in self.trail(points):
+            self.blit_ref(canvas, ref, px - ox, py - oy, None, "alpha", z)
 
     def extent(self, ref):
         if ref.effect == "lens":
-            from .lens import LENS_SIZE
             return (-LENS_SIZE, -LENS_SIZE, LENS_SIZE, LENS_SIZE)
         return super().extent(ref)
 
     def draw(self, canvas, ref, x, y, z=0, smoothing=True):
         if ref.effect == "lens":
-            from .lens import apply_lens
             apply_lens(canvas.pix, x, y - z)
             return
-        sf = self.sprites()
-        if sf is None or not 0 <= ref.index < len(sf):
-            return
-        left, top = x - ref.hotspot[0], y - ref.hotspot[1] - z
         r = self.rec
         if r["A16"]:
-            blit(canvas, sf, ref.index, left, top, sf.palette, "alpha", ref.mirrored)
-        elif r["Palette"]:
-            blit(canvas, sf, ref.index, left, top, sf.palette, "opaque", ref.mirrored)
+            self.blit_ref(canvas, ref, x, y, None, "alpha", z)
+        elif not r["Palette"]:
+            self.blit_ref(canvas, ref, x, y, self.shade_palette, "opaque", z)
+        elif self.blit_ref(canvas, ref, x, y, None, "opaque", z):
             ov = self.overlay()
             if ov is not None and ref.index < len(ov):
-                blit(canvas, ov, ref.index, left, top, ov.palette, "half", ref.mirrored)
-        else:
-            blit(canvas, sf, ref.index, left, top, self.shade_palette, "opaque", ref.mirrored)
+                blit(canvas, ov, ref.index, x - ref.hotspot[0], y - ref.hotspot[1] - z,
+                     ov.palette, "half", ref.mirrored)
 
 
 def projectile_paths(rec, data_dir):
     root = os.path.join(data_dir, PROJECTILES_DIR)
     if rec["A16"]:
-        return {"main": find_file(root, rec["File"] + ".16a")}
-    return {"main": find_file(root, rec["File"] + ".256"),
-            "main_b": find_file(root, rec["File"] + "b.256")}
+        paths = {"main": find_file(root, rec["File"] + ".16a")}
+    else:
+        paths = {"main": find_file(root, rec["File"] + ".256"),
+                 "main_b": find_file(root, rec["File"] + "b.256")}
+    if rec["ID"] in TRAIL_SOURCES:
+        paths["trail"] = find_file(root, TRAIL_SOURCES[rec["ID"]] + "/sprites.16a")
+    return paths
 
 
 def load_projectile_set(pid, data_dir, records=None):

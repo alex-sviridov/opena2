@@ -12,22 +12,19 @@ Output contains game data: out/ only.
 
 import argparse
 import os
-import sys
 
 import numpy as np
 from PIL import Image
 
 from allods2.alm import load_alm
+from allods2.common import INSTALL, OUT
 from allods2.graphics import lighting as lt, terrain as tr
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from validate_terrain import DEFAULT  # noqa: E402
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("map")
-    ap.add_argument("--base", default=DEFAULT)
+    ap.add_argument("--base", default=INSTALL)
     ap.add_argument("-o", "--out")
     ap.add_argument("--rect", type=int, nargs=4, metavar=("X", "Y", "W", "H"))
     ap.add_argument("--time", type=int)
@@ -46,8 +43,7 @@ def main(argv=None):
     else:
         img, _ = tr.render_3d(m.tiles[sub], heights[sub], terrain, light[sub], tint=day.tint)
     stem = os.path.splitext(os.path.basename(path))[0]
-    out = a.out or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                "out", "terrain3d", stem + ("_flat" if a.flat else "") + ".png")
+    out = a.out or os.path.join(OUT, "terrain3d", stem + ("_flat" if a.flat else "") + ".png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     Image.fromarray(img).save(out)
     print("%s cells %d,%d %dx%d -> %s (%dx%d)" % (stem, x, y, w, h, out, img.shape[1], img.shape[0]))
