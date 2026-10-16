@@ -22,10 +22,12 @@ from both places when answered).
 
 ## Not started (from the reversing plan)
 
-- `.alm` sections 5–12 (players, units, triggers, …); the server reader
-  `FUN_00534ad4` parses all of them (switch on the section id); 46 campaign
-  maps in `scenario.res`. Header, terrain, objects and structures (sections
-  3–4) are done. [map](formats/map.md#open-questions)
+- `.alm` triggers (sections 7, 10–12); the server reader `FUN_00534ad4` parses all of them
+  (switch on the section id). Sections 0–6, 8, 9 are done. [map](formats/map.md#open-questions)
+- Part 5 leftovers: unit `behaviour` booleans, section 8 `extra`, item-code class → data.bin
+  list, section 9 flags, player money reader. [map](formats/map.md#open-questions)
+- Unit struct: Mover / Brain interiors, sub-objects, equipment slots.
+  [unit-struct](engine/unit-struct.md#open-questions)
 - Line of sight tables and the `FUN_00559536` gate; block-layer dynamic bits
   and per-class `movementType` (`FUN_00557a89`, vtable `+0x20`); the search
   `FUN_0054d76e` (phase H). [map](formats/map.md#open-questions)

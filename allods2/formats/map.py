@@ -15,6 +15,7 @@ from a2res import basename
 
 from ..alm import (SEC_GENERAL, SEC_HEIGHTS, SEC_OBJECTS, SEC_TILES, AlmMap, parse_alm)
 from ..common import read
+from . import entities as ent
 from . import objects as obj
 from . import passability as pas
 
@@ -123,6 +124,7 @@ class Map:
         self.alm, self.header, self.name = alm, header, name
         self._block = None
         self._structures = None
+        self._entities = {}
         self.sections = {sid: bytes(s.data) for sid, s in alm.sections.items()
                          if sid not in (SEC_GENERAL, SEC_TILES, SEC_HEIGHTS, SEC_OBJECTS)}
         self.terrain = alm.tiles.copy()                   # (h, w) uint16
@@ -174,6 +176,45 @@ class Map:
         if self._structures is None:
             self._structures = obj.parse_structures(self.sections[4], self.header.n_sec4)
         return self._structures
+
+    def _entity(self, key, fn):
+        if key not in self._entities:
+            self._entities[key] = fn()
+        return self._entities[key]
+
+    @property
+    def players(self):
+        """Section 5 as `entities.Player` records (record number = `index`, 1-based)."""
+        return self._entity("players", lambda: ent.parse_players(
+            self.sections[5], self.header.player_count))
+
+    @property
+    def units(self):
+        """Section 6 as `entities.Unit` records (monsters and humans)."""
+        return self._entity("units", lambda: ent.parse_units(
+            self.sections[6], self.header.n_sec6))
+
+    @property
+    def item_groups(self):
+        """Section 8 as `entities.Group` records: unit inventories and sacks on the ground."""
+        return self._entity("groups", lambda: ent.parse_groups(
+            self.sections[8], self.header.n_sec8))
+
+    @property
+    def item_records(self):
+        """Section 9 as `entities.ItemRecord` records (item properties, spellbook and building links)."""
+        return self._entity("records", lambda: ent.parse_item_records(self.sections[9]))
+
+    @property
+    def ground_groups(self):
+        """The item groups no unit record links to: sacks lying on the ground."""
+        used = {u.group for u in self.units if u.group}
+        return [g for i, g in enumerate(self.item_groups, 1) if i not in used]
+
+    @property
+    def items(self):
+        """Alias of `ground_groups` plus the carried ones: every item group."""
+        return self.item_groups
 
     def placed_objects(self, window=True):
         """The Objects block as `objects.MapObject` records (trees, rocks,

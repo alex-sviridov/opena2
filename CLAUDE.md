@@ -74,7 +74,7 @@ The company is legally entitled to recreate the game.
 ## Known so far
 Details, routines and tools are in each spec; CLI: `python -m allods2 gfx
 export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
-`anim preview-all DEST`, `map info MAP`, `map render MAP DEST.png [--relief] [--layers terrain,objects,structures]`,
+`anim preview-all DEST`, `map info MAP`, `map render MAP DEST.png [--relief] [--layers terrain,objects,structures,units,items|all]`,
 `res ls|list|extract`; contact sheets
 `tools/*_contact.py` → out/contact/.
 - .res / a2res: CONFIRMED (`FUN_004e2040` opener, lookup `FUN_004e9046`, mount
@@ -115,7 +115,7 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   container walks all; header (section 0, `FUN_00534ad4`: size, version,
   players, tile-set mask, cp1251 name/description, counts) and layers 1–3
   CONFIRMED, `Map.load` + `map info|render`; light fields are overwritten
-  by `FUN_004a5dd2`; sections 5–12 raw. map.md
+  by `FUN_004a5dd2`; sections 5, 6, 8, 9: see "Map entities". map.md
 - Heights/passability: CONFIRMED heights = signed byte per vertex, 0..127,
   1 px each, no slope limit (speed ±50 %, sight). No stored passability: the
   server path finder derives a block layer (`FUN_00554626`: water, mountain
@@ -158,6 +158,13 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   later (`FUN_004ac414`); picture never depends on passability/objects. Cheap variant: `allods2/minimap.py`,
   `engine/view/minimap.py`, `engine/ui/minimap.py` (click/drag = camera), `engine run` shows it top right,
   `python -m engine minimap MAP DEST.png`; no fog/units/final pass; goldens `["minimaps"]`. rendering.md §12
-- Not started: saves, Scenario.dll, item names, units/items/players in the engine.
-- Next: E5 (per the brief of 2026-10-16). Also (docs/open-questions.md): .alm sections 5–12 (server reader
-  `FUN_00534ad4`), town-scene animations, text conventions.
+- Map entities done: section 5 players (76 B: `colour` = human.pal row, `money`, name, 16 relation words:
+  1 war, 2 alliance, 0x10 vision; human = record 1 only), section 6 units (48 B: x/y, `server_id` -> data.bin
+  `serverID` (humans group 6 when `flags & 0x10`, else monsters), `owner` = 1-based player, HP overrides, uid,
+  squad; no facing: the ctor draws 0x40 + rand(128)), section 8 groups = item packs (carried via unit `group`,
+  19 ground sacks), section 9 = item properties (stat id, value), item code decoder `FUN_004fbf01`; 4,212
+  units resolve. `Map.players/.units/.item_groups/.ground_groups`, `map render --layers all`; runtime unit
+  struct (monster 0x208, human 0x254) docs/engine/unit-struct.md. map.md part 5
+- Not started: saves, Scenario.dll, item names/definitions (phase F), triggers (sections 7, 10-12).
+- Next: G3a (units in the engine, from `Map.units` and unit-struct.md). Also (docs/open-questions.md):
+  town-scene animations, text conventions.

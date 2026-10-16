@@ -1,13 +1,14 @@
 # Campaign maps (`.alm`, "M7R")
 
 Code: `allods2/alm.py` (container), `allods2/formats/map.py` (`Map`,
-`MapHeader`), `allods2/formats/passability.py` (part 3), `allods2/formats/objects.py` (part 4); CLI
+`MapHeader`), `allods2/formats/passability.py` (part 3), `allods2/formats/objects.py` (part 4), `allods2/formats/entities.py` (part 5); CLI
 `python -m allods2 map info|render`; tests `tests/test_map.py`,
-`tests/test_passability.py`. 46 maps in `scenario.res` (`scenario/<n>.alm`, 80², 144²
+`tests/test_passability.py`, `tests/test_entities.py`. 46 maps in `scenario.res` (`scenario/<n>.alm`, 80², 144²
 or 256² cells). Reader: `FUN_00534ad4` (file → map object, 0x3b8 bytes),
 runtime map builder `FUN_004a449c`. Part 1 is the container, part 2 the
 header and terrain, part 3 heights and passability, part 4 objects (sections
-3 and 4); later parts will cover sections 5–12.
+3 and 4), part 5 players, units and items (sections 5, 6, 8, 9); the trigger sections
+7 and 10–12 stay open.
 
 ## Part 1. Container
 
@@ -298,7 +299,7 @@ separate things in the file:
 | Trees, rocks, decorations (`objects.reg`, 192 IDs) | 3, one byte per cell = ID + 1 | `graphics/objects/<File>.256` | one cell each, no HP, no owner, always passable-blocking |
 | Buildings, bridges, graves, camp fires (`structures.reg`, 179 IDs) | 4, list of 20-byte entries | `graphics/structures/<File>.256` | top-left cell of a W × TH footprint, HP, owner |
 
-Units (section 6, 48 bytes each) and the other sections are not objects here.
+Units (section 6) and item groups (section 8) are [part 5](#part-5-players-units-items).
 
 ### Objects block (section 3)
 
@@ -538,6 +539,152 @@ playable area, the data.bin/picture size exceptions are exactly {14, 57}, every
 object ID resolves or is in the documented exclusion list and placed objects
 are inside the window, structures stamp into passability, and the scene draws.
 
+## Part 5. Players, units, items
+
+Code: `allods2/formats/entities.py` (`Player`, `Unit`, `Group`, `Member`, `ItemRecord`,
+`template`), `Map.players`, `.units`, `.item_groups` (= `.items`), `.item_records`,
+`.ground_groups`; draw `allods2/anim/scene.py`; CLI `map render … --layers units,items` or
+`all`; tests `tests/test_entities.py`. Reader `FUN_00534ad4` cases 5, 6, 8, 9; the server
+builds the units in `FUN_00561bf9` (called from the map start, `0x560b42`), the item groups
+in `FUN_00564072`, the client mirrors the unit list in `FUN_004a449c` (`0x4a4a90`–`0x4a52fc`).
+Order at map start: players, units, then groups and section 9 (units must exist first: a
+group is tied to its unit by uid, `FUN_00565080`). Section 7 (3 lists of 0x31c-byte records, the
+trigger scripts) and 10–12 stay raw. Runtime struct: [unit-struct](../engine/unit-struct.md).
+Totals over the 46 maps: 251 players, 4,212 units, 51 item groups (32 carried, 19 on the
+ground), 88 section 9 records; every section tiles exactly.
+
+### Players (section 5)
+
+`player_count` records of 76 bytes, CONFIRMED (`0x535513`–`0x535661`), read into 0x4c-byte
+player objects (ctor `FUN_0043b6e0`); object `+4` = record number (1-based), the value that
+`Unit.owner` and `Structure.owner` hold (resolved by `FUN_0051680d`, error "Can't resolve
+player %d for unit %d").
+
+| File | Size | Object | Field | Meaning |
+|---|---|---|---|---|
+| 0 | u32 | +0x0c | `colour` | **row of `humans/human.pal`** (0 blue, 1 green, 2 red, 3 orange, 4 violet, 5 yellow, 6 teal, 7 grey, 8–15 darker; [palettes §4](palettes.md)). CONFIRMED: the unit draw (`0x463bac`–`0x463c16`) takes `table[owner.+0xc]` for `Palette = 0` types only. Record 1 always 1; values 1–8, 10 in the files; colours repeat within 39 of 46 maps |
+| 4 | u32 | +0x34 | `flags` | server reads only bit 1 (`0x5613f3`, multiplayer); the file's 0/1 is never read. CONFIRMED |
+| 8 | u32 | +0x10 | `money` | 0 for record 1, else 5000; the default player (no section 5) has 5000 (`0x536421`). No reader found: INFERRED starting gold |
+| 12 | 32 B | +0x14 | `name` | cp1251, NUL-padded ("self", "Computer", "Enemy", "Neutral", …) |
+| 44 | 16 × u16 | +0x38 | `relations` | diplomacy toward player `j + 1`, below |
+
+Human or computer is **not** in the file: single player makes record 1 the human and every
+other record a computer (`0x5613d0`–`0x5613ec`, session `+0x2c`). CONFIRMED.
+
+**Relations.** The loader copies the low byte of word `j` into the server matrix
+`0x66832c + id·0x46 + 0xa8c4 + j + 1` and forces the diagonal to 0x12 (`0x560a8a`–`0x560b24`).
+Bits of `M[a][b]` (a's stance toward b): 0x01 war, a may attack b (`0x51a301`), 0x02 alliance
+(`0x512a20`), 0x10 a shares its vision with b (`0x5022a5`). The files use 0 (neutral), 1
+(war), 2 (alliance) off the diagonal, 18 (alliance + vision) on it, and 16 once (`10.alm`,
+record 8). Not symmetric in 116 of 1,248 pairs. Words past the player count are non-zero for
+3 players (ignored).
+
+**Team colour link** (C4): `Player.colour` → `UnitSet.palette(player=colour)`
+(`scene.Scene.unit_palette`); monsters (`Palette > 0`) ignore it.
+
+### Units (section 6)
+
+`n_sec6` records of 48 bytes, CONFIRMED (`0x535681`–`0x535ab3`), read into 0x54-byte map-unit
+objects (list at map `+0x3a4`; only `FUN_00561bf9` and the client loop read it).
+Version 1300 layout:
+
+| File | Size | Object | Field | Meaning |
+|---|---|---|---|---|
+| 0, 4 | i32 ×2 | +0, +4 | `x`, `y` | 1/256 cell. The server places the unit on cell `x >> 8`, `y >> 8` (`FUN_00510089`, spiral search for a free cell) with sub-cell 0x80/0x80 (`FUN_0054f9b9`); every file value has sub-cell 128 |
+| 8 | u16 | +8 | `type` | units.reg ID (1–26 humans and the catapult, 64–107 monsters). The server ignores it; the client picks the view class from it (`units.reg[id]+0x124 ≠ 0` → hero view `FUN_0046bfa6`, else `FUN_00462a4a`, `0x4a5050`). Equals the data.bin `typeID` except NPC variants (editor copy). All 53 ids resolve |
+| 10 | u16 | +0xc | `tier` | 1–6, read and never used; matches the record name's `.N` suffix (INFERRED) |
+| 12 | u32 | +0x48 | `flags` | bit 0x10 = human (data.bin humans, 0x254-byte object), else monster (0x208). 605 humans flagged; 5 catapults (type 26) are monsters |
+| 16 | u32 | +0x50 | `behaviour` | bits 1, 2, 4, 8 → booleans at creature `+0x194`, `+0x19c`, `+0x198`, `+0x1a0` (`0x561f0f`–`0x561f77`); only bit 8 occurs (8 units of `10.alm`). Effect UNKNOWN |
+| 20 | u32 | +0x10 | `server_id` | key into data.bin: monsters group 5 where `serverID` (param 55) matches, humans group 6 where `serverID` (param 24) matches (`FUN_004fd62f` / `FUN_004fd5ad`); the unit is then built from that record's name. 4,212 / 4,212 resolve (`entities.template`) |
+| 24 | u32 | +0x14 | `owner` | 1-based section 5 record, 1..player_count in all 4,212 units |
+| 28 | u32 | +0x44 | `group` | 1-based section 8 group (0 = none; read as −1 / index − 1, −1 again if ≥ `n_sec8`); at load the unit's uid is written into the group (`0x535a3e`–`0x535a7c`). 32 units |
+| 32 | u32 | +0x1c | `field_32` | read and never used (10 in 4,199 units). UNKNOWN |
+| 36, 38 | u16 ×2 | +0x20, +0x22 | `hp`, `max_hp` | HP overrides, 0xFFFF = keep the data.bin value; 3,914 units use neither, 293 both |
+| 40 | u32 | +0x3c | `uid`, `stamp` | low 16 bits = scenario unit number (object id `0x6000 + uid`, same space as structures, [part 4](#structures-section-4); unique per map); high 16 bits non-zero editor stamp, unused |
+| 44 | u32 | +0x40 | `squad` | per-owner squad number, 0–38: the server finds the owner's squad (`player+0x28`, 0x50-byte object, `+0x1c` = number) or creates it (`FUN_0052ae43`) and adds the unit; squad members share walk speed. The map keeps the maximum at map `+0x90` |
+
+**Defaults vs overrides** (CONFIRMED, `0x561d0f`–`0x562264`): everything comes from the data.bin
+record found by `server_id` (stats, mana, speed, damage, spells, equipment strings). The
+record overrides only HP: max HP `+0x96` ← `max_hp`, HP `+0x94` ← `hp` (if `hp` is 0xFFFF,
+HP = max HP); a hero whose `hp == max_hp` is reset to "default". Easy/hard difficulty scaling
+of monsters runs before the override (constants `0x5cea58` / `0x5cea60` not decoded). Level,
+mana and equipment are not in the record.
+
+**Facing**: no field. The creature constructor sets the mover angle byte (`0x50e2ac`–`0x50e2db`)
+to `0x40 + rand(0..128)` (256 = full circle, 0 = up, clockwise), i.e. D2 direction
+`angle >> 4` = 4–11 (right, down, left; the draw reads `obj+0xc4 >> 4`, [animation
+§2.2](animation.md#22-directions)). The mapping is CONFIRMED for monsters, INFERRED for
+heroes (`FUN_005143e4` assumed to reach the same base constructor). `scene.draw_scene` draws
+units at a fixed `UNIT_FACING = 8` (front view).
+
+**Type → animation set.** `Unit.type` → `load_unit_set(type)` (units.reg ID → file, e.g. 66
+`monsters\ogre`). Palette: `Palette = 0` types use `human.pal[owner colour]`; others
+`palette<k>.pal` with `k = face − 1`, `face` = data.bin monster param 30 (1–7, never above the
+type's `Palette`; INFERRED mapping, the test checks the bound). The id table lives in
+`graphics/units/units.reg` (data), the `serverID` table in `world/data/data.bin`.
+
+### Item groups (section 8) and records (section 9)
+
+There is **no list of items lying on the map** and no inventory in the unit record: items come
+from section 8 groups, which `FUN_00564072` instantiates after the units exist.
+
+Section 8, `n_sec8` groups (CONFIRMED, `0x535e74`–`0x536014`, tile exactly): `u32 n`, `u32
+carrier` (`+0x3c`), `i32 x`, `i32 y` (1/256 cell, `+0x40`/`+0x44`; equal to the carrying
+unit's position), `u32 extra` (`+0x48`, version ≥ 0x3dd; 0 in 43 groups, 100 / 5000 / 10000
+in 8: INFERRED money), then `n` members of `u32 code`, `u16 slot` (always 0), `u32 record`.
+The file's `carrier` is overwritten when a unit's `group` points at the group (the unit's
+uid); a group no unit links to keeps 0 and is a **sack on the ground** at (x, y)
+(`Map.ground_groups`: 19). A carried group goes into the unit's pack (creature `+0x7c`,
+`FUN_00529ac2` per item); `slot != 0` would equip (vtable `+0x44`, never in the data).
+
+Item code (`FUN_004fbf01` → factory `FUN_004fbf99`, CONFIRMED): class = `(code >> 8) & 15`;
+class 0xE = special item, index = `code & 0xFF` (data.bin group 4, 1..96); otherwise quality =
+`(code >> 5) & 7` (data.bin qualities, 7), material = `code >> 12` (16), index = `code & 0x1F`
+within the class list. The factory makes class 1 a 0x88-byte object (`FUN_00528a07`), class 2
+a 0x6c-byte one (`FUN_00528084`), classes 3–13 0x6c-byte objects (`FUN_005275d2`), class 0xE a
+0x54-byte one (`FUN_00522ee0`). The test checks every code against the data.bin ranges
+(17 special-item and 20 weapon/armour codes occur in the install). The class → data.bin list
+mapping (weapons, shields, armour kinds) is item definitions: phase F.
+
+Section 9: `u32 count` of its own (not in the header), then per record: `u32 head`
+(version > 989; overwritten with the member index of the claiming member), `u32 a`, `u32 b`,
+6 flag bytes, `u32 c`, `u32 n`, `n` × (`u16 id`, `u32 value`); 26 + 6n bytes, tile exactly
+(`0x536023`–`0x5361ac`). A member's `record` (1-based) points at one; the record then adds
+properties to the item: `(id, value)` pairs are data.bin **stat indices** (1 price, 2 body,
+12 toHit, 41 castSpell, …; `(1, 9000000)` is the price of 19 quest items), flag word values
+at +0x10/+0x16 add castSpell-like entries (`0x29`/`0x2a`/`0x31`). Records no member claims are
+read as: flags & 8 → spellbook entry of unit `+0x12` (`FUN_0051c29e`, error "Can't resolve
+unit %d for spellbook."), flags & 4 → caster object of the structure with uid `+0x12`
+(`FUN_0050da58`). Pairs and flags are CONFIRMED structurally; their game meaning INFERRED.
+One agent read the group loop at `0x5645d8`–`0x564b14` as AI squads with scripted orders; the
+item-code decoder, the data ranges and the (x, y) = carrier position favour items, so the
+orders reading is treated as the same code seen from the other side (not settled).
+
+### Drawing
+
+`map render MAP DEST --layers all` (or `units`, `items`): per cell the order is structure →
+unit → object ([draw order](#draw-order-and-placement-structures)); a unit stands at pixel
+`(x·32 >> 8, y·32 >> 8 − ground height)` (`objects.ground_height`, size 1) in its
+`idle` frame at clock `--clock`, direction 8; a ground sack is a yellow square (the exe draws
+`graphics/backpack/sprites.256`, frame choice not traced).
+
+### Checks
+
+`tests/test_entities.py`: record layouts and size checks, exact tiling of sections 8 and 9
+(synthetic); on the install: record counts equal the header (251 / 4,212 / 51 / 88), every
+owner is a player, group links unique and ≤ `n_sec8`, sub-cell 128, all 4,212 units resolve to a
+data.bin record and a units.reg file (53 ids), monster palette index ≤ `Palette`, item codes
+inside the data.bin ranges, section 9 links in range, and the scene draws units and sacks.
+
+### Handoff to game data (phase F)
+
+Id tables the next phases need, all present in data: units.reg (type → sprites; `Palette`,
+`Dying`), data.bin monsters/humans (`serverID` → record: stats, equipment strings, `face`),
+data.bin qualities / materials / armour / shields / weapons / special items / stat names
+(item codes and section 9 stat ids), `humans/human.pal` (colour rows). Still open: the class →
+list mapping of item codes, equipment string → item chain, the `0x5cea58` difficulty
+constants, sack creation on death.
+
 ## Open questions
 
 - Cell effects `FUN_0040af69` (modes 0 and 1, P3 (f) / P6 of the draw order): what they draw
@@ -556,5 +703,8 @@ are inside the window, structures stamp into passability, and the scene draws.
 - Block bits 3–7 and the dynamic stamping (`FUN_00550a96`,
   `FUN_0055c500`), the per-class `movementType` result (vtable `+0x20`),
   and the search itself (`FUN_0054d76e`, `FUN_0055d010`): phase H.
-- Sections 5–12 (players, units, triggers, …; the reader `FUN_00534ad4`
-  cases 5–12 are in the exe).
+- Section 7 (trigger lists, 0x31c-byte records), 10, 11, 12 (the reader `FUN_00534ad4`
+  cases 7, 10–12 are in the exe).
+- Part 5: `Unit.behaviour` booleans (creature `+0x194`…) and `field_32`, `tier`; section 8
+  `extra` (INFERRED money); item-code class → data.bin list; section 9 flag/pair semantics;
+  money (`Player.money`) reader; hero facing constructor; difficulty constants.
