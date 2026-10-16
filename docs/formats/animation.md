@@ -1077,6 +1077,98 @@ sprites only when opened.
 | cursors | exe table | `.16a` / `.256` | ms, `timeGetTime` | alpha / opaque | `CursorSet` |
 | other UI | exe loaders | `.16a` | ms, `timeGetTime`, per screen | alpha | `UiSequenceSet` |
 
+### 4.11 Town scenes (`townbirds`, `town_druid`)
+
+The two town views are window classes with a shared base; each has a
+loader, a draw method and a tick method (CONFIRMED by decompiling the
+GOG exe; the vtable of both is read at `0x1ce4d0` (human) and `0x1ce580`
+(druid), and the draw code calls the slots through an offset the
+decompiler shows 8 bytes higher than the table).
+
+| Role | Human town | Druid town |
+|---|---|---|
+| loader | `FUN_004cb6c6` | `FUN_004ce914` |
+| draw (vtable `+0x24`) | `FUN_004cb05d` | `FUN_004cf65a` |
+| mouse/hover | `FUN_004cdbea` | `FUN_004cfd58` |
+| random starters | `FUN_004cda92` (horse/baba), `FUN_004cae28` (birds) | `FUN_004d00de` |
+| tick | `FUN_004cd606` | `FUN_004d065b` |
+
+The draw method gates everything on a wall-clock step (`timeGetTime`):
+**67 ms** (`> 0x43`) in the human town, **100 ms** in the druid town.
+Once per step it calls hover, the random flag rolls, then the tick, which
+advances every running sequence by exactly one frame. The starters run
+every draw, not every step.
+
+**Human town** (background `interface/town/townmain.bmp`, hit mask
+`townmask.bmp`; `FUN_004cd8b7` reads the mask byte under the cursor
+and returns a region flag: `0x90` -> 1, `0x80` -> 2, `0xc0` -> 4, `0xa0` -> 8,
+`0xb0` -> 0x10, `0x20` -> 0x400, `0x40` -> 0x800, `0x60` -> 0x200,
+`0x50` -> 0x1000; the same value is OR-ed into the animation flag word
+`+0x208` by the hover handler, so a region starts the animation with the
+same bit. Which building each byte is was not matched to the picture).
+
+- Roll per step (flags in `+0x208`): sign `0x40` when `rand(100) > 94`,
+  stars `0x20` when `rand(100) > 97`.
+- Sign (`sign_V%d`, 10 frames) and stars (`stars_S%d`, 9 frames, with a
+  global counter over 10 plays): one frame per step, sound at frame 0.
+- Gate (`door_T%d`, 9 frames, `FUN_004cd0ea`): frame moves 1 per step toward 0
+  while the cursor is on the gate region (sound `GateUp`), toward 8 when
+  it leaves (`GateDn`).
+- Guards (`townbirds/guards`): frame moves by `+1/-1` per step on
+  hover (`Guard2`/`Guard1` sound) and stops at 0 or the last frame.
+- Flags (`fluger_F%d`, 8 frames): one frame per step, 2 % chance per step.
+- Horse (`HORSE%d\A%d`) and babas (`BABA%d\A%d`), `FUN_004cda92`:
+  each has its own deadline `2000 + rand(5000)` ms. On expiry it picks one of
+  its sprite sets at random (3 for horse, 2 for baba) and plays it
+  one frame per step; set `0x200`/`0x100` flag until the last frame, then
+  the frame index becomes -1 (hidden). The horse kind (`HORSE1..5`) is
+  chosen once per visit with `rand(5)`; the start position comes from
+  the table at `0x5f66e0`: (104,404), (104,404), (256,344), (448,400),
+  (140,400). Baba kind: `rand(4)`, table `0x5f6708`: (216,364), (308,424),
+  (384,424), (580,384). Dervish: a different `rand(4)` kind, drawn from
+  `DERVISH%d` at table `0x5f6728`: (224,364), (324,424), (392,420),
+  (592,388); frame `+0x15c` advances `(f+1) % frames` per step while
+  active (flag `0x400`).
+- Birds (`TownBirds\Birds%d`, nine files in three groups of three):
+  `FUN_004cae28` fires every `1000 + rand(2000)` ms when none is flying
+  (flag `0x80` clear): group = `rand(3)`, count = `rand(3)+1`, sound
+  `Birds1` (count 1) or `Birds2`. The tick adds 1 to each flyer's frame
+  counter per step; `FUN_004caf00` draws file `group*3+k` at the window
+  origin (positions live in the sprites) until its frames end, then clears
+  `0x80`.
+- Door signs and the tavern, fighter, mage and shopie sprites
+  (`townbirds/tavern|fighter|mage|shopie`) are hover animations: the
+  frame counter runs while the cursor is on the region (`+0x5a`, `+0x78`).
+
+**Druid town** (`town_druid/townmain.bmp`, `townmask.bmp`,
+`hili_tavern.bmp`, `hili_shop.bmp`; no `townbirds` files). The `man/` and
+`woman/` BMP lists (up to 20 frames per variant, three variants each) are
+loaded until the first missing file and play on the tavern/shop hover
+regions at 100 ms per frame, drawn at `(x + 0x150 + (i/2)*4, y + 0xf4 -
+(i/2)*0x14)` (tavern) and `(x + 0xa4 - (i/2)*0xc, y + 200 - (i/2)*0x10)`
+(shop), where `i` is the hover counter (+0xbb / +0xa9).
+
+- `bug/sprites.16a` (183 frames = 3 variants x 61): starts when
+  `now - last > 10000 + rand(10000)` ms and the flag is idle; variant
+  `rand(3)`, sound `Dbug1..3`, 61 steps (6.1 s); frame drawn at
+  `(x, y + 0xd4)` is `variant*61 + step`.
+- `lizard/sprites.16a`: no timer, it restarts whenever idle. Variant is
+  `rand(15)+1`: 1, 2, 3 select sequences 1, 2, 3 (1/15 each), anything
+  else sequence 0 (12/15). Sound `Dlizard1..4` (sequence 0..3). Drawn at
+  `(x, y + 300)`, frame = table value - 1, 100 ms per entry. Sequences
+  (table `0x5f68c8`), values 1-based, ending at -1:
+  - 0: 39 40 41 42 41 40 39 38
+  - 1: 28 29 30 31 32 33 34 35 36 37 38
+  - 2: 2 3 4 5 6 7, 8 x13, 22 23 24 25 26 27
+  - 3: 2 3 4 5 6 7, 8 x13, 9 .. 18, 19 x10, 20 21 22 .. 27
+- Ambient sounds (`FUN_004d00de`): a random one of four (`+0x234..0x240`)
+  every `2000 + rand(2000)` ms, one more (`+0x25c`) every 60 s; other
+  one-shots start with the bug and lizard. Which wav is which slot was not
+  matched (the names `Dtree1..4`, `Dforest1`, `Dwolf1` are the candidates).
+
+Not modelled in code: the engine has no town screen yet. When it gets one,
+the two clocks above (67 ms, 100 ms) and the random rules are the spec.
+
 ## 5. Verification and engine use
 
 ### 5.1 Whole-install check
@@ -1105,7 +1197,7 @@ excluded:
 | | `projectiles/firebolt/sprites.256` + `b.256` | firebolt has `A16 = 1` |
 | | `projectiles/diamonddust`, `freeze`, `smallxpl` | no `projectiles.reg` record; the folder name is in no binary (CONFIRMED, byte search of the exe and all archives) |
 | empty (8) | `cursors/move\|patrol\|cast\|defend.256`, `equipment/[fm]fighter/primary/0[01]05002.256` | 0 bytes |
-| open (44) | `interface/townbirds/*` (41), `interface/town_druid/bug`, `lizard`, `global.map/cross` | town scenes and the world-map Cross: animated, draw code not traced (open questions) |
+| open (44) | `interface/townbirds/*` (41), `interface/town_druid/bug`, `lizard`, `global.map/cross` | town scenes: draw and timing documented (§4.11), no set yet; Cross see open questions |
 
 One set reads past its file, as the game does: ID 2 (Unit33,
 `KNOWN_OUT_OF_RANGE`); the game draws nothing there. Outside sprite files
@@ -1207,8 +1299,8 @@ In order of need; none required by the coverage check.
 
 ## Open questions
 
-- Town scenes: `interface/townbirds/*` (41 files) and
-  `interface/town_druid/bug`, `lizard` animate, but no set reads them
-  yet; find their draw code and timing (start: string refs to
-  `townbirds`, `town_druid`).
+- Town scenes: draw, clocks and random rules are in §4.11. Left open: the
+  exact region numbers of the fighter/mage/shopie hover sprites
+  (`FUN_004caf00` and `FUN_004cdbea` paths) and the `man`/`woman` variant
+  choice in the druid hover handler (`FUN_004cfd58`).
 - World-map Cross: where the click handler resets `+0x134` to 0 (writers of `+0x134`, `FUN_0046fdd5` callers' mouse path).

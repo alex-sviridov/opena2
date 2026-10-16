@@ -6,9 +6,10 @@ from both places when answered).
 
 ## Animation
 
-- Town scenes `interface/townbirds/*`, `interface/town_druid/bug`,
-  `lizard`: draw code and timing (string refs to `townbirds`,
-  `town_druid`). [animation](formats/animation.md#open-questions)
+- Town scenes: draw code and timing are resolved ([animation §4.11](formats/animation.md)).
+  Left: the hover-region numbers of the fighter/mage/shopie sprites and
+  the druid `man`/`woman` variant choice.
+  [animation](formats/animation.md#open-questions)
 - World-map Cross: where `+0x134` is reset to 0 on a new click.
   [animation](formats/animation.md#open-questions)
 

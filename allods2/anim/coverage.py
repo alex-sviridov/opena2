@@ -50,9 +50,9 @@ EXCLUSIONS = (
     ("cursors/cast.256", "empty", "0 bytes (sprites.md)"),
     ("cursors/defend.256", "empty", "0 bytes (sprites.md)"),
     ("equipment/[fm]fighter/primary/0[01]05002.256", "empty", "0 bytes (sprites.md)"),
-    # Town scenes and the world map: animated, draw code not reversed yet
-    # (animation.md open questions).
-    ("interface/townbirds/*", "open", "town scene animation, timing not reversed"),
+    # Town scenes and the world map: animated, no engine screen yet.  Draw
+    # code and timing are in animation.md §4.11.
+    ("interface/townbirds/*", "open", "town scene: draw and timing in animation.md §4.11, no set yet"),
     ("interface/town_druid/*", "open", "same"),
     ("global.map/cross/sprites.16a", "open", "world-map Cross: own state +0x12c / +0x134, not traced"),
 )
