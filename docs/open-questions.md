@@ -1,33 +1,25 @@
 # Open questions
 
-The index of everything not yet known, across all specs. Each entry links
-to the spec section that holds the detail and names a starting point. The
-spec's own "Open questions" section is the source of truth; this list only
-collects them.
-
-Rules (also in CLAUDE.md):
-- When a spec gains an open question, add a line here in the same change.
-- When a question is answered, update the spec and delete its line here
-  (and from the spec's list) in the same change. Don't keep "answered"
-  entries; git history keeps them.
+Index of everything not yet known; each spec's "Open questions" section is
+the source of truth (rules in CLAUDE.md: add a line when raised, delete it
+from both places when answered).
 
 ## Fonts
 
-- Where cp1251 locale `.txt` text is converted to cp866 for the font map
-  (typed input uses `FUN_0047a0f5`; loader not found).
-  [fonts](formats/fonts.md#open-questions)
+- Where cp1251 locale `.txt` text is converted to cp866 (typed input:
+  `FUN_0047a0f5`; loader not found). [fonts](formats/fonts.md#open-questions)
 
 ## PNG / paper doll (a2mgr)
 
 - Which exe routine draws the 12 doll layers and in what order (after
-  0x46e21b); how `.256` and PNG layers mix. [png](formats/png.md#open-questions)
-- Straight vs premultiplied alpha from GDI+ (`FUN_1000f220`, `FUN_1000fa90`).
+  `0x46e21b`); how `.256` and PNG layers mix. [png](formats/png.md#open-questions)
+- Straight vs premultiplied GDI+ alpha (`FUN_1000f220`, `FUN_1000fa90`).
   [png](formats/png.md#open-questions)
 - Size/format rules for locale PNGs (a2mgr menu code). [png](formats/png.md#open-questions)
 
 ## Terrain and lighting
 
-- How the view draw turns fog levels (`view+0xa0`) into the drawn fog
+- How the view draw turns fog levels (`view+0xa0`) into drawn fog
   (`0x40a1b3`–`0x40a420`). [lighting](mechanics/lighting.md#open-questions)
 
 ## Units and registries
@@ -43,20 +35,20 @@ Rules (also in CLAUDE.md):
 - Sight mask algorithm (a2mgr Ordinal_93 → `FUN_10023720`, callbacks
   `0x10033cc0`/`0x10033c60`). [animation](formats/animation.md#16-visibility-gates)
 - Data-driven speeds: monster speed, turn rate, monster attack bytes,
-  spell missile speed `param[7]`, Haste/Slow (effect kind 17) strengths — data.bin (`FUN_0051aed6`,
-  `FUN_00527122`). [animation](formats/animation.md#34-where-the-speeds-come-from)
+  spell missile speed `param[7]`, Haste/Slow (effect kind 17) strengths —
+  data.bin (`FUN_0051aed6`, `FUN_00527122`). [animation](formats/animation.md#34-where-the-speeds-come-from)
 - Server map fill `FUN_0055e616`: input layers `+0x10`/`+0x14`; who sets
   cell flag `0x20` (`FUN_00564137`). [animation](formats/animation.md#34-where-the-speeds-come-from)
-- Timing of the UI sequences (chrgen cube, Blind, map flags) and the inn
-  pictures' loader (`FUN_004313db`, `FUN_004364c3`, `FUN_00474320`).
+- UI sequence timing (chrgen cube, Blind, map flags) and the inn pictures'
+  loader (`FUN_004313db`, `FUN_004364c3`, `FUN_00474320`).
   [animation](formats/animation.md#49-other-ui-sequences)
-- Meaning of `weapon+0x4a` and `unit+0x86` in the hero attack recovery
+- `weapon+0x4a` and `unit+0x86` in the hero attack recovery
   (`FUN_00518d2f`). [animation](formats/animation.md#34-where-the-speeds-come-from)
 
 ## Not started (from the reversing plan)
 
-- `.alm` sections 0 and 3–12 (general info, objects, structures, units,
-  triggers, …). [inventory §5.2](inventory.md#52-alm-maps-m7r0)
+- `.alm` sections 0 and 4–12 (general info, structures, units, triggers,
+  …). [inventory §5.2](inventory.md#52-alm-maps-m7r0)
 - `world/data/data.bin`, `itemname.bin` / `.pkt`, `famehall.dat`, saves.
   [inventory §5.3, §6](inventory.md#6-plan-custom-formats-to-reverse-in-order)
 - Locale `.txt` conventions. [inventory §6](inventory.md#6-plan-custom-formats-to-reverse-in-order)

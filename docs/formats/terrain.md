@@ -1,38 +1,34 @@
 # Terrain: `.alm` Tiles block → `tile<g>-<nn>.bmp` strips
 
-Binary: `allods2.exe` English 1.30, sha256
-`2a8bdf9dc69276cc8d4fee561a7473a6b0f709cf9758abddaf2cd3b1fdfdfe43`.
-Addresses were read in REA (Ghidra 12.1.4) and in the x86 listing.
-Implementation: `allods2/alm.py` (container), `allods2/graphics/terrain.py`.
-Validation: `tools/validate_terrain.py`. Contact sheets:
-`tools/terrain_contact.py` → `out/contact/terrain.png` (all strips, map
-thumbnails); `tools/tile_contact.py` → `out/contact/tiles_<set>.png` (one
-grid per set, each tile labelled with the cell value a map stores for it,
-`tr.cell_value(set, strip, row)`; add `0x2000` for dirt). One tile as RGBA:
+Code: `allods2/alm.py` (container), `allods2/graphics/terrain.py`. Tools:
+`tools/validate_terrain.py`; `tools/terrain_contact.py` →
+`out/contact/terrain.png` (all strips, map thumbnails);
+`tools/tile_contact.py` → `out/contact/tiles_<set>.png` (each tile
+labelled with its cell value `tr.cell_value(set, strip, row)`; add
+`0x2000` for dirt); one tile as RGBA:
 `TerrainSet.tile_rgba(set, strip, row, light=None)`.
 
-The ground is a grid of 32 × 32 8-bit tiles. Each map cell holds a u16 in
-the `.alm` Tiles block (section 1, [inventory §5.2](../inventory.md)); the
-value selects a tile set, one of its four strip bitmaps, and a tile inside
-the strip.
+The ground is a grid of 32 × 32 8-bit tiles; each cell holds a u16 in the
+`.alm` Tiles block (section 1, [inventory §5.2](../inventory.md)) selecting
+a set, one of its four strip bitmaps, and a tile in the strip.
 
 ## Strip files: `FUN_0047b899(mask)`
 
-**CONFIRMED.** For each bit `t` (0..31) set in `mask`, the loader reads four
-8-bit BMPs into `DAT_00630b90[t][j]`, j = 0..3:
+CONFIRMED. For each bit `t` (0..31) in `mask`, four 8-bit BMPs →
+`DAT_00630b90[t][j]`:
 
 ```
 name(t, j) = "graphics\terrain\tile%d-%02d.bmp" % ((t >> 2) + 1, (t & 3)·4 + j)
 ```
 
 (The exe uses `tile%d-0%d.bmp` below 10 and `tile%d-%d.bmp` above, strings
-0x5fbcac / 0x5fbccc.) With a non-zero mask it also loads
-`graphics\terrain\dirt.bmp` into `DAT_00630da4`. For each loaded set it builds
-a 96-row BRIGHT32 shade table from the first strip's palette
-(`FUN_00426be0(0x60, 3, 1)`, stored in `DAT_0062ca78[t]`; see
-[palettes §5](palettes.md) and [lighting](../mechanics/lighting.md)).
+`0x5fbcac`/`0x5fbccc`.) A non-zero mask also loads
+`graphics\terrain\dirt.bmp` → `DAT_00630da4`. Each set gets a 96-row
+BRIGHT32 table from its first strip's palette
+(`FUN_00426be0(0x60, 3, 1)` → `DAT_0062ca78[t]`; [palettes §5](palettes.md),
+[lighting](../mechanics/lighting.md)).
 
-| Set `t` | Files | Strip size | Tiles per strip |
+| Set `t` | Files | Strip | Tiles/strip |
 |---|---|---|---|
 | 0–3 | `tile1-00` … `tile1-15` | 32 × 448 | 14 |
 | 4–7 | `tile2-00` … `tile2-15` | 32 × 448 | 14 |
@@ -40,32 +36,29 @@ a 96-row BRIGHT32 shade table from the first strip's palette
 | 12 | `tile4-00` … `tile4-03` | 32 × 448 | 14 |
 | — | `dirt.bmp` | 32 × 128 | 4 dirt overlays |
 
-- **CONFIRMED** (data): all 52 strips exist and share one palette; `dirt.bmp`
-  has its own, but its indices are pasted into tile memory (below), so they
-  are read with the tile palette.
-- **CONFIRMED** (`FUN_004280d4`, [bitmaps](bitmaps.md)): rows are flipped
+- CONFIRMED (data): all 52 strips exist and share one palette; `dirt.bmp`
+  has its own, but its indices are pasted into tile memory, so they are
+  read with the tile palette.
+- CONFIRMED (`FUN_004280d4`, [bitmaps](bitmaps.md)): rows are flipped
   after loading, so tile `r` is the r-th 32-row block from the **top**.
-- **CONFIRMED** (dead code): when `DAT_00625778 & 2`, the same sets are first
-  loaded from `graphics\terrain.3d\` (strings 0x5fbc28…0x5fbc6c) and then
-  released and replaced by the `graphics\terrain\` ones in the next loop.
-  This install has no `terrain.3d` folder.
-- Callers (**CONFIRMED**): `FUN_0041dd29` passes the map's `+0x28`, which the
-  map loader `FUN_004abc1c` sets to `0x1fff` (`0x4abd16`): every map loads all
-  13 sets. `FUN_0047be70` passes 0. `DAT_00625778` is written once, to 0
-  (`0x48695a`); its other three references only read it and a2mgr.dll never
-  touches it, so the `terrain.3d` path never runs.
+- CONFIRMED dead code: when `DAT_00625778 & 2`, sets are first loaded from
+  `graphics\terrain.3d\` (strings `0x5fbc28`…`0x5fbc6c`), then replaced by
+  `graphics\terrain\`. `DAT_00625778` is written once, to 0 (`0x48695a`);
+  its three other references only read it; a2mgr never touches it. No
+  `terrain.3d` folder in this install.
+- Callers (CONFIRMED): `FUN_0041dd29` passes map `+0x28`, which
+  `FUN_004abc1c` sets to `0x1fff` (`0x4abd16`): every map loads all 13
+  sets. `FUN_0047be70` passes 0.
 
 ## Cell value
 
-**CONFIRMED** (`FUN_00404eb5`, 0x405035–0x405185):
-
-| Bits | Mask | Meaning |
-|---|---|---|
-| 0–3 | `0x000f` | tile index inside the strip (`· 0x400` bytes) |
-| 4–5 | `0x0030` | strip `j` (0..3) |
-| 6–12 | `0x1fc0` | set `t` |
-| 13 | `0x2000` | dirt overlay (ignored on water sets) |
-| 14–15 | `0xc000` | masked off by the terrain draw (`& 0x1fff` / `& 0xffff1fff`); run-time fog of war: `0x8000` explored, `0x4000` visible now, set from unit/structure sight every 32 ticks by `FUN_0040c212` → `FUN_00465e36` (CONFIRMED, [animation §1.6](animation.md#16-visibility-gates)) |
+CONFIRMED (`FUN_00404eb5`, `0x405035`–`0x405185`): bits 0–3 (`0x000f`)
+tile in strip (`· 0x400` bytes); 4–5 (`0x0030`) strip `j`; 6–12
+(`0x1fc0`) set `t`; 13 (`0x2000`) dirt overlay
+(ignored on water); 14–15 (`0xc000`) masked off by the terrain draw
+(`& 0x1fff` / `& 0xffff1fff`), = run-time fog of war: `0x8000` explored,
+`0x4000` visible now, set from sight every 32 ticks by `FUN_0040c212` →
+`FUN_00465e36` ([animation §1.6](animation.md#16-visibility-gates)).
 
 ```
 tile(v, x, y):                       # x, y = map cell
@@ -83,31 +76,23 @@ tile(v, x, y):                       # x, y = map cell
     return pixels                    # 32 × 32 indices, row-major
 ```
 
-`anim` is the view's counter at `+0xa88`, incremented once per game tick by
-`FUN_0040bdc1` (CONFIRMED; tick rate in [animation](animation.md#14-timing)).
-`DAT_005fb974` is the **Object animations** option (CONFIRMED: options
-dialog `0x44524b` labels its checkbox with line `0x36` of a2mgr's
-`patch\patch.txt` table `0x62ba40`, "Object animations"; default 1; saved
-as the DWORD registry value `Animation` by `FUN_00444790`, read by
-`FUN_004449f2`). It also freezes structures, objects and projectile
-lights ([animation §3.2](animation.md#32-what-advances-each-kind-of-animation)). The water test uses the set **before**
-animation, so the frame also depends on which of 8–11 the map stored.
+`anim` = view counter `+0xa88`, +1 per tick (`FUN_0040bdc1`;
+[animation §1.4](animation.md#14-timing)). `DAT_005fb974` = **Object
+animations** option ([lighting §6](../mechanics/lighting.md#6-options));
+it also freezes structures, objects and projectile lights. The water test
+uses the stored set, so the frame depends on which of 8–11 the map stored.
 
-**CONFIRMED** (data, `tools/validate_terrain.py`): all 216 maps walk
-exactly; the Tiles block is `width · height` u16; every cell names a set
-0–12 (5,840,128 cells); bits 14–15 are never set; 15,565 cells carry the
-dirt flag; 994,050 are water. **19 cells in 4 maps** name a tile index
-past the end of their strip; the game then reads past the bitmap
-(undefined). The implementation leaves them black.
+CONFIRMED (data): all 216 maps walk exactly; Tiles = `width · height` u16;
+every cell names set 0–12 (5,840,128 cells); bits 14–15 never set; 15,565
+dirt cells; 994,050 water. **19 cells in 4 maps** name a tile past their
+strip (game reads past the bitmap; implementation leaves them black).
 
 ## Drawing a flat tile: `FUN_0045c757`
 
-**CONFIRMED.** Used when the four vertex screen positions form an undistorted
-32 × 32 square (`FUN_00404eb5` compares them); otherwise `FUN_0045c8ce`
-draws a height-displaced tile (next section). Arguments: the screen
-position, the four corner light values `L(x,y)`, `L(x+1,y)`, `L(x,y+1)`,
-`L(x+1,y+1)` from the terrain light map ([lighting §2](../mechanics/lighting.md)),
-the tile pixels and the set's shade table.
+CONFIRMED. Used when the four vertex positions form an undistorted 32 × 32
+square (else `FUN_0045c8ce`, below). Args: screen position, corner lights
+`L(x,y)`, `L(x+1,y)`, `L(x,y+1)`, `L(x+1,y+1)` from the terrain light map
+([lighting §2](../mechanics/lighting.md)), tile pixels, shade table.
 
 ```
 top = Ltl << 9;  bot = Lbl << 9
@@ -121,80 +106,64 @@ for c in 0..31:                               # column by column
     bot += (Lbr − Lbl)·16
 ```
 
-Row 64 of the 96-row table is ×1; on flat ground in daylight every corner
-is 46 (×1.56, lighting §2 worked example).
+Row 64 is ×1; flat ground in daylight has every corner at 46 (×1.56).
 
 ## Heights
 
 ### Altitudes → runtime height map
 
-**CONFIRMED** (`FUN_0053ea3a` map reader, `FUN_004abc1c` runtime map
-builder, `0x4abd2c`–`0x4abea3`):
-
-| Runtime map field | Source |
-|---|---|
-| `+0x04`, `+0x08` | width, height |
-| `+0x0c` | section 1 (Tiles), copied |
-| `+0x10` | section 2 (Altitudes), `w·h` bytes copied **verbatim** |
-| `+0x14` | zeros, then section 3 copied only for rows `8 … h−5`, columns `8 … w−9`: the object layer, byte = object index + 1 (CONFIRMED, [animation §1.7](animation.md#17-map-placement-of-objects)) |
-| `+0x18` | zeros (filled later with the terrain light map) |
-
-`FUN_00420280` returns `+0x10`. Both readers, the vertex builder
-(`FUN_00406658`) and the light map (`FUN_004ad552`), load it with `movsx`,
-so **heights are signed bytes**: file values 128–255 are −128…−1. Only one
-shipped map, `sc_an_twins2_4_4`, has such values (777 cells, 128–143); the
-game draws them as pits.
+CONFIRMED (`FUN_0053ea3a` map reader, `FUN_004abc1c` runtime map builder,
+`0x4abd2c`–`0x4abea3`): `+0x04`/`+0x08` width, height; `+0x0c` section 1
+(Tiles); `+0x10` section 2 (Altitudes), `w·h` bytes **verbatim**; `+0x14`
+zeros, then section 3 copied only for rows `8 … h−5`, columns `8 … w−9`
+(object layer, byte = object index + 1,
+[animation §1.7](animation.md#17-map-placement-of-objects)); `+0x18` zeros
+(later the terrain light map). `FUN_00420280` returns `+0x10`; the vertex
+builder (`FUN_00406658`) and light map (`FUN_004ad552`) read it with
+`movsx`: **heights are signed bytes** (128–255 = −128…−1). Only
+`sc_an_twins2_4_4` has such values (777 cells, 128–143), drawn as pits.
 
 ### Vertex table: `FUN_00406658`
 
-**CONFIRMED.** For the view origin `(vx, vy)` (`view+0x5c`, `+0x60`), view
-size `W × Hv` cells (`+0x64`, `+0x68`) and map width `mw` (`+0x84`):
+CONFIRMED. View origin `(vx, vy)` (`view+0x5c/+0x60`), size `W × Hv`
+cells (`+0x64/+0x68`), map width `mw` (`+0x84`):
 
 ```
 for r in −3 … Hv+7, c in −3 … W+3:
     vt[(r+3)·(W+7) + c+3] = 32·r − int8(H[(vy+r)·mw + vx+c])     # view+0xb4
 ```
 
-x is never displaced: a vertex's screen x is always `32·c`. The routine
-also fills `+0xb8` (per cell, min y of the top edge), `+0xbc` (max y of
-the bottom edge) and `+0xc0` (the mean height of the four cells around a
-vertex, `(a+b+c+d) / 4` truncated toward zero). Users (**CONFIRMED**):
-`+0xc0` is read for each cell by every layer of the view draw
-(`0x407d4d`, `0x407fe7`, `0x40832c`, `0x408637`, `0x408ac3`, `0x4098a1`,
-`0x409db0`, `0x409fd6`); for map objects it is the relief subtracted from
-the top (`0x408ac3` → `0x409276`, [animation §4.3](animation.md#43-objects)).
-`+0xb8`/`+0xbc` give the redraw rectangles of visible cells
-(`FUN_004040e2`, ± 0x60 px), the draw spans (`FUN_00406981`,
-`FUN_00406c9e`) and the view draw's culling (`0x409628`, `0x409b61`).
+x is never displaced (`32·c`). Also fills `+0xb8` (per cell, min y of the
+top edge), `+0xbc` (max y of the bottom edge), `+0xc0` (mean of the four
+heights around a vertex, `(a+b+c+d)/4` truncated toward zero). Users
+(CONFIRMED): `+0xc0` per cell by every view-draw layer (`0x407d4d`,
+`0x407fe7`, `0x40832c`, `0x408637`, `0x408ac3`, `0x4098a1`, `0x409db0`,
+`0x409fd6`; for objects the relief subtracted from the top, `0x408ac3` →
+`0x409276`, [animation §4.3](animation.md#43-objects)); `+0xb8/+0xbc` for
+redraw rectangles (`FUN_004040e2`, ± 0x60 px), draw spans
+(`FUN_00406981`, `FUN_00406c9e`) and culling (`0x409628`, `0x409b61`).
 
-So for a whole map, tile `(x, y)` has corners
-
-```
-yTL = 32·y − H[y][x]        yTR = 32·y − H[y][x+1]
-yBL = 32·(y+1) − H[y+1][x]  yBR = 32·(y+1) − H[y+1][x+1]
-```
-
-The game reads `H[y][x+1]` on the last column as the next row's first byte
-(flat array) and never shows the map edge; the implementation repeats the
-last row and column instead (INFERRED, invisible in play).
+Tile `(x, y)` corners: `yTL = 32·y − H[y][x]`, `yTR = 32·y − H[y][x+1]`,
+`yBL = 32·(y+1) − H[y+1][x]`, `yBR = 32·(y+1) − H[y+1][x+1]`. On the last
+column the game reads the next row's first byte (flat array), never
+shown; the implementation repeats the last row/column (INFERRED,
+invisible).
 
 ### Draw order: `FUN_00404eb5`
 
-**CONFIRMED** (`0x404f1d`–`0x4052ee`): rows `r = 0 … Hv+3` top to bottom
-(4 extra rows so raised ground below the view is drawn), and inside a row
-columns `c = W−1 … 0`. A tile always covers x `32c … 32c+31`, so only the
-row order matters: lower rows overwrite higher ones. The flat test is
-`yTL == yTR && yBL == yBR && yTL + 32 == yBL`.
-
-After each tile the exe jumps (`0x40529d`) to a2mgr `Ordinal_65`
-(RVA `0xe550`). It only replaces the original optional grid overlay: two
-`FUN_0045ba0c` lines along the tile's top and left edges, drawn when a2mgr's
-byte `0x1007b670` is set, in colour `0x10078018`. Terrain is unchanged.
+CONFIRMED (`0x404f1d`–`0x4052ee`): rows `0 … Hv+3` top to bottom (4 extra
+so raised ground below the view is drawn), columns `W−1 … 0`. A tile
+always spans x `32c … 32c+31`, so lower rows overwrite higher ones. Flat
+test: `yTL == yTR && yBL == yBR && yTL + 32 == yBL`. After each tile the
+exe jumps (`0x40529d`) to a2mgr `Ordinal_65` (RVA `0xe550`), which only
+replaces the optional grid overlay: two `FUN_0045ba0c` lines along the
+top and left edges when a2mgr byte `0x1007b670` is set, colour
+`0x10078018`.
 
 ### Edge step table: `FUN_0045752b`
 
-**CONFIRMED** (`0x457847`–`0x4578c4`), built once at start-up into
-`DAT_00625780` (128 rows × 128 bytes):
+CONFIRMED (`0x457847`–`0x4578c4`), built at start-up into `DAT_00625780`
+(128 × 128 bytes, row 0 zero):
 
 ```
 for n in 1 … 127:
@@ -203,16 +172,15 @@ for n in 1 … 127:
         T[n][k] = ((k + 1)·step + 0x8000) >> 16    # ≈ round((k+1)·32 / (n+1))
 ```
 
-Row 0 stays zero. `T[n][k]` is the tile column at which an edge that moves
-`n` pixels across the tile takes its `(k+1)`-th step. Examples:
-`T[1] = 16, 32`; `T[2] = 11, 21, 32`; `T[5] = 5, 11, 16, 21, 27, 32`.
+`T[n][k]` = column where an edge moving `n` px across the tile takes its
+`(k+1)`-th step: `T[1] = 16, 32`; `T[2] = 11, 21, 32`;
+`T[5] = 5, 11, 16, 21, 27, 32`.
 
 ### Height-displaced blit: `FUN_0045c8ce`
 
-**CONFIRMED.** Arguments: left x, right x, `yTL, yTR, yBL, yBR`, the corner
-lights `TL, TR, BL, BR`, the tile pixels, the shade table. The tile is
-drawn **column by column**. Before column `c` (0…31) each edge advances
-one pixel for every step whose column has been reached:
+CONFIRMED. Args: left x, right x, `yTL, yTR, yBL, yBR`, corner lights,
+tile, table. Column by column; before column `c` each edge advances one
+pixel per reached step:
 
 ```
 n = |yTR − yTL|                    # top edge
@@ -223,8 +191,8 @@ bot(c) = yBL + #{k < m : 32 − T[m][k] ≤ c}      if yBL < yBR
        = yBL − #{k < m : T[m][k] ≤ c}           otherwise
 ```
 
-Then column `c` is stretched over `span = bot(c) − top(c)` pixels; columns
-with `span ≤ 0` (back-facing slopes) are skipped:
+Column `c` is stretched over `span = bot(c) − top(c)`; `span ≤ 0`
+(back-facing) is skipped:
 
 ```
 lt = (TL << 9) + c·(TR − TL)·16           # same light walk as the flat blit
@@ -235,45 +203,35 @@ for i in 0 … span−1:
     dst[top(c) + i][x + c] = table.row((lt + 0x100 + i·lstep) >> 9)[tile[row][c]]
 ```
 
-With `span = 32` and flat edges this is exactly the flat blit
-(`vstep = 0x10000`, the same light step), so `render_3d` uses this one
-routine for every tile. Rows above the clip top are skipped but still
-advance the walk; the bottom is clamped to the clip.
+With `span = 32` and flat edges this equals the flat blit
+(`vstep = 0x10000`), so `render_3d` uses it for every tile. Rows above
+the clip are skipped but advance the walk; the bottom is clamped.
 
-- **CONFIRMED** (data): the largest height difference between horizontal
-  neighbours is 233, in `sc_an_twins2_4_4` (31 edges over 127); in every
-  other map it is at most 127. For `n > 127` the game reads past `T` into
-  `DAT_00629780` (the alpha blend tables), which is undefined. The
-  implementation extends the formula instead.
-- **CONFIRMED** (data): 1,328 vertical cell edges in the install have
-  `span ≤ 0` (fully folded columns).
+- CONFIRMED (data): largest horizontal-neighbour height difference 233
+  (`sc_an_twins2_4_4`, 31 edges over 127); ≤ 127 in every other map. For
+  `n > 127` the game reads past `T` into `DAT_00629780` (alpha blend
+  tables, undefined); the implementation extends the formula.
+- CONFIRMED (data): 1,328 vertical cell edges have `span ≤ 0`.
 
-Implementation: `vertex_y`, `edge_offsets`, `tile_columns`, `render_3d` in
-`allods2/graphics/terrain.py`; `tools/terrain_render.py MAP [--rect X Y W H]
-[--time MIN] [--flat]` → `out/terrain3d/`.
+Implementation: `vertex_y`, `edge_offsets`, `tile_columns`, `render_3d`;
+`tools/terrain_render.py MAP [--rect X Y W H] [--time MIN] [--flat]` →
+`out/terrain3d/`.
 
 ## Worked example
 
-Cell value `0x2265` at map cell (3, 2):
+Cell `0x2265` at (3, 2): set `0x265 >> 6` = 9 → water (dirt flag
+ignored); strip `(0x2265 >> 4) & 3` = 2; row 5; frame at anim 0 =
+`8 + ((9 + 4·2) & 3)` = 9; file `tile3-06.bmp` (`(9 & 3)·4 + 2`), tile 5 =
+rows 160–191.
 
-| Field | Value |
-|---|---|
-| set | `(0x2265 & 0x1fff) >> 6` = `0x265 >> 6` = 9 → water, so the dirt flag is ignored |
-| strip | `(0x2265 >> 4) & 3` = 2 |
-| row | `0x2265 & 0xf` = 5 |
-| frame (anim 0) | `8 + ((9 + 4·2 + 0) & 3)` = 8 + 1 = 9 |
-| file | `tile3-06.bmp` (set 9 → `tile3`, `(9 & 3)·4 + 2` = 6), tile 5 = rows 160–191 |
-
-### Worked example: a tile sloping up to the right
-
-`H[y][x] = 0`, `H[y][x+1] = 2`, the row below flat, so `yTL = 0`,
-`yTR = −2`, `yBL = yBR = 32`. Top edge: `n = 2`, going up, so it uses
-`32 − T[2][k]` = 21, 11: `top(c) = 0` for c < 11, −1 for 11…20, −2 from 21.
-Bottom edge flat: `bot(c) = 32`.
+Slope up to the right: `H[y][x] = 0`, `H[y][x+1] = 2`, row below flat →
+`yTL = 0`, `yTR = −2`, `yBL = yBR = 32`. Top edge `n = 2`, rising, uses
+`32 − T[2][k]` = 21, 11: `top(c)` = 0 for c < 11, −1 for 11…20, −2 from
+21; `bot = 32`:
 
 | Columns | top | span | vstep | texel rows |
 |---|---|---|---|---|
-| 0–10 | 0 | 32 | 0x10000 | 0, 1, …, 31 |
+| 0–10 | 0 | 32 | 0x10000 | 0…31 |
 | 11–20 | −1 | 33 | 0xf83e | row 0 twice, then 1…31 |
 | 21–31 | −2 | 34 | 0xf0f0 | rows 0 and 16 twice |
 
