@@ -180,6 +180,12 @@ def map_info(a):
     print("terrain:     %d cells, %d with the dirt flag, %d water" % (
         h.cells, int(((m.terrain & 0x2000) != 0).sum()),
         int((((m.terrain & 0x1FFF) >> 6 >= 8) & ((m.terrain & 0x1FFF) >> 6 <= 11)).sum())))
+    walk = ""
+    if min(h.width, h.height) > 16:
+        inner = (slice(8, -8), slice(8, -8))
+        walk = "; walkable (playable area): walker %.0f%%, Ghost/Bee %.0f%%" % (
+            100 * m.passability(1)[inner].mean(), 100 * m.passability(2)[inner].mean())
+    print("heights:     %d..%d%s" % (m.heights_i8.min(), m.heights_i8.max(), walk))
     print("sections:    " + ", ".join("%d: %d B" % (k, len(v)) for k, v in sorted(m.alm.sections.items())
                                     for v in [v.data]))
     return 0

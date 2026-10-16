@@ -18,7 +18,7 @@ file) or INFERRED, with the routines they came from.
 | Palettes, shade tables, text colours, effect ids | [palettes.md](palettes.md) | CONFIRMED, all 2,854 palettes |
 | `.bmp`, portrait canvas | [bitmaps.md](bitmaps.md) | CONFIRMED |
 | Terrain: tiles, water, dirt, lit and height-displaced blits | [terrain.md](terrain.md) | CONFIRMED, all 46 campaign maps |
-| `.alm` maps: container, General block (header), Tiles/Altitudes/Objects layers | [map.md](map.md) | CONFIRMED header + terrain, all 46 campaign maps; sections 4–12 open |
+| `.alm` maps: container, General block (header), Tiles/Altitudes/Objects layers, heights and derived passability | [map.md](map.md) | CONFIRMED header, terrain, heights, passability inputs (all 46 campaign maps); sections 4–12 open |
 | Paper doll: inventory figure layer order | [paperdoll.md](paperdoll.md) | CONFIRMED |
 | `fontN.dat` + `.16`/`.16a` fonts, `~` hotkeys | [fonts.md](fonts.md) | CONFIRMED, all 4 fonts |
 | `.reg` registry | [reg.md](reg.md) | CONFIRMED, all 17 files |

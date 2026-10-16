@@ -106,6 +106,12 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   players, tile-set mask, cp1251 name/description, counts) and layers 1–3
   CONFIRMED, `Map.load` + `map info|render`; light fields are overwritten
   by `FUN_004a5dd2`; sections 4–12 raw. map.md
+- Heights/passability: CONFIRMED heights = signed byte per vertex, 0..127,
+  1 px each, no slope limit (speed ±50 %, sight). No stored passability: the
+  server path finder derives a block layer (`FUN_00554626`: water, mountain
+  type, file dirt flag → 1, any object → 5, 8-cell border 0x1F) and costs
+  (`map.reg`); mover masks 0x41 / 0x44 / 0x82 by movementType. `Map.block`,
+  `.passability(m)`, `.cost()`, `.heights_i8`; map.md part 3
 - Not started: saves, Scenario.dll, item names, game layer.
 - Next (docs/open-questions.md): .alm sections 4–12 (server reader
   `FUN_00534ad4`), town-scene animations, text conventions.

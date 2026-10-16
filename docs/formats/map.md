@@ -1,11 +1,13 @@
 # Campaign maps (`.alm`, "M7R")
 
 Code: `allods2/alm.py` (container), `allods2/formats/map.py` (`Map`,
-`MapHeader`); CLI `python -m allods2 map info|render`; tests
-`tests/test_map.py`. 46 maps in `scenario.res` (`scenario/<n>.alm`, 80², 144²
+`MapHeader`), `allods2/formats/passability.py` (part 3); CLI
+`python -m allods2 map info|render`; tests `tests/test_map.py`,
+`tests/test_passability.py`. 46 maps in `scenario.res` (`scenario/<n>.alm`, 80², 144²
 or 256² cells). Reader: `FUN_00534ad4` (file → map object, 0x3b8 bytes),
 runtime map builder `FUN_004a449c`. Part 1 is the container, part 2 the
-header and terrain; later parts will cover sections 4–12.
+header and terrain, part 3 heights and passability; later parts will cover
+sections 4–12.
 
 ## Part 1. Container
 
@@ -90,7 +92,7 @@ CONFIRMED (sizes by data on all maps; copy by `FUN_004a449c`, [terrain
 | ID | Name | Size | `Map` attribute |
 |---|---|---|---|
 | 1 | Tiles | `w·h·2` | `terrain` (h, w) uint16, raw cell values |
-| 2 | Altitudes | `w·h` | `heights` uint8 (the game reads them signed) |
+| 2 | Altitudes | `w·h` | `heights` uint8 (the game reads them signed: `heights_i8`) |
 | 3 | Objects | `w·h` | `objects` uint8 = object index + 1 |
 
 Any other section stays raw: `Map.sections[id]` (bytes).
@@ -113,7 +115,9 @@ in every cell, so the 1,654 dirt cells in the files are never drawn. The
 flag is set again at run time from a server message that run-length encodes
 it over the playable area (`FUN_0041c071`, called from the client message
 loop `FUN_0040d9b2`); its server-side source (probably structure
-foundations) is untraced. `Map.runtime_terrain()` clears the bit; the
+foundations) is untraced. The server's path finder, however, reads the
+file's tiles with the bit still set and treats it as blocked
+([part 3](#part-3-heights-and-passability)). `Map.runtime_terrain()` clears the bit; the
 renderer does too unless `--dirt` is given.
 
 Fog bits 14–15 are 0 in every file.
@@ -131,6 +135,156 @@ out/maps/10.png [--relief]`. Flat = plain strip palette, no light (dark);
 (`daylight(0, False)`), the closest to the game; fog, objects, structures and
 units are not drawn.
 
+## Part 3. Heights and passability
+
+### Heights (section 2)
+
+CONFIRMED (`FUN_004a449c`, `FUN_004065b1`, [terrain § Vertex table](terrain.md#vertex-table-fun_004065b1)):
+**one signed byte per vertex**, not per cell: `H[y][x]` is the height of
+the top-left corner of cell `(x, y)`, so the last row and column only
+serve as corners. Value range in the 46 files **0..127** (min 0, max 127;
+no negative value), by the test `test_layers_match_the_header_and_value_range`.
+Unit: **1 pixel** of vertical screen offset (`y = 32·row − H`, see terrain.md;
+renders `map render --relief`). Steps between neighbouring vertices reach
+126 in the data, so cliffs of several tiles exist.
+
+Uses (CONFIRMED, every reader of the height table found by scan):
+
+| Use | Routine | Rule |
+|---|---|---|
+| Terrain draw | `FUN_004065b1` | corner y = `32·r − H` |
+| Ground height under a unit (`unit+0x6c`) | `FUN_0046025d`, map copy `FUN_004a62fd` | below; unit and structure draws subtract it from y (`0x46346a`, [animation §4.2](animation.md#42-structures-and-bridges)) |
+| Walking speed | `FUN_00559195` (server) | slope term below |
+| Sight (line of sight) | `FUN_00552929`, `FUN_00552c28`, `FUN_00552af8` | below |
+| Passability | none | the block layer never reads heights |
+
+**Ground height of a unit** (`FUN_0046025d`): position `(x, y)` in 1/256
+cell, footprint `sx × sy` cells (vtable `+0x20/+0x24`): `X = x − 0x80 +
+sx·0x80`, `Y = y − 0x80 + sy·0x80`, `c = X >> 8`, `r = Y >> 8`, `fx = (X >> 3)
+& 31`, `fy = (Y >> 3) & 31`; `a = H[r][c] + ((H[r][c+1] − H[r][c])·fx)/32`,
+`b = H[r+1][c] + ((H[r+1][c+1] − H[r+1][c])·fx)/32`, `h = a + ((b − a)·fy)/32`
+with C division (toward 0). A 1 × 1 unit at a cell centre stands at the mean
+of the four corners. The map method `FUN_004a62fd` is the same with 256
+steps (`fx = x & 0xff`, `>> 8`).
+
+**Slope and speed** (`FUN_00559195`, only for walkers, `movementType` 1):
+the step to the next cell (direction 0..7 from the table at `+0x58e98`)
+uses `dh = clamp(H[here] − H[next], ±32)` on the two vertices at the cell
+indices; with `v = speed · SpeedMultiplier` (`map.reg` Path Finding, 8):
+`v += v·dh >> 6` (downhill faster, uphill slower: at most ±50 %), then
+`v /= (cost(here) + cost(next)) >> 1` (cost layer below; 0 counts as 8),
+clamped to 1..63. This is a speed, not a barrier: **there is no slope limit**;
+6 horizontally adjacent walkable pairs on `83.alm` differ by more than 32
+(largest 50, at (128,133)–(129,133)). Flyers use `speed`, unscaled.
+
+**Sight** (`FUN_00552929`): a 41 × 41 window around the viewer. The
+centre budget is `scanRange << ScanShift` (type `+0xa5`; `map.reg` Scanning,
+7); each ring outward takes the budget of the neighbour towards the centre
+minus a distance table and **`H[cell] − H[viewer]`** (higher ground costs
+sight, lower ground gives some back); a cell is seen while the budget is
+above 0. Inputs are therefore only the heights and the scan range;
+objects are not consulted (the `FUN_00552c28` variant gates cells with
+`FUN_00559536`, untraced). The exact tables are INFERRED from the
+decompile and not reproduced (open question).
+
+### Passability: derived, not stored
+
+CONFIRMED (data): no section holds a passability layer; sections 1–3 are
+the only per-cell blocks (`w·h` or `2·w·h`, [Part 1](#part-1-container)).
+The server's path finder derives it when the map loads: `FUN_005606aa`
+reads the file with `FUN_00534ad4` (the raw object: width `+0`, height `+4`,
+tiles `+0xc`, **objects `+0x10`, heights `+0x14`**, no cell cleared) and passes it
+to the path finder constructor `FUN_0054d2d9` → `FUN_00553d51` (tables) and
+`FUN_00554626` (grid build). All grids use a **256-cell stride** (`index =
+y·256 + x`, maps smaller than 256 leave the rest unused):
+
+| Offset | Content |
+|---|---|
+| `+0x00000` | cost layer, u8 |
+| `+0x10000` | block layer, u8 bit mask (static bits + dynamic stamps) |
+| `+0x20000` | copy of the block layer after the static build (reset source) |
+| `+0x30000` | u16 distances of the search |
+| `+0x944f4` | heights, copy of section 2 |
+| `+0x540a6` / `+0x54126` / `+0x54146` | tile shape table, set types, type costs |
+| `+0x58eb8..bf` | playable rectangle: `(8, 8, w−9, h−9)` |
+
+**Terrain type** (`FUN_0055494d`): from the cell value `v` (low 10 bits:
+row `v & 15`, strip `(v >> 4) & 3`, set `(v >> 6) & 15`):
+
+- water (`v & 0x300 == 0x200`, sets 8..11): type `Land` if row 4 of strip 1
+  (the shore tile), `Water` for rows 0..7, 0xFF for rows ≥ 8; cost always 8;
+- else row ≥ 14: type 0xFF, cost 8 (the 5 cells of `74.alm`);
+- else the set gives two types `(a, b)` and the tile a **shape** 1..5; type =
+  `b` for shapes 1–2, `a` for 3–5; cost = `cost[b]`, `(cost[a] + 3·cost[b]) >> 2`,
+  `(cost[a] + cost[b]) >> 1`, `(3·cost[a] + cost[b]) >> 2`, `cost[a]` for
+  shapes 1..5.
+
+Type ids: 0 none, 1 Land, 2 Grass, 3 Flowers, 4 Sand, 5 Cracked, 6 Stones,
+7 Savanna, 8 Mountain, 9 Water, 10 Road. Set types (a, b): 0 Grass/Land,
+1 Cracked/Land, 2 Sand/Land, 3 Savanna/Land, 4 Stones/Land, 5 Cracked/Stones,
+6 Flowers/Savanna, 7 Mountain/Stones, 12 Road/Land. The shape table (strips 0..3 × rows
+0..13) and these pairs are in `passability.py` (values CONFIRMED from the
+constructor's stores). Costs are read from `world/data/map.reg` `[Terrain]
+Cost<Name>` (`FUN_004e6f9f`, defaults in the code); shipped: Land 8, Grass 8,
+Flowers 8, Sand 14, Cracked 6, Stones 12, Savanna 8, Mountain 16, Water 8,
+Road 6. The `Pass<Name>` keys of that file (Mountain, Water, Road = 1) are
+**never read**: the strings are not in the exe.
+
+**Block layer, static build** (`FUN_00554626`, in this order per cell, from
+the raw file values; fog bits are 0):
+
+1. `v & 0x2000` (the dirt flag, still set: the server does not clear it) → 1;
+2. terrain type is Mountain → 1;
+3. water (sets 8..11) → 1;
+4. Objects block byte ≠ 0 → **5** (replaces the above; every object blocks,
+   `objects.reg` has no passability field);
+5. afterwards `FUN_00553b30` writes `0x1F` over the 8-cell border on all
+   sides (square maps; a non-square map uses the 256 × 256 rims, not
+   reproduced, no campaign map needs it).
+
+Then the layer is copied to `+0x20000`. Data (46 maps): the playable-area
+values are only 0, 1, 5; walkers can enter 21 % (maps 93–96) to 89 % of it.
+
+**Who is stopped by what.** A mover of `movementType` m (data.bin monsters;
+humans are −1 and take 1) may enter a cell when `block & mask == 0`
+(`FUN_0055d010`; mask `*(mover+0x1c0)+5`, set by `FUN_00557a89` from the
+vtable `+0x20` result, constructor default 0x41 `FUN_00551346`):
+
+| m | Units (data) | mask | Stopped by |
+|---|---|---|---|
+| 1 | 155 monsters (walkers, catapults); humans (assumed) | `0x41` | bit 0 (water, mountain, dirt, object, border), bit 6 |
+| 2 | Ghost, Bee (+ `.2`–`.5`) | `0x44` | bit 2 (objects, border), bit 6: crosses water, mountain, dirt |
+| 3 | Bat_Sonic, Dragon, Succubus (+ `.2`–`.5`) | `0x82` | bit 1 (border), bit 7: only the map border and each other |
+
+The mapping `movementType` → m is INFERRED (the vtable slot was not
+followed per class; the type 2/3 split by name matches ghosts/bees and
+fliers). The other bits are stamped at run time (INFERRED from `FUN_00550a96`:
+bit `0x20` marks a cell with an occupant record; an object with a footprint
+mask gets 5 on its solid cells and has bits 0 and 2 cleared, and the cost set
+to Cracked, on the rest) and are not part of the file-derived grid.
+
+API: `Map.block`, `Map.passability(movement_type)` (bool), `Map.cost(costs)`,
+`Map.heights_i8`; `passability.costs_from_reg(map_reg)`. Overlay check: a red
+(bit 0) / yellow (objects) / magenta (border) render of `10.alm` follows
+the water/mountain shapes and the placed objects (`out/maps/10_block.png`,
+local only).
+
+### VERIFY IN GAME
+
+- Can a walker enter the cell (27,10) of `10.alm` (object 47, block 5)?
+  Predicted: no. Same for a cell whose object has no collision look (bushes).
+- `71.alm` (8,9): dirt flag, no object (block 1). Predicted: **blocked** from
+  the start of the mission; (16,9) has dirt and an object (block 5).
+- `10.alm` (61,8): mountain tile, no object (block 1). Predicted: walkers
+  stop, a Ghost/Bee crosses.
+- Steep ground: `83.alm` (128,133)→(129,133) drops 50 units. Predicted:
+  walkable, uphill about 22–50 % slower, no slope limit.
+- Does a unit's sight really shrink behind a hill (higher `H` than the
+  viewer along the ray)? Compare the fog around a unit on a ridge and in a
+  hollow.
+- Which type a unit `movementType` selects for humans (−1 in the data) and
+  for the hero classes: assumed walker (1).
+
 ## Open questions
 
 - `field_0c` (360/720, runtime map `+0x2c`): consumer; `field_84/88` (1…4)
@@ -138,4 +292,10 @@ units are not drawn.
   users untraced (candidates: map limits for players, game mode flags).
 - Source of the run-time dirt flag on the server (the run-length message
   `FUN_0041c071`).
+- Line of sight: the distance tables (`+0x22000` steps, `+0x28000`
+  `ftol` of a power of `dx² + dy²`) and the `FUN_00559536` gate of
+  `FUN_00552c28`; callers (`FUN_00552929` has no direct caller: vtable?).
+- Block bits 3–7 and the dynamic stamping (`FUN_00550a96`,
+  `FUN_0055c500`), the per-class `movementType` result (vtable `+0x20`),
+  and the search itself (`FUN_0054d76e`, `FUN_0055d010`): phase H.
 - Sections 4–12 (entries, units, players, triggers).

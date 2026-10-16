@@ -14,6 +14,7 @@ from a2res import basename
 
 from ..alm import (SEC_GENERAL, SEC_HEIGHTS, SEC_OBJECTS, SEC_TILES, AlmMap, parse_alm)
 from ..common import read
+from . import passability as pas
 
 TEXT_ENCODING = "cp1251"
 NAME_SIZE = 0x40           # name buffer
@@ -118,6 +119,7 @@ class Map:
 
     def __init__(self, alm, header, name=""):
         self.alm, self.header, self.name = alm, header, name
+        self._block = None
         self.sections = {sid: bytes(s.data) for sid, s in alm.sections.items()
                          if sid not in (SEC_GENERAL, SEC_TILES, SEC_HEIGHTS, SEC_OBJECTS)}
         self.terrain = alm.tiles.copy()                   # (h, w) uint16
@@ -149,6 +151,28 @@ class Map:
     @property
     def height(self):
         return self.header.height
+
+    @property
+    def heights_i8(self):
+        """`heights` as the game reads them: signed bytes (no campaign map has a negative one)."""
+        return self.heights.view(np.int8)
+
+    @property
+    def block(self):
+        """The server's static block layer, (h, w) uint8, derived from the raw tiles, the
+        objects and the border; see passability.py and map.md part 3."""
+        if self._block is None:
+            self._block = pas.block_layer(self.terrain, self.objects)
+        return self._block
+
+    def passability(self, movement_type=1):
+        """(h, w) bool: cells a mover of `movement_type` (data.bin movementType 1 walker,
+        2 Ghost/Bee, 3 flyer) may enter on the static layer (units and structures not stamped)."""
+        return pas.walkable(self.block, movement_type)
+
+    def cost(self, costs=pas.DEFAULT_COSTS):
+        """(h, w) uint8 movement cost of each cell; `costs` as `pas.costs_from_reg`."""
+        return pas.cost_layer(self.terrain, costs)
 
     def runtime_terrain(self):
         """The cells as the game holds them after loading (FUN_004a449c clears
