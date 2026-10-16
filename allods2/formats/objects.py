@@ -84,36 +84,36 @@ def placed_objects(layer, window=True):
 
 
 def footprint(s, stats):
-    """(w, h, mask) of a structure: data.bin `sizeX`, `sizeY`, `Passability`
-    (`stats` = DataBin.structures); a bridge takes its size from the map and has
-    mask 0 (FUN_00520... constructor 0x51ff33)."""
+    """(w, h, solid mask, present mask) of a structure: data.bin `sizeX`, `sizeY`,
+    `Passability`, `BuildingPresent` (`stats` = DataBin.structures).  A bridge takes its
+    size from the map and has solid mask 0, present mask all ones (constructor 0x51ff33)."""
     if s.size is not None:
-        return s.size[0], s.size[1], 0
+        return s.size[0], s.size[1], 0, 0xFFFFFFFF
     p = stats[s.type - 1].params
-    return p[0], p[1], p[4] & 0xFFFFFFFF
+    return p[0], p[1], p[4] & 0xFFFFFFFF, p[5] & 0xFFFFFFFF
 
 
-def footprint_solid(w, h, mask):
-    """(h, w) bool, True where the footprint is solid.  Bit index is
-    `row * w + col` taken mod 32 (FUN_00550a96: `1 << (i & 0x1f)`), so a
-    footprint of more than 32 cells repeats its mask."""
+def mask_cells(w, h, mask):
+    """(h, w) bool of a footprint mask: bit `row * w + col`, taken mod 32 (the game
+    tests `1 << (i & 0x1f)`), so a footprint of more than 32 cells repeats its mask."""
     i = np.arange(w * h).reshape(h, w) & 31
     return ((mask >> i) & 1).astype(bool)
 
 
 def stamp_structures(block, structures, stats):
-    """Block layer after the structures' footprints (FUN_00550a96, for every
-    cell of the footprint): a solid cell gets bits 0 and 2, any other cell of
-    the footprint loses them (a bridge makes water walkable).  Returns a copy."""
+    """Block layer after the structures (FUN_005599df registers a structure in the cells
+    of its `BuildingPresent` mask, FUN_00550a96 then refreshes each): a registered cell
+    gets bits 0 and 2 if its `Passability` bit is set and loses them otherwise (a bridge
+    makes water walkable); cells outside the present mask are untouched.  Returns a copy."""
     out = block.copy()
     H, W = out.shape
     for s in structures:
-        w, h, mask = footprint(s, stats)
-        solid = footprint_solid(w, h, mask)
+        w, h, solid, present = footprint(s, stats)
+        solid, present = mask_cells(w, h, solid), mask_cells(w, h, present)
         for r in range(h):
             for c in range(w):
                 y, x = s.y + r, s.x + c
-                if 0 <= y < H and 0 <= x < W:
+                if present[r, c] and 0 <= y < H and 0 <= x < W:
                     out[y, x] = out[y, x] | SOLID if solid[r, c] else out[y, x] & CLEAR
     return out
 

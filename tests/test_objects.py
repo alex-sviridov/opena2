@@ -62,10 +62,10 @@ def test_placed_objects_only_in_the_loaded_window():
 
 
 def test_footprint_mask_is_row_major_and_wraps_at_32_bits():
-    solid = O.footprint_solid(3, 2, 55)                   # Goblin Hut 0b110111
+    solid = O.mask_cells(3, 2, 55)                   # Goblin Hut 0b110111
     assert solid.tolist() == [[True, True, True], [False, True, True]]
-    wide = O.footprint_solid(11, 4, 0x7F2F7FFF)           # 44 cells: bit i & 31
-    assert wide.shape == (4, 11) and wide[3, 10] == wide[1, 1]
+    wide = O.mask_cells(11, 4, 0x7F1FF7FF)           # 44 cells: bit i & 31
+    assert wide.shape == (4, 11) and wide[3, 10] == wide[1, 0] and not wide[1, 0]
 
 
 class Stats:
@@ -82,6 +82,13 @@ def test_stamp_sets_and_clears_the_block_bits():
     assert out[11, 5] == 0x00                             # hut door: bit 0 cleared
     assert out[11, 6] == 5 and out[9, 5] == 1 and out[12, 7] == 0x1F
     assert block[10, 5] == 1                              # the input is not modified
+
+
+def test_cells_outside_the_present_mask_are_untouched():
+    stats = [Stats(3, 3, 3, 1000, 63, 63)]                # Cave: 3 x 3 data, 6 cells present
+    block = np.full((20, 20), 0x01, np.uint8)
+    out = O.stamp_structures(block, [O.Structure(5, 10, 1, 100, 2, 1)], stats)
+    assert (out[10:12, 5:8] == 5).all() and (out[12, 5:8] == 1).all()
 
 
 def test_bridge_footprint_is_walkable():
@@ -116,7 +123,7 @@ def test_every_structure_section_tiles_exactly_and_resolves():
             total += 1
             bridges += s.is_bridge
             assert s.type in recs and s.type <= len(stats), (p, s)
-            w, h, _ = O.footprint(s, stats)
+            w, h, _, _ = O.footprint(s, stats)
             assert 8 <= s.x and s.x + w <= m.width - 8, (p, s)       # inside the playable area
             assert 8 <= s.y and s.y + h <= m.height - 8, (p, s)
             assert s.intact in (0, 10, 100) and 1 <= s.owner <= 8, (p, s)
@@ -160,8 +167,8 @@ def test_structures_stamp_into_passability():
     plain, stamped = m.passability(1), m.passability(1, stats)
     assert (plain != stamped).any()
     s = next(s for s in m.structures if s.type == 55)
-    w, h, mask = O.footprint(s, stats)
-    solid = O.footprint_solid(w, h, mask)
+    w, h, mask, present = O.footprint(s, stats)
+    solid = O.mask_cells(w, h, mask) & O.mask_cells(w, h, present)
     assert not stamped[s.y:s.y + h, s.x:s.x + w][solid].any()
 
 

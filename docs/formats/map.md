@@ -112,10 +112,9 @@ copied for rows 8…h−5, columns 8…w−9; `FUN_0041c071` addresses cells 8�
 **Dirt flag (CONFIRMED, new)**: `FUN_004a449c` ends by clearing bit 13
 (`& 0xdfff`, `0x4a53f7`; the other load path does the same at `0x4a5cad`)
 in every cell, so the 1,654 dirt cells in the files are never drawn. The
-flag is set again at run time from a server message that run-length encodes
-it over the playable area (`FUN_0041c071`, called from the client message
-loop `FUN_0040d9b2`); its server-side source (probably structure
-foundations) is untraced. The server's path finder, however, reads the
+flag is set again at run time from a server message (type 155) that
+run-length encodes the **block bit 0x10** over the playable area; the bit is
+set by unit orders, not by the map ([part 4](#the-run-time-dirt-flag)). The server's path finder, however, reads the
 file's tiles with the bit still set and treats it as blocked
 ([part 3](#part-3-heights-and-passability)). `Map.runtime_terrain()` clears the bit; the
 renderer does too unless `--dirt` is given.
@@ -351,49 +350,78 @@ type`, position `+0x08/+0x0c = cell·256 + 0x80`, **max HP `+0x108` = data.bin
 and a sight radius `+0x10a = scanRange << 8`. Type `0x25` never occurs in a
 file (and would have no size: its entry has no extra bytes).
 
-**Owner (INFERRED, incomplete)**: the builder compares `owner` with field
-`+0x08` of the entries of a run-time player list (index ≥ 1; the last match
-wins, default entry 0) and stores the match at `obj+0x14`. In the files
-`owner` is 1…8 and in 136 of 1,721 entries it is not the first u32 of any
-player record of section 5 (`72.alm`: 2 and 7 with ids {1,3,4,5,6,8}), so
-`owner` is not simply a player id; the player list's `+0x08` is not written
-by the map reader. The common value 2 is "Neutral"/"Enemy" in the maps
-checked. Open question.
+**Owner (INFERRED)**: the builder compares `owner` with field `+0x08` of the
+entries of a run-time player list (index ≥ 1; the last match wins, default
+entry 0) and stores the match at `obj+0x14`. The player objects the reader
+makes (class `0x5cbb70`) hold the 1-based record index at `+0x04` and the
+file's first u32 at `+0x0c`; `+0x08` is not written by the reader. Data:
+`owner` is **never above `player_count`** in all 1,721 entries (1…8) and in
+136 of them it is not the first u32 of any player record, so it is the
+**1-based index of the section 5 record**, not the id column (e.g.
+`10.alm`: 3 = "Enemy", 8 = "Skrakan"; `52.alm`: 2 "Humans", 4 "Os", 6 "Druid
+monsters"). That the list's `+0x08` is that index (set when the list is
+built) is not traced.
 
 **Which structures** (data): 1,721 entries use 152 of the 179 IDs, every one
 resolves in `structures.reg` and data.bin and every sprite file exists; every
 footprint lies inside the playable area (columns/rows 8…w−9/h−9), test
 `test_every_structure_section_tiles_exactly_and_resolves`. data.bin's
 `sizeX × sizeY` equals the picture's `TileWidth × TileHeight` for all but
-**Cave (14: 3 × 3 vs 3 × 2) and Castle (57: 11 × 4 vs 11 × 5)**.
+**Cave (14: 3 × 3 vs 3 × 2) and Castle (57: 11 × 4 vs 11 × 5)**; the Cave's
+`BuildingPresent` mask `0x3f` registers only its first 6 cells, which is the
+picture's 3 × 2 (below).
 
 ### Footprint and blocking
 
-CONFIRMED (`FUN_00550a96`, the path finder's per-cell refresh, called from
-`0x550a8b`, `0x55c293`, `0x55c3f8`): a structure's server object holds its
-size at `+0x60/+0x61` and the `Passability` bit mask at `+0x64`
-(constructor `0x51ff33`: data.bin structure params 0, 1, 4 and `BuildingPresent`
-5 → `+0x68`, whose user is untraced). For each cell of the `sizeX × sizeY`
-rectangle from the top-left cell, bit `i = row·sizeX + col` (taken **mod 32**: `1 <<
-(i & 0x1f)`, so the 44 cells of the Castle repeat the mask `0x7F2F7FFF`'s low
-32 bits):
+CONFIRMED. A structure's server object holds its size at `+0x60/+0x61`, the
+`Passability` mask at `+0x64` and the `BuildingPresent` mask at `+0x68`
+(constructor `0x51ff33`: data.bin structure params 0, 1, 4, 5). Its last act
+is `FUN_005599df`: for each cell of the `sizeX × sizeY` rectangle from the
+top-left cell, bit `i = row·sizeX + col` (taken **mod 32**: `1 << (i &
+0x1f)`) of `BuildingPresent` set → `FUN_00559890` stores the structure in
+that cell's record (`+0xc`; it **fails if the cell already holds one**) and
+refreshes the cell (`FUN_00550a53` → `FUN_00550a96`, also called from
+`0x55c293`, `0x55c3f8`). The refresh, for a cell holding a structure, tests
+the same bit of `Passability`:
 
 - bit set (solid): block `|= 5` (bits 0 and 2, in the live and reset layers);
-- bit clear: block `&= 0xFA` and the cost set to the type cost at `0x5414b`
-  (INFERRED: the Cracked cost). The cell stays free even if it was water,
-  mountain or dirt: a footprint with mask 0 makes the ground walkable.
+- bit clear: block `&= 0xFA` and the cost set to the type cost at `0x5414b`:
+  the cost table is `+0x54146 + type` ([part 3](#passability-derived-not-stored)),
+  so this is type 5, **Cracked** (CONFIRMED by the layout; 6). The cell
+  stays free even if it was water, mountain or dirt.
+
+`BuildingPresent` equals the full rectangle (`2^min(w·h, 32) − 1`) for 176 of the
+179 structures. The exceptions: **Cave** (3 × 3, `0x3f` = 6 cells = the
+picture's 3 × 2, so the client footprint is consistent), **Castle** (11 × 4,
+`0x7f1ff7ff` for both masks; with the wrap, cells 32…43 reuse bits 0…11 and
+bit 11 is 0) and **StoneHenge** (1 × 1, `Passability` 2, present `0xf`: the
+cell is registered but free). In the files 5 present cells are claimed by two
+structures (`30.alm` uids 31 and 37, `40.alm` uids 35 and 43); the later one
+fails to register, and the stamping here (list order) lets the later one win.
 
 Sized bridges (VariableSize, constructor with a size) have mask 0, so their
 whole `w × h` rectangle becomes walkable, including over water. Example: Goblin
 Hut `3 × 2`, `Passability` 55 = `0b110111`: the cell (col 0, row 1), the door, is
-free. Run-time stamping order, units and the cost layer are not reproduced.
+free. Units and the cost layer are not reproduced.
 `objects.stamp_structures`, `Map.block_with_structures(stats)`,
 `Map.passability(m, stats)`: on `10.alm` it changes 63 playable cells
 (`test_structures_stamp_into_passability`).
 
+#### The run-time dirt flag
+
 The **dirt flag is not the structure foundation**: only 11 of the 1,654
-dirt cells lie inside any footprint, so its server-side source stays open
-([part 2](#terrain-cell--tile-image)).
+dirt cells in the files lie inside any footprint. CONFIRMED pipeline: the
+server's block bit `0x10` is set by `FUN_00559c28(x, y)` (live and reset
+layers), cleared by `FUN_00559ce5`, read by `FUN_00559cb3`; the callers of
+the setter are two methods of a unit order class (`0x518589` in
+`FUN_005184bf`, `0x51899b`; `param_3 != 0` marks the cell, after
+`FUN_005189b5` and the terrain update `FUN_0055a325`, INFERRED: a worker
+changing the ground). When a player joins, `0x4f2326` sends message 155:
+`FUN_00559d70` run-length encodes bit `0x10` over the playable area (first
+word = the bit of the first cell, then alternating run lengths, rows from
+(8, 8)), and the client (`FUN_0041c071`) turns it into tile flag `0x2000`.
+The static build never sets bit `0x10`, so nothing is dirty at the start of a
+mission: the file's flag only seeds block bit 1.
 
 ### Draw order and placement (structures)
 
@@ -417,9 +445,9 @@ cell `(c, r)` of the W × TH footprint draws the pieces of picture column `c` in
 row `r + FH − TH` and, for `r == 0`, also the `FH − TH` rows above, bottom-up,
 at `(32·(X0 + c), 32·(Y0 + row − (FH − TH)) − g)` with the ground height `g`
 of the structure ([part 3](#heights-section-2), `objects.ground_height`: footprint
-`W × TH`; sized bridges `w × h`). Which cells the client registers for
-structures larger in data.bin than in the picture (Cave, Castle) was not traced:
-the renderer uses the picture's `W × TH` (INFERRED). A destroyed structure
+`W × TH`; sized bridges `w × h`). The client's
+registration for the Castle (picture 11 × 5, data 11 × 4) was not traced; the
+renderer uses the picture's `W × TH` (INFERRED; consistent for the Cave). A destroyed structure
 (`intact == 0`, not `Indestructible`) shows its destroyed block; animated
 structures start at `seq[0]`. Examples (`10.alm`): `map render 10 out/maps/10.png
 --layers terrain,objects,structures --relief` draws the tower at (67, 36) on
@@ -440,8 +468,8 @@ are inside the window, structures stamp into passability, and the scene draws.
 - `field_0c` (360/720, runtime map `+0x2c`): consumer; `field_84/88` (1…4)
   and `field_8c/90`: reader stores them at object `+0xd8/+0xdc/+0xe0/+0xe4`,
   users untraced (candidates: map limits for players, game mode flags).
-- Source of the run-time dirt flag on the server (the run-length message
-  `FUN_0041c071`).
+- Dirt: the unit order that calls `FUN_00559c28` (class of `0x5184bf`), the
+  caller of `FUN_00559ce5` (clear), and which orders change the ground.
 - Line of sight: the distance tables (`+0x22000` steps, `+0x28000`
   `ftol` of a power of `dx² + dy²`) and the `FUN_00559536` gate of
   `FUN_00552c28`; callers (`FUN_00552929` has no direct caller: vtable?).
@@ -450,9 +478,6 @@ are inside the window, structures stamp into passability, and the scene draws.
   and the search itself (`FUN_0054d76e`, `FUN_0055d010`): phase H.
 - Sections 5–12 (players, units, triggers, …; the reader `FUN_00534ad4`
   cases 5–12 are in the exe).
-- Structure `owner` (u32, 1…8): which run-time player list entry `+0x08`
-  it matches (builder `0x4a4940`–`0x4a49c5`); `intact` values 10 vs 100;
-  `BuildingPresent` (data.bin param 5, `+0x68`) and the cost written on
-  free footprint cells (`0x5414b`); which cells the client registers for
-  Cave and Castle (data.bin footprint ≠ picture).
-- Object 208 (11 cells of `52.alm`, outside the window): not in `objects.reg`.
+- Structure `owner` = player record index: where the run-time player list's
+  `+0x08` is assigned (builder `0x4a4940`); `intact` 10 vs 100 (one entry has
+  10; only zero/non-zero is tested); the client footprint of the Castle.
