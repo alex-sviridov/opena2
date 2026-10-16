@@ -1,13 +1,13 @@
 # Campaign maps (`.alm`, "M7R")
 
 Code: `allods2/alm.py` (container), `allods2/formats/map.py` (`Map`,
-`MapHeader`), `allods2/formats/passability.py` (part 3); CLI
+`MapHeader`), `allods2/formats/passability.py` (part 3), `allods2/formats/objects.py` (part 4); CLI
 `python -m allods2 map info|render`; tests `tests/test_map.py`,
 `tests/test_passability.py`. 46 maps in `scenario.res` (`scenario/<n>.alm`, 80², 144²
 or 256² cells). Reader: `FUN_00534ad4` (file → map object, 0x3b8 bytes),
 runtime map builder `FUN_004a449c`. Part 1 is the container, part 2 the
-header and terrain, part 3 heights and passability; later parts will cover
-sections 4–12.
+header and terrain, part 3 heights and passability, part 4 objects (sections
+3 and 4); later parts will cover sections 5–12.
 
 ## Part 1. Container
 
@@ -132,8 +132,9 @@ gates, the 16-byte tail, sizes, raw sections, CLI) run without game files.
 Renders for visual comparison: `python -m allods2 map render 10
 out/maps/10.png [--relief]`. Flat = plain strip palette, no light (dark);
 `--relief` = heights plus the terrain light with day/night off
-(`daylight(0, False)`), the closest to the game; fog, objects, structures and
-units are not drawn.
+(`daylight(0, False)`), the closest to the game; fog and
+units are not drawn; objects and structures: `--layers terrain,objects,structures`
+([part 4](#part-4-objects)).
 
 ## Part 3. Heights and passability
 
@@ -285,6 +286,155 @@ local only).
 - Which type a unit `movementType` selects for humans (−1 in the data) and
   for the hero classes: assumed walker (1).
 
+## Part 4. Objects
+
+Code: `allods2/formats/objects.py` (`Structure`, `MapObject`, footprints),
+`Map.structures`, `Map.placed_objects()`, `Map.passability(m, stats)`; scene
+draw `allods2/anim/scene.py`; CLI `map render MAP DEST --layers
+terrain,objects,structures`; tests `tests/test_objects.py`. "Objects" are two
+separate things in the file:
+
+| What | Section | Sprites | Placement |
+|---|---|---|---|
+| Trees, rocks, decorations (`objects.reg`, 192 IDs) | 3, one byte per cell = ID + 1 | `graphics/objects/<File>.256` | one cell each, no HP, no owner, always passable-blocking |
+| Buildings, bridges, graves, camp fires (`structures.reg`, 179 IDs) | 4, list of 20-byte entries | `graphics/structures/<File>.256` | top-left cell of a W × TH footprint, HP, owner |
+
+Units (section 6, 48 bytes each) and the other sections are not objects here.
+
+### Objects block (section 3)
+
+Layout, window and the burning trees: [animation §1.7](animation.md#17-map-placement-of-objects)
+(CONFIRMED). Counts: 76,393 non-zero cells in 46 maps, 75,228 inside the
+loaded window (rows 8…h−5, columns 8…w−9), 1,165 outside (ignored by the
+game). `Map.placed_objects()` lists the window cells as `MapObject(x, y,
+id)`; `window=False` lists all. **ID → sprite table**: `graphics/objects/
+objects.reg` (`Object<n>` records, `ID` = n; `File` → `Files/File<n>` →
+`<name>.256`, loader `FUN_00478eb6`, [animation §1.2](animation.md)). IDs
+without a sprite: the 7 burning trees (1, 4, 7, 10, 13, 16, 19: file absent
+from the archives) and ID 208 (11 cells of `52.alm`, not in `objects.reg`
+at all); all of them lie outside the window, so no loaded cell is
+unresolved (test `test_every_object_id_resolves_or_is_excluded`).
+
+**Placement, frame, draw order**: anchor = cell centre `(32X + 16, 32Y + 16
+− relief)`, hotspot `CenterX/CenterY` ([animation §4.3](animation.md#43-objects),
+CONFIRMED `0x4091a8`–`0x40922c`); relief = mean of the cell's four corner
+heights, truncated toward 0 (`+0xc0`, [terrain](terrain.md#vertex-table-fun_004065b1),
+`objects.cell_relief`); frame `Index + seq[(clock + X + X·Y) mod len]`.
+**Footprint**: the one cell; it blocks every mover that is stopped by bit 0/2
+(block 5, [part 3](#passability-derived-not-stored)).
+
+### Structures (section 4)
+
+Header field `n_sec4` = number of entries. CONFIRMED (`FUN_00534ad4` case 4,
+`0x535310`–`0x53550e`, and the data: the entries tile the section exactly on
+all 46 maps, 1,721 structures of which 21 bridges):
+
+| Off | Type | `Structure` field | Meaning |
+|---|---|---|---|
+| 0x00 | i32 | `x` | 1/256 cell, always `cell·256 + 128`; the reader passes `>> 8`: top-left cell of the footprint |
+| 0x04 | i32 | `y` | same |
+| 0x08 | u32 | `type` | structure ID 1…179 (`structures.reg` `ID`, data.bin structures record `ID − 1`); `0x21` or bit `0x1000000` (11 entries are `0x1000021`, 10 plain `0x21`) = a sized bridge, the reader forces the ID to `0x21` |
+| 0x0c | u16 | `intact` | 0 = the structure starts destroyed (HP 0), else full HP (values 0, 10, 100 in the files; only zero/non-zero is tested) |
+| 0x0e | u32 | `owner` | 1…8, see below |
+| 0x12 | i16 | `uid` | unique within a map (1…363; 33 maps are not 1, 2, 3 … in order, so the numbering is shared with other lists); the runtime object ID is `0x6000 + uid` |
+| 0x14 | u32, u32 | `size` | **only if the type is `0x21` or has bit `0x1000000`**: width, height in cells (low 16 bits are used) |
+
+The entry is handed to `FUN_0054c620` (x, y, type, `intact`, `owner`, `uid`) or
+`FUN_0054c690` (+ width, height), which store it as `u16 x, y, type, intact,
+owner` and `u32 uid` (+ `u16` sizes at `+0xa/+0xc`) in the list at map
+`+0x390`. The runtime builder (`FUN_004a449c`, switch on the type at
+`0x4a479b`, per entry `0x4a4761`–`0x4a4a8b`) creates the structure object
+(class by type: `0x21` bridge 9 pieces, `0x25` bridge 14 pieces, else the
+normal structure `FUN_00461403`), sets `+0x04 = 0x6000 + uid`, `+0x24 =
+type`, position `+0x08/+0x0c = cell·256 + 0x80`, **max HP `+0x108` = data.bin
+`healthMax` (a 0 becomes 1000), HP `+0x104` = max, or 0 when `intact == 0`**,
+and a sight radius `+0x10a = scanRange << 8`. Type `0x25` never occurs in a
+file (and would have no size: its entry has no extra bytes).
+
+**Owner (INFERRED, incomplete)**: the builder compares `owner` with field
+`+0x08` of the entries of a run-time player list (index ≥ 1; the last match
+wins, default entry 0) and stores the match at `obj+0x14`. In the files
+`owner` is 1…8 and in 136 of 1,721 entries it is not the first u32 of any
+player record of section 5 (`72.alm`: 2 and 7 with ids {1,3,4,5,6,8}), so
+`owner` is not simply a player id; the player list's `+0x08` is not written
+by the map reader. The common value 2 is "Neutral"/"Enemy" in the maps
+checked. Open question.
+
+**Which structures** (data): 1,721 entries use 152 of the 179 IDs, every one
+resolves in `structures.reg` and data.bin and every sprite file exists; every
+footprint lies inside the playable area (columns/rows 8…w−9/h−9), test
+`test_every_structure_section_tiles_exactly_and_resolves`. data.bin's
+`sizeX × sizeY` equals the picture's `TileWidth × TileHeight` for all but
+**Cave (14: 3 × 3 vs 3 × 2) and Castle (57: 11 × 4 vs 11 × 5)**.
+
+### Footprint and blocking
+
+CONFIRMED (`FUN_00550a96`, the path finder's per-cell refresh, called from
+`0x550a8b`, `0x55c293`, `0x55c3f8`): a structure's server object holds its
+size at `+0x60/+0x61` and the `Passability` bit mask at `+0x64`
+(constructor `0x51ff33`: data.bin structure params 0, 1, 4 and `BuildingPresent`
+5 → `+0x68`, whose user is untraced). For each cell of the `sizeX × sizeY`
+rectangle from the top-left cell, bit `i = row·sizeX + col` (taken **mod 32**: `1 <<
+(i & 0x1f)`, so the 44 cells of the Castle repeat the mask `0x7F2F7FFF`'s low
+32 bits):
+
+- bit set (solid): block `|= 5` (bits 0 and 2, in the live and reset layers);
+- bit clear: block `&= 0xFA` and the cost set to the type cost at `0x5414b`
+  (INFERRED: the Cracked cost). The cell stays free even if it was water,
+  mountain or dirt: a footprint with mask 0 makes the ground walkable.
+
+Sized bridges (VariableSize, constructor with a size) have mask 0, so their
+whole `w × h` rectangle becomes walkable, including over water. Example: Goblin
+Hut `3 × 2`, `Passability` 55 = `0b110111`: the cell (col 0, row 1), the door, is
+free. Run-time stamping order, units and the cost layer are not reproduced.
+`objects.stamp_structures`, `Map.block_with_structures(stats)`,
+`Map.passability(m, stats)`: on `10.alm` it changes 63 playable cells
+(`test_structures_stamp_into_passability`).
+
+The **dirt flag is not the structure foundation**: only 11 of the 1,654
+dirt cells lie inside any footprint, so its server-side source stays open
+([part 2](#terrain-cell--tile-image)).
+
+### Draw order and placement (structures)
+
+CONFIRMED (view draw `FUN_00406f43`, every pass visits rows top to bottom,
+columns right to left, over the visible window plus a 4–7 cell margin):
+
+1. terrain `FUN_00404e0e`;
+2. when the shadow option `DAT_005f17e8` is on, structure shadows (vtable
+   `+0x2c`);
+3. **flat structures** (structures.reg `Flat`: 12 IDs, bridges 33/37/38/52,
+   graves 121–123, Magic 27, Teleport 48, Campfire 53, Crater 117, Nest 138):
+   draw (`+0x28`) per footprint cell;
+4. other cell layers (`view+0x98/+0x9c`), then **per cell, in this order**: the
+   non-flat structure's slice of that cell, the unit on it, **the map
+   object** (`0x408a7d`–`0x408c9f`); a structure therefore hides what stands
+   behind it (smaller row) and is covered by objects in front;
+5. later: lights, selection, overlays, fog.
+
+A structure is drawn once per footprint cell ([animation §4.2](animation.md#42-structures-and-bridges)):
+cell `(c, r)` of the W × TH footprint draws the pieces of picture column `c` in
+row `r + FH − TH` and, for `r == 0`, also the `FH − TH` rows above, bottom-up,
+at `(32·(X0 + c), 32·(Y0 + row − (FH − TH)) − g)` with the ground height `g`
+of the structure ([part 3](#heights-section-2), `objects.ground_height`: footprint
+`W × TH`; sized bridges `w × h`). Which cells the client registers for
+structures larger in data.bin than in the picture (Cave, Castle) was not traced:
+the renderer uses the picture's `W × TH` (INFERRED). A destroyed structure
+(`intact == 0`, not `Indestructible`) shows its destroyed block; animated
+structures start at `seq[0]`. Examples (`10.alm`): `map render 10 out/maps/10.png
+--layers terrain,objects,structures --relief` draws the tower at (67, 36) on
+open ground and the wooden bridge over the lake at the left edge.
+
+### Checks
+
+`tests/test_objects.py`: entry/bridge/flag layout and exact tiling (synthetic),
+window rule, footprint mask wrap, stamping rules, ground height and relief
+(synthetic); on the install: every section 4 tiles on all 46 maps (1,721 / 21),
+every type resolves in `structures.reg` and data.bin, footprints lie in the
+playable area, the data.bin/picture size exceptions are exactly {14, 57}, every
+object ID resolves or is in the documented exclusion list and placed objects
+are inside the window, structures stamp into passability, and the scene draws.
+
 ## Open questions
 
 - `field_0c` (360/720, runtime map `+0x2c`): consumer; `field_84/88` (1…4)
@@ -298,4 +448,11 @@ local only).
 - Block bits 3–7 and the dynamic stamping (`FUN_00550a96`,
   `FUN_0055c500`), the per-class `movementType` result (vtable `+0x20`),
   and the search itself (`FUN_0054d76e`, `FUN_0055d010`): phase H.
-- Sections 4–12 (entries, units, players, triggers).
+- Sections 5–12 (players, units, triggers, …; the reader `FUN_00534ad4`
+  cases 5–12 are in the exe).
+- Structure `owner` (u32, 1…8): which run-time player list entry `+0x08`
+  it matches (builder `0x4a4940`–`0x4a49c5`); `intact` values 10 vs 100;
+  `BuildingPresent` (data.bin param 5, `+0x68`) and the cost written on
+  free footprint cells (`0x5414b`); which cells the client registers for
+  Cave and Castle (data.bin footprint ≠ picture).
+- Object 208 (11 cells of `52.alm`, outside the window): not in `objects.reg`.

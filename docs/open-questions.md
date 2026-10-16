@@ -22,9 +22,13 @@ from both places when answered).
 
 ## Not started (from the reversing plan)
 
-- `.alm` sections 4–12 (structures, units, players, triggers, …); the
-  server reader `FUN_00534ad4` parses all of them (switch on the section
-  id); 46 campaign maps in `scenario.res`. Header and terrain are done.
+- `.alm` sections 5–12 (players, units, triggers, …); the server reader
+  `FUN_00534ad4` parses all of them (switch on the section id); 46 campaign
+  maps in `scenario.res`. Header, terrain, objects and structures (sections
+  3–4) are done. [map](formats/map.md#open-questions)
+- `.alm` structures: the `owner` → run-time player match (builder
+  `0x4a4940`), `BuildingPresent`, the cost written on free footprint cells,
+  Cave/Castle client footprint; object 208 of `52.alm`.
   [map](formats/map.md#open-questions)
 - Line of sight tables and the `FUN_00559536` gate; block-layer dynamic bits
   and per-class `movementType` (`FUN_00557a89`, vtable `+0x20`); the search

@@ -64,7 +64,7 @@ The company is legally entitled to recreate the game.
 ## Known so far
 Details, routines and tools are in each spec; CLI: `python -m allods2 gfx
 export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
-`anim preview-all DEST`, `map info MAP`, `map render MAP DEST.png [--relief]`,
+`anim preview-all DEST`, `map info MAP`, `map render MAP DEST.png [--relief] [--layers terrain,objects,structures]`,
 `res ls|list|extract`; contact sheets
 `tools/*_contact.py` → out/contact/.
 - .res / a2res: CONFIRMED (`FUN_004e2040` opener, lookup `FUN_004e9046`, mount
@@ -105,13 +105,23 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   container walks all; header (section 0, `FUN_00534ad4`: size, version,
   players, tile-set mask, cp1251 name/description, counts) and layers 1–3
   CONFIRMED, `Map.load` + `map info|render`; light fields are overwritten
-  by `FUN_004a5dd2`; sections 4–12 raw. map.md
+  by `FUN_004a5dd2`; sections 5–12 raw. map.md
 - Heights/passability: CONFIRMED heights = signed byte per vertex, 0..127,
   1 px each, no slope limit (speed ±50 %, sight). No stored passability: the
   server path finder derives a block layer (`FUN_00554626`: water, mountain
   type, file dirt flag → 1, any object → 5, 8-cell border 0x1F) and costs
   (`map.reg`); mover masks 0x41 / 0x44 / 0x82 by movementType. `Map.block`,
   `.passability(m)`, `.cost()`, `.heights_i8`; map.md part 3
+- Map objects: CONFIRMED section 3 = per-cell `objects.reg` IDs (trees,
+  rocks; 192 IDs, 7 burning trees + ID 208 have no sprite, all outside the
+  loaded window); section 4 = structures, 20-byte entries (cell x/y in 1/256,
+  type = `structures.reg`/data.bin ID, `intact`, `owner`, `uid`; sized bridges
+  +8 bytes; 1,721 entries tile all 46 maps). Footprint = data.bin
+  `sizeX × sizeY` + `Passability` bit mask (`FUN_00550a96`, index mod 32;
+  bridges mask 0 = walkable). Draw order (`FUN_00406f43`): terrain, flat
+  structures, then per cell structure → unit → object. `Map.structures`,
+  `.placed_objects()`, `.passability(m, stats)`, `anim/scene.py`. Owner
+  matching and dirt source open. map.md part 4
 - Not started: saves, Scenario.dll, item names, game layer.
-- Next (docs/open-questions.md): .alm sections 4–12 (server reader
+- Next (docs/open-questions.md): .alm sections 5–12 (server reader
   `FUN_00534ad4`), town-scene animations, text conventions.

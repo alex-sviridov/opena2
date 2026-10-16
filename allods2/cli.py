@@ -5,7 +5,7 @@
     python -m allods2 anim preview SPRITE DEST [--install DIR] [--speed N]
                                    [--player P] [--variant V] [--grid PNG]
     python -m allods2 map info MAP [--install DIR]
-    python -m allods2 map render MAP DEST.png [--layers terrain] [--relief] [--dirt]
+    python -m allods2 map render MAP DEST.png [--layers terrain objects structures] [--relief] [--dirt]
                                  [--rect X Y W H] [--install DIR]
     python -m allods2 res ls [PATH] [--install DIR]
     python -m allods2 res list ARCHIVE.res
@@ -37,6 +37,9 @@ layers: terrain = the Tiles block from the original tile strips, flat and
 unlit by default (one 32x32 tile per cell); --relief draws it as the game
 does (heights, terrain light at 06:00; slow on big maps); --dirt keeps the
 editor's dirt flag, which the game clears on load; --rect crops to cells.
+objects = trees, rocks, decorations (Objects block); structures = buildings and
+bridges (section 4); both are depth-sorted like the game's view draw, drawn at
+animation clock --clock N (default 0); shadows, fog and units are not drawn.
 
 `res ls` lists a game folder (archives at the top); `res list` prints
 offset, size and path of every file in one archive; `res extract` unpacks
@@ -192,6 +195,10 @@ def map_info(a):
 
 
 def map_render(a):
+    a.layers = [l for part in a.layers for l in part.split(",") if l]
+    for l in a.layers:
+        if l not in ("terrain", "objects", "structures"):
+            raise SystemExit("unknown layer %r (terrain, objects, structures)" % l)
     from .graphics import lighting as lt, terrain as tr
     m = open_map(a.map, a.install)
     cells = m.terrain if a.dirt else m.runtime_terrain()
@@ -205,7 +212,25 @@ def map_render(a):
         img, _ = tr.render_3d(cells[sub], heights[sub], terrain, light[sub], tint=day.tint)
     else:
         img = tr.render(cells[sub], terrain)
+    if {"objects", "structures"} & set(a.layers):
+        from .anim.scene import Scene, draw_scene
+        from .graphics.canvas import Canvas
+        if a.rect:
+            raise SystemExit("--rect with objects/structures is not supported")
+        top = _relief_top(m, sub) if a.relief else 0
+        cv = Canvas(1, 1)
+        cv.pix = np.ascontiguousarray(img)
+        scene = Scene(as_fs(a.install))
+        draw_scene(cv, m, scene, top=top, relief=a.relief, clock=a.clock,
+                   objects="objects" in a.layers, structures="structures" in a.layers)
+        img = cv.pix
     return _write_one(a.dest, img, "%s %s" % (m.name, "+".join(a.layers)))
+
+
+def _relief_top(m, sub):
+    """Margin above map row 0 in render_3d's image (see tr.vertex_y)."""
+    from .graphics import terrain as tr
+    return max(0, -int(tr.vertex_y(m.heights[sub]).min()))
 
 
 def res_ls(a):
@@ -273,7 +298,9 @@ def main(argv=None):
     mr = g.add_parser("render", help="draw map layers into a PNG")
     mr.add_argument("map")
     mr.add_argument("dest")
-    mr.add_argument("--layers", nargs="+", default=["terrain"], choices=["terrain"])
+    mr.add_argument("--layers", nargs="+", default=["terrain"],
+                    help="terrain objects structures (space or comma separated)")
+    mr.add_argument("--clock", type=int, default=0, help="animation clock of the objects (default 0)")
     mr.add_argument("--relief", action="store_true", help="heights and lighting as in game (slow)")
     mr.add_argument("--dirt", action="store_true", help="keep the editor's dirt flag")
     mr.add_argument("--rect", type=int, nargs=4, metavar=("X", "Y", "W", "H"))

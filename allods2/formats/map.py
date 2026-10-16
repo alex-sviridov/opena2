@@ -2,7 +2,8 @@
 
 The container walk is allods2/alm.py.  `Map.load` decodes the General block
 the way the game's reader FUN_00534ad4 does (sequential reads with version
-gates) and exposes the Tiles block as a numpy array.  Every other section
+gates) and exposes the Tiles block as a numpy array.  Section 4 is decoded by
+formats/objects.py (`Map.structures`); every other section
 stays raw in `Map.sections` until a later spec decodes it.
 """
 
@@ -14,6 +15,7 @@ from a2res import basename
 
 from ..alm import (SEC_GENERAL, SEC_HEIGHTS, SEC_OBJECTS, SEC_TILES, AlmMap, parse_alm)
 from ..common import read
+from . import objects as obj
 from . import passability as pas
 
 TEXT_ENCODING = "cp1251"
@@ -120,6 +122,7 @@ class Map:
     def __init__(self, alm, header, name=""):
         self.alm, self.header, self.name = alm, header, name
         self._block = None
+        self._structures = None
         self.sections = {sid: bytes(s.data) for sid, s in alm.sections.items()
                          if sid not in (SEC_GENERAL, SEC_TILES, SEC_HEIGHTS, SEC_OBJECTS)}
         self.terrain = alm.tiles.copy()                   # (h, w) uint16
@@ -165,10 +168,28 @@ class Map:
             self._block = pas.block_layer(self.terrain, self.objects)
         return self._block
 
-    def passability(self, movement_type=1):
+    @property
+    def structures(self):
+        """Section 4 as `objects.Structure` records (buildings and bridges)."""
+        if self._structures is None:
+            self._structures = obj.parse_structures(self.sections[4], self.header.n_sec4)
+        return self._structures
+
+    def placed_objects(self, window=True):
+        """The Objects block as `objects.MapObject` records (trees, rocks,
+        decorations), row-major; only the cells the game loads unless `window=False`."""
+        return obj.placed_objects(self.objects, window)
+
+    def block_with_structures(self, stats):
+        """`block` plus the structures' footprints (FUN_00550a96); `stats` = DataBin.structures."""
+        return obj.stamp_structures(self.block, self.structures, stats)
+
+    def passability(self, movement_type=1, stats=None):
         """(h, w) bool: cells a mover of `movement_type` (data.bin movementType 1 walker,
-        2 Ghost/Bee, 3 flyer) may enter on the static layer (units and structures not stamped)."""
-        return pas.walkable(self.block, movement_type)
+        2 Ghost/Bee, 3 flyer) may enter on the static layer; with `stats` (DataBin.structures)
+        the structures' footprints are stamped too, units never."""
+        block = self.block if stats is None else self.block_with_structures(stats)
+        return pas.walkable(block, movement_type)
 
     def cost(self, costs=pas.DEFAULT_COSTS):
         """(h, w) uint8 movement cost of each cell; `costs` as `pas.costs_from_reg`."""

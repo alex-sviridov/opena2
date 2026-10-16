@@ -134,7 +134,8 @@ bytes beyond its declared 644. IDs always in order 0, 1, 2, 3, 5, 11, 4,
 | 1 | w·h·2 | u16 terrain tiles ("Tiles block", CONFIRMED by the error string "Tiles block not found" in `FUN_005606aa`; [terrain](formats/terrain.md)) |
 | 2 | w·h | u8 heights ("Altitudes block", CONFIRMED); copied verbatim to `+0x10`, read **signed** ([terrain](formats/terrain.md#heights)) |
 | 3 | w·h | u8 object layer: copied to runtime `+0x14` inside an 8-cell border, byte = object index + 1 (CONFIRMED, [animation §1.7](formats/animation.md#17-map-placement-of-objects)) |
-| 4–12 | variable | records (structures, units, players, triggers, …); 10 always empty, 11 empty in 36 maps, 8 in 21 |
+| 4 | 20 · n (+ 8 per sized bridge) | structures, [map § Part 4](formats/map.md#part-4-objects) (CONFIRMED, tiles exactly on all 46) |
+| 5–12 | variable | records (players, units, triggers, …); 10 always empty, 11 empty in 36 maps, 8 in 21 |
 
 ### 5.3 Others (all INFERRED)
 
