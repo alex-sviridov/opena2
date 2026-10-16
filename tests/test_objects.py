@@ -91,6 +91,19 @@ def test_cells_outside_the_present_mask_are_untouched():
     assert (out[10:12, 5:8] == 5).all() and (out[12, 5:8] == 1).all()
 
 
+def test_double_claimed_cell_first_wins_and_ends_the_registration():
+    """FUN_00559890 fails on a held cell, FUN_005599df stops there (map.md part 4)."""
+    stats = [Stats(3, 1, 0, 1, 0, 7), Stats(3, 1, 0, 1, 7, 7)]   # 1: free cells, 2: solid cells
+    block = np.full((20, 20), 0x01, np.uint8)
+    a = O.Structure(5, 10, 1, 100, 1, 1)                  # cells 5..7, free (clears bit 0)
+    b = O.Structure(6, 10, 2, 100, 1, 2)                  # cell 6 held by a: nothing registered
+    out = O.stamp_structures(block, [a, b], stats)
+    assert out[10, 5:8].tolist() == [0, 0, 0] and out[10, 8] == 1
+    c = O.Structure(4, 10, 2, 100, 1, 3)                  # 4 is free to take, 5 is held: 4 only
+    out = O.stamp_structures(block, [a, c], stats)
+    assert out[10, 4] == 5 and out[10, 5:8].tolist() == [0, 0, 0]
+
+
 def test_bridge_footprint_is_walkable():
     block = np.full((20, 20), 0x01, np.uint8)             # "water"
     out = O.stamp_structures(block, [O.Structure(4, 4, 0x21, 100, 2, 1, (6, 3))], [])

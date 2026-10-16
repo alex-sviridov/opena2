@@ -399,8 +399,43 @@ picture's 3 × 2, so the client footprint is consistent), **Castle** (11 × 4,
 `0x7f1ff7ff` for both masks; with the wrap, cells 32…43 reuse bits 0…11 and
 bit 11 is 0) and **StoneHenge** (1 × 1, `Passability` 2, present `0xf`: the
 cell is registered but free). In the files 5 present cells are claimed by two
-structures (`30.alm` uids 31 and 37, `40.alm` uids 35 and 43); the later one
-fails to register, and the stamping here (list order) lets the later one win.
+structures (`30.alm` uids 31 and 37, `40.alm` uids 35 and 43).
+
+**Double-claimed cells: the first structure wins (CONFIRMED, REA/objdump of
+`FUN_00559890` and `FUN_005599df`).** `FUN_00559890` looks the cell record up
+(hash `+0x54084`); if the record already holds a structure (`+0xc != 0`) it
+returns 0 and stores nothing (`0x5598c2`). `FUN_005599df` returns 0 at the
+first failure (`0x559a8d`) and so **stops: the remaining present cells of that
+structure stay unregistered** (never stamped, never blocking); its caller, the
+structure constructor (`0x5200b1`), ignores the result and the object lives on.
+In the files this leaves unregistered: `30.alm` uid 31 two cells (held by uid 5) and uid 37
+all 9 (its first cell is held by uid 27), `40.alm` uid 35 one cell and uid 43 four cells
+(measured with the world engine, 16 cells in all). Structures are registered in
+section 4 record order (INFERRED: the runtime builder `FUN_004a449c` walks the
+list in order). Registration is in row-major order, bit `i` of `BuildingPresent`
+(the same `i` counts absent cells). `FUN_005599df` is also called with a
+record that exists but holds no structure (created earlier for a unit): that branch
+stores the structure and does **not** refresh the cell (`0x5598cf`..`0x5598ef`);
+at map load no such record is known to exist (INFERRED). Unregistering
+(`FUN_00559aaf` -> `FUN_0055995a`) clears `+0xc` of every present cell without
+checking the owner (a destroyed structure would free a neighbour's cell: not modelled).
+
+**Refresh order (CONFIRMED, `FUN_00550a96`).** The refresh first rewrites the layers from
+the two baseline bytes the cell record took when it was created (`FUN_005508a0` copies
+the current layer values), so the result is "static block, then the structure":
+the border (0x1F) and the object (5) are already in the baseline, a solid structure
+cell ORs 5 (live and reset layer), a free one ANDs 0xFA (so a structure on the
+border keeps bits 1, 3, 4: 0x1A) and sets the cost to the type-5 cost; an
+occupant (`+0x20`) ORs 5; the dirt bit 0x10 saved at the start is OR-ed back.
+
+**Ids (CONFIRMED).** Object ids are 16 bit (`+0x4` word). Structures get
+`0x6000 + uid`, in the client builder (`0x4a48ab`, `0x4a511b`, `0x4a59fd`) and the server
+constructors (`FUN_0052b284` `0x52b2ac`, `FUN_0052c1be` `0x52c1d7`: `+0x4 = +0x8 + 0x6000`).
+Ids below 0x6000 are allocated dynamically in a 0x6000-bit map (`0x6c9628`, set
+`FUN_004f8cec`, clear `FUN_004f8d3d`; both skip ids >= 0x6000), i.e. units and items. A section 3
+cell has no id in the exe (it is layer data, not an object): the world engine's
+`0x10000 + n` ids are ours. That the trigger sections 5-12 refer to structures by
+`0x6000 + uid` and never to section 3 cells is INFERRED (those sections are still raw).
 
 Sized bridges (VariableSize, constructor with a size) have mask 0, so their
 whole `w × h` rectangle becomes walkable, including over water. Example: Goblin
@@ -485,6 +520,9 @@ are inside the window, structures stamp into passability, and the scene draws.
 - Line of sight: the distance tables (`+0x22000` steps, `+0x28000`
   `ftol` of a power of `dx² + dy²`) and the `FUN_00559536` gate of
   `FUN_00552c28`; callers (`FUN_00552929` has no direct caller: vtable?).
+- Whether the world-map-load order really creates cell records only through structures
+  (a record made earlier by a unit makes `FUN_00559890` skip the refresh, see part 4);
+  whether the trigger sections 5-12 only name structures (`0x6000 + uid`).
 - Block bits 3–7 and the dynamic stamping (`FUN_00550a96`,
   `FUN_0055c500`), the per-class `movementType` result (vtable `+0x20`),
   and the search itself (`FUN_0054d76e`, `FUN_0055d010`): phase H.

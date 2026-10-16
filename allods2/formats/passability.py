@@ -81,22 +81,30 @@ def _tables(costs):
     return ttype, tcost
 
 
+def terrain_base(terrain):
+    """Step 1 of the block layer: (h, w) uint8, B_GROUND where the raw Tiles cell
+    (dirt bit kept) has the dirt flag, terrain type Mountain, or is water; else 0.
+    No objects, no border."""
+    ttype, _ = _tables(DEFAULT_COSTS)
+    t = np.asarray(terrain).astype(np.uint32)
+    blk = np.zeros(t.shape, np.uint8)
+    blk[(t & 0x2000) != 0] = B_GROUND
+    blk[ttype[t & 0x1FFF] == T_MOUNTAIN] = B_GROUND
+    blk[(t & 0x300) == 0x200] = B_GROUND
+    return blk
+
+
 def block_layer(terrain, objects):
     """The static block layer, (h, w) uint8, from the raw Tiles (dirt bit
     kept: the server reads the file's tiles, not the runtime copy) and the
     Objects layer (byte != 0 = object).  Order as FUN_00554626: dirt -> 1;
-    terrain type Mountain -> 1; water -> 1; object -> 5 (replaces); then the
-    8-cell border -> 0x1F (FUN_00553b30).  Square maps only (all campaign
-    maps)."""
+    terrain type Mountain -> 1; water -> 1 (`terrain_base`); object -> 5
+    (replaces); then the 8-cell border -> 0x1F (FUN_00553b30).  Square maps
+    only (all campaign maps)."""
     h, w = terrain.shape
     if h != w:
         raise NotImplementedError("non-square maps use a 256-wide grid (FUN_00553b30)")
-    ttype, _ = _tables(DEFAULT_COSTS)
-    t = terrain.astype(np.uint32)
-    blk = np.zeros((h, w), np.uint8)
-    blk[(t & 0x2000) != 0] = B_GROUND
-    blk[ttype[t & 0x1FFF] == T_MOUNTAIN] = B_GROUND
-    blk[(t & 0x300) == 0x200] = B_GROUND
+    blk = terrain_base(terrain)
     blk[objects != 0] = B_GROUND | B_OBJECT
     blk[:BORDER, :] = blk[-BORDER:, :] = B_BORDER
     blk[:, :BORDER] = blk[:, -BORDER:] = B_BORDER

@@ -15,7 +15,7 @@ Dependencies point down only (a layer imports layers with a smaller number).
 | # | Package | Role | May import |
 |---|---|---|---|
 | 1-2 | `a2res/`, `allods2/` (incl. `allods2/assets.py`) | archives, formats, decoders, asset cache | stdlib, numpy, Pillow; never pygame, never `engine` |
-| 3 | `engine/world.py` | `World`: cells, heights, tick counter, integer entity ids | layers 1-2 |
+| 3 | `engine/world.py` | `World`: cells, heights, tick counter, entity tables, spatial index, block layer | layers 1-2 |
 | 4 | `engine/sim/` | `Simulation.step`, systems list, `Command`, `CommandQueue`, tick clock | 1-3 |
 | 5 | `engine/ui/` | input state to commands and to camera motion (`ScrollInput`) | 1-4, `engine.view` (camera) |
 | 6 | `engine/view/` | `Camera`, coordinates, visible range, per-cell compositing, draw list | 1-3 |
@@ -136,11 +136,45 @@ min/max height, because a cell can draw anywhere in
 
 `python -m engine run MAP [--x PX --y PX] [--speed 0..8] [--size WxH] [--install DIR]`
 and `python -m engine screenshot MAP X Y DEST.png [--tick N] [--size WxH]
-[--install DIR]` (SDL dummy driver, no window). `X`, `Y` = camera top-left in
+[--install DIR]` (SDL dummy driver, no window). `python -m engine world-info MAP [--strict]` and
+`world-dump MAP DEST.json` need no pygame (section 9). `X`, `Y` = camera top-left in
 world pixels. `run` defaults to the playable area corner `(8*32, 8*32)`
 (the outer 8 cells are the unplayable border, [map](../formats/map.md)).
 Controls: arrow keys and mouse within 4 px of the window edge scroll at 600 px/s
 (DECISION, not from the exe); Esc quits.
+
+## 9. World state
+
+Spec: [world state design](../superpowers/specs/2026-10-16-world-state-design.md);
+code `engine/world.py`; map facts in [map.md parts 3-4](../formats/map.md).
+
+- **Tables**: `World.objects` (id -> `engine.world.MapObject`, kinds `object`,
+  `structure`, `bridge`), empty placeholders `units`, `items`, `players`. The engine
+  `MapObject` is not `allods2.formats.objects.MapObject` (the parsed section 3 record).
+- **Ids**: structures `0x6000 + uid` (CONFIRMED: map.md part 4), section 3 cells
+  `0x10000 + n` (row-major index; DECISION, the exe has no id for a layer cell),
+  units later from 0x20000 (the exe keeps ids below 0x6000 for dynamic objects).
+  A duplicate id is a `ValueError`.
+- **Spatial index** `_cells[(x, y)] -> set(ids)` over the BuildingPresent cells
+  (an object: its cell); empty sets are deleted.
+- **Block layer** (`World.block`, read-only (h, w) uint8), per cell in this order:
+  terrain base from the raw tile (dirt 0x2000, Mountain, water -> 1, `passability.terrain_base`);
+  a section 3 object -> 5; the 8-cell border -> 0x1F (`FUN_00554626`, `FUN_00553b30`);
+  then the structure that *holds* the cell: solid bit `|= 5`, free `&= 0xFA`
+  (`FUN_00550a96`). A structure holds a cell by registering (`FUN_005599df`): present cells
+  in row-major order, the first already-held cell ends the registration (first wins,
+  CONFIRMED, map.md part 4). Heights never enter (CONFIRMED).
+- **Local recompute**: `add_object`, `remove_object`, `move_object` redo the registration of the
+  group of overlapping structures touching the old and new footprint cells and refresh only
+  those cells; `rebuild_block()` is the from-scratch reference (tested equal after every step
+  and for every campaign map). A failed add (duplicate id, anchor outside the map) changes nothing.
+- **`World.from_map(map, assets)`**: structures in record order, then section 3 cells of the loaded
+  window; unknown types go to `world.report.unknown` (entity kept, `known=False`). `dump_json()` /
+  `dump_hash()` are the deterministic form used by `world-dump` and `tests/golden.json`
+  (regenerate with `tools/update_golden.py`).
+- `AssetCache.databin()` and `objects_reg()` supply the stats and the object ids (no pygame).
+
+Open: see [open-questions](../open-questions.md#engine).
 
 ## Open questions
 
@@ -150,3 +184,7 @@ Controls: arrow keys and mouse within 4 px of the window edge scroll at 600 px/s
   clock; G1 uses the fixed default).
 - Scroll hitch of about 27 ms when new cells enter (pre-warm water phases or add a
   flat-cell fast path to `composite`).
+- Trigger references (map sections 5-12) to world ids: structures `0x6000 + uid` assumed; section 3
+  cells have no exe id. Starting routine: reader `FUN_00534ad4` cases 5-12.
+- Removing a structure: the exe clears every present cell, also those held by another structure
+  (`FUN_0055995a`); the engine releases only the cells the structure holds.

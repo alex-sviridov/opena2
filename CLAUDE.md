@@ -35,6 +35,8 @@ The company is legally entitled to recreate the game.
 ## Workflow
 - Once a spec is written and committed, go ahead and implement it: no further
   questions, no plan-approval round. Decide sensibly and record assumptions in the spec.
+- Reimplemented game logic must be checked against allods2.exe with REA (tell
+  subagents to use it); do not rely on inference where the binary can answer.
 - Delegate to subagents where it helps (implementation, review, research);
   prefer `model: sonnet` over opus.
 
@@ -137,6 +139,12 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   ui (scroll), `backend_pygame` (surface cache, accumulator loop); `python -m
   engine run|screenshot`; screenshot equals `render_3d` pixel for pixel (tested);
   import boundaries enforced by `tests/test_engine_boundaries.py`. docs/engine/
-- Not started: saves, Scenario.dll, item names, entities/objects/structures in the engine.
-- Next: G2a (engine: objects/structures drawing). Also (docs/open-questions.md): .alm sections 5–12 (server reader
+- Engine G2a' (world state) done: `engine.world.World` with `objects` table (ids: structures
+  `0x6000 + uid` CONFIRMED, section 3 cells `0x10000 + n`), spatial index, block layer with local
+  recompute, `from_map`, `BuildReport`; `python -m engine world-info|world-dump` (no pygame);
+  `tests/golden.json` + `tools/update_golden.py`. REA: a structure claiming a held cell loses it and
+  all its later present cells (first wins, `FUN_00559890`/`FUN_005599df`; 16 cells in 30.alm,
+  40.alm); `stamp_structures` follows. docs/engine/architecture.md section 9
+- Not started: saves, Scenario.dll, item names, units/items/players in the engine.
+- Next: G2b (engine: drawing objects/structures from the world). Also (docs/open-questions.md): .alm sections 5–12 (server reader
   `FUN_00534ad4`), town-scene animations, text conventions.

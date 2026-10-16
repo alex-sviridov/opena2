@@ -1,5 +1,7 @@
 """python -m engine run MAP [--x PX --y PX] [--speed N] [--size WxH] [--install DIR]
    python -m engine screenshot MAP X Y DEST.png [--tick N] [--size WxH] [--install DIR]
+   python -m engine world-info MAP [--install DIR] [--strict]
+   python -m engine world-dump MAP DEST.json [--install DIR]
 
 MAP as for `python -m allods2 map` (10, scenario/10.alm, or a file).  X, Y =
 the viewport's top-left in world pixels (x = 32*col, y = 32*row - height).
@@ -18,14 +20,49 @@ def _size(s):
     return int(w), int(h)
 
 
+def _world(a):
+    """The map's World (no pygame)."""
+    from allods2.assets import AssetCache
+    from allods2.cli import open_map
+    from engine.world import World
+    return World.from_map(open_map(a.map, a.install), AssetCache(a.install))
+
+
+def world_info(a):
+    """Entity counts, blocked cells, unknown types (spec "CLI")."""
+    w = _world(a)
+    r = w.report
+    kinds = {}
+    for (kind, tid), n in r.counts.items():
+        kinds.setdefault(kind, []).append((tid, n))
+    print("%s: %d x %d cells" % (w.name, w.width, w.height))
+    print("entities: %d (%s)" % (len(w.objects), ", ".join(
+        "%s %d" % (k, sum(n for _, n in kinds.get(k, ()))) for k in ("object", "structure", "bridge"))))
+    for k in ("object", "structure", "bridge"):
+        if k in kinds:
+            print("%s types: %s" % (k, " ".join("%d:%d" % t for t in sorted(kinds[k]))))
+    print("blocked cells (walker mask 0x41): %d of %d" % (int((~w.walkable(1)).sum()), w.width * w.height))
+    print("ignored outside the window: %d" % r.ignored_outside_window)
+    print("unknown types: %d" % len(r.unknown))
+    for kind, tid, x, y in r.unknown:
+        print("  %s type %d at (%d, %d)" % (kind, tid, x, y))
+    return 2 if (a.strict and r.unknown) else 0
+
+
+def world_dump(a):
+    w = _world(a)
+    with open(a.dest, "w", encoding="ascii") as f:
+        f.write(w.dump_json())
+    print("%s: %d entities -> %s" % (w.name, len(w.objects), a.dest))
+    return 0
+
+
 def _setup(a):
     from allods2.assets import AssetCache
     from allods2.cli import open_map
     from allods2.common import as_fs
     from engine.view import Camera, TerrainView
-    from engine.world import World
-    m = open_map(a.map, a.install)
-    world = World.from_map(m)
+    world = _world(a)
     tv = TerrainView(world, AssetCache(as_fs(a.install)).tileset())
     w, h = a.size
     return world, tv, Camera(w, h, world.width, world.height, a.x, a.y)
@@ -49,7 +86,19 @@ def main(argv=None):
     s.add_argument("--tick", type=int, default=0)
     s.add_argument("--size", type=_size, default=(1024, 768))
     s.add_argument("--install")
+    i = sub.add_parser("world-info")
+    i.add_argument("map")
+    i.add_argument("--install")
+    i.add_argument("--strict", action="store_true")
+    d = sub.add_parser("world-dump")
+    d.add_argument("map")
+    d.add_argument("dest")
+    d.add_argument("--install")
     a = p.parse_args(argv)
+    if a.cmd == "world-info":
+        return world_info(a)
+    if a.cmd == "world-dump":
+        return world_dump(a)
     if a.cmd == "screenshot":
         os.environ["SDL_VIDEODRIVER"] = "dummy"
     world, tv, camera = _setup(a)

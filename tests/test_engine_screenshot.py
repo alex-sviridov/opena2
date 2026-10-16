@@ -106,7 +106,7 @@ def test_larger_viewport_than_map_is_black_outside():
 def test_real_map_screenshots_equal_render_3d():
     from allods2.assets import AssetCache
     from allods2.cli import open_map
-    world = World.from_map(open_map("10"))
+    world = World.from_map(open_map("10"), AssetCache(GFS))
     terrain = AssetCache(GFS).tileset()
     tv = TerrainView(world, terrain)
     cache = SurfaceCache(tv)

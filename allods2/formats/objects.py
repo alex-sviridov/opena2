@@ -101,20 +101,30 @@ def mask_cells(w, h, mask):
 
 
 def stamp_structures(block, structures, stats):
-    """Block layer after the structures (FUN_005599df registers a structure in the cells
-    of its `BuildingPresent` mask, FUN_00550a96 then refreshes each): a registered cell
-    gets bits 0 and 2 if its `Passability` bit is set and loses them otherwise (a bridge
-    makes water walkable); cells outside the present mask are untouched.  Returns a copy."""
+    """Block layer after the structures.  Registration (FUN_005599df, CONFIRMED) claims
+    the cells of the `BuildingPresent` mask in row-major order; FUN_00559890 fails when a cell
+    already holds a structure, and then the rest of this structure's cells stay unregistered
+    (first wins, map.md part 4).  A registered cell (FUN_00550a96) gets bits 0 and 2 if its
+    `Passability` bit is set and loses them otherwise (a bridge makes water walkable); cells
+    outside the present mask or unregistered are untouched.  Returns a copy."""
     out = block.copy()
     H, W = out.shape
+    claimed = set()
     for s in structures:
         w, h, solid, present = footprint(s, stats)
         solid, present = mask_cells(w, h, solid), mask_cells(w, h, present)
+        done = False
         for r in range(h):
             for c in range(w):
                 y, x = s.y + r, s.x + c
                 if present[r, c] and 0 <= y < H and 0 <= x < W:
+                    if (x, y) in claimed:
+                        done = True
+                        break
+                    claimed.add((x, y))
                     out[y, x] = out[y, x] | SOLID if solid[r, c] else out[y, x] & CLEAR
+            if done:
+                break
     return out
 
 

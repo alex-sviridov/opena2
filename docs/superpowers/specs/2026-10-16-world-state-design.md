@@ -40,10 +40,8 @@ moved. Fully testable headless (no pygame import anywhere in this path).
    task's "terrain/height rules" is therefore terrain + objects + border + footprints.
 6. **"E3's debug overlay"** does not exist in the repo. The independent reference for
    tests is a scalar re-implementation of the map.md text written inside the test.
-7. `Map.block_with_structures` stamps in list order with the later structure winning on
-   shared present cells (5 such cells in 30.alm, 40.alm); the game's registration lets the
-   first win but both write the same bits only when masks agree. Keep the documented
-   stamping (later wins in `seq` order) and list this as an open question.
+7. ~~Later structure wins on shared present cells.~~ **Superseded by REA (see Implementation
+   notes): the first structure wins and the registration of the later one stops.**
 8. Squares only: `passability.block_layer` raises on non-square maps; all 46 campaign maps
    are square. The synthetic world must be square too.
 
@@ -116,7 +114,7 @@ seq: int                # stamp order (assigned on add; later wins), not seriali
   record order) and equals `Map.block_with_structures(stats)`; block equal with
   `window=False` objects (derivation in decision 3).
 - Synthetic square world: add/remove/move of an object and of a structure (solid cell,
-  free cell, overlap of two structures, a structure over water) keep index and block equal
+  free cell, overlap of two structures, a structure over water, first wins) keep index and block equal
   to a from-scratch rebuild after every step; remove restores the exact prior block;
   failed add (duplicate id / out of map) leaves the world unchanged.
 - Unknown type reported, entity present, `from_map` does not raise; CLI `world-info`
@@ -135,3 +133,39 @@ mapping (sections 5-12); double-claimed present cells (first vs later wins).
 ## Out of scope
 Units, items, players content; dynamic unit stamps; cost layer use; drawing objects
 (that is the next view task); the sim writing to the world.
+
+## Implementation notes
+Assumptions and findings recorded while implementing (all decisions made without questions).
+
+REA results (objdump of the GOG exe 1.01, routine addresses in map.md part 4):
+- **CONFIRMED, double-claimed cells: first wins, registration stops.** `FUN_00559890` returns 0
+  when the cell already holds a structure (`0x5598c2`); `FUN_005599df` returns 0 at the first
+  failure (`0x559a8d`) so the rest of that structure's present cells stay unregistered; the
+  constructor (`0x5200b1`) ignores the result. The documented "later wins" stamping was wrong.
+  `World` and `allods2.formats.objects.stamp_structures` now follow the exe (16 cells in 30.alm
+  and 40.alm differ from the old output); map.md and tests updated. The registration is redone
+  locally for the connected group of overlapping structures (seq order = add order).
+- **CONFIRMED, refresh order** (`FUN_00550a96`): baseline (static block incl. border/objects, the two
+  bytes the record took at creation, `FUN_005508a0`) first, then `|= 5` / `&= 0xFA`; so a
+  structure stamp overrides the border (border cell + free structure cell = 0x1A). Same as
+  decision 3's order. INFERRED: the static build precedes structure creation at load.
+- **CONFIRMED, ids**: object ids are 16 bit; structures `0x6000 + uid` (client `0x4a48ab`, `0x4a511b`,
+  `0x4a59fd`; server `0x52b2ac`, `0x52c1d7`); ids < 0x6000 are allocated dynamically (bitmap
+  `0x6c9628`). A section 3 cell has no exe id. INFERRED (unchanged): trigger references use
+  `0x6000 + uid` only; open.
+- Not modelled: unregistering clears cells held by others (`FUN_0055995a`); the "record exists, no
+  structure" branch of `FUN_00559890` skips the refresh. Both listed in open questions.
+
+Deviations and choices:
+- `World` accepts non-square arrays (decision 8 said raise) because the G1 view tests use 24 x 20
+  worlds; the block layer works for any shape here (the exe uses a 256-wide grid for non-square
+  maps, not modelled). Campaign maps are all square.
+- An unknown structure type (not in data.bin) gets one solid cell and `hp_max` 1000; none occurs
+  in the 46 maps (no unknown type of any kind).
+- Entities have no `seq` in `dump`; `known` is dumped as 0/1; `world.report.counts` keys are
+  `"kind:type"` strings in the dump.
+- `move_object` out of the map raises `ValueError` before changing anything; footprint cells outside
+  the map are dropped from index and claims.
+- Independent reference grid in `tests/test_engine_world_maps.py` is scalar and written from map.md;
+  it re-types the shape table (only set 7 can be Mountain). Golden maps: 10, 20, 52.
+- Ignored outside-window object cells occur in 26 of 46 maps (all in the border; block identical).

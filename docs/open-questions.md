@@ -32,6 +32,9 @@ from both places when answered).
 - `.alm` header leftovers: `field_0c` (360/720), `field_84/88/8c/90`
   users; meaning of effect byte `+0x5c` (spell dirt mark, `FUN_00559c28`), caller of the clear `FUN_00559ce5`.
   [map](formats/map.md#open-questions)
+- Structure registration at load: does a unit-made cell record exist before the structures (then
+  `FUN_00559890` skips the refresh)? Do triggers name only structures? `FUN_005508a0` callers.
+  [map](formats/map.md#open-questions)
 - `itemname.bin` / `.pkt`, `famehall.dat`, saves (`game%d.sav`; the
   client state is a [`.reg`](formats/reg.md#writing) tree, `FUN_0048dc9f`), `.a2c`
   characters. [inventory §6](inventory.md#6-plan-custom-formats-to-reverse-in-order)
@@ -45,3 +48,8 @@ from both places when answered).
   [architecture](engine/architecture.md#open-questions)
 - Engine terrain scroll hitch (~27 ms per new cell row/column): pre-warm or flat-cell fast path.
   [architecture](engine/architecture.md#open-questions)
+- Trigger references to world ids (map sections 5-12): structures `0x6000 + uid`, section 3 cells
+  have no exe id (engine ids `0x10000 + n` are ours). Starting routine `FUN_00534ad4` cases 5-12.
+  [architecture](engine/architecture.md#open-questions)
+- Unregistering a structure (`FUN_0055995a`) clears cells held by another structure; engine releases only
+  its own cells. [architecture](engine/architecture.md#open-questions)

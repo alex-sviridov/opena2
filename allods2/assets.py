@@ -15,6 +15,8 @@ class AssetCache:
         self.fs = as_fs(fs)
         self._tileset = None
         self._sprites = {}
+        self._databin = None
+        self._objects_reg = None
 
     def tileset(self):
         """The terrain strips and dirt.bmp (`TerrainSet`)."""
@@ -28,3 +30,17 @@ class AssetCache:
         if sf is None:
             sf = self._sprites[path] = SpriteFile.load(path, self.fs)
         return sf
+
+    def databin(self):
+        """data.bin (`DataBin`), loaded once."""
+        if self._databin is None:
+            from .databin import databin
+            self._databin = databin(self.fs)
+        return self._databin
+
+    def objects_reg(self):
+        """objects.reg records by ID with Parent inheritance (`anim.objects.load_object_records`)."""
+        if self._objects_reg is None:
+            from .anim.objects import load_object_records
+            self._objects_reg = load_object_records(self.fs)
+        return self._objects_reg

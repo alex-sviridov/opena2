@@ -6,7 +6,7 @@ import pytest
 from engine.sim import CommandQueue, Simulation, tick_period_ms
 from engine.ui import ScrollInput
 from engine.view import Camera, Projection, build_draw_list
-from engine.world import World
+from engine.world import MapObject, World
 
 W, H = 24, 20
 
@@ -32,9 +32,10 @@ def test_simulation_step_counts_ticks_and_runs_systems():
     assert w.tick == 2 and seen == [(0, ["a"]), (1, [])] and len(q) == 0
 
 
-def test_world_ids_are_integers():
+def test_world_tables_start_empty():
     w = World(np.zeros((2, 2)), np.zeros((2, 2)))
-    assert w.new_entity() == 1 and w.new_entity("x") == 2
+    assert w.objects == {} and w.units == {} and w.items == {} and w.players == {}
+    assert w.add_object(MapObject(7, "object", 1, 0, 0)) == 7
 
 
 @pytest.mark.parametrize("flat", [True, False])
