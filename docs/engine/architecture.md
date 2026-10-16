@@ -189,7 +189,7 @@ Open: see [open-questions](../open-questions.md#engine).
   clock; G1 uses the fixed default).
 - Scroll hitch of about 27 ms when new cells enter (pre-warm water phases or add a
   flat-cell fast path to `composite`).
-- Trigger references (map sections 5-12) to world ids: structures `0x6000 + uid` assumed; section 3
-  cells have no exe id. Starting routine: reader `FUN_00534ad4` cases 5-12.
+- Trigger references to world ids: section 11 is keyed by structure uid (`0x6000 + uid`, CONFIRMED,
+  `FUN_00561422`); section 7 slots are coded numbers 8000–9999; section 3 cells have no exe id.
 - Removing a structure: the exe clears every present cell, also those held by another structure
   (`FUN_0055995a`); the engine releases only the cells the structure holds.

@@ -37,7 +37,7 @@ lie in the 16 bytes that follow section 0 (the old "section 0 quirk").
 | 0x00 | u32 | `width` | cells; 80, 144 or 256 (CONFIRMED: equals `FUN_004a66b0` → runtime width) |
 | 0x04 | u32 | `height` | cells; always = width in the campaign |
 | 0x08 | f32 | `angle` | initial sun angle: π/4 (0.7854) in 26 maps, 0.7679 (44°) in 18, −π/4 (`31`), 0.6632 (`75`) |
-| 0x0c | i32 | `field_0c` | 360 (44 maps) or 720 (`31`, `52`); runtime map `+0x2c`, consumer not found |
+| 0x0c | i32 | `field_0c` | 360 (44 maps) or 720 (`31`, `52`); copied to runtime map `+0x2c` (`0x4a456f`) and never read (bounded search, CONFIRMED); uninitialised in the loader's ctor |
 | 0x10 | i32 | `ambient` | initial ambient light, 0–23 (21 in 26 maps) |
 | 0x14 | i32 | `diffuse` | initial diffuse light, 54–64 (63 in 36 maps) |
 | 0x18 | u32 | `tile_sets` | bit mask of tile sets 0–12 |
@@ -47,11 +47,11 @@ lie in the 16 bytes that follow section 0 (the old "section 0 quirk").
 | 0x28 | u32 | `n_sec7` | records of section 7 |
 | 0x2c | u32 | `n_sec8` | records of section 8 |
 | 0x30 | u32 | `n_sec10` | version > 1149; section 10, always 0 |
-| 0x34, 0x38, 0x3c | u32 ×3 | `n_sec11` | version > 1229; three lists of section 11 (12 bytes each) |
+| 0x34, 0x38, 0x3c | u32 ×3 | `n_sec11` | version > 1229; three lists of section 11 (12, 0x54 and 12 bytes; the middle list is empty in all 46 maps) |
 | 0x40 | u32 | `n_sec12` | version > 1299; entries of section 12 |
 | 0x44 | 64 B | `name` | map name |
-| 0x84, 0x88 | i32 ×2 | `field_84`, `field_88` | `field_84` is 1 in all 46; `field_88` is 1 in 42 maps, 2 in `52`, 3 in `74`/`95`, 4 in `110`; default 1, 1 when no section 0 |
-| 0x8c, 0x90 | i32 ×2 | `field_8c`, `field_90` | version > 1159; `field_8c` 0 in 38 maps, `field_90` 0 in 23 and 60,000,000 in 19; the rest stray memory |
+| 0x84, 0x88 | i32 ×2 | `field_84`, `field_88` | `field_84` (object `+0xd8`) is 1 in all 46: `FUN_005606aa` (`0x560947`) sets settings `+0x74` = `field_84 > 1` ("multiplayer game", read in about 60 places), so 1 = single-player map. `field_88` (`+0xdc`) is the map difficulty 1–4 (1 in 42 maps, 2 in `52`, 3 in `74`/`95`, 4 in `110`), copied to settings `+0x1cc` (`0x56099d`) and used only for `difficultylevel=%d` of the multiplayer server advert (`0x4ed138`). Both 1 when no section 0. CONFIRMED |
+| 0x8c, 0x90 | i32 ×2 | `field_8c`, `field_90` | version > 1159; `field_8c` 0 in 38 maps, `field_90` 0 in 23 and 60,000,000 in 19 (the loader's reset default); the rest stray memory. Written to object `+0xe0/+0xe4`, copied by `FUN_0053440c`, **never read** (CONFIRMED, bounded search). Note object `+0x8c` is the loader's status code (1–6), not `field_8c`, and `+0x90` is the maximum of the units' `squad` |
 | 0x94 | 512 B | `description` | description |
 
 - **Text**: NUL-terminated, **cp1251** (`decode_text`); everything after the
@@ -83,7 +83,7 @@ lie in the 16 bytes that follow section 0 (the old "section 0 quirk").
   records `{u32, u32, u32 (0 or 5000), name[32], u16 × 16}` (INFERRED:
   first record "Self"/"self" = the human; the u16 row is a relation row
   with 18 on the diagonal).
-- Not decoded: `field_0c`, `field_84/88/8c/90` (see open questions).
+- `field_0c`, `field_8c`, `field_90`: stored, never read by the exe.
 
 ### Sections 1–3, fixed layers
 
@@ -563,8 +563,8 @@ player %d for unit %d").
 | File | Size | Object | Field | Meaning |
 |---|---|---|---|---|
 | 0 | u32 | +0x0c | `colour` | **row of `humans/human.pal`** (0 blue, 1 green, 2 red, 3 orange, 4 violet, 5 yellow, 6 teal, 7 grey, 8–15 darker; [palettes §4](palettes.md)). CONFIRMED: the unit draw (`0x463bac`–`0x463c16`) takes `table[owner.+0xc]` for `Palette = 0` types only. Record 1 always 1; values 1–8, 10 in the files; colours repeat within 39 of 46 maps |
-| 4 | u32 | +0x34 | `flags` | server reads only bit 1 (`0x5613f3`, multiplayer); the file's 0/1 is never read. CONFIRMED |
-| 8 | u32 | +0x10 | `money` | 0 for record 1, else 5000; the default player (no section 5) has 5000 (`0x536421`). No reader found: INFERRED starting gold |
+| 4 | u32 | +0x34 | `flags` | only bit 2 (value 2) is read, into server player `+0xa60` (`0x5613f6`–`0x561407`; users `0x52bb30`, `0x531fcf`, meaning UNKNOWN); the file's 0/1 never sets it. CONFIRMED |
+| 8 | u32 | +0x10 | `money` | 0 for record 1, else 5000; the default player (no section 5) has 5000 (`0x536421`). Never read (CONFIRMED: the server player is created with 0 and `FUN_005612af` copies only name, colour and `flags`); dead data in this build |
 | 12 | 32 B | +0x14 | `name` | cp1251, NUL-padded ("self", "Computer", "Enemy", "Neutral", …) |
 | 44 | 16 × u16 | +0x38 | `relations` | diplomacy toward player `j + 1`, below |
 
@@ -592,13 +592,13 @@ Version 1300 layout:
 |---|---|---|---|---|
 | 0, 4 | i32 ×2 | +0, +4 | `x`, `y` | 1/256 cell. The server places the unit on cell `x >> 8`, `y >> 8` (`FUN_00510089`, spiral search for a free cell) with sub-cell 0x80/0x80 (`FUN_0054f9b9`); every file value has sub-cell 128 |
 | 8 | u16 | +8 | `type` | units.reg ID (1–26 humans and the catapult, 64–107 monsters). The server ignores it; the client picks the view class from it (`units.reg[id]+0x124 ≠ 0` → hero view `FUN_0046bfa6`, else `FUN_00462a4a`, `0x4a5050`). Equals the data.bin `typeID` except NPC variants (editor copy). All 53 ids resolve |
-| 10 | u16 | +0xc | `tier` | 1–6, read and never used; matches the record name's `.N` suffix (INFERRED) |
+| 10 | u16 | +0xc | `tier` | 1–6, read and never used (CONFIRMED: no reader of object `+0xc`); matches the record name's `.N` suffix (INFERRED) |
 | 12 | u32 | +0x48 | `flags` | bit 0x10 = human (data.bin humans, 0x254-byte object), else monster (0x208). 605 humans flagged; 5 catapults (type 26) are monsters |
-| 16 | u32 | +0x50 | `behaviour` | bits 1, 2, 4, 8 → booleans at creature `+0x194`, `+0x19c`, `+0x198`, `+0x1a0` (`0x561f0f`–`0x561f77`); only bit 8 occurs (8 units of `10.alm`). Effect UNKNOWN |
+| 16 | u32 | +0x50 | `behaviour` | bits 1, 2, 4, 8 → booleans at creature `+0x194`, `+0x19c`, `+0x198`, `+0x1a0` (`0x561f0f`–`0x561f77`); only bit 8 occurs (8 units of `10.alm`). CONFIRMED by scanning every access: bit 8 (`+0x1a0`) = **summoned creature, no loot** (death handler `FUN_00510a70` skips the loot roll and empties the pack) **and no XP** (`FUN_005128cb`); the summon/clone spells set it (`FUN_00519db8`). Bits 1, 2, 4 (`+0x194`, `+0x19c`, `+0x198`) are read only by the event generator `FUN_005303ed` (candidate classes of three message events); the AI never reads any of them |
 | 20 | u32 | +0x10 | `server_id` | key into data.bin: monsters group 5 where `serverID` (param 55) matches, humans group 6 where `serverID` (param 24) matches (`FUN_004fd62f` / `FUN_004fd5ad`); the unit is then built from that record's name. 4,212 / 4,212 resolve (`entities.template`) |
 | 24 | u32 | +0x14 | `owner` | 1-based section 5 record, 1..player_count in all 4,212 units |
 | 28 | u32 | +0x44 | `group` | 1-based section 8 group (0 = none; read as −1 / index − 1, −1 again if ≥ `n_sec8`); at load the unit's uid is written into the group (`0x535a3e`–`0x535a7c`). 32 units |
-| 32 | u32 | +0x1c | `field_32` | read and never used (10 in 4,199 units). UNKNOWN |
+| 32 | u32 | +0x1c | `field_32` | read and never used (10 in 4,199 units): CONFIRMED unused by both consumers; meaning UNKNOWN |
 | 36, 38 | u16 ×2 | +0x20, +0x22 | `hp`, `max_hp` | HP overrides, 0xFFFF = keep the data.bin value; 3,914 units use neither, 293 both |
 | 40 | u32 | +0x3c | `uid`, `stamp` | low 16 bits = scenario unit number (object id `0x6000 + uid`, same space as structures, [part 4](#structures-section-4); unique per map); high 16 bits non-zero editor stamp, unused |
 | 44 | u32 | +0x40 | `squad` | per-owner squad number, 0–38: the server finds the owner's squad (`player+0x28`, 0x50-byte object, `+0x1c` = number) or creates it (`FUN_0052ae43`) and adds the unit; squad members share walk speed. The map keeps the maximum at map `+0x90` |
@@ -606,15 +606,26 @@ Version 1300 layout:
 **Defaults vs overrides** (CONFIRMED, `0x561d0f`–`0x562264`): everything comes from the data.bin
 record found by `server_id` (stats, mana, speed, damage, spells, equipment strings). The
 record overrides only HP: max HP `+0x96` ← `max_hp`, HP `+0x94` ← `hp` (if `hp` is 0xFFFF,
-HP = max HP); a hero whose `hp == max_hp` is reset to "default". Easy/hard difficulty scaling
-of monsters runs before the override (constants `0x5cea58` / `0x5cea60` not decoded). Level,
-mana and equipment are not in the record.
+HP = max HP); a hero whose `hp == max_hp` is reset to "default". Level, mana and equipment
+are not in the record.
+
+**Difficulty** (CONFIRMED, `FUN_00561bf9` `0x561e20`–`0x561f0b`; settings `+0xd8` = game option,
+set to selector + 1 by the new-game dialog `0x48972f`, default 2; labels easy / normal / hard
+INFERRED): runs only when settings `+0x74` is 0 (single player) and the mode is not 2.
+Mode 1: max HP = trunc(max HP × 0.5) (`0x5d1b00`), HP = max HP, brain `+0x44` (low-HP threshold,
+compared at `0x56cb28`) `>>= 1`. Mode 3: words `+0xa6` and `+0xbe` += 50, max HP = trunc(max HP ×
+1.5) (`0x5d1b08`), HP = max HP. It runs before the HP override, so overrides are not scaled. The
+client copy `FUN_004a449c` (`0x4a4f2b`–`0x4a5017`, constants `0x5cea60` 0.5 / `0x5cea58` 1.5)
+scales HP only for easy and has no brain shift; damage taken is scaled too (`FUN_00502019`
+`0x5021b5`: × 0.5 easy, × 1.5 hard).
 
 **Facing**: no field. The creature constructor sets the mover angle byte (`0x50e2ac`–`0x50e2db`)
 to `0x40 + rand(0..128)` (256 = full circle, 0 = up, clockwise), i.e. D2 direction
 `angle >> 4` = 4–11 (right, down, left; the draw reads `obj+0xc4 >> 4`, [animation
-§2.2](animation.md#22-directions)). The mapping is CONFIRMED for monsters, INFERRED for
-heroes (`FUN_005143e4` assumed to reach the same base constructor). `scene.draw_scene` draws
+§2.2](animation.md#22-directions); the client direction is `(angle + 8) >> 4`, 4–12). CONFIRMED for
+monsters and heroes: `FUN_005143e4` → `FUN_00512133` → `FUN_0050dc2b` → `0x50e173`, nothing
+overwrites it. The client view's `+0x70` starts at 0 and takes the server's byte from the creation
+message (`0x40f0e3`, `0x40f8f7`); that the creation message carries it is INFERRED. `scene.draw_scene` draws
 units at a fixed `UNIT_FACING = 8` (front view).
 
 **Type → animation set.** `Unit.type` → `load_unit_set(type)` (units.reg ID → file, e.g. 66
@@ -630,43 +641,65 @@ from section 8 groups, which `FUN_00564072` instantiates after the units exist.
 
 Section 8, `n_sec8` groups (CONFIRMED, `0x535e74`–`0x536014`, tile exactly): `u32 n`, `u32
 carrier` (`+0x3c`), `i32 x`, `i32 y` (1/256 cell, `+0x40`/`+0x44`; equal to the carrying
-unit's position), `u32 extra` (`+0x48`, version ≥ 0x3dd; 0 in 43 groups, 100 / 5000 / 10000
-in 8: INFERRED money), then `n` members of `u32 code`, `u16 slot` (always 0), `u32 record`.
+unit's position), `u32 extra` (`+0x48`, version ≥ 0x3dd; 0 in 43 groups, 100 / 5000 / 10000 in
+8), then `n` members of `u32 code`, `u16 slot` (always 0), `u32 record`.
 The file's `carrier` is overwritten when a unit's `group` points at the group (the unit's
 uid); a group no unit links to keeps 0 and is a **sack on the ground** at (x, y)
-(`Map.ground_groups`: 19). A carried group goes into the unit's pack (creature `+0x7c`,
-`FUN_00529ac2` per item); `slot != 0` would equip (vtable `+0x44`, never in the data).
+(`Map.ground_groups`: 19). CONFIRMED (`FUN_00564072`, the loop at `0x5645d8`–`0x564b14` is inside it): a ground
+group builds a 0x24-byte pack (`FUN_005299b3`), adds each item (`FUN_00529ac2`, identical items
+stack) and places it with `FUN_0052ab07(cell, pack, extra, 0)`; **`extra` is the gold lying in that pile**
+(`pile +0x3c += extra`; merged with an existing pile on the cell). A carried group adds its items to the
+unit's pack (creature `+0x7c`) and ignores `extra` (`92.alm` group 1); `slot != 0` would equip (vtable
+`+0x44`, never in the data). The 8 non-zero `extra` groups are pure gold piles of the ground
+(100 in `63.alm`, 5000 in `41.alm`, 10,000 in `42.alm` and `93.alm`).
 
 Item code (`FUN_004fbf01` → factory `FUN_004fbf99`, CONFIRMED): class = `(code >> 8) & 15`;
-class 0xE = special item, index = `code & 0xFF` (data.bin group 4, 1..96); otherwise quality =
-`(code >> 5) & 7` (data.bin qualities, 7), material = `code >> 12` (16), index = `code & 0x1F`
-within the class list. The factory makes class 1 a 0x88-byte object (`FUN_00528a07`), class 2
-a 0x6c-byte one (`FUN_00528084`), classes 3–13 0x6c-byte objects (`FUN_005275d2`), class 0xE a
-0x54-byte one (`FUN_00522ee0`). The test checks every code against the data.bin ranges
-(17 special-item and 20 weapon/armour codes occur in the install). The class → data.bin list
-mapping (weapons, shields, armour kinds) is item definitions: phase F.
+class 0xE = special item, index = `code & 0xFF`; otherwise quality = `(code >> 5) & 7`, material =
+`code >> 12`, index = `code & 0x1F` (`entities.decode_item`). The factory (CONFIRMED):
+
+| Class | Object (ctor) | data.bin list | Records | Index base |
+|---|---|---|---|---|
+| 1 | 0x88 B (`FUN_00528a07`) | weapons (`0x68f540`) | 27 | 1 (1 BareHands, 2 Dagger … 27 Plasma Sword) |
+| 2 | 0x6c B (`FUN_00528084`) | shields (`0x68f518`) | 9 | 1 |
+| 3–13 | 0x6c B (`FUN_005275d2`) | armour (`0x68f52c`) | 30 | 1; only the index selects, the record's `Slot` is the real slot (ring 4, amulet 5, helm 6, mail 7, cuirass 8, bracers 9, gauntlets 10, boots 12) |
+| 0xE | 0x54 B (`FUN_00522ee0`) | special items (`0x68f554`) | 96 | 1 (potion, scroll, book, quest items by name) |
+| 0, 15 | none | — | — | the member is skipped |
+
+Quality and material index data.bin's 7 qualities and 16 materials. The test checks that
+every code's index is in range and that the armour record's `Slot` equals the code's class (37
+distinct codes in the install: 17 special, 20 weapon/shield/armour). Item definitions proper
+(what a Dagger is) are phase F.
 
 Section 9: `u32 count` of its own (not in the header), then per record: `u32 head`
 (version > 989; overwritten with the member index of the claiming member), `u32 a`, `u32 b`,
 6 flag bytes, `u32 c`, `u32 n`, `n` × (`u16 id`, `u32 value`); 26 + 6n bytes, tile exactly
-(`0x536023`–`0x5361ac`). A member's `record` (1-based) points at one; the record then adds
-properties to the item: `(id, value)` pairs are data.bin **stat indices** (1 price, 2 body,
-12 toHit, 41 castSpell, …; `(1, 9000000)` is the price of 19 quest items), flag word values
-at +0x10/+0x16 add castSpell-like entries (`0x29`/`0x2a`/`0x31`). Records no member claims are
-read as: flags & 8 → spellbook entry of unit `+0x12` (`FUN_0051c29e`, error "Can't resolve
-unit %d for spellbook."), flags & 4 → caster object of the structure with uid `+0x12`
-(`FUN_0050da58`). Pairs and flags are CONFIRMED structurally; their game meaning INFERRED.
-One agent read the group loop at `0x5645d8`–`0x564b14` as AI squads with scripted orders; the
-item-code decoder, the data ranges and the (x, y) = carrier position favour items, so the
-orders reading is treated as the same code seen from the other side (not settled).
+(`0x536023`–`0x5361ac`). Object layout: head `+0` (overwritten by the claiming member's
+index), group pointer `+4` (0 until a member claims the record), `a` `+8`, `b` `+0xc`, kind
+`u16 +0x10`, `u16 +0x12` / `+0x14` (min, max damage, or a uid), `c` `+0x16` (`u16` spell id, `u16`
+second value), pairs at `+0x1a`. CONFIRMED (`0x56465x`–`0x5648e0`) for a **claimed** record
+(`a = b = 0`, a member's `record` points at it; with `a`/`b` set the item is silently skipped):
+effect objects are added to the item: kind 1–5 → elemental damage (effect `0x2b + kind`, min and
+max from the two bytes; `Crystal Long Sword` of `102.alm`: fire 30); `c` low ≠ 0 → `castSpell`
+(0x29), or `teachSpell` (0x2a, adds the spell to the unit's spellbook) for books; each pair
+`(id, value)` → effect `id`, **data.bin stat index** (1 price, 2 body, 5 spirit, 11 manaRegen,
+12 toHit, 16 absorbtion, 19 scanRange, 23/25 protections …; `(1, 9000000)` is the price of the
+19 quest items), id 41 remapped to `0x31` (flat damage bonus: INFERRED reading). An **unclaimed**
+record is, by kind: bit 4 → building caster object (`FUN_0050da58`; the structure with uid
+`+0x12`, spell id `c`, origin `a`/`b`; 72.alm 27 records, `81.alm` 3), bit 8 → spellbook entry of unit uid
+`+0x12` (`FUN_0051c29e`; none in the install), `a`/`b` ≠ 0 with kind < 4 → a 6-byte per-cell
+payload registered on the server grid (`FUN_0055ba36`, meaning UNKNOWN; `76.alm`, `93`–`96`), else
+ignored (3 editor leftovers).
 
 ### Drawing
 
 `map render MAP DEST --layers all` (or `units`, `items`): per cell the order is structure →
 unit → object ([draw order](#draw-order-and-placement-structures)); a unit stands at pixel
 `(x·32 >> 8, y·32 >> 8 − ground height)` (`objects.ground_height`, size 1) in its
-`idle` frame at clock `--clock`, direction 8; a ground sack is a yellow square (the exe draws
-`graphics/backpack/sprites.256`, frame choice not traced).
+`idle` frame at clock `--clock`, direction 8; a ground sack is a yellow square. The exe draws a pile
+from `graphics/backpack/sprites.256` (`FUN_00461292`), frame = `min(5, floor(log10(total)))` with
+total = gold + sum of the items' `+0x1c` (`FUN_0052a895`, sent in message 0x7a; CONFIRMED): 100 gold
+→ frame 2, 5000 → 3, 10000 → 4; the item `+0x1c` is not decoded, so item piles are not framed.
+Sacks of dead monsters are runtime objects (`FUN_00510a70` → `FUN_005109f5`), not map data.
 
 ### Checks
 
@@ -681,17 +714,13 @@ inside the data.bin ranges, section 9 links in range, and the scene draws units 
 Id tables the next phases need, all present in data: units.reg (type → sprites; `Palette`,
 `Dying`), data.bin monsters/humans (`serverID` → record: stats, equipment strings, `face`),
 data.bin qualities / materials / armour / shields / weapons / special items / stat names
-(item codes and section 9 stat ids), `humans/human.pal` (colour rows). Still open: the class →
-list mapping of item codes, equipment string → item chain, the `0x5cea58` difficulty
-constants, sack creation on death.
+(item codes and section 9 stat ids), `humans/human.pal` (colour rows). Still open: the equipment
+string → item chain of data.bin records, the item `+0x1c` field.
 
 ## Open questions
 
 - Cell effects `FUN_0040af69` (modes 0 and 1, P3 (f) / P6 of the draw order): what they draw
   (source list `FUN_004203e0`, data at `view+0xb8/+0xbc`); unit shadow `FUN_00464487`.
-- `field_0c` (360/720, runtime map `+0x2c`): consumer; `field_84/88` (1…4)
-  and `field_8c/90`: reader stores them at object `+0xd8/+0xdc/+0xe0/+0xe4`,
-  users untraced (candidates: map limits for players, game mode flags).
 - Dirt: the meaning of effect byte `+0x5c`, the caller of `FUN_00559ce5`
   (clear), and when the mark disappears.
 - Line of sight: the distance tables (`+0x22000` steps, `+0x28000`
@@ -699,12 +728,16 @@ constants, sack creation on death.
   `FUN_00552c28`; callers (`FUN_00552929` has no direct caller: vtable?).
 - Whether the world-map-load order really creates cell records only through structures
   (a record made earlier by a unit makes `FUN_00559890` skip the refresh, see part 4);
-  whether the trigger sections 5-12 only name structures (`0x6000 + uid`).
+  whether section 7 names structures (section 11 does: keyed by structure uid, CONFIRMED `FUN_00561422`).
 - Block bits 3–7 and the dynamic stamping (`FUN_00550a96`,
   `FUN_0055c500`), the per-class `movementType` result (vtable `+0x20`),
   and the search itself (`FUN_0054d76e`, `FUN_0055d010`): phase H.
 - Section 7 (trigger lists, 0x31c-byte records), 10, 11, 12 (the reader `FUN_00534ad4`
   cases 7, 10–12 are in the exe).
-- Part 5: `Unit.behaviour` booleans (creature `+0x194`…) and `field_32`, `tier`; section 8
-  `extra` (INFERRED money); item-code class → data.bin list; section 9 flag/pair semantics;
-  money (`Player.money`) reader; hero facing constructor; difficulty constants.
+- Part 5: the event classes of `behaviour` bits 1, 2, 4 (`FUN_005303ed`); section 9 per-cell
+  payload (`FUN_0055ba36`, records with `a`/`b` ≠ 0 and kind < 4; 30 records in `76`, `93`–`96`);
+  gold pickup and the link between a pile's `+0x3c` gold and `Player.money`; the item field
+  `+0x1c` (sack frame of item piles); the `(41, v)` remap to `0x31`.
+- Section 12 (28-byte circle zones with four `-1`-or-number values, consumer `0x475500` picks
+  one at random into `0x5f1a08`: INFERRED music/ambience zones; users of the global untraced);
+  sections 7 and 11 key slots by coded numbers 8000–9999 and structure uids.

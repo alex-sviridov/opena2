@@ -17,6 +17,29 @@ MEMBER_SIZE = 10
 
 
 @dataclass(frozen=True)
+class ItemCode:
+    """A decoded member code (FUN_004fbf01): `kind` is the data.bin list, `index` 1-based."""
+    kind: str              # "weapon" (class 1), "shield" (2), "armour" (3-13), "special" (0xE)
+    cls: int
+    index: int
+    quality: int = 0       # data.bin qualities index (0 for special items)
+    material: int = 0      # data.bin materials index
+
+
+def decode_item(code):
+    """Item code of a section 8 member -> `ItemCode`, or None where the game builds no item
+    (class 0 and 15).  Armour classes 3-13 select only the index; the record's `Slot` is the slot."""
+    code &= 0xFFFF
+    cls = (code >> 8) & 15
+    if cls == 14:
+        return ItemCode("special", 14, code & 0xFF)
+    if cls == 0 or cls == 15:
+        return None
+    kind = "weapon" if cls == 1 else "shield" if cls == 2 else "armour"
+    return ItemCode(kind, cls, code & 31, (code >> 5) & 7, code >> 12)
+
+
+@dataclass(frozen=True)
 class Player:
     """Section 5 record.  `index` is the 1-based record number (the owner value of structures)."""
     index: int
@@ -35,7 +58,7 @@ class Unit:
     type: int              # units.reg ID (editor copy; the server uses `server_id`)
     tier: int              # u16 at +10, read but unused by the game
     flags: int             # +12, bit 0x10 = human (data.bin group 6), else monster (group 5)
-    behaviour: int         # +16, bits 1/2/4/8 set booleans on the unit
+    behaviour: int         # +16: 8 = summoned (no loot, no XP); 1/2/4 only feed the event generator
     server_id: int         # +20, data.bin `serverID` (humans param 24 / monsters param 55)
     owner: int             # +24, section 5 record number (1-based)
     group: int             # +28, section 8 group (1-based, 0 = none)
@@ -71,7 +94,7 @@ class Group:
     carrier_raw: int
     x: int
     y: int
-    extra: int             # +0x48 (0 in 43 groups, 100/5000/10000 in 8)
+    extra: int             # +0x48: gold lying in a ground pile (ignored when carried); 8 groups
     members: tuple
 
 

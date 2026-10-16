@@ -161,9 +161,12 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
 - Map entities done: section 5 players (76 B: `colour` = human.pal row, `money`, name, 16 relation words:
   1 war, 2 alliance, 0x10 vision; human = record 1 only), section 6 units (48 B: x/y, `server_id` -> data.bin
   `serverID` (humans group 6 when `flags & 0x10`, else monsters), `owner` = 1-based player, HP overrides, uid,
-  squad; no facing: the ctor draws 0x40 + rand(128)), section 8 groups = item packs (carried via unit `group`,
-  19 ground sacks), section 9 = item properties (stat id, value), item code decoder `FUN_004fbf01`; 4,212
-  units resolve. `Map.players/.units/.item_groups/.ground_groups`, `map render --layers all`; runtime unit
+  squad; no facing: the ctor draws 0x40 + rand(128), heroes too; `behaviour` bit 8 = summoned, no loot/XP), section 8
+  groups = item packs (carried via unit `group`, 19 ground sacks, `extra` = pile gold), section 9 = item
+  properties (stat id, value), item codes -> data.bin weapons/shields/armour/special (`decode_item`); 4,212
+  units resolve. Header `field_84` = multiplayer flag, `field_88` = difficulty (adverts), `field_0c/8c/90`
+  never read; section 11 keyed by structure uid, section 12 = circle zones. Unit struct: Mover/Brain/orders/
+  states/equipment slots in docs/engine/unit-struct.md. `Map.players/.units/.item_groups/.ground_groups`, `map render --layers all`; runtime unit
   struct (monster 0x208, human 0x254) docs/engine/unit-struct.md. map.md part 5
 - Not started: saves, Scenario.dll, item names/definitions (phase F), triggers (sections 7, 10-12).
 - Next: G3a (units in the engine, from `Map.units` and unit-struct.md). Also (docs/open-questions.md):

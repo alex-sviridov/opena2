@@ -132,6 +132,27 @@ def test_item_codes_decode_to_known_items():
                 assert mem.record <= len(m.item_records)
 
 
+def test_item_code_decoding():
+    assert E.decode_item(0xE03) == E.ItemCode("special", 14, 3)
+    assert E.decode_item(0x5146) == E.ItemCode("weapon", 1, 6, 2, 5)       # Two Handed Sword, Mithrill
+    assert E.decode_item(0xC263).kind == "shield" and E.decode_item(0x7790).kind == "armour"
+    assert E.decode_item(0x0001) is None and E.decode_item(0xF001) is None
+
+
+@needs_maps
+def test_item_classes_select_their_data_bin_lists():
+    db = databin(GFS)
+    slot = db.columns("classes").index("Slot")
+    lists = {"weapon": db.weapons, "shield": db.shields, "armour": db.armour, "special": db.items}
+    for path in MAPS:
+        for g in Map.load(path, GFS).item_groups:
+            for mem in g.members:
+                it = E.decode_item(mem.code)
+                assert 1 <= it.index <= len(lists[it.kind]), (path, mem)
+                if it.kind == "armour":                     # the record's Slot equals the code's class
+                    assert lists["armour"][it.index - 1].params[slot] == it.cls, (path, mem)
+
+
 @needs_maps
 def test_scene_draws_units_and_items():
     from allods2.anim.scene import Scene, draw_scene

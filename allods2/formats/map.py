@@ -44,7 +44,7 @@ class MapHeader:
     width: int             # +0x00
     height: int            # +0x04
     angle: float           # +0x08 f32 initial sun angle; overwritten by FUN_004a5dd2
-    field_0c: int          # +0x0c 360 or 720 (runtime map +0x2c; consumer not traced)
+    field_0c: int          # +0x0c 360 or 720 (copied to runtime map +0x2c, never read)
     ambient: int           # +0x10 initial ambient light; overwritten by FUN_004a5dd2
     diffuse: int           # +0x14 initial diffuse light; overwritten by FUN_004a5dd2
     tile_sets: int         # +0x18 bit mask of the tile sets (0..12) used by the Tiles block
@@ -58,10 +58,10 @@ class MapHeader:
     n_sec12: int           # +0x40 entries of section 12
     name: str              # +0x44 64-byte buffer
     name_raw: bytes
-    field_84: int          # +0x84 1 in all but a few maps (1..4); default 1
-    field_88: int          # +0x88 1..4; default 1
-    field_8c: int          # +0x8c mostly 0; garbage in a few maps
-    field_90: int          # +0x90 0 or 60000000; garbage in a few maps
+    field_84: int          # +0x84 1 in all 46: settings +0x74 = (value > 1) 'multiplayer'; default 1
+    field_88: int          # +0x88 map difficulty 1..4 (multiplayer advert only); default 1
+    field_8c: int          # +0x8c never read; mostly 0, garbage in a few maps
+    field_90: int          # +0x90 never read; 0 or 60000000, garbage in a few maps
     description: str       # +0x94 512-byte buffer
     description_raw: bytes
 

@@ -24,15 +24,16 @@ from both places when answered).
 
 - `.alm` triggers (sections 7, 10–12); the server reader `FUN_00534ad4` parses all of them
   (switch on the section id). Sections 0–6, 8, 9 are done. [map](formats/map.md#open-questions)
-- Part 5 leftovers: unit `behaviour` booleans, section 8 `extra`, item-code class → data.bin
-  list, section 9 flags, player money reader. [map](formats/map.md#open-questions)
-- Unit struct: Mover / Brain interiors, sub-objects, equipment slots.
+- Part 5 leftovers: event classes of unit `behaviour` bits 1, 2, 4, section 9 per-cell payload,
+  gold pickup vs `Player.money`, item `+0x1c`. [map](formats/map.md#open-questions)
+- Section 12 zones (INFERRED music) and the 8000–9999 slot codes of sections 7 and 11.
+  [map](formats/map.md#open-questions)
+- Unit struct: path finder `FUN_0054d76e`, group AI, damage resolution, orders 0x16/0x18/0x19/0x1a.
   [unit-struct](engine/unit-struct.md#open-questions)
 - Line of sight tables and the `FUN_00559536` gate; block-layer dynamic bits
   and per-class `movementType` (`FUN_00557a89`, vtable `+0x20`); the search
   `FUN_0054d76e` (phase H). [map](formats/map.md#open-questions)
-- `.alm` header leftovers: `field_0c` (360/720), `field_84/88/8c/90`
-  users; meaning of effect byte `+0x5c` (spell dirt mark, `FUN_00559c28`), caller of the clear `FUN_00559ce5`.
+- Meaning of effect byte `+0x5c` (spell dirt mark, `FUN_00559c28`), caller of the clear `FUN_00559ce5`.
   [map](formats/map.md#open-questions)
 - Structure registration at load: does a unit-made cell record exist before the structures (then
   `FUN_00559890` skips the refresh)? Do triggers name only structures? `FUN_005508a0` callers.
@@ -50,8 +51,9 @@ from both places when answered).
   [architecture](engine/architecture.md#open-questions)
 - Engine terrain scroll hitch (~27 ms per new cell row/column): pre-warm or flat-cell fast path.
   [architecture](engine/architecture.md#open-questions)
-- Trigger references to world ids (map sections 5-12): structures `0x6000 + uid`, section 3 cells
-  have no exe id (engine ids `0x10000 + n` are ours). Starting routine `FUN_00534ad4` cases 5-12.
+- Trigger references to world ids: section 11 is keyed by structure uid (`0x6000 + uid`, CONFIRMED),
+  section 7 slots are coded numbers 8000–9999 (INFERRED class × 100 + index), section 3 cells have no exe
+  id (engine ids `0x10000 + n` are ours). Left: decode section 7 (`FUN_00562745` `0x562a88`).
   [architecture](engine/architecture.md#open-questions)
 - Unregistering a structure (`FUN_0055995a`) clears cells held by another structure; engine releases only
   its own cells. [architecture](engine/architecture.md#open-questions)
