@@ -5,7 +5,7 @@ import pytest
 
 from engine.sim import CommandQueue, Simulation, tick_period_ms
 from engine.ui import ScrollInput
-from engine.view import Camera, Projection, build_draw_list
+from engine.view import Camera, Projection, build_terrain_items
 from engine.world import MapObject, World
 
 W, H = 24, 20
@@ -146,11 +146,11 @@ def test_draw_list_row_order_and_water_phase():
     w = World(cells, heights())
     tv = TerrainView(w, TerrainSet({}, np.zeros((128, 32), np.uint8), np.zeros((256, 3), np.uint8)))
     c = Camera(96, 96, W, H, 32, 32)
-    items = build_draw_list(tv, c, 0)
+    items = build_terrain_items(tv, c, 0)
     order = [(i.row, i.col) for i in items]
     assert order == sorted(order)
     assert all(i.sx == i.col * 32 - 32 for i in items)
-    water = {i.key for i in build_draw_list(tv, c, 0) if (i.col, i.row) == (2, 2)}
-    assert {(i.phase) for t in range(0, 16) for i in build_draw_list(tv, c, t) if (i.col, i.row) == (2, 2)} == {0, 1, 2, 3}
-    assert all(i.phase == 0 for i in build_draw_list(tv, c, 7) if (i.col, i.row) != (2, 2))
+    water = {i.key for i in build_terrain_items(tv, c, 0) if (i.col, i.row) == (2, 2)}
+    assert {(i.phase) for t in range(0, 16) for i in build_terrain_items(tv, c, t) if (i.col, i.row) == (2, 2)} == {0, 1, 2, 3}
+    assert all(i.phase == 0 for i in build_terrain_items(tv, c, 7) if (i.col, i.row) != (2, 2))
     assert water

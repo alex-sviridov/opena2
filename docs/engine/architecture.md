@@ -97,13 +97,18 @@ while running:
     while acc >= period_ms:               # fixed-step simulation
         sim.step(queue.drain())           # world.tick += 1, systems run
         acc -= period_ms
-    items = view.build_draw_list(terrain_view, camera, world.tick)
-    backend.draw(items, camera)           # surface cache + blits + flip
+    terrain = view.build_terrain_items(terrain_view, camera, world.tick)
+    items = view.build_draw_list(world, camera, world.tick, assets, options, debug)
+    backend.draw(terrain, items, camera)  # surface caches + blits + blends + flip
 ```
 
-The camera moves with frame time (smooth), the simulation with ticks.
+The camera moves with frame time (smooth), the simulation with ticks. The draw list
+(sprites of map objects and structures, shadows, debug overlays) is described in
+[rendering.md](rendering.md).
 
 ## 6. Terrain drawing
+
+Objects, structures, shadows and the draw order over the terrain: [rendering.md](rendering.md).
 
 Per visible cell, numpy compositing reuses the core functions
 (`terrain.tile_columns`, `shade_table`, `vertex_y`, `light_rows` indirectly

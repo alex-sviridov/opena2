@@ -194,6 +194,16 @@ A byte per visible cell at `view + 0xb0` (stride `w + 6`), passed by
    (unlit) → keep; else 223 corners count as `A` and the cell gets
    `min(A >> 2, sum >> 4)`.
 
+The row of a cell goes unchanged to **every** piece drawn by that cell's call:
+a structure footprint cell `(c, r)` passes `view+0xb0[cell]` to all pieces of
+its column (the rows above too), so one row per footprint cell, never per
+piece; objects use their own cell's row. Smoothing (`b.256`) is drawn with
+the **same row byte** and the main sprite's table (`FUN_0041e690` = sprite
+`+0x14`), blended 50 % over the destination; shadows take no row. Neither
+structure nor object draw takes an owner palette (structure `+0x18`
+5 arguments, object `+0x14` with the sprite's own table; mirror always 0):
+CONFIRMED `FUN_00461649`, `0x40922c`; no team remap exists for them.
+
 So a light brightens nearby objects up to row 0 (×2); values above 32 fade
 it out. The unit draw forces row 0 for the hovered unit
 ([palettes §7](../formats/palettes.md)). `object_light_row(ambient)`
@@ -207,16 +217,50 @@ covered pixel through blend table `k`: `dst·(16 − k)/16` per channel
 (tables from `FUN_0045225b`).
 
 - **Darkness** `k` = `0x6226cc` (4 day, 6 dusk/dawn, 8 night: ×0.75 /
-  ×0.625 / ×0.5); the lighter `0x6226d0` (2 / 3 / 4) for a second set of
-  objects (`0x626ca8`) and translucent units.
+  ×0.625 / ×0.5) for the main sprite; the lighter `0x6226d0` (2 / 3 / 4)
+  for the shadow of the `b.256` smoothing sprite (only with Smoothing
+  `0x622768`; the backpack's `b` shadow has no Smoothing gate). Not a
+  "second set of objects": `0x626ca4/0x626ca8` are the backpack sprite and
+  its `b` file (`graphics\backpack`, loaded `0x477411`). Every sprite
+  therefore casts two shadows over the same area (`b` is a halo, often larger),
+  darkening twice where they overlap.
+- **Callers** of the sprite shadow method `+0x3c` (`FUN_00424af4` → `FUN_0045506f`,
+  mirrored `FUN_00456021`): view draw objects (`0x408ec4`, `0x40905b`),
+  structure shadow `FUN_00461890` (`+0x2c`, `0x461ab0`, `0x461aeb`),
+  backpack `FUN_00461292`, units `0x464d58`…`0x46533a`. Objects, structures,
+  backpacks pass mirror 0; none of the three uses the mirrored blitter.
+  Bridges (`FUN_0046282f`, `0x462a3d`) and projectiles (`FUN_0046dda0`) have
+  an empty `+0x2c`: no shadow.
 - **Shear**: `trunc(tan(β)·65536)` (16.16), `β = α / 1.5`, except
   `−0.05 < α < 0` → β = −0.05, `0 < α < 0.05` → 0.05 (`FUN_004a4429`,
-  constants `0x5cea48/18/20`). The top row starts `trunc(shear·h/65536)`
+  constants `0x5cea48/18/20`; the `tan` is `FUN_00582cd4`, `ftol` truncates).
+  The top row starts `trunc(shear·h/65536)`
   px right; after each row (row skips count) the accumulator gains
   `shear` and the row moves left by its whole part; the bottom row ends
   under the sprite.
-- `FUN_00454d57`/`FUN_00455cf0` = low-memory variants (not reproduced),
-  `FUN_00456021` = mirrored.
+- **Anchor, map object** (`0x408cb9`–`0x409089`), `T = tan β`: shadow
+  sprite top-left `x = 32X + 16 − ((CenterX − Width/2) + w0/2) − dx`,
+  `y = 32Y + 16 − ((CenterY − Height/2) + h0/2) − relief`, with
+  `dx = trunc(T · (h/2 + Height/2 − CenterY))` (`/2` truncates to 0; record
+  fields as [animation §4.3](../formats/animation.md#43-objects)), `h` =
+  height of the **current** frame of the main sprite, `w0`, `h0` = width,
+  height of **frame 0** of the sprite being shadowed (main, then `b`
+  separately; quirk: the draw itself uses the current frame, so a shadow is
+  off by the half-size difference when frames differ; 2 of 135 object files,
+  `pointer`, `stones`, and the `b` files differ more: 36 files). `dx` is the
+  main's value for both shadows. Net effect: the shear pivot is the anchor
+  `(32X + 16, 32Y + 16 − relief)`, pixels above it lean right by `T·Δy`.
+  Passed to `+0x3c`: `(x, y, frame, k, shear16, 0)`.
+- **Anchor, structure piece** (`FUN_00461890`, same cell/row/frame logic as
+  the draw): piece `(c, r)` shadow at `x = 32·cx + trunc(T·((FH − r)·32 −
+  ShadowY))`, `y` = the piece's draw `y` (`32·cy − g − 32·(rows above)`),
+  piece frame as the draw, main `k = 0x6226cc`, then `b` (`FUN_0046e0b0`)
+  `k = 0x6226d0` if Smoothing; so the pivot is the picture's bottom edge
+  raised by `ShadowY`. Order: pieces bottom-up, main then `b`.
+- **Backpack** `FUN_00461292`: `x = obj+0x64 − w/2 − dx`, `y = obj+0x68 − h/2 −
+  obj+0x6c − 4`, `dx = trunc(T·(h/2))`, frame `obj+0x24`.
+- `FUN_00454d57`/`FUN_00455cf0` = low-memory variants (not reproduced,
+  `DAT_006227f0`), `FUN_00456021` = mirrored.
 
 `shadow_angle`, `shadow_shear`, `shadow_row_offsets`, `shadow_pixel`.
 

@@ -152,4 +152,69 @@ Units, projectiles, fog, selection, burning cells, day/night cycle (fixed daylig
 the low-memory shadow variants.
 
 ## Implementation notes
-(filled in by the implementer: REA results, deviations, measured timings)
+REA results (GOG exe; details and addresses in [map.md](../../formats/map.md#draw-order-and-placement-structures)
+and [lighting.md §4-5](../../mechanics/lighting.md)). **These corrections win over the decisions above.**
+
+1. **Pass order (replaces decision 3's key).** Depth = (pass, row, -col, slot, part, sub) with
+   P0 structure shadows, P1 flat structures, P2 corpses/backpacks (not yet), P3 per cell
+   (a) non-flat structure slice, (b) unit, (c) steam, (d) map object, (e) fire, then later
+   passes (flyers, projectiles, overlays: not yet). Scan rows top to bottom, columns right to
+   left, in every pass. A shadow is drawn **right before its sprite** (objects, units in P3)
+   as `sub` order: shadow main, shadow `b` (Smoothing), sprite, `b` overlay; only structure
+   shadows sit in the global pass P0. Bridges and projectiles have no shadow.
+2. **Window (decision 4).** The exe draws cells `-3 <= x <= W+2`, `-3 <= y <= Hv+6` (3 cells
+   left/right/top, 7 below; the loop runs 1 further each side but draws nothing there), with
+   `(vx, vy)` the window origin and `W x Hv` its size. A structure cell outside it draws
+   nothing, an object whose anchor cell is outside it is not drawn. The implementer still
+   verifies by data that no sprite reaches visibly beyond that margin.
+3. **Fog gates.** Structures draw when their fog state `< 2` (never seen = skipped); units
+   corpses, backpacks, flyers only at 0. Objects draw regardless (fog fill covers them).
+   Fog is out of scope here, so everything counts as state 0.
+4. **Shadows (decision 8 and "Shadows" section).** Casters: structures, objects (also
+   units, corpses, backpacks later). Each sprite casts two shadows: main with `k = 0x6226cc`,
+   then, only with Smoothing, the `b.256` shape with the lighter `k = 0x6226d0`
+   (`0x626ca8` is just the backpack's `b` file, not a second object class). Anchors and the
+   frame-0 quirk: lighting.md §5 (objects: pivot at the cell centre minus relief; structure
+   pieces: pivot = picture bottom raised by `ShadowY`; `dx = trunc(tan(beta)*s)`, then the
+   16.16 shear to the blitter). Reproduce the quirk (shadow position from frame 0 sizes).
+5. **Light row (decision 5).** One row per cell from the light map (`view+0xb0`); a structure
+   footprint cell passes its own row to all pieces it draws; objects use their cell's row.
+   The `b.256` overlay uses the same row and the main sprite's table, 50 % over the
+   destination. No lights/time-of-day nuance beyond decision 5.
+6. **Owner palette (decision 6).** None: structure and object draws take no owner table
+   (`remap` is always None for them). Placement formulas of the spec are unchanged
+   (map.md/animation.md); object `b.256` placement uses the **b** frame's own size (36 object
+   files have a different `b` size), shadows use frame 0.
+7. **Not-visible skip.** The exe skips an object only when its whole fog box is level 16;
+   harmless, not reproduced.
+
+## Implementation record (deviations, assumptions, timings)
+Implemented as described in [rendering.md](../../engine/rendering.md); deviations and decisions:
+1. `depth` is `(pass, row, -col, slot, seq, part, sub)`: `seq` (world stamp order) was added so ties
+   between two structures drawing into one cell follow the record order like E4; `slot` has 5 values
+   (structure, unit, steam, object, fire).
+2. `DrawItem` gained `shear` and `text`; kinds `marker` also covers the hotspot cross
+   (`text == "hotspot"`). `DrawOptions` gained `animate` and `objects`; `build_draw_list` takes a
+   sixth, optional `debug` argument (any object with `passability`, `markers`, `depth`), because
+   `engine.view` may not import `engine.ui`. `DrawList` carries `missing` and `culled`.
+3. `draw_frame(surface, caches, terrain_items, items, camera)` takes a `Caches(terrain, sprites)`
+   bundle; `render.screenshot(..., assets=None, options=None, debug=None, sprite_cache=None)` keeps its
+   G1 terrain-only behaviour without `assets`.
+4. `MapObject.size` (bridge size, not in the dump, golden world hashes unchanged) feeds
+   `AssetCache.structure_set(type, size)`; `AssetCache` gained `structures_reg`, `object_set`,
+   `structure_set`; `anim.scene.Scene` delegates to it and `piece_cells` was split out of
+   `structure_cells`.
+5. Window origin `(vx, vy)` = floor of the camera in cells, relief ignored (INFERRED; open question).
+   The cell window gate is applied, plus extent culling. By data no object sprite can reach the viewport
+   from outside the window; only structure 139 with relief above 96 could (rendering.md section 4).
+6. Parity options are `shadows=False, lit=False` with Smoothing on (E4 draws `b.256`); all 49 probed
+   positions on maps 10 and 52 are pixel-identical, 6 are pinned in tests plus tick 20 (objects only,
+   structures removed from the world: E4 does not animate structures).
+7. Lit rows use the fixed daylight (`ambient >> 2`), no light-map lights; BRIGHT2 arithmetic at 8 bits.
+8. Structure shadows: flat and destroyed structures cast like any other, `ShadowY` of +-20000 is passed
+   through (the shadow lands far away and is culled); bridges none.
+9. Not done (out of scope or not yet reachable): fog gates, burnt ground, units/corpses/backpacks
+   passes, day/night.
+Measured timings (1024 x 768): draw-list build 3-6 ms; first frame about 0.9 s (terrain cell
+compositing; with warm terrain 0.11 s); warm frame 7-82 ms, 82 ms for the densest forest view with
+shadows and light on (696 items), 31 ms with the E4 options (344 items).

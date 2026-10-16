@@ -1,8 +1,10 @@
-"""View layer (6): camera, coordinates, visible range, terrain compositing, draw list."""
+"""View layer (6): camera, coordinates, visible range, terrain compositing, draw lists."""
 
 from .camera import Camera
 from .coords import Projection
-from .draw_list import TerrainItem, build_draw_list
+from .drawlist import (DrawItem, DrawList, DrawOptions, TerrainItem, build_draw_list,
+                       build_terrain_items, in_window, view_window)
 from .terrain_view import TerrainView
 
-__all__ = ["Camera", "Projection", "TerrainItem", "TerrainView", "build_draw_list"]
+__all__ = ["Camera", "DrawItem", "DrawList", "DrawOptions", "Projection", "TerrainItem",
+           "TerrainView", "build_draw_list", "build_terrain_items", "in_window", "view_window"]

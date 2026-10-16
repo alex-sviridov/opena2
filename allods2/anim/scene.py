@@ -9,63 +9,64 @@ between the two; shadows, fog and the structures' owner colours are not drawn.
 
 import dataclasses
 
-from ..common import as_fs
 from ..formats import objects as O
 from .base import CELL
-from .objects import load_object_records, load_object_set
-from .structures import BridgeSet, load_structure_records, structure_paths, StructureSet
+from .structures import BridgeSet
 
 
 class Scene:
-    """Loads the object and structure sets a map needs, once."""
+    """The object and structure sets a map needs, from an `AssetCache` (loaded once)."""
 
     def __init__(self, fs=None):
-        self.fs = as_fs(fs)
-        self.object_records = load_object_records(self.fs)
-        self.structure_records = load_structure_records(self.fs)
-        self._objects, self._structures = {}, {}
+        """`fs`: an a2res FS, an install folder or an `AssetCache`."""
+        from ..assets import AssetCache
+        self.assets = fs if isinstance(fs, AssetCache) else AssetCache(fs)
+        self.fs = self.assets.fs
+
+    @property
+    def object_records(self):
+        return self.assets.objects_reg()
+
+    @property
+    def structure_records(self):
+        return self.assets.structures_reg()
 
     def object_set(self, oid):
-        if oid not in self._objects:
-            self._objects[oid] = load_object_set(oid, self.fs, self.object_records) \
-                if oid in self.object_records else None
-        return self._objects[oid]
+        return self.assets.object_set(oid)
 
     def structure_set(self, s):
-        key = (s.type, s.size)
-        if key not in self._structures:
-            rec = self.structure_records.get(s.type)
-            if rec is None:
-                self._structures[key] = None
-            elif rec.get("VariableSize"):
-                w, h = s.size or (0, 0)
-                self._structures[key] = BridgeSet(rec, w, h, paths=structure_paths(rec, self.fs), fs=self.fs)
-            else:
-                self._structures[key] = StructureSet(rec, paths=structure_paths(rec, self.fs), fs=self.fs)
-        return self._structures[key]
+        return self.assets.structure_set(s.type, s.size)
 
 
-def structure_cells(scene, s):
-    """{(x, y): [Part, ...]}: the pieces of structure `s` drawn from each cell of
-    its picture footprint (W x TH cells; a bridge: w x h), keyed by absolute cell,
-    in draw order (FUN_00461649: a cell draws its piece row bottom-up, and the
-    top local row also the FH - TH rows above the footprint)."""
-    aset = scene.structure_set(s)
-    if aset is None:
-        return {}, None
-    rec = aset.rec
-    destroyed = s.intact == 0 and not rec.get("Indestructible") and "destroyed" in aset.actions
+def piece_cells(aset, destroyed=False, tick=0, animate=True):
+    """({(c, r): [Part, ...]}, ref): the pieces of a structure drawn from each cell
+    (c, r) of its picture footprint (W x TH cells; a bridge: w x h), relative to the
+    structure's cell, in draw order (FUN_00461649: a cell draws its piece row
+    bottom-up, and the top local row also the FH - TH rows above the footprint).
+    `ref` = the frame (`destroyed`: the destroyed pieces); `tick`/`animate` as
+    `StructureSet.frame_at` (start 0)."""
     bridge = isinstance(aset, BridgeSet)
-    ref = aset.frame_at("destroyed" if destroyed else "bridge" if bridge else "intact", 0, 0)
+    ref = aset.frame_at("destroyed" if destroyed else "bridge" if bridge else "intact", 0, tick, animate=animate)
     lift = 0 if bridge else aset.FH - aset.TH              # picture rows above the footprint
     cells = {}
     for p in ref.parts:
         c, prow = p.dx // CELL, (p.dy + CELL * lift) // CELL
         r = max(prow - lift, 0)
-        cells.setdefault((s.x + c, s.y + r), []).append((prow, p))
+        cells.setdefault((c, r), []).append((prow, p))
     for k in cells:
         cells[k] = [p for _, p in sorted(cells[k], key=lambda t: -t[0])]       # bottom-up
     return cells, ref
+
+
+def structure_cells(scene, s):
+    """{(x, y): [Part, ...]} keyed by absolute cell (see `piece_cells`), and the frame."""
+    aset = scene.structure_set(s)
+    if aset is None:
+        return {}, None
+    rec = aset.rec
+    destroyed = s.intact == 0 and not rec.get("Indestructible") and "destroyed" in aset.actions
+    cells, ref = piece_cells(aset, destroyed)
+    return {(s.x + c, s.y + r): parts for (c, r), parts in cells.items()}, ref
 
 
 def draw_scene(canvas, m, scene, *, top=0, relief=True, clock=0, objects=True, structures=True):

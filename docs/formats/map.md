@@ -469,20 +469,48 @@ flag only seeds block bit 1 (a leftover of the editor).
 
 ### Draw order and placement (structures)
 
-CONFIRMED (view draw `FUN_00406f43`, every pass visits rows top to bottom,
-columns right to left, over the visible window plus a 4–7 cell margin):
+CONFIRMED (view draw `FUN_00406f43`, REA/asm). Window origin `(vx, vy)` =
+`view+0x5c/+0x60`, size `W × Hv` = `+0x64/+0x68`
+([terrain](terrain.md)). **Every object pass** scans rows `y = −4 …
+Hv+7` top to bottom and, in each row, columns `x = W+3 … −4` right to left,
+but draws only inside `−3 ≤ x ≤ W+2`, `−3 ≤ y ≤ Hv+6` (the outer ring is
+a no-op): **3 cells margin left, right and above, 7 below**. Per-cell
+arrays (stride `W+6`, offset 3) hold one entity per layer:
+`view+0x8c` ground units, `+0x90` flyers, `+0x94` structures and bridges,
+`+0x98` backpacks, `+0x9c` corpses/units with flag `0x80`
+(`FUN_00460591`, vtable `+0x38`). `S` below = `FUN_0041eb60` =
+`obj+0x7c`, the entity's fog state: structures (`FUN_00461460`) 0 when a
+footprint cell is in sight (`0xc000`), 1 explored (`0x8000`), 2 never
+seen; units 0 in sight, else 1. The light row passed to each draw is
+`view+0xb0[cell]` ([lighting §4](../mechanics/lighting.md#4-object-light-rows-fun_00404a2a-confirmed)).
 
-1. terrain `FUN_00404e0e`;
-2. when the shadow option `DAT_005f17e8` is on, structure shadows (vtable
-   `+0x2c`);
-3. **flat structures** (structures.reg `Flat`: 12 IDs, bridges 33/37/38/52,
-   graves 121–123, Magic 27, Teleport 48, Campfire 53, Crater 117, Nest 138):
-   draw (`+0x28`) per footprint cell;
-4. other cell layers (`view+0x98/+0x9c`), then **per cell, in this order**: the
-   non-flat structure's slice of that cell, the unit on it, **the map
-   object** (`0x408a7d`–`0x408c9f`); a structure therefore hides what stands
-   behind it (smaller row) and is covered by objects in front;
-5. later: lights, selection, overlays, fog.
+Order (terrain `FUN_00404e0e`, then `FUN_00405cf4` lit-terrain redraw first):
+
+| # | Pass (all cells in scan order) | Entities, gate |
+|---|---|---|
+| P0 | **shadows** (only with `DAT_005f17e8`) | structures (`+0x2c`, `S < 2`; bridges: empty stub) |
+| P1 | flat structures | layer `+0x94`, record `Flat ≠ 0`, `S < 2`, `+0x28` |
+| P2 | per cell: corpses (`+0x9c`), then backpacks (`+0x98`) | `S == 0`: shadow `+0x2c`, then draw `+0x28` |
+| P3 | **per cell, in this order**: (a) non-flat structure slice (`S < 2`, `+0x28`); (b) ground unit `+0x8c` (`S == 0`: shadow, draw); (c) steam of a burning water cell; (d) **map object**: shadow main, shadow `b`, draw, `b` 50 % smoothing; (e) fire of a burning cell with an object; (f) cell effect `FUN_0040af69` mode 1 | |
+| P4 | flyer shadows (`+0x90`, `S == 0`) | |
+| P5 | list `FUN_00420140/60`: `+0x28(0,0,0)` per entry (projectiles, no cell) | |
+| P6 | cell effects `FUN_0040af69` mode 0 (rows 0…Hv+3, cols 0…W−1) | |
+| P7 | flyers `+0x90` draw (`S == 0`) | |
+| P8 | overlays `+0x30` (layers `+0x94`, `+0x8c`, `+0x90`; rows −3…Hv+6, cols W+2…−3) | |
+
+then fog ([lighting §3](../mechanics/lighting.md#3-light-map-view--0xa8-confirmed)).
+Structure pieces call `FUN_00404d99` (selection rect registration, no pixels)
+after the draw. Object gate: map-object byte ≠ 0 and `FUN_0040b117` = 0; it
+returns 1 (skip) only when every fog vertex of the sprite's cell box is level
+16 (black), so skipping is invisible. P3 order inside one cell: (a) before
+(b) before (d); a structure therefore hides what stands behind it (smaller
+row) and objects in front cover it. Shadows are drawn right before the
+sprite they belong to, except structures (P0, before everything) and flyers
+(P4). Pieces of one structure cell go bottom-up, each piece as main then
+`b`. Shadow casters: structures, map objects, ground and flying units,
+corpses, backpacks; **not** bridges and projectiles (`+0x2c` is a `ret`
+stub). Shadow geometry: [lighting §5](../mechanics/lighting.md#5-shadows-confirmed).
+Units and burning-cell effects are INFERRED beyond the order above.
 
 A structure is drawn once per footprint cell ([animation §4.2](animation.md#42-structures-and-bridges)):
 cell `(c, r)` of the W × TH footprint draws the pieces of picture column `c` in
@@ -512,6 +540,8 @@ are inside the window, structures stamp into passability, and the scene draws.
 
 ## Open questions
 
+- Cell effects `FUN_0040af69` (modes 0 and 1, P3 (f) / P6 of the draw order): what they draw
+  (source list `FUN_004203e0`, data at `view+0xb8/+0xbc`); unit shadow `FUN_00464487`.
 - `field_0c` (360/720, runtime map `+0x2c`): consumer; `field_84/88` (1…4)
   and `field_8c/90`: reader stores them at object `+0xd8/+0xdc/+0xe0/+0xe4`,
   users untraced (candidates: map limits for players, game mode flags).

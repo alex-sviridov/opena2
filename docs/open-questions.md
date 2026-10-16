@@ -53,3 +53,5 @@ from both places when answered).
   [architecture](engine/architecture.md#open-questions)
 - Unregistering a structure (`FUN_0055995a`) clears cells held by another structure; engine releases only
   its own cells. [architecture](engine/architecture.md#open-questions)
+- [Cell effects `FUN_0040af69`, unit shadow `FUN_00464487`](formats/map.md#open-questions): what the two effect passes draw; start at `FUN_0040af69`.
+- [Engine object drawing](engine/rendering.md#open-questions): window origin vs. relief, structure `ShadowY` +-20000, shadows of destroyed/flat structures, burnt ground, light-map lights on objects; start at `FUN_00406f43`, `FUN_00461890`.

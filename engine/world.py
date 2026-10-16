@@ -49,6 +49,7 @@ class MapObject:
     footprint: tuple = ((0, 0, True),)
     known: bool = True
     seq: int = 0
+    size: tuple = None          # (w, h) cells of a sized bridge (section 4), else None
 
 
 @dataclass
@@ -290,7 +291,7 @@ class World:
             ob = MapObject(STRUCTURE_ID_BASE + s.uid, kind, s.type, s.x, s.y, owner=s.owner,
                            hp=hp_max if s.intact else 0, hp_max=hp_max,
                            flags=0 if s.intact else FLAG_DESTROYED, uid=s.uid, footprint=fp,
-                           known=known)
+                           known=known, size=s.size)
             if ob.id in w.objects:
                 raise ValueError("duplicate structure id %#x (uid %d)" % (ob.id, s.uid))
             w._check(ob)

@@ -145,6 +145,13 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   `tests/golden.json` + `tools/update_golden.py`. REA: a structure claiming a held cell loses it and
   all its later present cells (first wins, `FUN_00559890`/`FUN_005599df`; 16 cells in 30.alm,
   40.alm); `stamp_structures` follows. docs/engine/architecture.md section 9
+- Engine G2b (object drawing) done: `engine/view/drawlist.py` (`build_terrain_items`, `build_draw_list` ->
+  `DrawItem`s sorted by the exe's pass order P0 shadows, P1 flat, P3 per cell structure/object, window
+  x -3..W+2, y -3..Hv+6, two shadow levels 0x6226cc/0x6226d0, frame-0 shadow quirk, no owner remap), backend
+  `SpriteCache` + numpy half/shadow blends, `DebugFlags` F1/F2/F3, `engine run|screenshot` options
+  (`--no-shadows --no-light --no-smoothing --no-objects --debug`); pixel parity with `map render --relief` at
+  shadows/light off; goldens `tests/golden.json["screenshots"]`; fog, burnt ground, lights not drawn.
+  docs/engine/rendering.md
 - Not started: saves, Scenario.dll, item names, units/items/players in the engine.
-- Next: G2b (engine: drawing objects/structures from the world). Also (docs/open-questions.md): .alm sections 5–12 (server reader
+- Next: G2c (engine: minimap). Also (docs/open-questions.md): .alm sections 5–12 (server reader
   `FUN_00534ad4`), town-scene animations, text conventions.
