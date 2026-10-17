@@ -42,7 +42,7 @@ Other creation sites (all `Creature`/`Leaf`): 0x4f312a (server spawn of a type l
 0x4f89d1, 0x512097, 0x5142db, 0x520770.., 0x40d9b2 (client message loop, 0x40f372), 0x51a61e/0x51ac7d. Not all traced.
 
 ### Hierarchy / class order of the creature creation path (map load, FUN_00561bf9)
-1. owner: `FUN_0051680d(0x68d2c4 player mgr, mapunit+0x14 as word)`; missing -> error log + skip. If `[0x6044c4+0x174]` and `player+0x2c` both set -> skip (INFERRED: inactive slot / multiplayer filter).
+1. owner: `FUN_0051680d(0x68d2c4 player mgr, mapunit+0x14 as word)`; missing -> error log + skip. If `[0x6044c4+0x174]` and `player+0x2c` both set -> skip (`player+0x2c` = computer-controlled, CONFIRMED [progression](../data/progression.md#4-xp-sources); the skip is a multiplayer filter, INFERRED).
 2. alloc + ctor by template name (above). Difficulty tweak (`[0x6044c4+0xd8]`: 2 skip; 1: maxHP*=const `0x5d1b00`, HP=maxHP, brain+0x44>>=1; else +0x32 to words +0xa6,+0xbe and maxHP*=`0x5d1b08`). CONFIRMED 0x561e20-0x561f0b (meaning of the +0xd8 modes INFERRED).
 3. `mapunit+0x50` bits -> creature dwords: bit0 -> +0x194, bit1 -> +0x19c, bit2 -> +0x198, bit3 -> +0x1a0 (0/1). CONFIRMED 0x561f0f-0x561f77.
 4. if word +0xe == 0 -> error "bad unit" and delete. vtable +0x58 (recompute from template; 0x5118be for monsters).

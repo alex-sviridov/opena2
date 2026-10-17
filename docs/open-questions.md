@@ -24,7 +24,7 @@ from both places when answered).
 ## Progression
 
 - Killer slot `0x50(victim)` before the kill credit. Start: `FUN_0052b459`. [progression](data/progression.md#open-questions)
-- Meaning of `Player+0x2c`. Start: `FUN_00513128`. [progression](data/progression.md#open-questions)
+- Hero state between campaign maps (saves, `.a2c`). Start: `FUN_00514920`. [progression](data/progression.md#open-questions)
 - Human max HP / mana are derived by the recompute (`FUN_0051366b`), not the data.bin value the world uses; implement in phase I. [progression](data/progression.md#6-hero-start)
 
 ## Items
