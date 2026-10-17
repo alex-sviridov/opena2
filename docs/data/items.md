@@ -373,8 +373,42 @@ chapter `C` by 10, `C` starts at 10, then applies the price caps below). Table e
 
 Price caps by chapter `C` (every block of the named towns): `C = 30` town 2 `max` 10,000; 40: town 2 22,000; 50: towns 2 and 3 60,000; 60:
 150,000; 70: 400,000; 80: 800,000; 90: 1,500,000 and town 2 `min` 12,000 (b0, b1, b3); 100: 5,000,000 and town 2 `min` 40,000;
-110: 10,000,000. Town 1 never changes. One dialogue event raises town 3 b3 later: `ScenarioTalkTo` (`0x100032c0`) with code word `A`
+110: 10,000,000. Town 1 never changes. The call is made by the client main handler (`FUN_004852d8`, mode `[win + 0x5d8] == 2` and `[win + 0x3e4] != 0`, at `0x486c40`, and from the
+town exit at `0x487d93`); both outcome branches of the end-of-mission message (script variable `0x300 >= 0x78` or not) set `[win + 0x3e4]`, and
+the DLL tests no victory flag, so a lost mission runs the same update (INFERRED). One dialogue event raises town 3 b3 later: `ScenarioTalkTo` (`0x100032c0`) with code word `A`
 (low 16 bits) `= 0x2a3`, `B` (bits 16-27) `= 0x4e` ORs `0x80000` (quality 4) into town 3's b3 flags.
+
+## 14. Quests and the item upgrade (message 0x38)
+
+CONFIRMED by disassembly unless tagged. The mission reward of §11 is the payout of a personal **quest** ("goal") record. Server message
+`0x38` (a hero asks a quest giver; `FUN_004f515d` case 0x38, stores two payload bytes at hero `+0xa6c`) runs `FUN_0052f813`:
+`FUN_00533e8f` looks for the player's quest record that is **done** (record `+8` = player, `+4` = this manager id, `+0x10 == 1`); if there
+is none, `FUN_005303ed` **generates a new quest** for the player; if there is one, `FUN_005325ee` pays it out (item upgrade, §11) and
+`FUN_0050338e(.., 9)` follows.
+
+**Records.** Twelve quest classes (constructors `0x547d50`, `0x547dd0`, `0x547e50`, `0x547ed0`, `0x547f80`, `0x548030`, `0x5480e0`, `0x548190`, `0x548240`, `0x5482f0`, `0x5483a0`, `0x548450`; vtables from `0x5d1728`) share the base init `FUN_0052dc3a(a1..a7)`:
+`+4 = a1`, `+8 = a2`, `+0xc = a3`, `+0x14 = a4`, `+0x18 = a5`, `+0x1c = a6` (required count), `+0x10 = 0` (open), `+0x24 = a7` (reward
+`v`). A virtual `OnEvent(kind, arg1, arg2)` (vtable `+0x14`) reaches the quest from the manager queue (`Post(kind, a, b)` =
+`FUN_0052e07e`, drained by `FUN_0052e0c4`); a quest finishes with `Post(1, id, 0)`. Event kinds and posters: 4, 5, 0xf `FUN_0052b459`;
+6 `FUN_0057e5f0`; 7 `FUN_0057e708`; 0xb `FUN_0057e87a`; **8, 9, 10: `FUN_0057e9cf`, `FUN_0057ebd4`, `FUN_0057edda`**.
+
+**Initial reward `a7`** (generator `FUN_005303ed`, `XP` = hero `+0x130`): quest `0x547ed0` `XP / 33`; `0x548030` `XP / 50`; `0x547f80` `XP / 100`;
+the item-delivery quest `0x548450` (kind 0xf) `10 x` the highest `+0x1c` price among the player's items; the three undead quests `0`.
+
+**Undead quests** (kinds 8, 9, 10). The generator creates one only for a mage player (`FUN_0053a5a0`) whose `FUN_0051c4a4` has bit
+`0x400000`, picks one of the three classes with a random draw in 0..2 and a count `3 + rnd` (the draw bounds were not recovered). The poster
+is a virtual method of an area object (vtable `0x5d1cfc`..) that counts, in the group `+0x28`, the units of **one unit type** within a range
+`+0x3c` of a point `+0x34` (INFERRED roles of those fields): kind 8 type `0x52` (units.reg
+82, Zombie Fighter 1), kind 9 type `0x59` (89, Skeleton Fighter 1), kind 10 type `0x45` (69, Ghost). When the count reaches the required
+number it posts `(kind, (sumMaxHp << 16) | count, (areaId << 16) | requiredType)` where `sumMaxHp` adds the units' max HP (`+0x96`) and then sets those
+units' HP (`+0x94`) to -50, which kills them (the sacrifice). The quest handlers (`FUN_0052f222`, `FUN_0052f2d4`, `FUN_0052f386`) finish when the
+count word is at least the required `+0x1c` and the ids match, and then **overwrite the reward**: `v = (sumMaxHp)^2 / 5` for kinds 8 and 9,
+`(sumMaxHp)^2 >> 3` for kind 10 (integer division of the 32-bit square). The other quest classes keep their initial `a7`.
+
+**Payout** (`FUN_005325ee`): `v` = the done record's `+0x24`, 0 without a record, clamped to 250 .. 16,382,000 (§11 magic_cap
+readers: the upgrade of the equipped items and the 75-point attribute rule). The hero (and so the upgraded items) is stored in the
+character file (`.a2c`, §12 message `0xbe` loads it with the wire item format `FUN_004ed5f5`), which is how the upgrade persists
+between maps; the file format itself is part of the saves work ([open questions](../open-questions.md)).
 
 ## VERIFY IN GAME
 
@@ -386,12 +420,5 @@ Price caps by chapter `C` (every block of the named towns): `C = 30` town 2 `max
 
 ## Open questions
 
-- Mission reward `0x5325ee`: CONFIRMED caller chain: server message `0x38` (`FUN_004f515d` case 0x38, after `FUN_00510745`; stores
-  two payload bytes at hero `+0xa6c`) -> `FUN_0052f813`: if `FUN_00533e8f` (a record in the mission's list matches the player id
-  `+8`, the mission object `+4` and `+0x10 == 1`) is 0 it runs the no-reward path `FUN_005303ed`, else `0x5325ee`. `v` = `+0x24` of that
-  record (`FUN_005493d0`; no other reader), 0 if none; the upgrade step also runs when `FUN_0053dd90` (byte `+0xa78 > 0x32`).
-  INFERRED: `+0x24` is written by the event handlers at `0x52f222` / `0x52f2d4` (event kind 8, 9: `(arg1 >> 16)^2 / 5`) and
-  `0x52f386` (kind 10: `(arg1 >> 16)^2 >> 3`), each only when the record is still open (`FUN_00548510 == 0`); the senders of these
-  event kinds and the meaning of `arg1 >> 16` are not traced. Left: how the upgrade step relates to the hero state kept between maps
-  (`FUN_00514920`, [units](units.md#open-questions)); how the Scenario.dll mission-completion call is reached (whether
-  a lost mission also runs it; §13 assumes `ScenarioLeaveLocation` is called on completion only).
+- None open for items. Left outside this spec: the `.a2c` character and save formats (hero state between maps) and the Scenario.dll
+  campaign state machine beyond the shop table (§13).
