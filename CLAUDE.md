@@ -168,6 +168,14 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   never read; section 11 keyed by structure uid, section 12 = circle zones. Unit struct: Mover/Brain/orders/
   states/equipment slots in docs/engine/unit-struct.md. `Map.players/.units/.item_groups/.ground_groups`, `map render --layers all`; runtime unit
   struct (monster 0x208, human 0x254) docs/engine/unit-struct.md. map.md part 5
+- Engine G3a (units) done: `World.players/units/items` from the map in record order (unit id `0x6000 + uid` CONFIRMED,
+  piles `0x30000 + group`, one pile per cell), units never touch the static block layer (dynamic blocking = phase H),
+  `Simulation` advances `world.tick` and units idle (animation clock = tick, tested at 30/60 fps); drawn per the exe
+  (REA): filing cell `pos - 0x80 + size*0x80`, P3 structure < unit < object, flyers (`Z != 0`) shadow P4 unsheared + sprite P7
+  16 px up, shadows, team colour `human.pal[owner colour]`, backpack piles P2; minimap unit dots (palette entry 164 of the
+  owner's row, no fog yet); pixel parity with `map render --layers all` (E5 now follows the exe), goldens. Facing: file has none,
+  exe `0x40 + rand(128)` (engine: hash of uid). Also answered: exe scrolls whole cells within the 8-cell border; cell effects =
+  spell-area sprites (fire/earth wall, poison cloud); server drops units on blocked cells (9 in the install), HP-0 walkers stay
+  corpses; ShadowY +-20000 has no gate. docs/engine/rendering.md §13, architecture.md §9
 - Not started: saves, Scenario.dll, item names/definitions (phase F), triggers (sections 7, 10-12).
-- Next: G3a (units in the engine, from `Map.units` and unit-struct.md). Also (docs/open-questions.md):
-  town-scene animations, text conventions.
+- Next: G3b (interface frame and selection). Also (docs/open-questions.md): town-scene animations, text conventions.

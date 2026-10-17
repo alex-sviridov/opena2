@@ -19,6 +19,7 @@ class AssetCache:
         self._objects_reg = None
         self._structures_reg = None
         self._object_sets, self._structure_sets = {}, {}
+        self._unit_sets, self._unit_types = {}, None
 
     def tileset(self):
         """The terrain strips and dirt.bmp (`TerrainSet`)."""
@@ -78,3 +79,20 @@ class AssetCache:
                 aset = StructureSet(rec, paths=structure_paths(rec, self.fs), fs=self.fs)
             self._structure_sets[key] = aset
         return self._structure_sets[key]
+
+    def unit_types(self):
+        """units.reg records by ID (`allods2.units`), loaded once."""
+        if self._unit_types is None:
+            from . import units
+            self._unit_types = units.by_id(units.unit_types(self.fs))
+        return self._unit_types
+
+    def unit_set(self, type_id):
+        """The `UnitSet` of units.reg ID `type_id`, loaded once; None when the ID is unknown
+        or names no sprite file."""
+        if type_id not in self._unit_sets:
+            from .anim.units import load_unit_set
+            t = self.unit_types().get(type_id)
+            self._unit_sets[type_id] = None if t is None or not t.file else \
+                load_unit_set(type_id, self.fs, list(self.unit_types().values()))
+        return self._unit_sets[type_id]

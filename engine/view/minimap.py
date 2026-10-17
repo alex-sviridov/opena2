@@ -43,6 +43,29 @@ class MinimapGeometry:
         return max(x0, 0), max(y0, 0), min(x1, self.width - 1), min(y1, self.height - 1)
 
 
+def dot_box(geometry, col, row):
+    """(x0, y0, x1, y1) inclusive image pixels of the unit dot of cell (col, row), or None outside
+    the image: `(c - 8) << k` with a `1 << k` square, for k = -1 `>> 1` and one pixel (CONFIRMED
+    0x465f3f; no altitude term, flyers use the same function)."""
+    k = geometry.k
+    x, y = ((col - BORDER) << k, (row - BORDER) << k) if k >= 0 else ((col - BORDER) >> 1, (row - BORDER) >> 1)
+    n = 1 << k if k >= 0 else 1
+    if x < 0 or y < 0 or x + n > geometry.width or y + n > geometry.height:
+        return None
+    return x, y, x + n - 1, y + n - 1
+
+
+def draw_unit_dots(image, geometry, world, colors):
+    """Copy-free: write one dot per unit (colour = `colors[owner's human.pal row]`) into `image`.
+    The exe draws a dot for the viewer's own units and any unit in sight; the engine has no fog
+    yet, so every unit gets one (DECISION until fog)."""
+    for u in world.units.values():
+        box = dot_box(geometry, u.x, u.y)
+        p = world.players.get(u.owner)
+        if box is not None and p is not None:
+            image[box[1]:box[3] + 1, box[0]:box[2] + 1] = colors[p.colour & 15]
+
+
 def draw_camera_rect(image, rect, color=RECT_COLOR):
     """Copy of `image` with the one-pixel outline `rect` drawn."""
     out = image.copy()
@@ -58,8 +81,9 @@ def draw_camera_rect(image, rect, color=RECT_COLOR):
 class Minimap:
     """The base image of a world, built once; `image(camera)` adds the camera rectangle."""
 
-    def __init__(self, world, table):
-        self.world, self.table = world, table
+    def __init__(self, world, table, dot_colors=None):
+        """`dot_colors`: (16, 3) from `allods2.minimap.load_dot_colors` (None = no unit dots)."""
+        self.world, self.table, self.dot_colors = world, table, dot_colors
         self.geometry = MinimapGeometry(world.width, world.height)
         self._base = None
         self.builds = 0
@@ -77,4 +101,8 @@ class Minimap:
         return self._base
 
     def image(self, camera):
-        return draw_camera_rect(self.base, self.geometry.camera_rect(camera))
+        """Base image, then the unit dots, then the camera rectangle (the exe's order)."""
+        img = self.base.copy()
+        if self.dot_colors is not None:
+            draw_unit_dots(img, self.geometry, self.world, self.dot_colors)
+        return draw_camera_rect(img, self.geometry.camera_rect(camera))

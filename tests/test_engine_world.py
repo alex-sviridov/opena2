@@ -187,7 +187,7 @@ def fake_map(structures, placed, extra_outside=0):
     return SimpleNamespace(
         name="fake.alm", terrain=t, runtime_terrain=lambda: t & np.uint16(0xDFFF),
         heights_i8=np.zeros((N, N), np.int8), structures=structures, objects=layer,
-        placed_objects=lambda window=True: list(placed))
+        placed_objects=lambda window=True: list(placed), players=[], units=[], item_groups=[])
 
 
 class FakeAssets:

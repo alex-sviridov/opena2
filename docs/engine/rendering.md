@@ -1,4 +1,4 @@
-# Engine rendering: draw list and backend (G2b)
+# Engine rendering: draw list and backend (G2b, units G3a)
 
 Spec: [object-drawing design](../superpowers/specs/2026-10-16-object-drawing-design.md) (its
 "Implementation notes" win). Order, window and shadows are CONFIRMED in
@@ -22,11 +22,11 @@ order. `Caches(terrain, sprites)` bundles the two caches and a debug font.
 (world id), `sprite = (set_kind "object"|"structure"|"bridge", type_id, source "main"|"main_b"|
 "dead"|"dead_b")`, `frame`, screen `sx, sy` (top-left of the frame after hotspot and camera;
 for a shadow the sheared frame's `x, y` as the exe passes it), `w, h`, `mirrored`, `blend`
-(`opaque`, `half`, `shadow`; `alpha` reserved for units), `light_row`, `shadow`, `shadow_level`,
-`remap` (always None here: structures and objects take no owner table, CONFIRMED lighting.md §4),
+(`opaque`, `half`, `shadow`; `alpha` reserved for invisible units), `light_row`, `shadow`, `shadow_level`,
+`remap` (units: `(human.pal row, variant)`; None for structures, objects, piles: no owner table, CONFIRMED lighting.md §4),
 `depth`, `shear` (16.16), `text` (depth label; `"hotspot"` marks the cross marker).
 `DrawList` is a list with `missing` (entities without sprite: the game draws nothing) and
-`culled` (cells outside the window). `DrawOptions(shadows, lit, smoothing, animate, objects)`
+`culled` (cells outside the window). `DrawOptions(shadows, lit, smoothing, animate, objects, units)`
 default to the game's defaults (every option is 1); the light is the fixed default daylight
 (`daylight(0, False)`) like the terrain.
 
@@ -39,11 +39,13 @@ CONFIRMED order of `FUN_00406f43` (every pass: rows top to bottom, columns right
 |---|---|---|
 | P0 | structure shadows (Shadows option; bridges none) | yes |
 | P1 | flat structures (`Flat`) | yes |
-| P2 | corpses, backpacks | not yet |
-| P3 | per cell: (a) non-flat structure slice, (b) unit, (c) steam, (d) map object, (e) fire | slots 0, 3 |
-| P4-P8 | flyer shadows, projectiles, cell effects, flyers, overlays | not yet |
+| P2 | corpses, backpacks | backpacks (ground piles) yes, corpses not yet |
+| P3 | per cell: (a) non-flat structure slice, (b) ground unit, (c) steam, (d) map object, (e) fire | slots 0, 1, 3 |
+| P4 | flyer shadows | yes |
+| P5-P6, P8 | projectiles, cell effects, overlays | not yet |
+| P7 | flyers | yes |
 
-`slot` 0 structure, 1 unit, 2 steam, 3 object, 4 fire; `seq` = the world's stamp order (a
+`slot` 0 structure, 1 unit, 2 steam, 3 object, 4 fire (P2: 0 corpse, 1 backpack); `seq` = the world's stamp order (a
 deterministic tie-break: E4 orders ties by record order); `part` = piece index within a
 structure cell, bottom-up; `sub`: structure 0 piece, 1 its `b` overlay; shadows of structures
 (P0) 0 main, 1 `b`; object 0 shadow main, 1 shadow `b`, 2 sprite, 3 `b` overlay (a shadow is
@@ -173,7 +175,7 @@ rectangle), `engine/ui/minimap.py` (click/drag), `python -m engine minimap MAP D
 | Camera rectangle: white 1 px outline from `((view+0x5c) - 8) * s` , `((view+0x60) - 8) * s`, size `(view+0x64, view+0x68) * s - 1`; `/2` for `k = -1` | `FUN_004569a3` call | CONFIRMED |
 | Final per-channel pass | `0x4ac030`-`0x4ac413` | not identified |
 
-Engine deviations (DECISION): `k = -1` takes every second pixel; no final pass, no fog, no unit dots;
+Engine deviations (DECISION): `k = -1` takes every second pixel; no final pass, no fog; unit dots: section 13;
 camera position is `camera / 32` in cells with relief ignored; panel at the window's top-right
 corner with an 8 px margin (INFERRED until the G3b interface frame). The image is built once per
 `Minimap` (no World hook: the exe's picture never depends on passability or objects);
@@ -181,14 +183,57 @@ corner with an 8 px margin (INFERRED until the G3b interface frame). The image i
 pointer: view state, not a command. Tests: `tests/test_engine_minimap.py`, goldens
 `tests/golden.json["minimaps"]` (maps 10, 20, 52).
 
+## 13. Units, team colours, piles (G3a)
+
+World side: [architecture §9](architecture.md#9-world-state); code `engine/view/drawlist.py`
+(`_unit`, `_item`, `unit_position`, `unit_frame`, `unit_remap`, `backpack_frame`). All CONFIRMED by REA
+(`FUN_004632a1` draw, `0x464487` shadow, `FUN_0046025d` filing, `0x463093` layer register, `FUN_00406f43`).
+
+| Rule | Value |
+|---|---|
+| Filing position | `pos - 0x80 + size * 0x80` (1/256 cell, `size` = units.reg `TileSize`); the cell is `>> 8` of it: a 1x1 unit is filed under its own cell, a 2x2 or 3x3 one under the cell of its footprint centre (`cell + 1`). The exe has one slot per cell and layer (the last unit visited wins, order INFERRED = id-map bucket order); the engine draws all, there is no shared cell in the 46 maps |
+| Screen position | `px = X * 32 >> 8`, `py = Y * 32 >> 8 - z`; `z` = vertex-bilinear ground height of the footprint (`objects.ground_height(size)`, not the cell relief); sprite top-left = `p - ((CenterX - Width/2) + w/2, (CenterY - Height/2) + h/2)` with the **current** frame's `w, h`; `b.256` overlay the same with its own size, 50 % (Smoothing) |
+| Frame | `UnitSet.frame_at(action, facing >> 4, world.tick - action_start_tick)`; `idle` falls back to `stand` for types without `IdlePhases`; the idle counter starts at 0 and advances one per tick for **every** unit, in sight or not (`0x45fa00`, `FUN_0046617c`; the "frozen outside sight" of animation §1.6 concerns structures and objects only) |
+| Team colour | `Palette = 0` types: `human.pal` row = `Player.colour` of the owner; `Palette > 0`: `palette<face - 1>.pal` (`Unit.face`, INFERRED mapping); `DrawItem.remap = (row, face - 1)`; the `b` overlay uses the main sprite's table |
+| Light | BRIGHT2 row of the cell the unit is filed under (no interpolation); the hovered unit is forced to row 0 (not drawn yet: no cursor) |
+| Shadow | like an object's: main `k = 0x6226cc`, `b` `0x6226d0` (Smoothing only); anchor `x = px - anchor - dx`, `dx = trunc(T (h/2 + Height/2 - CenterY))`, `y = py - anchor - z`; current frame, mirrored with the sprite |
+| Flyers | `Z != 0` (bat 70, dragon 71, succubus 105; 494 map units): own view class, layer `+0x90`; shadow in **P4** with the *unsheared* blitter at `x + trunc(shear16 / 2000)`, drawn on the ground (`U+0x10` excluded); sprite in **P7** raised by `U+0x10 = 16` (`FLYER_ALTITUDE`, constructor `0x46bfc1`), so flyers cover every ground unit; a flyer and a ground unit on one cell both draw |
+| Layers | alive and the fresh corpse (death stage 0, 1) stay in the P3 slot; bones (stage 2-4) move to the corpse layer (P2); stage 5 is not drawn; re-decided every frame. A walker at HP 0 stays at stage 1 for good |
+| Not drawn yet | invisibility (effect 0x20: skipped unless the owner is visible to the viewer, else 50 %), stone curse grey table (0x2c), fog `S`, hover row 0, corpses, selection |
+
+**Piles** (`Item`, P2 after corpses, `FUN_00461292`, `0x4611bf`): sprite `graphics/backpack/sprites.256`
+(+ `spritesb.256`), frame `min(5, floor(log10(gold)))` (0 when empty; the items' own `+0x1c` is not decoded,
+so item-only piles show frame 0), anchor the cell centre, `x = X - w0/2`, `y = Y - h0/2 - relief - 4` with frame-0
+size, shadow `dx = trunc(T h0/2)` main + `b` (no Smoothing gate), `b` overlay with Smoothing, cell light row, no owner colour.
+Groups on one cell merge into one pile (gold added).
+
+**Depth** is the pass order of §2; units sort by `(pass, filing row, -filing col, slot, seq)`, so inside a
+cell structure < unit < object, and a unit behind an object (smaller row) is drawn first. Units do not sort
+differently from objects except the pass (flyers: P4 / P7) and the size-aware filing cell.
+
+**Minimap dots** (`FUN_004ac414` -> unit vtable `+0x34` = `0x465f3f`, after the terrain and before the camera
+rectangle): a `1 << k` square at `((c - 8) << k, (r - 8) << k)` of the unit's cell `pos >> 8` (k = -1: one pixel at `>> 1`),
+colour = palette entry 164 of the owner's `human.pal` row (`allods2.minimap.load_dot_colors`; the exe reads it from the
+16-bit table, 5-6-5 rounding not reproduced). Gates: viewer's own units and any unit in sight, not invisible, not corpse
+(stage < 2, flag 0x80 clear). The engine has no fog yet, so it draws a dot for every unit (DECISION until fog);
+`python -m engine minimap MAP DEST --units`.
+
+**Tests**: `tests/test_engine_unit_draw.py` (synthetic depth, filing cell, flyer layers, animation clock at 30 vs 60 fps
+render rate, minimap dots), `tests/test_engine_objects.py` (pixel parity with `map render --relief --layers all` at
+4 positions: units, a 2x2 ogre, bats, piles; goldens `["screenshots"]` incl. 4 parity + 2 full unit shots),
+`tests/test_engine_units.py` (world). `map render` (E5) follows the same filing, flyer and pile rules.
+
 ## Open questions
 
-- Window origin: the exe's `(vx, vy)` (`view+0x5c/+0x60`) against our camera with relief (here floor
-  of the camera in cells, relief ignored). Starting routine `FUN_00406f43`.
-- Structure `ShadowY` = +-20000 (22 records), shadows of destroyed and flat structures (drawn here
-  like any structure). Starting routine `FUN_00461890`.
 - Burnt ground (tile bit 0x2000, `DeadObject` frame), fog gates, light-map lights on objects
   (structure `LightRadius`, burning cells), day/night: not drawn; see
   [lighting.md](../mechanics/lighting.md). Starting routine `FUN_00404a2a`.
-- Minimap: the final channel pass `0x4ac030`-`0x4ac413`, surface `DAT_00626be0` (fog background),
-  the minimap objects (vtable `+0x34`: which register, how they draw). Starting routine `FUN_004ac414`.
+- Cell effects (CONFIRMED, not drawn yet): `FUN_0040af69` draws spell-area cell sprites keyed by view message
+  0x87: wall of fire (bit 3, P3 f, projectile 15, frame `3 + abs(clock/2 + x*y) % 5`), wall of earth (bit 17,
+  P3 f, projectile 43), poison cloud (bit 6, P6, projectile 21, frame `abs(clock/2 + x*y) % phases`), at
+  `(32 col + 16, mean of the cell's two diagonal heights)`; bit 3 also marks burnt ground. Needs the spell system.
+- Units: invisibility and stone-curse drawing, hover/selection, the exe's visit order when two units share a layer cell,
+  the sender of client message 0x74 (flag 0x80, moves a unit to the corpse layer). Starting routine `FUN_004632a1`, `0x415bda`.
+- Item-only piles: the item field `+0x1c` (pile frame), see [map.md](../formats/map.md#open-questions).
+- Minimap: the final channel pass `0x4ac030`-`0x4ac413`, surface `DAT_00626be0` (fog background), fog gate of the
+  dots (do structures draw dots too?). Starting routine `FUN_004ac414`.

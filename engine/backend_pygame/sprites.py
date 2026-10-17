@@ -32,22 +32,31 @@ class SpriteCache:
     def file(self, sprite):
         """The `SpriteFile` of a draw item's `sprite` tuple, or None."""
         kind, tid, source = sprite
-        aset = (self.assets.object_set(tid) if kind == "object"
-                else self.assets.structure_set(tid, None))
+        if kind == "backpack":
+            from engine.view.drawlist import BACKPACK
+            return self.assets.sprite(BACKPACK + ("b" if source.endswith("_b") else "") + ".256")
+        aset = (self.assets.object_set(tid) if kind == "object" else
+                self.assets.unit_set(tid) if kind == "unit" else self.assets.structure_set(tid, None))
         return None if aset is None else aset.sprites(source)
 
-    def palette(self, sprite, light_row):
+    def palette(self, sprite, light_row, remap=None):
         """(256, 3) colours of the main file's palette, through BRIGHT2 row `light_row`
-        (None = the file's own colours)."""
+        (None = the file's own colours).  Units: the set's palette for `remap` = (human.pal row,
+        variant); the `b` overlay uses the main sprite's table."""
         kind, tid, source = sprite
         main = (kind, tid, _main(source))
         sf = self.file(main)
-        pal = grayscale_palette() if sf is None or sf.palette is None else np.asarray(sf.palette, np.uint8)
+        if kind == "unit":
+            aset = self.assets.unit_set(tid)
+            pal = np.asarray(aset.palette(_main(source), *(remap or (0, 0))), np.uint8)
+        else:
+            pal = grayscale_palette() if sf is None or sf.palette is None else np.asarray(sf.palette, np.uint8)
         if light_row is None:
             return pal
-        t = self._tables.get(main)
+        tkey = main + (remap,)
+        t = self._tables.get(tkey)
         if t is None:
-            t = self._tables[main] = shade_table(pal, LIGHT_LEVELS, BRIGHT2, self.tint)
+            t = self._tables[tkey] = shade_table(pal, LIGHT_LEVELS, BRIGHT2, self.tint)
         return t[min(light_row, LIGHT_LEVELS - 1)]
 
     def get(self, item):
@@ -56,7 +65,8 @@ class SpriteCache:
         mask_t is (w, h) bool (x first, as `pixels3d`)."""
         shadow = item.kind == "shadow"
         key = (item.sprite, item.frame, item.mirrored, "shadow" if shadow else item.blend,
-               None if shadow else item.light_row, item.shear if shadow else 0)
+               None if shadow else item.light_row, item.shear if shadow else 0,
+               None if shadow else item.remap)
         d = self._d
         if key in d:
             d.move_to_end(key)
@@ -86,7 +96,7 @@ class SpriteCache:
             for i, o in enumerate(off):
                 out[i, o - lo:o - lo + w] = mask[i]
             return np.ascontiguousarray(out.T), lo
-        pal = self.palette(item.sprite, item.light_row)
+        pal = self.palette(item.sprite, item.light_row, item.remap)
         if item.blend == "half":
             src = (pal[idx].astype(np.uint16) >> 1)
             return np.ascontiguousarray(mask.T), np.ascontiguousarray(src.transpose(1, 0, 2))

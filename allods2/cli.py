@@ -40,7 +40,7 @@ editor's dirt flag, which the game clears on load; --rect crops to cells.
 objects = trees, rocks, decorations (Objects block); structures = buildings and
 bridges (section 4); both are depth-sorted like the game's view draw, drawn at
 animation clock --clock N (default 0); units = map units in their idle frame (front view, owner's
-human.pal colour; the file has no facing); items = a square at each ground sack; all = every layer;
+human.pal colour; the file has no facing); items = the backpack sprite of each ground pile; all = every layer;
 shadows and fog are not drawn.
 
 `res ls` lists a game folder (archives at the top); `res list` prints

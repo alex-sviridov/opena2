@@ -1,4 +1,4 @@
-# Engine architecture (G1: skeleton)
+# Engine architecture (G1: skeleton, world state, units G3a)
 
 Spec of record: [engine skeleton design](../superpowers/specs/2026-10-16-engine-skeleton-design.md).
 Code: `engine/` (the game), `allods2/assets.py` (asset cache). The engine is
@@ -154,14 +154,22 @@ Spec: [world state design](../superpowers/specs/2026-10-16-world-state-design.md
 code `engine/world.py`; map facts in [map.md parts 3-4](../formats/map.md).
 
 - **Tables**: `World.objects` (id -> `engine.world.MapObject`, kinds `object`,
-  `structure`, `bridge`), empty placeholders `units`, `items`, `players`. The engine
+  `structure`, `bridge`), `units` (`Unit`), `items` (`Item`, ground piles), `players` (`Player`),
+  all filled by `from_map` in record order (dict order = file order). The engine
   `MapObject` is not `allods2.formats.objects.MapObject` (the parsed section 3 record).
 - **Ids**: structures `0x6000 + uid` (CONFIRMED: map.md part 4), section 3 cells
   `0x10000 + n` (row-major index; DECISION, the exe has no id for a layer cell),
-  units later from 0x20000 (the exe keeps ids below 0x6000 for dynamic objects).
+  **units `0x6000 + uid`** (CONFIRMED: the client view `+4`, same space as structures; uids never collide with
+  structure uids in the 46 maps, a collision is a `ValueError`; trigger references use this id), ground piles
+  `0x30000 + index of their first section 8 group` (ours), players the 1-based section 5 record number (the
+  value `Unit.owner` holds).
   A duplicate id is a `ValueError`.
 - **Spatial index** `_cells[(x, y)] -> set(ids)` over the BuildingPresent cells
   (an object: its cell); empty sets are deleted.
+- **Units and items in the index** (G3a): `units_at`, `items_at`, `entities_at` (per-cell id sets, separate dicts
+  `_ucells`, `_icells`; `add_unit/remove_unit/move_unit`, `add_item/remove_item`). **Units never touch the
+  static block layer** (DECISION, as the exe: the static layer comes from terrain and objects only,
+  `FUN_00554626`; the live layer's unit stamps, `FUN_0055be86`, are dynamic blocking = phase H).
 - **Block layer** (`World.block`, read-only (h, w) uint8), per cell in this order:
   terrain base from the raw tile (dirt 0x2000, Mountain, water -> 1, `passability.terrain_base`);
   a section 3 object -> 5; the 8-cell border -> 0x1F (`FUN_00554626`, `FUN_00553b30`);
@@ -173,8 +181,29 @@ code `engine/world.py`; map facts in [map.md parts 3-4](../formats/map.md).
   group of overlapping structures touching the old and new footprint cells and refresh only
   those cells; `rebuild_block()` is the from-scratch reference (tested equal after every step
   and for every campaign map). A failed add (duplicate id, anchor outside the map) changes nothing.
-- **`World.from_map(map, assets)`**: structures in record order, then section 3 cells of the loaded
-  window; unknown types go to `world.report.unknown` (entity kept, `known=False`). `dump_json()` /
+- **Units** (`Unit`, fields named after the exe's Creature, [unit-struct §2](unit-struct.md)): `id, type_id, owner,
+  x, y` (cell) `+ sub_x, sub_y` (1/256, 128 = centre), `facing` (mover angle byte, 0 up, clockwise, draw direction
+  `>> 4`), `action` (`"idle"`), `action_start_tick`, `hp, hp_max, uid, server_id, human, behaviour, move_type, face,
+  squad, group, known`. HP: file override else data.bin `healthMax`; a human with `hp == max_hp` resets to the default
+  (`0x562013`); difficulty scaling is not applied. **Facing**: the file has none; `from_map(facing=None)` gives each unit
+  `0x40 + rand(128)` like the creature constructor (CONFIRMED), the random draw replaced by a hash of the uid
+  (DECISION: deterministic); `facing=int` fixes the angle (E5 uses `0x80`). Players: `Player(id, colour, name,
+  flags, money, relations, human)`, human = record 1.
+- **Ground piles** (`Item`): section 8 groups no unit's `group` links to; groups on one cell merge (gold added,
+  items stacked, CONFIRMED `FUN_0052ab07`), so 19 groups are 17 piles in the install.
+- **Unknown or odd units**: unknown types (no units.reg sprite file or no data.bin record) stay with `known=False`
+  and are listed in `report.unknown_units` (none in the install); an owner that is not a player is a `ValueError`.
+  `report.units_on_blocked` counts units whose cell the static layer blocks for their movement type: **9** in the 46
+  maps. The exe server never creates them (`FUN_00510089` called with radius 0 at map load tries only the file cell
+  and deletes the unit on failure, CONFIRMED); the client copy `FUN_004a449c` uses the file position, so they stay
+  as inert phantoms (INFERRED). The engine keeps and draws them. Four units start at HP 0 (file `hp` 0, max default): a
+  walker stays at HP 0 as a corpse for good, a flyer or ghost dies on tick 1 (CONFIRMED `0x50f1b9`-`0x50f24b`,
+  `0x50fecb`); no behaviour yet, they idle.
+- **Simulation** (G3a): `Simulation.step` only advances `world.tick`; units stay in `idle` with
+  `action_start_tick = 0`, so animation time (`world.tick - action_start_tick`) comes from the simulation and
+  never from the render clock (tested at 30 and 60 fps render rates).
+- **`World.from_map(map, assets, facing=None)`**: structures in record order, then section 3 cells of the loaded
+  window, then players, units, piles; unknown types go to `world.report.unknown` (entity kept, `known=False`). `dump_json()` /
   `dump_hash()` are the deterministic form used by `world-dump` and `tests/golden.json`
   (regenerate with `tools/update_golden.py`).
 - `AssetCache.databin()` and `objects_reg()` supply the stats and the object ids (no pygame).
@@ -183,8 +212,11 @@ Open: see [open-questions](../open-questions.md#engine).
 
 ## Open questions
 
-- Exe view scroll limits, speeds and edge-scroll zone (not traced; engine uses
-  DECISION values above).
+- Exe view scroll speeds and edge-scroll zone (not traced; engine uses DECISION values above). Limits are known
+  (CONFIRMED): the exe scrolls in whole cells, `vx` in `[8, mapW - 8 - W]`, `vy` in `[8, mapH - 8 - Hv]` (the playable
+  area; W, Hv = window size rounded up to cells), "centre on unit" sends `(unit.x >> 8) - W/2` with no height term, relief
+  moves vertices only. The engine's pixel-smooth camera over `[0, 32 w - vw]` is an extension; align the clamp with the
+  exe at the G3b interface frame.
 - Day/night light in the engine (the exe recomputes the light map with the
   clock; G1 uses the fixed default).
 - Scroll hitch of about 27 ms when new cells enter (pre-warm water phases or add a

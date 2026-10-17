@@ -13,7 +13,7 @@ import numpy as np
 
 from ..formats import entities as E
 from ..formats import objects as O
-from .base import CELL
+from .base import CELL, blit
 from .structures import BridgeSet
 
 
@@ -94,8 +94,23 @@ def structure_cells(scene, s):
 
 
 UNIT_FACING = 8        # D2 direction of a drawn unit: the file has none (map.md part 5), 8 = front view
-SACK_COLOUR = (255, 220, 40)
-CARRIED_COLOUR = (80, 200, 255)
+BACKPACK = "graphics/backpack/sprites.256"
+BACKPACK_B = "graphics/backpack/spritesb.256"      # ground piles (FUN_00461292), 6 frames
+FLYER_ALTITUDE = 16    # U+0x10 of a flyer (units.reg Z != 0), set by its constructor 0x46bfc1
+# draw passes of FUN_00406f43 (engine/view/drawlist.py): flat structures, piles, per cell, flyers
+P_FLAT, P_PILE, P_CELL, P_FLYER = 1, 2, 3, 7
+
+
+def unit_cell(u, size):
+    """(X, Y, cell x, cell y): the exe's filing position `pos - 0x80 + size * 0x80` and its cell
+    (FUN_0046025d; a 2 x 2 unit is filed under the cell of its footprint centre)."""
+    X, Y = u.x - 0x80 + size * 0x80, u.y - 0x80 + size * 0x80
+    return X, Y, X >> 8, Y >> 8
+
+
+def pile_frame(gold):
+    """Backpack frame `min(5, floor(log10(gold)))`, 0 for an empty pile (items' +0x1c not decoded)."""
+    return min(5, len(str(gold)) - 1) if gold > 0 else 0
 
 
 def draw_scene(canvas, m, scene, *, top=0, relief=True, clock=0, objects=True, structures=True,
@@ -103,7 +118,7 @@ def draw_scene(canvas, m, scene, *, top=0, relief=True, clock=0, objects=True, s
     """Draw onto `canvas` (Canvas whose pixel (0, top) is the map's cell (0, 0) top-left
     with zero relief).  `relief`: displace by the heights (terrain drawn with --relief)."""
     heights = m.heights_i8
-    jobs = []                                   # (flat, y, -x, kind, payload)
+    jobs = []                                   # (pass, y, -x, kind, payload)
     if structures:
         for s in m.structures:
             aset = scene.structure_set(s)
@@ -114,21 +129,43 @@ def draw_scene(canvas, m, scene, *, top=0, relief=True, clock=0, objects=True, s
             g = O.ground_height(heights, (s.x << 8) + 0x80, (s.y << 8) + 0x80, sx, sy) if relief else 0
             flat = bool(aset.rec.get("Flat"))
             for (x, y), parts in cells.items():
-                jobs.append((0 if flat else 1, y, -x, 0, (aset, ref, parts, s, g)))
+                jobs.append((P_FLAT if flat else P_CELL, y, -x, 0, (aset, ref, parts, s, g)))
     if objects:
         for o in m.placed_objects():
-            jobs.append((1, o.y, -o.x, 2, o))
+            jobs.append((P_CELL, o.y, -o.x, 2, o))
     if units:
-        players = m.players
         for u in m.units:
-            jobs.append((1, u.y >> 8, -(u.x >> 8), 1, u))
+            aset = scene.unit_set(u.type)
+            size = aset.t.TileSize
+            _, _, cx, cy = unit_cell(u, size)
+            jobs.append((P_FLYER if aset.t.Z else P_CELL, cy, -cx, 1, u))
+    if items:
+        piles = {}                              # one pile per cell, gold added (FUN_0052ab07)
+        for g in m.ground_groups:
+            piles[(g.x >> 8, g.y >> 8)] = piles.get((g.x >> 8, g.y >> 8), 0) + g.extra
+        for (cx, cy), gold in piles.items():
+            jobs.append((P_PILE, cy, -cx, 1, (cx, cy, gold)))
+    players = m.players if units else None
     for flat, y, nx, kind, payload in sorted(jobs, key=lambda j: j[:4]):
-        if kind == 1:
+        if flat == P_PILE:
+            cx, cy, gold = payload
+            z = O.cell_relief(heights, cx, cy) if relief else 0
+            sf = scene.assets.sprite(BACKPACK)
+            k = pile_frame(gold)
+            px, py = CELL * cx + CELL // 2 - sf[0].width // 2, CELL * cy + CELL // 2 - z - sf[0].height // 2 - 4 + top
+            blit(canvas, sf, k, px, py, sf.palette, "opaque", False)
+            sfb = scene.assets.sprite(BACKPACK_B)                    # smoothing overlay at 50 %
+            if sfb is not None and k < len(sfb):
+                blit(canvas, sfb, k, px, py, sf.palette, "half", False)
+        elif kind == 1:
             u = payload
             aset = scene.unit_set(u.type)
             ref = aset.frame_at(aset.idle_action, facing, clock)
-            z = O.ground_height(heights, u.x, u.y, 1, 1) if relief else 0
-            aset.draw(canvas, ref, (u.x * CELL) >> 8, ((u.y * CELL) >> 8) - z + top,
+            size = aset.t.TileSize
+            X, Y, _, _ = unit_cell(u, size)
+            z = O.ground_height(heights, u.x, u.y, size, size) if relief else 0
+            alt = FLYER_ALTITUDE if aset.t.Z else 0
+            aset.draw(canvas, ref, (X * CELL) >> 8, ((Y * CELL) >> 8) - z - alt + top,
                       palette=scene.unit_palette(u, players))
         elif kind == 0:
             aset, ref, parts, s, g = payload
@@ -142,16 +179,3 @@ def draw_scene(canvas, m, scene, *, top=0, relief=True, clock=0, objects=True, s
             z = O.cell_relief(heights, x, y) if relief else 0
             ref = aset.frame_at("anim" if aset.rec["seq"] else "still", 0, clock, x=x, y=y)
             aset.draw(canvas, ref, CELL * x + CELL // 2, CELL * y + CELL // 2 - z + top)
-
-    if items:
-        for g in m.ground_groups:
-            _marker(canvas, (g.x * CELL) >> 8, ((g.y * CELL) >> 8) + top, SACK_COLOUR)
-
-
-def _marker(canvas, x, y, colour, r=3):
-    """A hollow square of half-size r (item sacks are runtime objects; the file has no sprite)."""
-    h, w = canvas.pix.shape[:2]
-    for yy in range(y - r, y + r + 1):
-        for xx in range(x - r, x + r + 1):
-            if (abs(xx - x) == r or abs(yy - y) == r) and 0 <= xx < w and 0 <= yy < h:
-                canvas.pix[yy, xx] = colour

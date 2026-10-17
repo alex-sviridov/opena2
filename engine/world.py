@@ -14,13 +14,18 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from allods2.formats import entities as fent
 from allods2.formats import objects as fobj
 from allods2.formats import passability as pas
 from allods2.formats.objects import MapObject as PlacedObject
 
 STRUCTURE_ID_BASE = 0x6000      # spec decision 2: runtime object id = 0x6000 + uid (CONFIRMED map.md part 4)
 OBJECT_ID_BASE = 0x10000        # spec decision 2: section 3 cells (ours, the file has no ids)
-UNIT_ID_BASE = 0x20000          # reserved for units/items/players (not used yet)
+UNIT_ID_BASE = 0x6000           # unit id = 0x6000 + uid: the exe's client view +4, the id space of structures
+                                # (CONFIRMED map.md part 5; uids never collide with structure uids in the 46 maps)
+ITEM_ID_BASE = 0x30000          # ground piles: 0x30000 + index of the section 8 group (ours; the file has no id)
+UNIT_ANGLE_MIN, UNIT_ANGLE_SPAN = 0x40, 128     # creature ctor: angle = 0x40 + rand(128) (CONFIRMED map.md part 5)
+IDLE = "idle"                   # logical action of a unit that does nothing; the view picks idle or stand
 DEFAULT_HP = 1000               # healthMax 0 -> 1000 (map.md part 4)
 FLAG_DESTROYED = 1
 
@@ -53,11 +58,88 @@ class MapObject:
 
 
 @dataclass
+class Player:
+    """Section 5 record (map.md part 5).  `id` is the 1-based record number, the value
+    `Unit.owner` and `MapObject.owner` hold.  `colour` = row of humans/human.pal."""
+    id: int
+    colour: int
+    name: str = ""
+    flags: int = 0
+    money: int = 0
+    relations: tuple = ()           # 16 words, toward player j + 1 (1 war, 2 alliance, 0x10 vision)
+    human: bool = False             # single player: record 1 only (map.md part 5)
+
+
+@dataclass
+class Unit:
+    """A unit or monster (section 6 record).  Field names and meanings follow the exe's
+    Creature, docs/engine/unit-struct.md section 2; only what is needed now is here, the rest
+    (mover, brain, order +0x50, state +0x54, stats, effects, equipment) belongs to the
+    simulation phases and will be added with the systems that use it.
+
+    Position is the cell plus a sub-cell offset in 1/256 cell (Position: cell +0/+1, sub-cell
+    +4/+5, 0x80 = centre); `facing` is the mover angle byte (0 up, clockwise, 256 = full circle,
+    mover[1]); the draw direction is `facing >> 4` (D2, 0..15).  `action` is the logical action
+    name (`IDLE`...), `action_start_tick` the world tick it began (animation time =
+    `world.tick - action_start_tick`)."""
+    id: int
+    type_id: int                    # units.reg ID (creature word +0x0e; the map's editor copy)
+    owner: int                      # Player.id (creature +0x14)
+    x: int                          # cell
+    y: int
+    sub_x: int = 128
+    sub_y: int = 128
+    facing: int = 0x80
+    action: str = IDLE
+    action_start_tick: int = 0
+    hp: int = 0                     # +0x94
+    hp_max: int = 0                 # +0x96
+    uid: int = 0                    # scenario unit number (+8)
+    server_id: int = 0              # data.bin serverID (template key)
+    human: bool = False             # data.bin humans (0x254 object) rather than monsters (0x208)
+    behaviour: int = 0              # map unit +0x50: bit 8 = summoned (no loot, no XP)
+    move_type: int = 1              # +0x4a data.bin movementType: 1 walker, 2 ghost/bee, 3 flyer (mover mask)
+    face: int = 1                   # +0x4b palette variant (data.bin monster `face`, 1..7; humans: skin)
+    squad: int = 0                  # per-owner group number (file +44)
+    group: int = 0                  # section 8 group index (1-based, 0 none): the carried items
+    known: bool = True              # units.reg set and data.bin template both exist
+    seq: int = 0                    # insertion order, the depth tie-break
+
+
+@dataclass
+class Item:
+    """A pile on the ground (a section 8 group no unit carries; the exe's backpack,
+    `FUN_005299b3` pack + `FUN_0052ab07` placement).  `gold` is the pile's gold (file `extra`);
+    `codes` the item codes of the members (`entities.decode_item`); one pile per cell."""
+    id: int
+    x: int
+    y: int
+    sub_x: int = 128
+    sub_y: int = 128
+    gold: int = 0
+    codes: tuple = ()
+    groups: tuple = ()              # section 8 group indices merged into this pile
+    seq: int = 0
+
+
+@dataclass
 class BuildReport:
     """What `World.from_map` found (spec "world.report")."""
     unknown: list = field(default_factory=list)     # (kind, type_id, x, y)
     ignored_outside_window: int = 0
     counts: dict = field(default_factory=dict)      # (kind, type_id) -> n
+    unknown_units: list = field(default_factory=list)   # (uid, type_id, server_id, x, y): kept, known=False
+    units_on_blocked: int = 0       # units whose cell is blocked for their mover: the exe server never creates them (FUN_00510089, r = 0); kept here
+    units_sharing_cell: int = 0     # cells with more than one unit
+
+
+def unit_angle(uid, facing=None):
+    """The creature constructor's start angle `0x40 + rand(128)` (map.md part 5, CONFIRMED
+    0x50e2ac); the file has no facing.  DECISION: the random draw is replaced by a hash of the
+    uid so loading is deterministic.  An int `facing` overrides it."""
+    if facing is not None:
+        return facing & 255
+    return UNIT_ANGLE_MIN + ((uid * 2654435761) >> 11) % UNIT_ANGLE_SPAN
 
 
 def structure_footprint(s, stats):
@@ -92,12 +174,14 @@ class World:
         self.name = name
         self.tick = 0
         self.objects = {}           # id -> MapObject
-        self.units = {}             # placeholders (spec "World")
-        self.items = {}
-        self.players = {}
+        self.units = {}             # id -> Unit, in map record order
+        self.items = {}             # id -> Item (ground piles), in section 8 order
+        self.players = {}           # id (1-based record) -> Player
         self.report = BuildReport()
         self._cells = {}            # (x, y) -> set of ids over present footprint cells
         self._claim = {}            # (x, y) -> id of the structure registered there (first wins)
+        self._ucells = {}           # (x, y) -> set of unit ids   (never part of the block layer)
+        self._icells = {}           # (x, y) -> set of item ids
         self._next_seq = 1
         self._base = pas.terrain_base(self.terrain)         # computed once
         self._block = self._base.copy()
@@ -270,13 +354,81 @@ class World:
         ob.x, ob.y = x, y
         self._resolve(old + self._insert(ob, ob.seq))
 
+    # --- units, items, players ------------------------------------------------------
+    # Units and items are indexed per cell but never enter the block layer: the static block
+    # layer is what the exe's path finder derives from terrain and objects (FUN_00554626,
+    # FUN_00550a96).  The exe stamps occupancy of units in the same grid at run time
+    # (FUN_0055be86, unit-struct.md 7.4); that dynamic blocking is simulation (phase H).
+
+    def units_at(self, x, y):
+        """Ids of the units whose cell is (x, y)."""
+        return frozenset(self._ucells.get((x, y), ()))
+
+    def items_at(self, x, y):
+        """Ids of the ground piles on cell (x, y)."""
+        return frozenset(self._icells.get((x, y), ()))
+
+    def entities_at(self, x, y):
+        """Ids of everything on a cell: footprint entities, units, ground piles."""
+        return self.objects_at(x, y) | self.units_at(x, y) | self.items_at(x, y)
+
+    def _index_add(self, index, ent):
+        index.setdefault((ent.x, ent.y), set()).add(ent.id)
+
+    def _index_del(self, index, ent):
+        s = index[(ent.x, ent.y)]
+        s.discard(ent.id)
+        if not s:
+            del index[(ent.x, ent.y)]
+
+    def _check_cell(self, ent):
+        if not (0 <= ent.x < self.width and 0 <= ent.y < self.height):
+            raise ValueError("entity %#x at (%d, %d) is outside the map" % (ent.id, ent.x, ent.y))
+
+    def add_unit(self, u):
+        """Add a unit; ValueError (world unchanged) on a duplicate id or a cell outside the map."""
+        if u.id in self.units or u.id in self.objects:
+            raise ValueError("duplicate entity id %#x" % u.id)
+        self._check_cell(u)
+        u.seq, self._next_seq = self._next_seq, self._next_seq + 1
+        self.units[u.id] = u
+        self._index_add(self._ucells, u)
+        return u.id
+
+    def remove_unit(self, uid):
+        self._index_del(self._ucells, self.units.pop(uid))
+
+    def move_unit(self, uid, x, y, sub_x=128, sub_y=128):
+        """Put a unit on cell (x, y); the block layer is untouched."""
+        u = self.units[uid]
+        if not (0 <= x < self.width and 0 <= y < self.height):
+            raise ValueError("target (%d, %d) is outside the map" % (x, y))
+        self._index_del(self._ucells, u)
+        u.x, u.y, u.sub_x, u.sub_y = x, y, sub_x, sub_y
+        self._index_add(self._ucells, u)
+
+    def add_item(self, it):
+        if it.id in self.items:
+            raise ValueError("duplicate item id %#x" % it.id)
+        self._check_cell(it)
+        it.seq, self._next_seq = self._next_seq, self._next_seq + 1
+        self.items[it.id] = it
+        self._index_add(self._icells, it)
+        return it.id
+
+    def remove_item(self, iid):
+        self._index_del(self._icells, self.items.pop(iid))
+
     # --- loading -------------------------------------------------------------------
 
     @classmethod
-    def from_map(cls, m, assets):
+    def from_map(cls, m, assets, facing=None):
         """From an `allods2.formats.Map` and an `AssetCache` (spec "World").
         Structures first in record order, then section 3 cells row-major;
-        bulk-added, then one full block build."""
+        bulk-added, then one full block build; then players, units and ground piles in
+        record order.  `facing`: None gives each unit the exe's start angle 0x40 + [0, 128)
+        (the exe's rand, here a fixed hash of the uid so a map always loads the same);
+        an int puts every unit at that angle byte (0x80 = front view, as `map render`)."""
         w = cls(m.runtime_terrain(), m.heights_i8, m.name, terrain=m.terrain)
         stats = assets.databin().structures
         reg = assets.objects_reg()
@@ -308,7 +460,72 @@ class World:
                 rep.unknown.append(("object", p.id, p.x, p.y))
         rep.ignored_outside_window = int(np.count_nonzero(m.objects)) - len(placed)
         w._resolve(list(w._cells))
+        w._load_players(m)
+        w._load_units(m, assets, facing)
+        w._load_items(m)
         return w
+
+    def _load_players(self, m):
+        for p in m.players:
+            self.players[p.index] = Player(p.index, p.colour, p.name, p.flags, p.money,
+                                           tuple(p.relations), human=p.index == 1)
+
+    def _load_units(self, m, assets, facing):
+        """Section 6 in record order.  Unknown types (no units.reg set or no data.bin record)
+        are kept with `known=False` and listed in `report.unknown_units`; an owner that is not
+        a section 5 record is an error (the exe logs "Can't resolve player" and skips the unit,
+        never the case in the 46 maps)."""
+        db = assets.databin()
+        rep = self.report
+        for rec in m.units:
+            if rec.owner not in self.players:
+                raise ValueError("unit uid %d: owner %d is not a player" % (rec.uid, rec.owner))
+            tpl = fent.template(db, rec)
+            col = None
+            if tpl is not None:
+                col = db.columns("humans" if rec.is_human else "monsters")
+                col = [c.lower() for c in col].index("healthmax")
+            hp, hp_max = rec.hp, rec.max_hp
+            if rec.is_human and hp_max != fent.NO_HP and hp_max == hp:
+                hp = hp_max = fent.NO_HP                    # FUN_00561bf9 0x562013: a hero at full HP = default
+            base = tpl.params[col] if tpl is not None else 0
+            cols = [c.lower() for c in db.columns("humans" if rec.is_human else "monsters")]
+            face = tpl.params[cols.index("face")] if tpl is not None else 1
+            move = tpl.params[cols.index("movementtype")] if tpl is not None else 1
+            hp_max = base if hp_max == fent.NO_HP else hp_max
+            hp = hp_max if hp == fent.NO_HP else hp
+            known = tpl is not None and assets.unit_set(rec.type) is not None
+            u = Unit(UNIT_ID_BASE + rec.uid, rec.type, rec.owner, rec.x >> 8, rec.y >> 8,
+                     rec.x & 255, rec.y & 255, unit_angle(rec.uid, facing), IDLE, 0, hp, hp_max,
+                     rec.uid, rec.server_id, rec.is_human, rec.behaviour, move, face, rec.squad, rec.group, known)
+            self.add_unit(u)
+            if not known:
+                rep.unknown_units.append((rec.uid, rec.type, rec.server_id, u.x, u.y))
+        rep.units_sharing_cell = sum(1 for s in self._ucells.values() if len(s) > 1)
+        rep.units_on_blocked = sum(1 for u in self.units.values()
+                                   if self.blocked(u.x, u.y, u.move_type if u.move_type in pas.MOVE_MASK else 1))
+
+    def _load_items(self, m):
+        """Ground piles: the section 8 groups no unit's `group` points at (`Map.ground_groups`).
+        Groups on one cell merge into one pile, gold added and items stacked (`FUN_0052ab07`,
+        CONFIRMED map.md part 5); the pile takes the id of its first group,
+        `ITEM_ID_BASE + group index` (0-based, file order)."""
+        used = {u.group for u in m.units if u.group}
+        at = {}
+        for n, g in enumerate(m.item_groups):
+            if n + 1 in used:
+                continue
+            cell = (g.x >> 8, g.y >> 8)
+            codes = tuple(mem.code & 0xFFFF for mem in g.members)
+            if cell in at:
+                it = at[cell]
+                it.gold += g.extra
+                it.codes += codes
+                it.groups += (n,)
+                continue
+            at[cell] = Item(ITEM_ID_BASE + n, cell[0], cell[1], g.x & 255, g.y & 255, g.extra, codes,
+                            groups=(n,))
+            self.add_item(at[cell])
 
     # --- dump ----------------------------------------------------------------------
 
@@ -325,9 +542,20 @@ class World:
         r = self.report
         return {"name": self.name, "width": self.width, "height": self.height,
                 "report": {"unknown": [list(u) for u in r.unknown],
+                           "unknown_units": [list(u) for u in r.unknown_units],
+                           "units_on_blocked": r.units_on_blocked,
+                           "units_sharing_cell": r.units_sharing_cell,
                            "ignored_outside_window": r.ignored_outside_window,
                            "counts": {"%s:%d" % k: v for k, v in sorted(r.counts.items())}},
                 "objects": objs,
+                "players": [[p.id, p.colour, p.name, p.flags, p.money, list(p.relations), int(p.human)]
+                            for _, p in sorted(self.players.items())],
+                "units": [[u.id, u.type_id, u.owner, u.x, u.y, u.sub_x, u.sub_y, u.facing, u.action,
+                           u.action_start_tick, u.hp, u.hp_max, u.uid, u.server_id, int(u.human),
+                           u.behaviour, u.move_type, u.face, u.squad, u.group, int(u.known)]
+                          for _, u in sorted(self.units.items())],
+                "items": [[i.id, i.x, i.y, i.sub_x, i.sub_y, i.gold, list(i.codes), list(i.groups)]
+                          for _, i in sorted(self.items.items())],
                 "block": [bytes(row).hex() for row in self._block]}
 
     def dump_json(self):

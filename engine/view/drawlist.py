@@ -20,8 +20,15 @@ from allods2.graphics import lighting as lt
 from allods2.graphics.terrain import TILE
 
 CELL = TILE
-PASS_SHADOW, PASS_FLAT, PASS_CELL, PASS_OVERLAY, PASS_DEBUG = 0, 1, 3, 8, 9
+PASS_SHADOW, PASS_FLAT, PASS_GROUND_ITEMS, PASS_CELL, PASS_FLYER_SHADOW, PASS_FLYER, PASS_OVERLAY, PASS_DEBUG = \
+    0, 1, 2, 3, 4, 7, 8, 9
 SLOT_STRUCTURE, SLOT_UNIT, SLOT_STEAM, SLOT_OBJECT, SLOT_FIRE = range(5)
+SLOT_CORPSE, SLOT_BACKPACK = 0, 1           # inside P2
+BACKPACK = "graphics/backpack/sprites"       # + .256 / b.256, 6 frames (FUN_00461292)
+BACKPACK_KEY = ("backpack", 0)
+MAX_BACKPACK_FRAME = 5
+FLYER_ALTITUDE = 16             # U+0x10 set by the flyer constructor 0x46bfc1 (CONFIRMED)
+IDLE = "idle"                   # engine.world.IDLE (the view must not import it)
 WALKER = 1                      # mover for the passability overlay (mask 0x41)
 FLAG_DESTROYED = 1              # engine.world.FLAG_DESTROYED (view must not import it)
 
@@ -56,13 +63,14 @@ class DrawOptions:
     smoothing: bool = True      # b.256 overlays and their shadows, DAT_00622768
     animate: bool = True        # "Object animations" DAT_005f17ec
     objects: bool = True        # map objects and structures at all
+    units: bool = True          # units and ground piles
 
 
 @dataclass(frozen=True)
 class DrawItem:
     kind: str                   # "sprite" | "shadow" | "marker" | "passability" | "depth"
     entity: int = None          # world id
-    sprite: tuple = None        # (set_kind "object"|"structure"|"bridge", type_id, source)
+    sprite: tuple = None        # (set_kind "object"|"structure"|"bridge"|"unit"|"backpack", type_id, source)
     frame: int = 0              # index into the sprite file
     sx: int = 0                 # screen top-left of the frame (a shadow: of the sheared frame)
     sy: int = 0
@@ -73,7 +81,7 @@ class DrawItem:
     light_row: int = None       # BRIGHT2 row (None = file palette, unlit)
     shadow: bool = False
     shadow_level: int = None    # k of dst*(16-k)/16 (0x6226cc / 0x6226d0)
-    remap: int = None           # human.pal index; always None for structures and objects
+    remap: tuple = None         # units: (human.pal row, palette<N>.pal variant); None for the rest (CONFIRMED lighting §4)
     depth: tuple = ()
     shear: int = 0              # 16.16 shear of a shadow
     text: str = None            # depth label; "hotspot" for a marker cross
@@ -151,19 +159,21 @@ class _Ctx:
         return (sx + w + hi > 0 and sx + lo < self.cam.view_w
                 and sy + h > 0 and sy < self.cam.view_h)
 
-    def sprite(self, ent, key, src, idx, x, y, w, h, depth, blend="opaque"):
+    def sprite(self, ent, key, src, idx, x, y, w, h, depth, blend="opaque", mirrored=False, remap=None):
         sx, sy = x - self.cx, y - self.cy
         if self.visible(sx, sy, w, h):
             self.items.append(DrawItem("sprite", ent.id, (key[0], key[1], src), idx, sx, sy, w, h,
-                                       blend=blend, light_row=self.row, depth=depth))
+                                       mirrored=mirrored, blend=blend, light_row=self.row,
+                                       remap=remap, depth=depth))
 
-    def shadow(self, ent, key, src, idx, x, y, w, h, k, depth):
+    def shadow(self, ent, key, src, idx, x, y, w, h, k, depth, mirrored=False, shear=None):
         sx, sy = x - self.cx, y - self.cy
-        _, lo, hi = shadow_offsets(h, self.shear)
+        shear = self.shear if shear is None else shear
+        _, lo, hi = shadow_offsets(h, shear)
         if self.visible(sx, sy, w, h, lo, hi):
             self.items.append(DrawItem("shadow", ent.id, (key[0], key[1], src), idx, sx, sy, w, h,
-                                       blend="shadow", shadow=True, shadow_level=k, depth=depth,
-                                       shear=self.shear))
+                                       mirrored=mirrored, blend="shadow", shadow=True,
+                                       shadow_level=k, depth=depth, shear=shear))
 
 
 def _objects(ctx, ent):
@@ -267,6 +277,112 @@ def _structure(ctx, ent):
                            ov[p.index].height, dep + (1,), "half")
 
 
+# --- units and ground piles ----------------------------------------------------------------
+
+def unit_position(u, size=1):
+    """(X, Y, cell_x, cell_y) of a unit: the exe's filing position `pos - 0x80 + size * 0x80`
+    (1/256 cell; FUN_0046025d, CONFIRMED) and the cell it is filed under, `>> 8`.  A 1 x 1 unit
+    is filed under its own cell, a larger one under the cell of its footprint centre."""
+    X = ((u.x << 8) | u.sub_x) - 0x80 + size * 0x80
+    Y = ((u.y << 8) | u.sub_y) - 0x80 + size * 0x80
+    return X, Y, X >> 8, Y >> 8
+
+
+def unit_frame(aset, u, tick):
+    """FrameRef of unit `u` at world tick `tick`: its action's frame at `tick - action_start_tick`
+    (animation time comes from the simulation, never from the render clock)."""
+    action = aset.idle_action if u.action == IDLE else u.action
+    return aset.frame_at(action, (u.facing >> 4) & 15, tick - u.action_start_tick)
+
+
+def unit_remap(world, u):
+    """(human.pal row, variant) of a unit: the owner's colour for Palette = 0 types, `face - 1`
+    for the others (the unit set picks which applies; INFERRED variant mapping, units.md)."""
+    p = world.players.get(u.owner)
+    return (p.colour if p is not None else 0, max(u.face - 1, 0))
+
+
+def _unit(ctx, u):
+    """Ground unit, P3 (b): shadow main, shadow b, sprite, b overlay at 50 % (0x464487, 0x4632a1)."""
+    opts = ctx.opts
+    aset = ctx.assets.unit_set(u.type_id)
+    if aset is None:
+        ctx.items.missing += 1
+        return
+    X, Y, cx, cy = unit_position(u, aset.t.TileSize)
+    if not in_window(ctx.win, cx, cy):
+        ctx.items.culled += 1
+        return
+    ref = unit_frame(aset, u, ctx.tick)
+    wh = aset.size(ref.source, ref.index)
+    if wh is None:
+        ctx.items.missing += 1
+        return
+    z = fobj.ground_height(ctx.world.heights, (u.x << 8) | u.sub_x, (u.y << 8) | u.sub_y,
+                           aset.t.TileSize, aset.t.TileSize)
+    px, py = (X * CELL) >> 8, (Y * CELL) >> 8
+    key = ("unit", u.type_id)
+    flyer = bool(aset.t.Z)                      # units.reg Z != 0: the 0x5cd660 view class, layers P4 / P7
+    alt = FLYER_ALTITUDE if flyer else 0        # U+0x10: raises the sprite, never the shadow
+    dep = (PASS_FLYER if flyer else PASS_CELL, cy, -cx, SLOT_UNIT, u.seq)
+    ov = aset.size(ref.source + "_b", ref.index) if opts.smoothing else None
+    remap = unit_remap(ctx.world, u)
+    hx, hy = ref.hotspot
+    if opts.shadows:
+        t = aset.t
+        # ground: sheared, x - dx; flyer (P4): the unsheared blitter at x + trunc(shear / 2000)
+        dx = _trunc(ctx.shear / 2000) if flyer else -_trunc(ctx.T * (wh[1] // 2 + t.Height // 2 - t.CenterY))
+        sdep = (PASS_FLYER_SHADOW,) + dep[1:] if flyer else dep
+        for sub, src, size, k in ((0, ref.source, wh, ctx.k1), (1, ref.source + "_b", ov, ctx.k2)):
+            if size is None:
+                continue
+            ax, ay = aset.anchor(*size)
+            ctx.shadow(u, key, src, ref.index, px - ax + dx, py - ay - z, size[0], size[1], k,
+                       sdep + (0, sub), ref.mirrored, 0 if flyer else None)
+    ctx.sprite(u, key, ref.source, ref.index, px - hx, py - hy - z - alt, wh[0], wh[1], dep + (0, 2),
+               mirrored=ref.mirrored, remap=remap)
+    if ov is not None:
+        bx, by = aset.anchor(*ov)
+        ctx.sprite(u, key, ref.source + "_b", ref.index, px - bx, py - by - z - alt, ov[0], ov[1],
+                   dep + (0, 3), "half", ref.mirrored, remap)
+
+
+def backpack_frame(gold):
+    """Frame of a pile: `min(5, floor(log10(total)))` (FUN_0052a895 sent in message 0x7a; the
+    items' own `+0x1c` is not decoded, so only the gold counts), 0 when empty."""
+    return min(MAX_BACKPACK_FRAME, len(str(gold)) - 1) if gold > 0 else 0
+
+
+def _item(ctx, it):
+    """Ground pile, P2 after the corpses: shadow main, shadow b (no Smoothing gate), sprite,
+    b overlay (Smoothing).  FUN_00461292 / 0x4611bf: anchor the cell centre, frame-0 size."""
+    if not in_window(ctx.win, it.x, it.y):
+        ctx.items.culled += 1
+        return
+    sf = ctx.assets.sprite(BACKPACK + ".256")
+    frame = backpack_frame(it.gold)
+    if sf is None or frame >= len(sf):
+        ctx.items.missing += 1
+        return
+    sfb = ctx.assets.sprite(BACKPACK + "b.256")
+    ow = (sfb[frame].width, sfb[frame].height) if sfb is not None and frame < len(sfb) else None
+    w0, h0 = sf[0].width, sf[0].height
+    z = int(ctx.relief[it.y, it.x])
+    X, Y = CELL * it.x + CELL // 2, CELL * it.y + CELL // 2 - z
+    x, y = X - w0 // 2, Y - h0 // 2 - 4
+    dep = (PASS_GROUND_ITEMS, it.y, -it.x, SLOT_BACKPACK, it.seq)
+    if ctx.opts.shadows:
+        dx = _trunc(ctx.T * (h0 // 2))
+        ctx.shadow(it, BACKPACK_KEY, "main", frame, x - dx, y, sf[frame].width, sf[frame].height,
+                   ctx.k1, dep + (0, 0))
+        if ow is not None:
+            ctx.shadow(it, BACKPACK_KEY, "main_b", frame, x - dx, y, ow[0], ow[1], ctx.k2,
+                       dep + (0, 1))
+    ctx.sprite(it, BACKPACK_KEY, "main", frame, x, y, sf[frame].width, sf[frame].height, dep + (0, 2))
+    if ow is not None and ctx.opts.smoothing:
+        ctx.sprite(it, BACKPACK_KEY, "main_b", frame, x, y, ow[0], ow[1], dep + (0, 3), "half")
+
+
 def _debug_items(ctx, debug):
     """Overlay items for the DebugFlags set in `debug` (attributes passability, markers, depth)."""
     out = []
@@ -322,6 +438,11 @@ def build_draw_list(world, camera, tick, assets, options=None, debug=None):
                 _objects(ctx, ent)
             else:
                 _structure(ctx, ent)
+    if opts.units:
+        for it in world.items.values():
+            _item(ctx, it)
+        for u in world.units.values():
+            _unit(ctx, u)
     ctx.items.sort(key=lambda i: i.depth)
     if debug is not None:
         ctx.items.extend(sorted(_debug_items(ctx, debug), key=lambda i: i.depth))

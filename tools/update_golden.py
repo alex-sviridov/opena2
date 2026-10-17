@@ -35,11 +35,22 @@ PARITY = {
     "52-bridge-2": ("52", 3136, 2692, ("bridge",)),
     "52-village": ("52", 2752, 292, ("object", "structure")),
 }
+# E5 parity positions (map, x, y, what must be in view): units, flyers, a large unit, a pile.  The
+# engine at shadows=False, lit=False with units and piles equals `map render --relief --layers all`.
+UNIT_PARITY = {
+    "10-units": ("10", 400, 1792, ("unit",)),
+    "10-ogre": ("10", 816, 1870, ("unit",)),
+    "52-bats": ("52", 1000, 300, ("unit", "flyer")),
+    "63-piles": ("63", 2900, 3600, ("backpack", "unit")),
+}
 # name -> (map, x, y, tick, plain): "plain" = shadows=False, lit=False (the parity
 # render); the others use the game's default options (regression, not parity).
 SHOTS = {"parity-" + k: (v[0], v[1], v[2], 0, True) for k, v in PARITY.items()}
+SHOTS.update({"parity-" + k: (v[0], v[1], v[2], 0, True) for k, v in UNIT_PARITY.items()})
 SHOTS["full-10-shore-rock"] = ("10", 1056, 740, 0, False)
 SHOTS["full-52-village"] = ("52", 2752, 292, 0, False)
+SHOTS["full-10-units"] = ("10", 400, 1792, 8, False)
+SHOTS["full-52-bats"] = ("52", 1000, 300, 5, False)
 
 
 def golden_hash(spec, install=None):
@@ -60,13 +71,15 @@ def shot_hashes(install=None):
     assets = AssetCache(install)
     envs, out = {}, {}
     for name, (spec, x, y, tick, plain) in SHOTS.items():
-        if spec not in envs:
-            w = World.from_map(open_map(spec, install), assets)
+        facing = 0x80 if name[7:] in UNIT_PARITY and name.startswith("parity-") else None   # E5: direction 8
+        if (spec, facing) not in envs:
+            w = World.from_map(open_map(spec, install), assets, facing=facing)
             tv = TerrainView(w, assets.tileset())
-            envs[spec] = (w, tv, SurfaceCache(tv), SpriteCache(assets))
-        w, tv, tc, sc = envs[spec]
+            envs[spec, facing] = (w, tv, SurfaceCache(tv), SpriteCache(assets))
+        w, tv, tc, sc = envs[spec, facing]
         cam = Camera(1024, 768, w.width, w.height, x, y)
-        opts = DrawOptions(shadows=False, lit=False) if plain else DrawOptions()
+        opts = DrawOptions(shadows=False, lit=False, units=name.startswith("parity-") and name[7:] in UNIT_PARITY) \
+            if plain else DrawOptions()
         out[name] = rgb_hash(render.screenshot(tv, cam, tick, None, tc, assets, opts, None, sc))
     return out
 

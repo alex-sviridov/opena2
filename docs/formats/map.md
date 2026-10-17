@@ -511,7 +511,7 @@ sprite they belong to, except structures (P0, before everything) and flyers
 `b`. Shadow casters: structures, map objects, ground and flying units,
 corpses, backpacks; **not** bridges and projectiles (`+0x2c` is a `ret`
 stub). Shadow geometry: [lighting §5](../mechanics/lighting.md#5-shadows-confirmed).
-Units and burning-cell effects are INFERRED beyond the order above.
+Unit layers, filing, flyer passes P4/P7 and the unit shadow: CONFIRMED, [rendering §13](../engine/rendering.md#13-units-team-colours-piles-g3a); burning-cell effects stay INFERRED.
 
 A structure is drawn once per footprint cell ([animation §4.2](animation.md#42-structures-and-bridges)):
 cell `(c, r)` of the W × TH footprint draws the pieces of picture column `c` in
@@ -692,14 +692,19 @@ ignored (3 editor leftovers).
 
 ### Drawing
 
-`map render MAP DEST --layers all` (or `units`, `items`): per cell the order is structure →
-unit → object ([draw order](#draw-order-and-placement-structures)); a unit stands at pixel
-`(x·32 >> 8, y·32 >> 8 − ground height)` (`objects.ground_height`, size 1) in its
-`idle` frame at clock `--clock`, direction 8; a ground sack is a yellow square. The exe draws a pile
-from `graphics/backpack/sprites.256` (`FUN_00461292`), frame = `min(5, floor(log10(total)))` with
+`map render MAP DEST --layers all` (or `units`, `items`) and the engine ([rendering §13](../engine/rendering.md#13-units-team-colours-piles-g3a))
+follow the exe: a unit is filed under the cell of `pos - 0x80 + size * 0x80` (`size` = `TileSize`) and sorts per cell structure →
+unit → object; it stands at `(X·32 >> 8, Y·32 >> 8 − ground height)` (vertex-bilinear, `objects.ground_height(size)`) in its
+`idle` frame at clock `--clock`, direction 8 (the render has no facing); flyers (`Z ≠ 0`) draw last, 16 px raised. A pile is
+the backpack sprite (`graphics/backpack/sprites.256`, `FUN_00461292`), frame = `min(5, floor(log10(total)))` with
 total = gold + sum of the items' `+0x1c` (`FUN_0052a895`, sent in message 0x7a; CONFIRMED): 100 gold
-→ frame 2, 5000 → 3, 10000 → 4; the item `+0x1c` is not decoded, so item piles are not framed.
-Sacks of dead monsters are runtime objects (`FUN_00510a70` → `FUN_005109f5`), not map data.
+→ frame 2, 5000 → 3, 10000 → 4; the item `+0x1c` is not decoded, so item piles are not framed (frame 0). Groups on one cell
+are one pile. Sacks of dead monsters are runtime objects (`FUN_00510a70` → `FUN_005109f5`), not map data.
+
+**Placement at load** (CONFIRMED): the server places a unit with `FUN_00510089(cell, r = 0)`, which tries only the file cell
+(not a spiral; with `r != 0` it makes random tries, then a raster scan) and deletes the unit when the cell is not free for its
+movement-type mask in the static and the live layer (error line, no relocation). 9 of 4,212 units sit on such a cell; the client copy
+(`FUN_004a449c`) uses the file position regardless. HP 0 in the file (4 units): see [architecture §9](../engine/architecture.md#9-world-state).
 
 ### Checks
 
@@ -719,8 +724,6 @@ string → item chain of data.bin records, the item `+0x1c` field.
 
 ## Open questions
 
-- Cell effects `FUN_0040af69` (modes 0 and 1, P3 (f) / P6 of the draw order): what they draw
-  (source list `FUN_004203e0`, data at `view+0xb8/+0xbc`); unit shadow `FUN_00464487`.
 - Dirt: the meaning of effect byte `+0x5c`, the caller of `FUN_00559ce5`
   (clear), and when the mark disappears.
 - Line of sight: the distance tables (`+0x22000` steps, `+0x28000`

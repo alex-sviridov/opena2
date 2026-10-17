@@ -32,6 +32,19 @@ def minimap_size(w, h):
     return (cw << k, ch << k) if k >= 0 else (cw >> 1, ch >> 1)
 
 
+DOT_PALETTE_INDEX = 164         # unit dot colour: u16 at +0x148 of the owner's colour table (0x465f3f)
+
+
+def load_dot_colors(fs=None):
+    """(16, 3) uint8: the minimap dot colour of each human.pal row (palette entry 164; the exe
+    reads it from the 16-bit shade table row 8 = x1, so 5-6-5 rounding is not reproduced)."""
+    from .common import as_fs
+    from .graphics.palette import load_human_palettes
+    from .units import HUMAN_PAL
+    rows = load_human_palettes(HUMAN_PAL, as_fs(fs))
+    return np.array([np.asarray(r)[DOT_PALETTE_INDEX] for r in rows], np.uint8)
+
+
 def load_color_table(fs=None):
     """The (14, 52, 3) uint8 colour table, top row first (the loader flips DIB rows)."""
     rgb = load_bmp(TABLE_PATH, fs).rgb

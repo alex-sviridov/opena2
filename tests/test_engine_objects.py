@@ -82,7 +82,8 @@ def assets(**kw):
 
 
 PLAIN = DrawOptions(shadows=False, lit=False, smoothing=False)
-E4 = DrawOptions(shadows=False, lit=False)           # parity with E4: smoothing stays on
+E4 = DrawOptions(shadows=False, lit=False, units=False)    # parity with E4: smoothing stays on
+E5 = DrawOptions(shadows=False, lit=False)                  # parity with E5: units and piles too
 
 
 def sprites_of(items, kind="sprite"):
@@ -467,7 +468,7 @@ def _tool():
 
 
 @functools.lru_cache(maxsize=2)
-def _e4(spec, tick, structures):
+def _e4(spec, tick, structures, units=False):
     """(reference image, top): E4 = render_3d + anim.scene.draw_scene, as `map render` does."""
     from allods2.anim.scene import Scene, draw_scene
     from allods2.assets import AssetCache
@@ -481,7 +482,8 @@ def _e4(spec, tick, structures):
     img, top = tr.render_3d(w.cells, w.heights, a.tileset(), light, anim=tick, tint=day.tint)
     cv = Canvas(1, 1)
     cv.pix = np.ascontiguousarray(img)
-    draw_scene(cv, m, Scene(a), top=top, relief=True, clock=tick, structures=structures)
+    draw_scene(cv, m, Scene(a), top=top, relief=True, clock=tick, structures=structures,
+               units=units, items=units)
     return cv.pix, top
 
 
@@ -492,7 +494,7 @@ def _env(spec):
     from engine.view import TerrainView
     from engine.backend_pygame.surfaces import SurfaceCache
     a = AssetCache(GFS)
-    w = World.from_map(open_map(spec), a)
+    w = World.from_map(open_map(spec), a, facing=8 << 4)          # E5 draws every unit at direction 8
     tv = TerrainView(w, a.tileset())
     return w, tv, a, SurfaceCache(tv), SpriteCache(a)
 
@@ -519,6 +521,24 @@ def test_parity_with_e4_pixel_exact(name):
     items = build_draw_list(w, c, 0, a, E4)
     for kind in what:                                  # the position really shows what it is chosen for
         assert any(i.sprite and i.sprite[0] == kind for i in items), (name, kind)
+
+
+@needs_graphics
+@pytest.mark.parametrize("name", sorted(_tool().UNIT_PARITY))
+def test_parity_with_e5_units_and_piles_pixel_exact(name):
+    """`map render --relief --layers all` (E5) equals the engine with shadows and light off."""
+    spec, x, y, what = _tool().UNIT_PARITY[name]
+    ref, top = _e4(spec, 0, True, units=True)
+    rgb, c = _shot(spec, x, y, opts=E5)
+    assert np.array_equal(rgb, ref[top + c.iy:top + c.iy + 768, c.ix:c.ix + 1024]), name
+    w, tv, a, tc, sc = _env(spec)
+    items = build_draw_list(w, c, 0, a, E5)
+    kinds = {i.sprite[0] for i in items if i.sprite}
+    for kind in what:
+        if kind == "flyer":
+            assert any(i.depth[0] == dl.PASS_FLYER for i in items), name
+        else:
+            assert kind in kinds, (name, kind)
 
 
 @needs_graphics
@@ -563,10 +583,9 @@ def test_golden_screenshots():
     gold = json.load(open(os.path.join(ROOT, "tests", "golden.json")))["screenshots"]
     tool = _tool()
     assert sorted(gold) == sorted(tool.SHOTS)
+    got = tool.shot_hashes(GFS)                       # same worlds and options as the generator
     for name in sorted(tool.SHOTS):
-        spec, x, y, tick, plain = tool.SHOTS[name]
-        rgb, _ = _shot(spec, x, y, tick, E4 if plain else DrawOptions())
-        assert tool.rgb_hash(rgb) == gold[name], "%s changed; if intended run tools/update_golden.py" % name
+        assert got[name] == gold[name], "%s changed; if intended run tools/update_golden.py" % name
 
 
 @needs_graphics

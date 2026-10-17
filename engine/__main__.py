@@ -2,7 +2,7 @@
    python -m engine screenshot MAP X Y DEST.png [--tick N] [--size WxH] [--install DIR]
    python -m engine world-info MAP [--install DIR] [--strict]
    python -m engine world-dump MAP DEST.json [--install DIR]
-   python -m engine minimap MAP DEST.png [--install DIR]
+   python -m engine minimap MAP DEST.png [--units] [--install DIR]
 
 MAP as for `python -m allods2 map` (10, scenario/10.alm, or a file).  X, Y =
 the viewport's top-left in world pixels (x = 32*col, y = 32*row - height).
@@ -48,9 +48,13 @@ def world_info(a):
     for k in ("object", "structure", "bridge"):
         if k in kinds:
             print("%s types: %s" % (k, " ".join("%d:%d" % t for t in sorted(kinds[k]))))
+    print("players %d, units %d (%d on blocked cells), ground piles %d" % (
+        len(w.players), len(w.units), r.units_on_blocked, len(w.items)))
     print("blocked cells (walker mask 0x41): %d of %d" % (int((~w.walkable(1)).sum()), w.width * w.height))
     print("ignored outside the window: %d" % r.ignored_outside_window)
-    print("unknown types: %d" % len(r.unknown))
+    print("unknown types: %d, unknown units: %d" % (len(r.unknown), len(r.unknown_units)))
+    for uid, tid, sid, x, y in r.unknown_units:
+        print("  unit uid %d type %d serverID %d at (%d, %d)" % (uid, tid, sid, x, y))
     for kind, tid, x, y in r.unknown:
         print("  %s type %d at (%d, %d)" % (kind, tid, x, y))
     return 2 if (a.strict and r.unknown) else 0
@@ -72,6 +76,13 @@ def minimap_cmd(a):
     from allods2.minimap import load_color_table, minimap_rgb
     m = open_map(a.map, a.install)
     rgb = minimap_rgb(m.runtime_terrain(), load_color_table(as_fs(a.install)))
+    if a.units:
+        from allods2.assets import AssetCache
+        from allods2.minimap import load_dot_colors
+        from engine.view.minimap import MinimapGeometry, draw_unit_dots
+        rgb = rgb.copy()
+        draw_unit_dots(rgb, MinimapGeometry(m.width, m.height),
+                       World.from_map(m, AssetCache(a.install)), load_dot_colors(as_fs(a.install)))
     write_png(a.dest, rgb)
     print("%s: %d x %d cells -> %s (%dx%d)" % (m.name, m.width, m.height, a.dest, rgb.shape[1], rgb.shape[0]))
     return 0
@@ -127,6 +138,7 @@ def main(argv=None):
     m.add_argument("map")
     m.add_argument("dest")
     m.add_argument("--install")
+    m.add_argument("--units", action="store_true", help="add the unit dots")
     r.add_argument("--no-minimap", action="store_true")
     a = p.parse_args(argv)
     if a.cmd == "minimap":
@@ -144,9 +156,10 @@ def main(argv=None):
     from engine.backend_pygame import render, window
     if a.cmd == "run":
         from allods2.common import as_fs
-        from allods2.minimap import load_color_table
+        from allods2.minimap import load_color_table, load_dot_colors
         from engine.view import Minimap
-        mm = None if a.no_minimap else Minimap(world, load_color_table(as_fs(a.install)))
+        mm = None if a.no_minimap else Minimap(world, load_color_table(as_fs(a.install)),
+                                               load_dot_colors(as_fs(a.install)))
         window.run(world, tv, camera, a.speed, "Allods 2 - " + world.name,
                    assets=assets, options=opts, debug=debug, minimap=mm)
     else:
