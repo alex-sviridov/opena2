@@ -10,10 +10,11 @@ most scaled values add 0.5 first (see `scaled`).
 import math
 import re
 import struct
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass
 
+from ..common import as_fs
 from ..databin import databin
-from .entities import decode_item
+from .entities import ItemCode, decode_item
 
 WEAPON, SHIELD, ARMOUR, SPECIAL = "weapon", "shield", "armour", "special"
 KINDS = (WEAPON, SHIELD, ARMOUR, SPECIAL)
@@ -33,6 +34,7 @@ ELEMENT_DAMAGE = (44, 45, 46, 47, 48)                   # damageFire .. damageAs
 PRICE_CAP = 0x1312CFF                                   # 19,999,999, FUN_00528e04
 FIGHTER, MAGE = 1, 2                                    # `suitable_for` / stat `UsableBy` bits
 MODE_PERMANENT, MODE_DURATION, MODE_CONTINUOUS, MODE_CHARGES, MODE_SINGLE_USE = 0, 1, 2, 4, 8
+DEFAULT_QUALITY, DEFAULT_MATERIAL = 0, 15                  # equipment strings without a name part
 SUBTYPE = (("Potion", 3), ("Book", 5), ("Scroll", 4), ("SuperScroll", 4))   # name prefix, FUN_00523148
 
 
@@ -369,11 +371,10 @@ class ItemTable:
         contains `Leather`, else `Wooden ` when it contains `Wood`; shields cut ` Shield`; the rest is
         looked up by name from the end of the class list (FUN_00528808, FUN_005273f0, FUN_00527e23,
         FUN_004fa437, FUN_004fa583, FUN_004fa6c6, FUN_004fa7e1)."""
-        from .entities import ItemCode
         body, _, mods = text.partition("{")
         body = " ".join(body.split())
         picked = []
-        for table, default in ((self.qualities, 0), (self.materials, 15)):
+        for table, default in ((self.qualities, DEFAULT_QUALITY), (self.materials, DEFAULT_MATERIAL)):
             idx = default
             for i in range(len(table) - 1, -1, -1):
                 pat = r"(?<!\S)%s(?!\S)" % re.escape(table[i][0])
@@ -383,8 +384,7 @@ class ItemTable:
                     break
             picked.append(idx)
         quality, material = picked
-        kinds = (WEAPON, SHIELD, ARMOUR) if slot is None else \
-            (WEAPON,) if slot == 0 else (SHIELD,) if slot == 1 else (ARMOUR,)
+        kinds = (WEAPON, SHIELD, ARMOUR) if slot is None else ((WEAPON,), (SHIELD,), (ARMOUR,))[min(slot, 2)]
         for kind in kinds:
             name = body
             if kind != WEAPON:
@@ -401,9 +401,7 @@ class ItemTable:
         return {"items": [d.to_dict() for d in self.defs],
                 "qualities": [[n, list(f)] for n, f in self.qualities],
                 "materials": [[n, list(f)] for n, f in self.materials],
-                "stats": [{"id": s.id, "name": s.name, "cost": s.cost, "affect_min": s.affect_min,
-                           "affect_max": s.affect_max, "usable_by": s.usable_by,
-                           "slot_weights": list(s.slot_weights)} for s in self.stats if s.id],
+                "stats": [{**asdict(s), "slot_weights": list(s.slot_weights)} for s in self.stats if s.id],
                 "names": {"%04x" % c: n for c, n in sorted(self.names.items())}}
 
 
@@ -503,7 +501,6 @@ def load_names(fs):
 def load_ui_texts(fs=None):
     """(of, tail, spell_names) for `ItemTable.display_name`: `main/text/main.txt` lines 0x5a and 0x5b
     (text list at 0x622600, FUN_00481186) and `main/text/spell.txt` (list 0x6226e0); ("of", "", []) defaults."""
-    from ..common import as_fs
     fs = as_fs(fs)
     try:
         main = bytes(fs.read("main/text/main.txt")).decode("cp1251").split("\r\n")
@@ -515,11 +512,9 @@ def load_ui_texts(fs=None):
 
 def load(fs=None):
     """The item table of an install (`fs`: game file system), display names included."""
-    from ..common import as_fs
     fs = as_fs(fs)
     return build(databin(fs), load_names(fs))
 
 
 def load_packets(fs=None):
-    from ..common import as_fs
     return parse_packets(bytes(as_fs(fs).read("world/data/itemname.pkt")))

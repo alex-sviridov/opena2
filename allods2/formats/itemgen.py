@@ -73,6 +73,8 @@ GEN_ENCHANT = 0x20000000        # the price window applies to the final price, m
 T_QUEST, T_ARMOUR, T_WEAPON, T_POTION, T_SCROLL, T_BOOK = 0, 1, 2, 3, 4, 5
 # pool builder kinds (FUN_005247db param 4)
 K_ARMOUR, K_WEAPON, K_SHIELD, K_STAFF = 1, 2, 7, 8
+KIND_GROUP = {K_ARMOUR: ARMOUR, K_WEAPON: WEAPON, K_STAFF: WEAPON, K_SHIELD: SHIELD}
+EXTRA_MODIFIER_CHANCE = (0x32, 0x19)            # rnd(100) < n for the 2nd and 3rd modifier of `enchant`
 
 FIGHTER_SPELLS = (18, 26)                       # 0x5d07f8, castSpell of a fighter item (Stone Curse, Drain Life)
 MAGE_SPELLS = (1, 10, 11, 18, 26, 5, 16)        # 0x5d0800, staves
@@ -140,13 +142,11 @@ def make_class_item(table, defn, quality, material):
 
 
 def make_special(table, defn, rng=None):
-    """Special item from its record (0x522ee0 / 0x522fab): effects from the record text, price 0x52340f."""
+    """Special item from its record (0x522ee0 / 0x522fab): effects from the record text, price 0x52340f
+    (`rng` is accepted for the original signature and unused)."""
     effects = table.parse_effects(defn.effects_text) if defn.effects_text else []
-    sub = defn.subtype
-    price = defn.price
-    if sub == 5:
-        price = 0
-    return GenItem(defn, sub, 0, 0, 14 << 8 | defn.index, price, price, 0, effects)
+    price = 0 if defn.subtype == T_BOOK else defn.price
+    return GenItem(defn, defn.subtype, 0, 0, 14 << 8 | defn.index, price, price, 0, effects)
 
 
 def _special_by_name(table, name):
@@ -161,9 +161,8 @@ def _special_by_name(table, name):
 
 def _pool_class(table, kind, quality, material, lo, hi, restrict, pool):
     """FUN_005247db: append every record of the group allowed for (quality, material)."""
-    group = {K_ARMOUR: ARMOUR, K_WEAPON: WEAPON, K_STAFF: WEAPON, K_SHIELD: SHIELD}[kind]
     q, m = table.factors(quality, material)
-    for d in table.of_kind(group):
+    for d in table.of_kind(KIND_GROUP[kind]):
         if not d.allows(quality, material):
             continue
         price = ftol(d.fields["price"] * m[F_PRICE] * q[F_PRICE])      # truncated here, rounded in the item
@@ -374,7 +373,7 @@ def enchant(table, item, max_price, rng):
     _reprice(table, item)
     if e.kind == STAT_CAST:
         return True
-    for chance in (0x32, 0x19):
+    for chance in EXTRA_MODIFIER_CHANCE:
         if rnd(rng, 100) < chance:
             e = roll_modifier(table, rng, fighter, item.type, cls, item.magic_cap - used_capacity(table, item),
                               2 * max_price - item.price, item.price)

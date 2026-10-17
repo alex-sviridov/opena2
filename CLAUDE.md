@@ -191,12 +191,9 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   `Unit.stats`, `data export units`, `world-info --units`; REA: p33 = dyingTime, p34-36 AI thresholds, p37 XP
   (killed `+0x1c`×0.5), p38-44 loot (chance, gold base+spread, item value range, flags), humans-only serverID
   reduction; golden `["units"]`. docs/data/units.md
-- Items (F2) done: `allods2/formats/itemdefs.py` (162 definitions, `AssetCache.items()`, `data export items`, `tools/validate_items.py`);
-  REA: exe rounding `ftol(x+0.5)` of `param x material x quality` (7 f64: price, weight, damage, toHit, defence, absorption, level/magcap),
-  price `+0x1c` = base + effects (`1.5^(s/70)` curve, castSpell by scrollCost), 7 i16 = material masks per quality (regenerate the 395 named
-  class items exactly), `stats` group = cost/min/max/UsableBy/cumulative slot weights, `suitableFor` bit 1 fighter / 2 mage, icon
-  `%02d%02d%1d%02d.16a`, names `itemname.bin`+`.txt`, equipment strings parsed (`Soft`/`Wooden` prefixes); itemname.pkt cross-checks all prices. Generator (`allods2/formats/itemgen.py`): pool flags, enchant/roll/magnitude, shop stock,
-  `magic_cap` readers, UI equip checks, display name `Scroll of X`, pkt header bytes: CONFIRMED (items §6, §8, §11).
+- Items (F2) done: `allods2/formats/itemdefs.py` (162 definitions, `AssetCache.items()`, `data export items`, `tools/validate_items.py`)
+  and `itemgen.py` (generator, shop stock, loot). CONFIRMED: exe rounding `ftol(x+0.5)` of param x material x quality, price
+  = base + effects, masks regenerate the 395 named class items, itemname.pkt cross-checks all prices, equipment strings parsed.
   docs/data/items.md
 - Spells (F2b) done: `allods2/formats/spelldefs.py` (29 spells, `AssetCache.spells()`, `data export spells`, `tools/validate_spells.py`);
   REA: record n at `0x68f5cc`+n*0x20, sphere 1-5 fire..astral, level = skill-30+Mind, scaling m=L/30+1, damage `0x516f6f`, behaviour = per-number

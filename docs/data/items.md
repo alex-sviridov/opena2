@@ -177,12 +177,9 @@ rest is looked up by name from the end of the class list (`FUN_0053eb10`). 1,319
 
 ## 10. Tests
 
-`tests/test_itemdefs.py`: synthetic rules (rounding, class stats, price, spell price, specials, masks, users, icons, text
-terms, section 9 pairs, slot weights, equipment strings, pkt, names); on the install: 162 definitions, every packet equals
-the formulas, masks regenerate the 395 items, all map codes and section 9 stat ids resolve, all equipment strings but one
-resolve, golden hash `["items"]`. `tools/validate_items.py` runs the same checks. `tests/test_itemgen.py`: one synthetic test per
-generation rule (rng, flag lists, pool, roll, magnitude, enchant, generator, stock, merge) and the display name; on the install the
-generator runs with real loot flags.
+`tests/test_itemdefs.py` (synthetic rules, plus the install: every packet equals the formulas, masks regenerate the 395
+items, map codes and equipment strings resolve, golden hash `["items"]`), `tests/test_itemgen.py` (one test per rule of
+§11); `tools/validate_items.py` runs the install checks.
 
 ## 11. Random generation
 
