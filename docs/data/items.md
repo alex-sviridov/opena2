@@ -196,8 +196,19 @@ overflow give 0x80000000. All of this CONFIRMED (REA) unless tagged.
 monster drop `0x510da2` (p42, p43, 100 candidates, stack 1, flags p44; one list entry `rnd(len - 1)` kept with count 1,
 [units](units.md)); mission reward `0x5325ee` (window `[v, 2v]` with flags `0x1b7fffff`, then `[3v/4, 3v/2]` with `0x2bffffff`,
 100 candidates each, `v` = score clamped 250 .. 16,382,000; INFERRED name); shop stock `0x522767` (four blocks of five dwords
-`min, max, count, stack, flags`; the source table of the blocks was not traced). No xrefs (dead): `0x525b44` (an older
+`min, max, count, stack, flags`, see below). No xrefs (dead): `0x525b44` (an older
 generator) and `0x525a7f` (count by `+0x45`).
+
+**Shop stock blocks** (CONFIRMED by disassembly): the trader building is the structure object of vtable `0x5d12e8` (ctors `0x520d21`,
+`0x520e43`, `0x520ee6`), which owns a shop object (vtable `0x5d1358`, ctor `0x522289`, `shop+0x94` = the structure). The four blocks live
+in the structure at `+0x70`, `+0x84`, `+0x98`, `+0xac` (0x14 bytes each). The ctor writes only block 0 (`min 1,000,000`, `max 10,000,000`,
+`count 1`, `stack 1`, `flags 0x2fffffff`) and copies it to the other three with `memcpy`. `0x522767` (only when the shop list is empty,
+via `0x522d70` / `0x5228c1`; the latter returns 0 once the list holds 250 entries) builds a generator from each block, runs
+`FUN_00525f67(count, stack, min, max)` and stamps each new item's `+0x4d` with the block index + 1. `FUN_00521d4c` picks the block for an
+item by its group byte `+0x44` (1 armour -> pool `0x1000000`, 2 weapon -> `0x400000`, 3-5 -> `0x4000000`) and the block flag
+`0x20000000`. The branch `[0x6044c4 + 0x74] == 0` calls the null pointer `DAT_00627474` (never written: dead). No code in
+`0x500000..0x55ffff` writes the blocks again (immediate and register stores, `memcpy` of 0x14 bytes: only the ctor), yet the defaults
+lack the stock bit `0x4000000`, so the real values must arrive another way (INFERRED: a serialized or message path; not found).
 
 **Flags** (generator `+0x54`, monster p44, e.g. `0x1147ffff`, `0x2e7fffff`, `0x31ffffff`, `0x2c0fffff`):
 
@@ -270,20 +281,69 @@ adds its own damage to `+0xf9/+0xfa` and sets kind 1 / 2; other weapons copy the
 `rnd(spread) + min`, scaled by the defender's protection of that kind ([spells §5](spells.md#5-damage-and-protection)), added if
 > 0; absorption does not apply to it. The kinds 13, 14, 43 and 49 add to `+0xf4`, `+0xf5`, `+0xf4`, `+0xf4`.
 
+## 12. Trade, hero window and wire flags
+
+All CONFIRMED by disassembly of `allods2.exe` unless tagged. Client message `0x22` (`FUN_0041a20c`) moves an item: byte `+0xc` source
+kind, `+0xd` destination kind, word `+0xe` source index, `+0x10` destination index, `+0x12` count. The server case `0x22` of `FUN_004f515d`
+sends kinds 4..8 on both sides to the shop (`FUN_0052112f` -> `FUN_00522baf` -> `FUN_00521fd1`); the other combinations go through
+the hero container methods (kind 1 = equipment slot via `vtable + 0x48` take / `+ 0x40` put; kind 3 stores the destination word in the
+hero's `+0x1f` object `+0x1c`). Further shop messages: `0x33` buy (`FUN_0052115f` ->
+`FUN_00522a71` -> `FUN_00521c29`), `0x34` sell (`FUN_0052117b` -> `FUN_00522ab2` -> `FUN_00521ae3`), `0x35` / `0x36` leave or cancel
+(`FUN_005211bb` -> `FUN_00522c75` -> `FUN_005220d9`; `FUN_005210c9` -> `FUN_00522936`). A call from a hero that is not a customer logs
+"Invalid shop transaction".
+
+**Settlement.** The hero's gold is the field `+0x3c` of the hero object (`[customer + 0x14] + 0x3c`).
+- *Buy* (`FUN_00521c29`): for each item in the cart list whose owner `+0x14` is 0 (still the shop's): `cost = item.+0x1c * item.+0x42`
+  (price times count). If the gold is below the cost the loop stops (the earlier items stay bought); otherwise `gold -= cost`, the item
+  leaves the cart, `+0x14` = hero, `+0x4c` (in-cart flag) = 0, and `FUN_00529ac2` files it in the pack. So the gold taken is the server
+  item's `+0x1c` (§4 price with effects), **not** the pkt template price and not the short at `+0x4a`.
+- *Sell* (`FUN_00521ae3`): for each cart item owned by the hero with `+0x1c != 0`: `gold += ftol(price * count * 0.5 + 0.5)` (constant
+  `0x5d0828` = 0.5; half the price, rounded half up, truncating `__ftol`), then the item returns to the shop through `FUN_00521d4c`.
+- *Cancel* (`FUN_005220d9`): shop-owned cart items go back to their block, hero-owned ones back to the pack; no gold moves.
+- The container total at `+0x20` (`FUN_00529c96`, the pack insert) only sums `short +0x4a * count` of what it holds (stack merge: same code
+  and same `+0x4d` block tag). It is not used for payment.
+
+**Equip on the server.** The case `0x22` equip (destination kind 1) calls the carrier method `vtable + 0x40` (`FUN_005290cc` weapon /
+`FUN_00527a13` armour / `FUN_0052846b` shield, §6) with no fighter/mage test: the readers of record parameter 15 (`suitable_for`) in the exe
+are the equip-by-name functions `FUN_00527c46`, `FUN_005285f5`, `FUN_00529629` (via `FUN_00512573`), the generator and pool code
+(`FUN_00524bca`, `FUN_00526b5d`), the comparator below and `FUN_00510a70` (`== 0` test for a natural weapon swap). INFERRED from
+that absence: the server repeats no fighter/mage test for a hero-window equip; only the client test `FUN_0046a9c2` (§6) applies.
+
+**Wire flag byte** (`+8` of the descriptor, built from the `itemname.pkt` header byte `a`, checked on all 491 packets): bit 1 only on
+class 14 (specials: quest 1, book 5, potion 7, scroll `0x17`); bit `0x10` only on scrolls (58 of 58). Client `FUN_004b028d` (hero
+window, item click) takes a separate branch when `flags & 0x10 and flags & 1` (scroll) and another for `flags & 1` alone.
+Wire item decode `FUN_004ed5f5`: `u16 code`, `u8 f`; `f & 0x80` = count in `f & 0x3f`; else `f & 0x20` = `f & 0xf` modifier records of
+`(type char, u8 value[, extra])` (types `)` takes two bytes, `, - . / 0` one extra byte); else a `u16` count.
+
+**Item `+0x50` (over-capacity).** Set by `FUN_004ed5f5` (§11 magic_cap readers). Readers: the two item-list loops of the packet handler
+`FUN_004ea6ab` (equipped list and pack list) set the owner flag `+0x1bc = 1` when any decoded item has `+0x50 != 0`, and the
+message handler after the item-list parse (`FUN_004f515d`, the branch after `FUN_004ea6ab`, `0x4f7c78`) then logs
+`"Cheating detected! Player: %s file: %u%u.a2c"` (`0x5fcf34`) and posts event `0x92` (5, hero id). So a character file whose item
+carries more modifier cost than 1.5x its capacity is reported as cheating (INFERRED: the check belongs to the loading of a `.a2c`
+character; the message number of that branch was not traced).
+
+**Generator order** (`FUN_0052571c`, the compare of the sort in `FUN_00525f67`): key `k(x) = x.+0x44 in {1, 2, 7} ? suitable_for(x) & 1 : 0`.
+Order: `k` descending (fighter items first), then class record index `+0xc` ascending, then price `+0x1c` ascending. Exe defect: when the
+second operand is not class 1/2/7 the code clears the first key again instead of setting the second, so the second key stays whatever the
+stack slot held from an earlier call (not recoverable statically). Ties between differently classed entries are therefore not reproduced;
+`loot_item` picks uniformly, so the distribution is unaffected.
+
 ## VERIFY IN GAME
 
 - Price shown for a Common Iron Long Sword (600) and a Rare Bronze one (600), a Rare Mithrill Helm with `{defence=13}`.
-- Scroll of Fire Arrow: price shown in a shop (about 41 from the pkt template, or 100) and the gold actually taken on purchase
-  (record price 100, §8).
+- Scroll of Fire Arrow: price shown in a shop (about 41 from the pkt template, or 100); the gold taken is the server item's `+0x1c`
+  times the count (§12).
 - A two-handed weapon pushes the shield into the pack; a mage cannot equip a Long Sword, a fighter cannot equip a Staff.
 - Weight: Bronze Cuirass 38, Meteoric / Crystal items heavier (material f64 1).
 
 ## Open questions
 
-- Server side of the trade and of the hero window: the settlement routine that charges a purchase (record price vs pkt template
-  price of scrolls), and whether the server repeats the fighter/mage equip test of `FUN_0046a9c2`. Start: the messages sent by
-  `FUN_004b960c` / `FUN_004b028d`.
-- Mission reward `0x5325ee`: what calls it, the source of its value `v` (`FUN_005493d0`), the shop-stock parameter blocks of
-  `0x522767`; how the upgrade step relates to the hero state kept between maps (`FUN_00514920`, [units](units.md#open-questions)).
-- Wire flag bits `1` and `0x10` (special / scroll: INFERRED) and the item `+0x50` flag (over-capacity) readers.
-- Exact order of the sorted generator result (qsort and the uninitialised key of `FUN_0052571c`).
+- Mission reward `0x5325ee`: CONFIRMED caller chain: server message `0x38` (`FUN_004f515d` case 0x38, after `FUN_00510745`; stores
+  two payload bytes at hero `+0xa6c`) -> `FUN_0052f813`: if `FUN_00533e8f` (a record in the mission's list matches the player id
+  `+8`, the mission object `+4` and `+0x10 == 1`) is 0 it runs the no-reward path `FUN_005303ed`, else `0x5325ee`. `v` = `+0x24` of that
+  record (`FUN_005493d0`; no other reader), 0 if none; the upgrade step also runs when `FUN_0053dd90` (byte `+0xa78 > 0x32`).
+  INFERRED: `+0x24` is written by the event handlers at `0x52f222` / `0x52f2d4` (event kind 8, 9: `(arg1 >> 16)^2 / 5`) and
+  `0x52f386` (kind 10: `(arg1 >> 16)^2 >> 3`), each only when the record is still open (`FUN_00548510 == 0`); the senders of these
+  event kinds and the meaning of `arg1 >> 16` are not traced. Left: what overwrites the shop-stock blocks after the structure
+  ctor (see Shop stock blocks); how the upgrade step relates to the hero state kept between maps (`FUN_00514920`,
+  [units](units.md#open-questions)).

@@ -23,10 +23,10 @@ from both places when answered).
 
 ## Items
 
-- Server settlement of a purchase (scroll: record price 100 vs pkt 41) and server-side equip test; start the messages of
-  `FUN_004b960c` / `FUN_004b028d`. [items](data/items.md#open-questions)
-- Mission reward generator `0x5325ee` (caller, value `v`), shop stock blocks of `0x522767`, item `+0x50` and wire flag bits 1 / 0x10
-  readers, exact sort order of the generator list (`FUN_0052571c`). [items](data/items.md#open-questions)
+- Mission reward `0x5325ee`: senders of the event kinds 8/9/10 that set the value `v` (record `+0x24`, handlers `0x52f222`,
+  `0x52f2d4`, `0x52f386`); what overwrites the shop stock blocks (structure `+0x70..+0xbf`, ctor `0x520d21` leaves one default
+  block) before `0x522767` runs; message number of the "Cheating detected" branch (`0x4f7c78`).
+  [items](data/items.md#open-questions)
 
 ## Spells
 
