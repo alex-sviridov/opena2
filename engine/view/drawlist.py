@@ -19,6 +19,8 @@ from allods2.formats import objects as fobj
 from allods2.graphics import lighting as lt
 from allods2.graphics.terrain import TILE
 
+from .pick import PickRect
+
 CELL = TILE
 PASS_SHADOW, PASS_FLAT, PASS_GROUND_ITEMS, PASS_CELL, PASS_FLYER_SHADOW, PASS_FLYER, PASS_OVERLAY, PASS_DEBUG = \
     0, 1, 2, 3, 4, 7, 8, 9
@@ -64,11 +66,12 @@ class DrawOptions:
     animate: bool = True        # "Object animations" DAT_005f17ec
     objects: bool = True        # map objects and structures at all
     units: bool = True          # units and ground piles
+    health_bars: bool = False   # Ctrl+H: the selection bar of every unit
 
 
 @dataclass(frozen=True)
 class DrawItem:
-    kind: str                   # "sprite" | "shadow" | "marker" | "passability" | "depth"
+    kind: str                   # "sprite" | "shadow" | "marker" | "passability" | "depth" | "bar"
     entity: int = None          # world id
     sprite: tuple = None        # (set_kind "object"|"structure"|"bridge"|"unit"|"backpack", type_id, source)
     frame: int = 0              # index into the sprite file
@@ -85,6 +88,7 @@ class DrawItem:
     depth: tuple = ()
     shear: int = 0              # 16.16 shear of a shadow
     text: str = None            # depth label; "hotspot" for a marker cross
+    bar: tuple = None           # "bar": (fill_px, track_px, tier), tier 0 green / 1 yellow / 2 red
 
 
 class DrawList(list):
@@ -92,6 +96,7 @@ class DrawList(list):
     (the game draws nothing for them), `culled` those outside the window."""
     missing = 0
     culled = 0
+    picks = ()                  # PickRect of the drawn units, in draw order
 
 
 def view_window(camera):
@@ -153,6 +158,7 @@ class _Ctx:
         self.T = math.tan(self.beta)
         self.shear = lt.shadow_shear(day.angle)
         self.items = DrawList()
+        self.picks = []
         self.relief = relief_grid(world.heights)
 
     def visible(self, sx, sy, w, h, lo=0, hi=0):
@@ -341,6 +347,10 @@ def _unit(ctx, u):
                        sdep + (0, sub), ref.mirrored, 0 if flyer else None)
     ctx.sprite(u, key, ref.source, ref.index, px - hx, py - hy - z - alt, wh[0], wh[1], dep + (0, 2),
                mirrored=ref.mirrored, remap=remap)
+    t = aset.t
+    ox, oy = px - t.CenterX - ctx.cx, py - t.CenterY - z - alt - ctx.cy
+    ctx.picks.append((dep, PickRect(u.id, t.SelectionX1 + ox, t.SelectionY1 + oy,
+                                    t.SelectionX2 + ox, t.SelectionY2 + oy)))
     if ov is not None:
         bx, by = aset.anchor(*ov)
         ctx.sprite(u, key, ref.source + "_b", ref.index, px - bx, py - by - z - alt, ov[0], ov[1],
@@ -424,12 +434,31 @@ def _debug_items(ctx, debug):
     return out
 
 
-def build_draw_list(world, camera, tick, assets, options=None, debug=None):
+def _bars(ctx, selection):
+    """Selection bars (FUN_004653a5, ui-layout.md section 9): the HP bar on the top edge of each
+    selected unit's pick rect (every drawn unit with `DrawOptions.health_bars`)."""
+    chosen = set(selection)
+    out = []
+    for n, r in enumerate(ctx.items.picks):
+        u = ctx.world.units.get(r.entity)
+        if u is None or u.hp_max <= 0 or not (ctx.opts.health_bars or r.entity in chosen):
+            continue
+        track = max(r.x2 - r.x1 - 8, 0)
+        hp = max(u.hp, 0)
+        fill = max(1, hp * track // u.hp_max) if hp > 0 else 0
+        tier = 2 if hp * 4 < u.hp_max else 1 if hp * 2 < u.hp_max else 0
+        out.append(DrawItem("bar", r.entity, None, 0, r.x1, r.y1 - 2, r.x2 - r.x1, 4,
+                            depth=(PASS_OVERLAY, n, 0, 0, 0), bar=(min(fill, track), track, tier)))
+    return out
+
+
+def build_draw_list(world, camera, tick, assets, options=None, debug=None, selection=()):
     """Sprites (and requested debug overlays) of map objects and structures for
     `camera`, in drawing order: sorted by `DrawItem.depth` =
     (pass, row, -col, slot, seq, part, sub) (the exe's scan order, docs/engine/rendering.md).
     Reads the world only.  `assets`: an `AssetCache`; `options`: `DrawOptions`;
-    `debug`: any object with boolean `passability`, `markers`, `depth`."""
+    `debug`: any object with boolean `passability`, `markers`, `depth`; `selection`: unit ids that
+    get a selection bar.  `DrawList.picks` holds the unit pick rects in draw order."""
     opts = options or DrawOptions()
     ctx = _Ctx(world, camera, tick, assets, opts)
     if opts.objects:
@@ -444,6 +473,8 @@ def build_draw_list(world, camera, tick, assets, options=None, debug=None):
         for u in world.units.values():
             _unit(ctx, u)
     ctx.items.sort(key=lambda i: i.depth)
+    ctx.items.picks = [r for _, r in sorted(ctx.picks, key=lambda p: p[0] + (0, 2))]
+    ctx.items.extend(_bars(ctx, selection))
     if debug is not None:
         ctx.items.extend(sorted(_debug_items(ctx, debug), key=lambda i: i.depth))
     return ctx.items

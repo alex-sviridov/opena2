@@ -3,8 +3,7 @@ command (architecture rule 4)."""
 
 from allods2.graphics.terrain import TILE
 
-PANEL_ORIGIN = (8, 8)       # px from the window's top-right corner: INFERRED until the G3b frame
-CENTER = (0x48, 0x52)       # the image's centre inside the exe's panel (CONFIRMED FUN_004ac414)
+from .layout import MINIMAP_CENTER
 
 
 class MinimapPanel:
@@ -14,8 +13,10 @@ class MinimapPanel:
         self.dragging = False
 
     @classmethod
-    def at_top_right(cls, geometry, window_w, origin=PANEL_ORIGIN):
-        return cls(geometry, window_w - origin[0] - geometry.width, origin[1])
+    def from_layout(cls, geometry, layout):
+        """Image centred on the panel point (72, 82) of `layout.minimap` (CONFIRMED FUN_004ac414)."""
+        cx, cy = MINIMAP_CENTER
+        return cls(geometry, layout.minimap.x + cx - geometry.width // 2, layout.minimap.y + cy - geometry.height // 2)
 
     def contains(self, x, y):
         g = self.geometry

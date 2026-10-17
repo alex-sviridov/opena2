@@ -10,6 +10,7 @@ import pytest
 from allods2.common import campaign_maps
 from allods2.minimap import BORDER, load_color_table, minimap_rgb, minimap_size, scale_shift
 from engine.ui import MinimapPanel
+from engine.ui.layout import Layout
 from engine.view import Camera, Minimap, MinimapGeometry, draw_camera_rect
 from engine.world import World
 
@@ -104,8 +105,8 @@ def test_click_centres_camera_on_cell():
     world = synthetic_world()
     mm = Minimap(world, table())
     cam = Camera(320, 192, 80, 80, 0, 0)
-    panel = MinimapPanel.at_top_right(mm.geometry, 1024)
-    assert (panel.left, panel.top) == (1024 - 8 - 128, 8)
+    panel = MinimapPanel.from_layout(mm.geometry, Layout.for_size(1024, 768))
+    assert (panel.left, panel.top) == (864 + 72 - 64, 82 - 64)
     px, py = panel.left + 60, panel.top + 80                       # image (60, 80) = cell (38, 48)
     assert panel.press(cam, px, py)
     assert (cam.x, cam.y) == (38 * 32 - 160, 48 * 32 - 96)
@@ -114,14 +115,14 @@ def test_click_centres_camera_on_cell():
     panel.release()
     panel.drag(cam, panel.left + 10, panel.top + 10)
     assert cam.x == 39 * 32 - 160                                  # not dragging
-    assert not panel.press(cam, 5, 500)                            # outside: not taken
+    assert not panel.press(cam, 5, 700)                            # outside: not taken
     assert panel.press(cam, panel.left, panel.top)                 # image corner = cell (8, 8)
     assert (cam.x, cam.y) == (BORDER * 32 - 160, BORDER * 32 - 96)   # cell (8, 8) centred
 
 
 def test_drag_outside_image_clamps():
     cam = Camera(320, 192, 80, 80, 0, 0)
-    panel = MinimapPanel.at_top_right(MinimapGeometry(80, 80), 1024)
+    panel = MinimapPanel.from_layout(MinimapGeometry(80, 80), Layout.for_size(1024, 768))
     panel.press(cam, panel.left + 64, panel.top + 64)
     panel.drag(cam, 5000, 5000)
     assert (cam.x, cam.y) == (cam.max_x, cam.max_y)

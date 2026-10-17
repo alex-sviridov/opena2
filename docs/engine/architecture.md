@@ -1,4 +1,4 @@
-# Engine architecture (G1: skeleton, world state, units G3a)
+# Engine architecture (G1: skeleton, world state, units G3a, interface and selection G3b)
 
 Spec of record: [engine skeleton design](../superpowers/specs/2026-10-16-engine-skeleton-design.md).
 Code: `engine/` (the game), `allods2/assets.py` (asset cache). The engine is
@@ -16,10 +16,10 @@ Dependencies point down only (a layer imports layers with a smaller number).
 |---|---|---|---|
 | 1-2 | `a2res/`, `allods2/` (incl. `allods2/assets.py`) | archives, formats, decoders, asset cache | stdlib, numpy, Pillow; never pygame, never `engine` |
 | 3 | `engine/world.py` | `World`: cells, heights, tick counter, entity tables, spatial index, block layer | layers 1-2 |
-| 4 | `engine/sim/` | `Simulation.step`, systems list, `Command`, `CommandQueue`, tick clock | 1-3 |
-| 5 | `engine/ui/` | input state to commands and to camera motion (`ScrollInput`) | 1-4, `engine.view` (camera) |
+| 4 | `engine/sim/` | `Simulation.step` (+ command log), systems list (selection system), `Command` / `SelectUnits`, `CommandQueue`, tick clock | 1-3 |
+| 5 | `engine/ui/` | `Layout`, `choose_cursor`, `SelectionInput` (-> `SelectUnits`), `ScrollInput`, `MinimapPanel` | 1-4, `engine.view` (camera, `pick`) |
 | 6 | `engine/view/` | `Camera`, coordinates, visible range, per-cell compositing, draw list | 1-3 |
-| 7 | `engine/backend_pygame/` | window, surface cache, blitting, events, main loop, screenshot | everything; the only layer that imports pygame |
+| 7 | `engine/backend_pygame/` | window, surface cache, blitting, events, main loop, screenshot, `interface.py` (panels, info panel), `cursor.py`, `text.py` (`draw_text`) | everything; the only layer that imports pygame |
 
 Rules (enforced by `tests/test_engine_boundaries.py`, an AST scan):
 
@@ -92,17 +92,32 @@ while running:
     dt = clock.tick()                     # ms since last frame
     acc += min(dt, MAX_FRAME_MS)
     events = backend.poll()               # window/keys/mouse -> abstract input
-    ui.update(dt, input_state, camera)    # scroll -> camera (UI state)
-    for cmd in ui.commands(): queue.put(cmd)
+    ui.update(dt, input_state, camera)    # scroll -> camera (UI state); minimap press/drag
+    for cmd in ui.commands(): queue.put(cmd)   # SelectionInput.release -> SelectUnits (right click: empty)
     while acc >= period_ms:               # fixed-step simulation
         sim.step(queue.drain())           # world.tick += 1, systems run
         acc -= period_ms
     terrain = view.build_terrain_items(terrain_view, camera, world.tick)
-    items = view.build_draw_list(world, camera, world.tick, assets, options, debug)
-    backend.draw(terrain, items, camera)  # surface caches + blits + blends + flip
+    items = view.build_draw_list(world, camera, world.tick, assets, options, debug, selection)
+    backend.draw(terrain, items, camera)  # black window, viewport, strips and panels, info panel
+    backend.draw_cursor(choose_cursor(...))   # last, at mouse - hotspot; the OS cursor is hidden
 ```
 
-The camera moves with frame time (smooth), the simulation with ticks. The draw list
+The camera moves in whole cells per tick period (section 8), the simulation with ticks.
+`Simulation(world)` installs the selection system by default; every command it receives is appended
+to `Simulation.log` as `(tick, command)` (rejected ones too: the log is the input), and
+`replay(sim, log, ticks)` feeds it back (same `dump_hash` and selection, tested).
+
+**Commands and selection (G3b, spec
+[interface and selection](../superpowers/specs/2026-10-17-interface-selection-design.md))**:
+`SelectUnits(player_id, unit_ids, toggle)`. Set: accepted when every id is owned by the player or
+exactly one unit of another owner (info only), else rejected and the selection kept; empty clears.
+Toggle: own ids only, and only while the selection is not foreign. Unknown or removed ids are dropped.
+`Player.selection` is a tuple in command order; `World.remove_unit` purges it; `World.dump()` adds a
+`selection` entry to a player only when non-empty (old goldens stay valid). The exe keeps selection as a
+flag on each client object, not a list (CONFIRMED, [ui-layout §8](ui-layout.md)); the engine's per-player
+tuple is the DECISION that makes it a replayable command. Picking, cursors, layout and the marker:
+[ui-layout](ui-layout.md), [rendering §14](rendering.md#14-interface-cursor-picking-marker-g3b). The draw list
 (sprites of map objects and structures, shadows, debug overlays) is described in
 [rendering.md](rendering.md).
 
@@ -139,14 +154,17 @@ min/max height, because a cell can draw anywhere in
 
 ## 8. CLI
 
-`python -m engine run MAP [--x PX --y PX] [--speed 0..8] [--size WxH] [--install DIR]`
-and `python -m engine screenshot MAP X Y DEST.png [--tick N] [--size WxH]
-[--install DIR]` (SDL dummy driver, no window). `python -m engine world-info MAP [--strict]` and
+`python -m engine run MAP [--x PX --y PX] [--speed 0..8] [--size 640x480|800x600|1024x768] [--install DIR]`
+(always the original interface, default 640x480) and `python -m engine screenshot MAP X Y DEST.png [--tick N]
+[--size WxH] [--interface [--select UID,...]] [--install DIR]` (SDL dummy driver, no window; `--interface`
+renders the full window, default 640x480, otherwise only the viewport as before). `python -m engine world-info MAP [--strict]` and
 `world-dump MAP DEST.json` need no pygame (section 9). `X`, `Y` = camera top-left in
 world pixels. `run` defaults to the playable area corner `(8*32, 8*32)`
 (the outer 8 cells are the unplayable border, [map](../formats/map.md)).
-Controls: arrow keys and mouse within 4 px of the window edge scroll at 600 px/s
-(DECISION, not from the exe); Esc quits.
+Controls: arrow keys, and the mouse on the screen border (x == 0, y == 0, x >= W-2, y >= H-2; panels do not
+matter), scroll **one whole cell per tick period** (62 ms at the default speed), clamped to the 8-cell border
+(CONFIRMED, [ui-layout §5](ui-layout.md)); left click / drag selects, Shift toggles, right click clears
+(DECISION), Ctrl+H health bars, F1-F3 debug, Esc quits. The camera is built from the layout's viewport.
 
 ## 9. World state
 
@@ -212,11 +230,8 @@ Open: see [open-questions](../open-questions.md#engine).
 
 ## Open questions
 
-- Exe view scroll speeds and edge-scroll zone (not traced; engine uses DECISION values above). Limits are known
-  (CONFIRMED): the exe scrolls in whole cells, `vx` in `[8, mapW - 8 - W]`, `vy` in `[8, mapH - 8 - Hv]` (the playable
-  area; W, Hv = window size rounded up to cells), "centre on unit" sends `(unit.x >> 8) - W/2` with no height term, relief
-  moves vertices only. The engine's pixel-smooth camera over `[0, 32 w - vw]` is an extension; align the clamp with the
-  exe at the G3b interface frame.
+- Scroll: answered in G3b (whole cell per tick, border rule, 8-cell clamp; ui-layout §5). The view's exact
+  "centre on unit" call is not wired (`(unit.x >> 8) - W/2`, no height term, CONFIRMED earlier).
 - Day/night light in the engine (the exe recomputes the light map with the
   clock; G1 uses the fixed default).
 - Scroll hitch of about 27 ms when new cells enter (pre-warm water phases or add a

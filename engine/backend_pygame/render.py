@@ -23,6 +23,7 @@ class Caches:
     terrain: object             # SurfaceCache
     sprites: object = None      # SpriteCache (None = terrain only)
     font: object = None
+    ball: object = None         # Ball.bmp 4x4 bar cap (surface) or None
 
     def get_font(self):
         if self.font is None:
@@ -30,6 +31,30 @@ class Caches:
                 pygame.font.init()
             self.font = pygame.font.Font(None, 14)
         return self.font
+
+
+# FUN_00460db1 (ui-layout.md section 9): empty track rows, then fill rows (dark, bright, mid, dark)
+BAR_EMPTY = ((0x40,) * 3, (0x80,) * 3, (0x60,) * 3, (0x40,) * 3)
+BAR_TIERS = (((0, 128, 0), (0, 255, 0), (0, 192, 0)),         # hp >= max/2: dark, bright, mid
+             ((128, 128, 0), (255, 255, 0), (192, 192, 0)),   # hp < max/2
+             ((128, 0, 0), (255, 0, 0), (192, 0, 0)))         # hp < max/4
+
+
+def draw_bar(surface, it, ball=None):
+    """HP bar of a "bar" item: item (sx, sy) = (x1, y-2), width x2-x1, `bar` = (fill, track, tier);
+    track x1+4 .. x2-4, 4 rows; Ball.bmp caps at x1 and x2-4."""
+    fill, track, tier = it.bar
+    dark, bright, mid = BAR_TIERS[tier]
+    full = (dark, bright, mid, dark)
+    x = it.sx + 4
+    for row in range(4):
+        y = it.sy + row
+        pygame.draw.line(surface, BAR_EMPTY[row], (x, y), (x + track - 1, y))
+        if fill > 0:
+            pygame.draw.line(surface, full[row], (x, y), (x + fill - 1, y))
+    if ball is not None:
+        surface.blit(ball, (it.sx, it.sy))
+        surface.blit(ball, (it.sx + it.w - 4, it.sy))
 
 
 def _overlay(surface, caches, it):
@@ -72,6 +97,8 @@ def draw_frame(surface, caches, terrain_items, items, camera):
                 blend_half(surface, it.sx, it.sy, val)
             else:
                 blit(val, (it.sx, it.sy))
+        elif kind == "bar":
+            draw_bar(surface, it, caches.ball)
         else:
             _overlay(surface, caches, it)
 

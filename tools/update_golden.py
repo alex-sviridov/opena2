@@ -84,6 +84,24 @@ def shot_hashes(install=None):
     return out
 
 
+def interface_hash(install=None):
+    """sha256 of the full 640x480 interface window (spec 2026-10-17-interface-selection-design.md test 7):
+    map 10, camera centred on the human unit (data.bin humans), that unit selected.  The text uses
+    pygame's bundled font, so the hash is tied to the pinned pygame-ce version."""
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    from engine.backend_pygame.interface import screenshot_window
+    from engine.ui import Layout
+    from engine.view import Camera, DrawOptions, TerrainView
+    assets = AssetCache(install)
+    w = World.from_map(open_map("10", install), assets)
+    u = next(u for u in w.units.values() if u.human)
+    lay = Layout.for_size(640, 480)
+    v = lay.viewport
+    cam = Camera(v.w, v.h, w.width, w.height, u.x * 32 - v.w // 2, u.y * 32 - v.h // 2, border=8 * 32)
+    return rgb_hash(screenshot_window(TerrainView(w, assets.tileset()), cam, lay, 0, None, assets,
+                                      DrawOptions(), None, (u.id,)))
+
+
 def minimap_hashes(install=None):
     """{map: sha256 of the minimap RGB bytes} for MAPS (no pygame)."""
     from allods2.common import as_fs
@@ -97,6 +115,7 @@ def main(argv):
     out = {m: golden_hash(m, install) for m in MAPS}
     out["screenshots"] = shot_hashes(install)
     out["minimaps"] = minimap_hashes(install)
+    out["interface"] = interface_hash(install)
     with open(GOLDEN, "w", encoding="ascii") as f:
         json.dump(out, f, indent=1, sort_keys=True)
         f.write("\n")

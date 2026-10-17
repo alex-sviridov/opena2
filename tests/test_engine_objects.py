@@ -608,9 +608,15 @@ def test_main_loop_runs_with_objects_and_debug_keys():
     from engine.view import TerrainView
     w = flat_world([obj(1, 2, 2), struct(1, 4, 4)])
     tv = TerrainView(w, TerrainSet({}, np.zeros((128, 32), np.uint8), np.zeros((256, 3), np.uint8)))
-    ensure_display(160, 120)
+    from engine.ui import Layout
+    from engine.world import Player
+    w.players[1] = Player(1, 0, "me", human=True)
+    lay = Layout.for_size(640, 480)
+    ensure_display(640, 480)
     for key in (pygame.K_F1, pygame.K_F2, pygame.K_F3):
         pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=key))
     dbg = DebugFlags()
-    window.run(w, tv, Camera(160, 120, W, H), assets=assets(), debug=dbg, max_frames=3)
+    a = assets()
+    a.fs = None                                     # no game files: panels and cursors draw nothing
+    window.run(w, tv, Camera(lay.viewport.w, lay.viewport.h, W, H), lay, assets=a, debug=dbg, max_frames=3)
     assert dbg.passability and dbg.markers and dbg.depth

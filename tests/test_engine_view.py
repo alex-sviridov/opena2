@@ -123,16 +123,17 @@ def test_visible_range_is_a_superset_of_cells_touching_the_viewport():
 
 
 def test_scroll_input_moves_camera_and_clamps():
-    s = ScrollInput(speed=100, edge=4)
-    c = Camera(100, 100, 10, 10, 50, 50)
-    s.update(c, 500, {"right", "down"})
-    assert (c.x, c.y) == (100, 100)
-    s.update(c, 10000, {"left"})
+    s = ScrollInput(period_ms=100)
+    size = (100, 100)
+    c = Camera(100, 100, 10, 10, 64, 64)
+    s.update(c, 200, {"right", "down"}, None, size)
+    assert (c.x, c.y) == (128, 128)
+    s.update(c, 10000, {"left"}, None, size)
     assert c.x == 0
-    c.move_to(10, 10)
-    s.update(c, 1000, set(), mouse=(99, 50))        # right edge
-    assert (c.x, c.y) == (110, 10)
-    s.update(c, 1000, set(), mouse=(50, 2))         # top edge
+    c.move_to(32, 32)
+    s.update(c, 100, set(), (98, 50), size)         # right edge: x >= W-2
+    assert (c.x, c.y) == (64, 32)
+    s.update(c, 100, set(), (50, 0), size)          # top edge
     assert c.y == 0
     assert s.direction({"left"}, (0, 50), 100, 100) == (-1, 0)       # clamps to one step
     assert s.direction(set(), None, 100, 100) == (0, 0)

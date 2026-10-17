@@ -1,4 +1,4 @@
-# Engine rendering: draw list and backend (G2b, units G3a)
+# Engine rendering: draw list and backend (G2b, units G3a, interface G3b)
 
 Spec: [object-drawing design](../superpowers/specs/2026-10-16-object-drawing-design.md) (its
 "Implementation notes" win). Order, window and shadows are CONFIRMED in
@@ -176,8 +176,8 @@ rectangle), `engine/ui/minimap.py` (click/drag), `python -m engine minimap MAP D
 | Final per-channel pass | `0x4ac030`-`0x4ac413` | not identified |
 
 Engine deviations (DECISION): `k = -1` takes every second pixel; no final pass, no fog; unit dots: section 13;
-camera position is `camera / 32` in cells with relief ignored; panel at the window's top-right
-corner with an 8 px margin (INFERRED until the G3b interface frame). The image is built once per
+camera position is `camera / 32` in cells with relief ignored; the panel is the right column's top, flush at
+`(W-160, 0)`, image centre at panel point (72, 82) (CONFIRMED, [ui-layout §4](ui-layout.md); replaces the 8 px margin). The image is built once per
 `Minimap` (no World hook: the exe's picture never depends on passability or objects);
 `invalidate()` is there for terrain edits. Click or drag centres the camera on the cell under the
 pointer: view state, not a command. Tests: `tests/test_engine_minimap.py`, goldens
@@ -223,6 +223,31 @@ render rate, minimap dots), `tests/test_engine_objects.py` (pixel parity with `m
 4 positions: units, a 2x2 ogre, bats, piles; goldens `["screenshots"]` incl. 4 parity + 2 full unit shots),
 `tests/test_engine_units.py` (world). `map render` (E5) follows the same filing, flyer and pile rules.
 
+## 14. Interface, cursor, picking, marker (G3b)
+
+Facts: [ui-layout](ui-layout.md); spec: [interface and selection](../superpowers/specs/2026-10-17-interface-selection-design.md).
+Code: `engine/ui/layout.py`, `cursor.py`, `selection.py`; `engine/view/pick.py`, `drawlist.py`;
+`engine/backend_pygame/interface.py`, `cursor.py`, `text.py`, `render.py` (`draw_bar`).
+
+- **Window**: black; the viewport (map, `W-160` x `H//32*32`) blits at (0, 0); then the left strips (inside the view,
+  at `W-176`), the right column panels (minimap crystal, heads or command bar, info back, 800/1024 extra) at their
+  layout rects, the minimap image at its panel point, the info panel texts. Panel graphics are `graphics/interface/*.bmp`
+  through `allods2.graphics.bmp`, no colour key. Strip B / bar panel = Heads for no or foreign selection, else CommandBar.
+- **Picking**: every drawn unit registers a `PickRect` (type `SelectionX1..Y2` offset by the sprite anchor, ground height
+  and flyer altitude, unmirrored: INFERRED) in `DrawList.picks`, in draw order; `pick_at` = last rect meeting the 3x3 box,
+  `pick_in_rect` = overlap > 10 px^2 (CONFIRMED, ui-layout §7-8). No pixel test.
+- **Marker**: a `bar` `DrawItem` (pass overlay) on the pick rect's top edge for each selected unit (all units with
+  Ctrl+H): 4 rows, track `x1+4..x2-4`, grey `0x40/0x80/0x60/0x40` empty, fill dark/bright/mid/dark in green, yellow
+  (< max/2) or red (< max/4), fill >= 1 px while hp > 0, 4x4 `Ball.bmp` caps at `x1` and `x2-4` (CONFIRMED geometry and
+  colours, ui-layout §9). No mana bar, name or squad number yet; no circle.
+- **Info panel** (text via `text.draw_text`, pygame's default font until G3c): the unit's `DescText` centred at
+  `(panel.w - 88, 0x1c)`, `HP` label at 0x2c, `cur/max` at (0x73, 0x36), owner name at (6, 0xe0). No portrait.
+  Positions CONFIRMED (§10); title source and owner line are DECISIONs.
+- **Cursor**: `choose_cursor` (pure) picks arrows / default / select / pickup; `CursorSprites` decodes the frame of
+  `load_cursor_set(name).frame_at` (wall-clock ms) and the window blits it last at `mouse - hotspot`; the OS cursor is hidden.
+- Tests: `tests/test_engine_{layout,cursor,pick,selection,selection_input,interface}.py`; golden `["interface"]` (map 10,
+  640x480, the human unit selected) is tied to the pinned pygame-ce's bundled font.
+
 ## Open questions
 
 - Burnt ground (tile bit 0x2000, `DeadObject` frame), fog gates, light-map lights on objects
@@ -237,3 +262,4 @@ render rate, minimap dots), `tests/test_engine_objects.py` (pixel parity with `m
 - Item-only piles: the item field `+0x1c` (pile frame), see [map.md](../formats/map.md#open-questions).
 - Minimap: the final channel pass `0x4ac030`-`0x4ac413`, surface `DAT_00626be0` (fog background), fog gate of the
   dots (do structures draw dots too?). Starting routine `FUN_004ac414`.
+- Interface (G3b): hover brightness, structure pick rects, bottom bars and command-bar contents, portraits: see [ui-layout open questions](ui-layout.md#open-questions).

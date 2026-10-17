@@ -39,6 +39,7 @@ The company is legally entitled to recreate the game.
   subagents to use it); do not rely on inference where the binary can answer.
 - Delegate to subagents where it helps (implementation, review, research);
   prefer `model: sonnet` over opus.
+- Run only one subagent at a time: wait for it to finish before spawning the next.
 
 ## Specs
 - Every format, mechanism or subsystem gets docs/<area>/<name>.md with a
@@ -178,4 +179,11 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   spell-area sprites (fire/earth wall, poison cloud); server drops units on blocked cells (9 in the install), HP-0 walkers stay
   corpses; ShadowY +-20000 has no gate. docs/engine/rendering.md §13, architecture.md §9
 - Not started: saves, Scenario.dll, item names/definitions (phase F), triggers (sections 7, 10-12).
-- Next: G3b (interface frame and selection). Also (docs/open-questions.md): town-scene animations, text conventions.
+- Engine G3b (interface, cursor, selection) done: `engine/ui/layout.py` (three modes, one table citing exe routines),
+  original cursors (`choose_cursor`: 8 arrows by the screen-border rule, select, pickup), rectangle picking (exe: per-object
+  `Selection` rect, last registered first, 3x3 box; drag > screenW*10/640 px, overlap > 10 px^2), `SelectUnits` command +
+  selection system + `Simulation.log`/`replay`, HP bar with `Ball.bmp` caps, info panel, scroll one cell per tick, camera
+  8-cell border, minimap flush at (W-160, 0); `run` always shows the interface, `screenshot --interface [--select]`; golden
+  `["interface"]`. Selection is a per-object flag in the exe (engine: per-player tuple, DECISION); right click clears (DECISION).
+  docs/engine/ui-layout.md, rendering.md §14, architecture.md §5, 8
+- Next: G3c (fonts). Also (docs/open-questions.md): town-scene animations, text conventions.

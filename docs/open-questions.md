@@ -46,8 +46,11 @@ from both places when answered).
 
 ## Engine
 
-- Scroll speed and edge-scroll zone of the exe (engine uses chosen values; limits are known: whole cells, 8-cell border); day/night light recomputation in the engine.
-  [architecture](engine/architecture.md#open-questions)
+- Day/night light recomputation in the engine. [architecture](engine/architecture.md#open-questions)
+- Interface (G3b): how the exe clears a selection (right button `0x40f`, Esc? engine: right click);
+  which bottom bar shows first; mouse-manager `+0x9c`; purpose of the 30 px top strip; `FUN_004b011e` (text vs
+  human panel) and command-bar contents; hover brightness; structure pick rects; order command bytes and the squad
+  voice. [ui-layout](engine/ui-layout.md#open-questions); start at `FUN_0040b2b8`, `FUN_004175c7`.
 - Engine terrain scroll hitch (~27 ms per new cell row/column): pre-warm or flat-cell fast path.
   [architecture](engine/architecture.md#open-questions)
 - Trigger references to world ids: section 11 is keyed by structure uid (`0x6000 + uid`, CONFIRMED),

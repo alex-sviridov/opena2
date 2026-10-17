@@ -1,5 +1,6 @@
-"""python -m engine run MAP [--x PX --y PX] [--speed N] [--size WxH] [--install DIR]
-   python -m engine screenshot MAP X Y DEST.png [--tick N] [--size WxH] [--install DIR]
+"""python -m engine run MAP [--x PX --y PX] [--speed N] [--size 640x480|800x600|1024x768] [--install DIR]
+   python -m engine screenshot MAP X Y DEST.png [--tick N] [--size WxH] [--interface [--select UID,...]]
+                                                [--install DIR]
    python -m engine world-info MAP [--install DIR] [--strict]
    python -m engine world-dump MAP DEST.json [--install DIR]
    python -m engine minimap MAP DEST.png [--units] [--install DIR]
@@ -8,12 +9,17 @@ MAP as for `python -m allods2 map` (10, scenario/10.alm, or a file).  X, Y =
 the viewport's top-left in world pixels (x = 32*col, y = 32*row - height).
 `run` starts at the playable-area corner (256, 256) by default.  Arrow keys
 or the mouse at the window edge scroll; F1/F2/F3 toggle the debug overlays
-passability / markers / depth; Esc quits.  --debug takes a comma list of those
+passability / markers / depth, Ctrl+H the health bars of all units; Esc quits.  --debug takes a comma list of those
 names (screenshot: drawn in the PNG).  Objects and structures are drawn with the
 game's default options; --no-* switch shadows, the BRIGHT2 light row, the b.256
 smoothing, or both layers off.  `screenshot` writes a PNG
-with no window (SDL dummy driver).  `run` shows the minimap top right (click or
-drag moves the camera; --no-minimap hides it); `minimap` writes its base image (no pygame).  Docs: docs/engine/architecture.md.
+with no window (SDL dummy driver).  `run` always shows the original interface (G3b,
+docs/engine/ui-layout.md): the map viewport, the right column with the minimap (click or drag moves
+the camera; --no-minimap hides it), the original cursors, and mouse selection (left click or drag,
+Shift toggles, right click clears); --size only 640x480 (default), 800x600 or 1024x768.
+`screenshot --interface` renders that whole window headless (default 640x480; --select UID,...
+selects those unit ids first); without --interface it renders the bare viewport as before.
+`minimap` writes its base image (no pygame).  Docs: docs/engine/architecture.md.
 """
 
 import argparse
@@ -21,6 +27,9 @@ import os
 import sys
 
 from engine.world import World
+
+
+BORDER_CELLS = 8        # the camera never shows the 8-cell map border (ui-layout.md section 3)
 
 
 def _size(s):
@@ -99,7 +108,15 @@ def _setup(a):
     w, h = a.size
     opts = DrawOptions(shadows=not a.no_shadows, lit=not a.no_light,
                        smoothing=not a.no_smoothing, objects=not a.no_objects)
-    return world, tv, Camera(w, h, world.width, world.height, a.x, a.y), assets, opts, DebugFlags.parse(a.debug)
+    if getattr(a, "interface", True):
+        from engine.ui import Layout
+        a.layout = Layout.for_size(w, h)            # ValueError: unsupported size
+        v = a.layout.viewport
+        cam = Camera(v.w, v.h, world.width, world.height, a.x, a.y, border=BORDER_CELLS * 32)
+    else:
+        a.layout = None
+        cam = Camera(w, h, world.width, world.height, a.x, a.y)
+    return world, tv, cam, assets, opts, DebugFlags.parse(a.debug)
 
 
 def main(argv=None):
@@ -110,7 +127,7 @@ def main(argv=None):
     r.add_argument("--x", type=int, default=256)
     r.add_argument("--y", type=int, default=256)
     r.add_argument("--speed", type=int, default=4, choices=range(9))
-    r.add_argument("--size", type=_size, default=(1024, 768))
+    r.add_argument("--size", type=_size, default=(640, 480))
     r.add_argument("--install")
     s = sub.add_parser("screenshot")
     s.add_argument("map")
@@ -118,7 +135,9 @@ def main(argv=None):
     s.add_argument("y", type=int)
     s.add_argument("dest")
     s.add_argument("--tick", type=int, default=0)
-    s.add_argument("--size", type=_size, default=(1024, 768))
+    s.add_argument("--size", type=_size, default=None)
+    s.add_argument("--interface", action="store_true", help="render the full window (640x480 default)")
+    s.add_argument("--select", default="", metavar="UID,...", help="with --interface: unit ids to select")
     s.add_argument("--install")
     for q in (r, s):
         q.add_argument("--no-shadows", action="store_true")
@@ -147,6 +166,10 @@ def main(argv=None):
         return world_info(a)
     if a.cmd == "world-dump":
         return world_dump(a)
+    if a.cmd == "run":
+        a.interface = True
+    else:
+        a.size = a.size or ((640, 480) if a.interface else (1024, 768))
     if a.cmd == "screenshot":
         os.environ["SDL_VIDEODRIVER"] = "dummy"
     try:
@@ -160,8 +183,15 @@ def main(argv=None):
         from engine.view import Minimap
         mm = None if a.no_minimap else Minimap(world, load_color_table(as_fs(a.install)),
                                                load_dot_colors(as_fs(a.install)))
-        window.run(world, tv, camera, a.speed, "Allods 2 - " + world.name,
+        window.run(world, tv, camera, a.layout, a.speed, "Allods 2 - " + world.name,
                    assets=assets, options=opts, debug=debug, minimap=mm)
+    elif a.interface:
+        from engine.backend_pygame.interface import screenshot_window
+        from engine.world import UNIT_ID_BASE
+        ids = tuple(UNIT_ID_BASE + int(u) for u in a.select.split(",") if u)
+        rgb = screenshot_window(tv, camera, a.layout, a.tick, a.dest, assets, opts, debug, ids)
+        print("%s at (%d, %d) tick %d, selected %s -> %s (%dx%d)"
+              % (world.name, camera.ix, camera.iy, a.tick, ids, a.dest, rgb.shape[1], rgb.shape[0]))
     else:
         rgb = render.screenshot(tv, camera, a.tick, a.dest, assets=assets, options=opts, debug=debug)
         print("%s at (%d, %d) tick %d -> %s (%dx%d)"

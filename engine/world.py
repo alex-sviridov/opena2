@@ -68,6 +68,7 @@ class Player:
     money: int = 0
     relations: tuple = ()           # 16 words, toward player j + 1 (1 war, 2 alliance, 0x10 vision)
     human: bool = False             # single player: record 1 only (map.md part 5)
+    selection: tuple = ()           # selected unit ids, command order (sim/selection.py)
 
 
 @dataclass
@@ -397,6 +398,14 @@ class World:
 
     def remove_unit(self, uid):
         self._index_del(self._ucells, self.units.pop(uid))
+        for p in self.players.values():
+            if uid in p.selection:
+                p.selection = tuple(i for i in p.selection if i != uid)
+
+    def selection_is_foreign(self, player_id):
+        """True when the player's selection is a unit of another owner (info only)."""
+        sel = self.players[player_id].selection
+        return bool(sel) and self.units[sel[0]].owner != player_id
 
     def move_unit(self, uid, x, y, sub_x=128, sub_y=128):
         """Put a unit on cell (x, y); the block layer is untouched."""
@@ -549,6 +558,7 @@ class World:
                            "counts": {"%s:%d" % k: v for k, v in sorted(r.counts.items())}},
                 "objects": objs,
                 "players": [[p.id, p.colour, p.name, p.flags, p.money, list(p.relations), int(p.human)]
+                            + ([{"selection": list(p.selection)}] if p.selection else [])
                             for _, p in sorted(self.players.items())],
                 "units": [[u.id, u.type_id, u.owner, u.x, u.y, u.sub_x, u.sub_y, u.facing, u.action,
                            u.action_start_tick, u.hp, u.hp_max, u.uid, u.server_id, int(u.human),
