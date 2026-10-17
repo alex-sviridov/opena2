@@ -739,7 +739,8 @@ item `+0x1c` price: [items](../data/items.md).
   cases 7, 10–12 are in the exe).
 - Part 5: the event classes of `behaviour` bits 1, 2, 4 (`FUN_005303ed`); section 9 per-cell
   payload (`FUN_0055ba36`, records with `a`/`b` ≠ 0 and kind < 4; 30 records in `76`, `93`–`96`);
-  gold pickup and the link between a pile's `+0x3c` gold and `Player.money`. Answered in [items](../data/items.md): `+0x1c` = price,
+  (note: `FUN_005303ed` is the quest generator, [items §14](../data/items.md#14-quests-and-the-item-upgrade-message-0x38)).
+  Answered in [items](../data/items.md): gold pickup (hero `+0x3c`, never `Player.money`, §12), `+0x1c` = price,
   the `(41, v)` remap to `0x31` (= 49 `damageBonus`; a pair cannot carry castSpell).
 - Section 12 (28-byte circle zones with four `-1`-or-number values, consumer `0x475500` picks
   one at random into `0x5f1a08`: INFERRED music/ambience zones; users of the global untraced);

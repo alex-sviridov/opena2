@@ -39,8 +39,8 @@ from both places when answered).
 
 - `.alm` triggers (sections 7, 10–12); the server reader `FUN_00534ad4` parses all of them
   (switch on the section id). Sections 0–6, 8, 9 are done. [map](formats/map.md#open-questions)
-- Part 5 leftovers: event classes of unit `behaviour` bits 1, 2, 4, section 9 per-cell payload,
-  gold pickup vs `Player.money`. [map](formats/map.md#open-questions)
+- Part 5 leftovers: event classes of unit `behaviour` bits 1, 2, 4, section 9 per-cell payload.
+  [map](formats/map.md#open-questions)
 - Section 12 zones (INFERRED music) and the 8000–9999 slot codes of sections 7 and 11.
   [map](formats/map.md#open-questions)
 - Unit struct: path finder `FUN_0054d76e`, group AI, damage resolution, orders 0x16/0x18/0x19/0x1a.
