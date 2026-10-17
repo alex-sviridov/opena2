@@ -5,7 +5,9 @@ whole game-data layer (units, items, spells, maps, progression) before movement 
 depend on it. Single player, GOG exe only (sha256 `0eaa9673…`). Marks per CLAUDE.md: CONFIRMED = read
 in the exe via REA; INFERRED otherwise. Formulas below are math, not decompiler output.
 
-## 1. Progression: findings already confirmed
+## 1. Progression: first-pass findings
+
+**Superseded by [progression](../../data/progression.md)** after the REA pass: vtable slots are `0x64` award / `0x68` kill credit / `0x6c` damage credit / `0x70` cast credit; XP is per melee hit and per damaging spell (not per kill), and the award is first scaled by Mind. The curve below is unchanged. The text here is the pre-research sketch.
 
 **There is no single character level.** A human has six skill words `+0xa8..+0xb2` (index 0 general, 1-5
 the five schools: Blade/Fire, Axe/Water, Bludgeon/Air, Pike/Earth, Shooting/Astral; see
