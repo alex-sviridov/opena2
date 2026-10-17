@@ -31,6 +31,31 @@ def human(name, server_id=1, equipment=("",) * 10, **f):
     return U.UnitType(U.HUMAN, 1, name, server_id, 3, fields, tuple(equipment), ())
 
 
+def test_derived_vitals_fighter_and_mage():
+    # docs/data/progression.md section 3: no XP -> G ~ 0.0 (pools thr[0] = 1 each)
+    f = human("f", body=40, spirit=17, skill_blade=20)                 # Start_MF: 116 HP
+    assert P.derived_vitals(f) == (116, 0)
+    m = human("m", body=14, spirit=44, mana_max=70, gender=1, skill_blade=25, skill_shooting=10)  # Mage_Hero
+    assert P.derived_vitals(m) == (14, 146)
+
+
+def test_derived_vitals_ignore_template_hp_and_cap_attributes():
+    a = human("a", body=20, hp_max=1)
+    b = human("b", body=20, hp_max=9999)
+    assert P.derived_vitals(a) == P.derived_vitals(b)
+    capped = human("c", body=200)                                      # fighter male cap 52
+    assert P.derived_vitals(capped) == P.derived_vitals(human("c2", body=52))
+    assert P.derived_vitals(human("d", body=-1)) == P.derived_vitals(human("d2", body=30))   # -1 = constructor default
+
+
+def test_derived_vitals_bonus_and_xp_term():
+    base = P.derived_vitals(human("x", body=30, skill_blade=0))[0]
+    assert P.derived_vitals(human("x", body=30), bonus_hp=7)[0] == base + 7
+    # a hero with 80 in all schools has total XP 5 * 2048 -> G = log1.1(3.05) > 11
+    assert P.derived_vitals(human("y", body=30, skill_blade=80, skill_axe=80, skill_bludgen=80, skill_pike=80,
+                                  skill_shooting=80))[0] > base
+
+
 class FakeSpells:
     def get(self, n):
         return SimpleNamespace(name="spell%d" % n) if 1 <= n <= 29 else None
@@ -169,3 +194,25 @@ class TestInstall:
             if not u.human:
                 assert u.skills == () and u.xp == ()
 
+
+    def test_world_humans_use_derived_vitals(self):
+        # docs/data/progression.md section 6: the template healthMax of a human is never used
+        w = World.from_map(open_map("10", GFS), self.assets)
+        humans = [u for u in w.units.values() if u.human and u.stats is not None]
+        assert humans
+        for u in humans:
+            hp, mana = P.derived_vitals(u.stats)
+            assert (u.hp_max, u.hp) == (hp, hp) and u.mana == u.mana_max == mana
+
+    def test_world_map_hp_only_sets_current_hp_of_a_damaged_hero(self):
+        w = World.from_map(open_map("40", GFS), self.assets)
+        u = [u for u in w.units.values() if u.human and u.server_id == 10230][0]
+        assert (u.hp, u.hp_max) == (5, 14)              # map record: hp 5, max_hp default -> derived maximum 14
+        assert u.mana_max == 146                        # derived, the map has no mana
+
+    def test_known_exe_values(self):
+        by = {t.name: t for t in self.assets.unit_stats() if t.kind == "human"}
+        assert P.derived_vitals(by["Start_MF"]) == (116, 0)
+        assert P.derived_vitals(by["Mage_Hero"]) == (14, 146)
+        assert P.derived_vitals(by["2A_Knight4"]) == (167, 0)
+        assert P.derived_vitals(by["2M_Knight4"]) == (58, 267)

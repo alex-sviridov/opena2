@@ -24,7 +24,6 @@ from both places when answered).
 ## Progression
 
 - Hero state between campaign maps (saves, `.a2c`). Start: `FUN_00514920`. [progression](data/progression.md#open-questions)
-- Human max HP / mana come from the recompute (`FUN_0051366b`) for all 605 campaign human units (template `healthMax` is never used; the difficulty tweak is discarded for humans); the world still uses the template value. Implement in phase I. [progression](data/progression.md#6-hero-start)
 
 ## Items
 

@@ -183,10 +183,10 @@ Templates (6 records; pools `thr[skill]`):
 | Mage_Hero | 10230 | 14/33/35/44 | 30 / 70 | 0,25,0,0,0,10 | 1 | Fire Arrow, Prot. from Fire, Bless, Haste, Heal, Shield | none, Uncommon None Shoes, None Dress |
 
 (Pools: Start_* `[6,1,1,1,1]` total 10; Fighter/Mage_Hero `[10,1,1,1,2]` total 15.) The `Start_*` skill rows are the first and only
-non-default skill; the other schools are 0. Only map `scenario/40.alm` places a `_Hero` template (a `Mage_Hero`, HP 5 of 30); `Start_*`
+non-default skill; the other schools are 0. Only map `scenario/40.alm` places a `_Hero` template (a `Mage_Hero`, HP 5 of the derived 14); `Start_*`
 appear in no campaign map (INFERRED: the new-game characters of the creation screens `0x490xxx`/`0x491xxx`, which use the named constructor).
 
-**Consequence for the engine (CONFIRMED, measured on the install):** every one of the 605 human units of the 46 campaign maps carries
+**Consequence for the engine (CONFIRMED, measured on the install; implemented):** every one of the 605 human units of the 46 campaign maps carries
 `hp = max_hp = 0xFFFF` (default), so **all** of them take the derived maximum, none the template `healthMax` and none a map value. The recompute also
 discards the difficulty tweak for humans (it rewrites max HP, to-hit `+0xa6` and defence `+0xbe` after it; only the brain `+0x44` halving of easy mode
 survives). Examples (template -> exe; derived from the template attributes, start pools and the §3 formulas, equipment adds no HP/mana: no human
@@ -200,8 +200,9 @@ template has a `health`/`mana` modifier, only `spirit`, `speed`, `scanRange`, pr
 | 2A_Knight4 | 351 / - | 167 / - |
 | 2M_Knight4 | 137 / 390 | 58 / 267 |
 
-`World._load_units` still uses the template value for these units, so every human is wrong in HP (mages also in mana, which is not modelled yet)
-until the recompute is implemented (phase I); the golden dump keeps the raw value.
+`allods2.formats.progression.derived_vitals(template)` implements the formula and `World._load_units` uses it for every human (`Unit.hp_max`,
+`Unit.mana_max`, `Unit.mana`; a map `hp` still sets the current HP, a map `max_hp` below the default sets the maximum). Not modelled yet: the equipment /
+effect bonus block (`bonus_hp`/`bonus_mana`, no template has one), re-running the recompute after a skill-up, and the difficulty tweak.
 
 Carry-over of hero state between maps: the maps hold nothing (§6 above), so it must live in the campaign save / `.a2c`: UNKNOWN (out of scope
 until saves are read).

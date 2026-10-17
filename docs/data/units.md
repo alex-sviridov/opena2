@@ -108,7 +108,7 @@ Each row's "Struct" column is the field the value initialises. Map section 6 rep
 **HP**: `hp`/`max_hp` (-1 = template, §4 of [unit-struct](../engine/unit-struct.md#hierarchy--class-order-of-the-creature-creation-path-map-load-fun_00561bf9)),
 a human (flag `0x10`) with `hp == max_hp` is reset to default and keeps the *recomputed* maximum ([progression §6](progression.md#6-hero-start): the template `healthMax` of humans is never used), `behaviour` bits set `+0x194…+0x1a0`, and the difficulty tweak scales
 max HP and halves the brain's `+0x44` (wimpy). Nothing else in the record is overridden by the map (CONFIRMED
-`0x562013-0x562099`, `0x561e20-0x561f0b`). `World._load_units` reproduces the HP rule for monsters (humans still use the template value, see progression §6) and keeps the full
+`0x562013-0x562099`, `0x561e20-0x561f0b`). `World._load_units` reproduces the HP rule (humans take `progression.derived_vitals`, see progression §6) and keeps the full
 template in `Unit.stats` for the later systems (movement, combat, AI, loot).
 
 ## 4. Rewards

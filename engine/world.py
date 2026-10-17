@@ -111,6 +111,8 @@ class Unit:
     xp: tuple = ()                  # humans: XP pools of skills 1..5 (+0x23c+4k), pool = thr[skill] at start
     xp_total: int = 0               # humans: +0x130, the sum of the pools
     best_school: int = 0            # +0x23c for Hero_/Start_ templates: first highest school 1..5, else 0
+    mana: int = 0                   # humans: +0x9a (starts at the maximum)
+    mana_max: int = 0               # humans: +0x9c, derived like the max HP (0 for fighters)
 
 
 @dataclass
@@ -498,8 +500,11 @@ class World:
             tpl = types.lookup(rec.is_human, rec.server_id)
             hp, hp_max = rec.hp, rec.max_hp
             if rec.is_human and hp_max != fent.NO_HP and hp_max == hp:
-                hp = hp_max = fent.NO_HP                    # FUN_00561bf9 0x562013: a human at full HP = default, which in the exe is the recomputed maximum (progression.md §6; TODO phase I)
+                hp = hp_max = fent.NO_HP                    # FUN_00561bf9 0x562013: a human at full HP = default = the recomputed maximum
             base = tpl.hp_max if tpl is not None else 0     # map overrides replace the template value
+            mana_max = 0
+            if rec.is_human and tpl is not None:            # FUN_0051366b: a human never uses the template healthMax
+                base, mana_max = prog.derived_vitals(tpl)
             face = tpl.face if tpl is not None else 1
             move = tpl.movement_type if tpl is not None else 1
             hp_max = base if hp_max == fent.NO_HP else hp_max
@@ -511,6 +516,7 @@ class World:
                      stats=tpl)
             if rec.is_human and tpl is not None:        # docs/data/progression.md section 4: no award logic yet
                 u.skills = prog.skills_of(tpl)
+                u.mana = u.mana_max = mana_max
                 u.xp, u.xp_total = prog.start_pools(u.skills)
                 u.best_school = prog.best_school(u.skills) if prog.is_hero_name(tpl.name) else 0
             self.add_unit(u)

@@ -56,8 +56,9 @@ after the attack message, recovery `+0x135 + rand(0..3)` + hero delay ([animatio
   Open: scaling of resistances and protections, damage kinds 1/2 ([units](units.md)). To-hit sources for
   humans ([progression §3](progression.md)): `(1.1^Body + 1.1^Reaction) / 5`, +3 per school skill with a melee weapon.
 - Derived max HP/mana: the exe never uses the template `healthMax` of humans; the recompute (`FUN_0051366b`) sets it and the manaMax-derived
-  mana. All 605 campaign human units take this value (their map HP is default), e.g. `2A_Knight4` 167 not 351. The world still uses the
-  template value, and the golden dump keeps it until phase I ([progression §6](progression.md#6-hero-start), open-questions).
+  mana. All 605 campaign human units take this value (their map HP is default), e.g. `2A_Knight4` 167 not 351. `progression.derived_vitals`
+  implements it and `World._load_units` uses it for every human ([progression §6](progression.md#6-hero-start)); bonus block and difficulty
+  tweak are not modelled yet.
 - XP awards (per-hit and per-cast credit plus the kill credit when a death completes): [progression §4](progression.md).
 - **Prototype spell Fire Arrow** (#1): everything it needs is tabulated in [spells §9](spells.md): params (mana 3, range 7,
   speed 200, damage 5..10), order -> state -> cast start (`FUN_00519998`), windup/recovery timing, level `skill_fire - 30 +

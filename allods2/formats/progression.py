@@ -5,6 +5,7 @@ formula the exe computes at start-up, and the hero templates are read from the i
 (through `unitstats` and `spelldefs`).
 """
 
+import math
 from dataclasses import dataclass
 
 from . import spelldefs, unitstats
@@ -111,6 +112,35 @@ def start_pools(skills, thresholds=None):
     thr = thresholds or _build_thresholds()
     pools = tuple(thr[min(skills[k], THRESHOLDS - 1)] for k in range(1, 6))
     return pools, sum(pools)
+
+
+# Attribute default of the human constructor for a -1 param (docs/data/units.md section 5).
+ATTR_DEFAULT = 30
+# Per-class attribute caps used by the recompute (docs/data/progression.md section 3); only Body and Spirit matter
+# for max HP / mana.  Key (mage, female) -> (body, reaction, mind, spirit).
+ATTR_CAPS = {(False, False): (52, 50, 48, 46), (False, True): (50, 52, 46, 48),
+             (True, False): (48, 46, 52, 50), (True, True): (46, 48, 50, 52)}
+XP_VITALS_DIV = 5000.0      # G = log(total / 5000 + 1) / log(1.1)
+
+
+def derived_vitals(t, skills=None, bonus_hp=0, bonus_mana=0):
+    """Max HP and max mana of a freshly built human of template `t` (`unitstats.UnitType`), as the exe's
+    recompute `FUN_0051366b` computes them (docs/data/progression.md section 3); the data.bin `healthMax`
+    is never used.  `bonus_*`: the equipment / effect bonus block (+0xdc / +0xe0), 0 for the templates of
+    the install.  Returns (max_hp, max_mana); max_mana is 0 for a fighter (template mana_max <= 0)."""
+    mage = t.get("mana_max", -1) > 0
+    female = t.get("gender", 0) == 1
+    caps = ATTR_CAPS[(mage, female)]
+    attr = lambda name: ATTR_DEFAULT if t.get(name, -1) < 0 else t.get(name)
+    body, spirit = min(attr("body"), caps[0]), min(attr("spirit"), caps[3])
+    _, total = start_pools(skills_of(t) if skills is None else skills)
+    g = math.log(total / XP_VITALS_DIV + 1.0) / math.log(1.1)
+    k = 1 if mage else 2
+    hp = int(int(body * k + k * g) * (1.0 + 1.1 ** body / 100.0)) + bonus_hp
+    mana = 0
+    if mage:
+        mana = int(int(spirit * 2 + 2 * g) * (1.0 + 1.1 ** spirit / 100.0)) + bonus_mana
+    return hp, mana
 
 
 def hero_template(t, spells=None):
