@@ -121,8 +121,12 @@ fight the same sum). The kill credit is also the only place that updates the rep
 the victim's type, or appends it; at 5 entries the oldest is dropped), and it is skipped entirely when `spell != 0` and the killer is not a mage.
 A mage that kills with melee (`spell == 0`, school 0) gets no XP from the award (mages need an explicit school) but still updates the list.
 The same death branch also bumps the owner's kill counters (`player+0xa48` monster kills, `+0xa4c` player kills) and, for a monster killed
-by a human, runs killer slot `0x50(victim)` (not traced). CONFIRMED (`0x52b709`-`0x52b84a`, `0x512fcb`). Quest and scenario XP rewards are not
-read in `allods2.exe` (Scenario.dll side): UNKNOWN. Other readers of the skills: `0x530577` (picks the hero's best school, spawn/encounter
+by a human, runs killer slot `0x50(victim)` (not traced). CONFIRMED (`0x52b709`-`0x52b84a`, `0x512fcb`). **No quest or scenario XP exists.** The award slot `0x64` is
+reached only from the three credit routines (`0x513046` kill, `0x5131e6` damage, `0x513272` cast; `FUN_005128cb` has no direct caller, and the
+other `call [reg+0x64]` sites belong to view, network and MFC classes). `Scenario.dll` exports 18 functions, none touching a unit
+(locations, shops, inns, `ScenarioGetVar`/`SetVar`, save/load) and imports only system DLLs, so it cannot award XP. The quest payout is an item
+upgrade whose value is *derived from* the hero's XP total `+0x130` ([items §14](items.md#14-quests-and-the-item-upgrade-message-0x38)), never
+an XP gain. CONFIRMED (call-site scan of the full disassembly, export/import tables). Other readers of the skills: `0x530577` (picks the hero's best school, spawn/encounter
 strength `3 * best - 50 .. 3 * best + 75` against a unit's `FUN_00510a26`) and `0x533768` (counts skills > 75, needs 4 and gold < 1 000 000):
 roles INFERRED. `FUN_00514f59(school, level)` builds a level-L hero (school skill L, Shooting L/2, a school staff or weapon) for
 `0x491d0c`/`0x4f2b04` (hero creation in the UI): not on the campaign path.
@@ -187,7 +191,6 @@ the hero on map 40 and of all humans/monsters (`Unit.skills/xp/xp_total/best_sch
 ## Open questions
 
 - Killer slot `0x50(victim)` called just before the kill credit at `0x52b72e` (INFERRED: attacker bookkeeping). Start: `FUN_0052b459`.
-- Quest / scenario XP rewards (Scenario.dll interface; none found in `allods2.exe`). Start: `FUN_005052d2`, `FUN_00502019`.
 - Role of skill 0 (general) beyond the to-hit bonus copy at `0x529200`; roles of `0x530577` / `0x533768` (encounter strength?). Start: `FUN_00510a26`.
 - What `Player+0x2c` means (gates the damage credit `0x5131a3` and the level-up message `0x512a..`). Start: `FUN_00513128`.
 - Hero state between campaign maps (saves, `.a2c`). Start: `FUN_00514920`.
