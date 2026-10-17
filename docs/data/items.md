@@ -314,8 +314,8 @@ hero's `+0x1f` object `+0x1c`). Further shop messages: `0x33` buy (`FUN_0052115f
 **Gold** (CONFIRMED). The hero's gold is its field `+0x3c` (not the map's `Player.money`, which is never read, [map](../formats/map.md)); a
 ground pile keeps its gold in its own `+0x3c`. Picking a pile up (`FUN_005108fa`, `this` = the hero) adds `pile.+0x3c` through
 `FUN_00516238(amount)` (`hero.+0x3c += amount`), moves the pile's items into the pack (`FUN_00529e5b`) and deletes the pile. Dropping gold is
-message `0x23`: the amount (word at `+0xa`) must be between 1 and the hero's gold, is subtracted, and `FUN_0052ab07(cell, amount)` adds it to
-the pile at the target cell (creating one when there is none). The shop paths above change the same field; killing a monster drops gold as
+message `0x23`: the amount (word at `+0xa`) must be between 1 and the hero's gold, is subtracted, and `FUN_0052ab07(cell, pile, amount, flag)` adds it to
+the pile at the target cell (`FUN_00553ab3` finds it; a new pile is created when there is none, `pile.+0x3c += amount`). The shop paths above change the same field; killing a monster drops gold as
 a pile (`FUN_005109f5`, [units §4](units.md)).
 
 **Equip on the server.** The case `0x22` equip (destination kind 1) calls the carrier method `vtable + 0x40` (`FUN_005290cc` weapon /
