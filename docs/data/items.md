@@ -317,10 +317,10 @@ Wire item decode `FUN_004ed5f5`: `u16 code`, `u8 f`; `f & 0x80` = count in `f & 
 
 **Item `+0x50` (over-capacity).** Set by `FUN_004ed5f5` (§11 magic_cap readers). Readers: the two item-list loops of the packet handler
 `FUN_004ea6ab` (equipped list and pack list) set the owner flag `+0x1bc = 1` when any decoded item has `+0x50 != 0`, and the
-message handler after the item-list parse (`FUN_004f515d`, the branch after `FUN_004ea6ab`, `0x4f7c78`) then logs
-`"Cheating detected! Player: %s file: %u%u.a2c"` (`0x5fcf34`) and posts event `0x92` (5, hero id). So a character file whose item
-carries more modifier cost than 1.5x its capacity is reported as cheating (INFERRED: the check belongs to the loading of a `.a2c`
-character; the message number of that branch was not traced).
+server message `0xbe` (a player joins: `FUN_004f515d` case 0xbe) then logs
+`"Cheating detected! Player: %s file: %u%u.a2c"` (`0x5fcf34`) and posts event `0x92` (5, hero id) when the new hero's `+0x1bc` is set.
+The hero comes from the character file `<schr dir>\chr<name>_<u><u>.a2c` (format `0x5fcea4`) read by `FUN_004ea6ab`, or from the
+join packet when no file is used. So a character whose item carries more modifier cost than 1.5x its capacity is reported as cheating.
 
 **Generator order** (`FUN_0052571c`, the compare of the sort in `FUN_00525f67`): key `k(x) = x.+0x44 in {1, 2, 7} ? suitable_for(x) & 1 : 0`.
 Order: `k` descending (fighter items first), then class record index `+0xc` ascending, then price `+0x1c` ascending. Exe defect: when the

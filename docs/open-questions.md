@@ -25,7 +25,7 @@ from both places when answered).
 
 - Mission reward `0x5325ee`: senders of the event kinds 8/9/10 that set the value `v` (record `+0x24`, handlers `0x52f222`,
   `0x52f2d4`, `0x52f386`); what overwrites the shop stock blocks (structure `+0x70..+0xbf`, ctor `0x520d21` leaves one default
-  block) before `0x522767` runs; message number of the "Cheating detected" branch (`0x4f7c78`).
+  block) before `0x522767` runs.
   [items](data/items.md#open-questions)
 
 ## Spells
