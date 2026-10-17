@@ -55,10 +55,10 @@ after the attack message, recovery `+0x135 + rand(0..3)` + hero delay ([animatio
   element parts follow with their protection (`+0xc4..+0xcc`); the attack record packs min/spread (bit 7 = stored /15).
   Open: scaling of resistances and protections, damage kinds 1/2 ([units](units.md)). To-hit sources for
   humans ([progression §3](progression.md)): `(1.1^Body + 1.1^Reaction) / 5`, +3 per school skill with a melee weapon.
-- Derived max HP/mana: the exe replaces the template `healthMax`/`manaMax` of humans by the recompute (`FUN_0051366b`); the
-  world still uses the raw template value (Start_MF 116 HP, Mage_Hero 14 HP and 146 mana in the exe). The golden dump keeps
-  the raw value until phase I ([progression §6](progression.md#6-hero-start), open-questions).
-- XP awards (kill credit slot `0x68` caller, per-hit and per-cast credit): [progression §4](progression.md).
+- Derived max HP/mana: the exe never uses the template `healthMax` of humans; the recompute (`FUN_0051366b`) sets it and the manaMax-derived
+  mana. All 605 campaign human units take this value (their map HP is default), e.g. `2A_Knight4` 167 not 351. The world still uses the
+  template value, and the golden dump keeps it until phase I ([progression §6](progression.md#6-hero-start), open-questions).
+- XP awards (per-hit and per-cast credit plus the kill credit when a death completes): [progression §4](progression.md).
 - **Prototype spell Fire Arrow** (#1): everything it needs is tabulated in [spells §9](spells.md): params (mana 3, range 7,
   speed 200, damage 5..10), order -> state -> cast start (`FUN_00519998`), windup/recovery timing, level `skill_fire - 30 +
   Mind` and `scaled(L)`, damage branch `FUN_00519db8` -> `FUN_00516f6f`, `prot_fire`, projectile 10 (`firebolt`, trail

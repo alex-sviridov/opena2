@@ -58,8 +58,8 @@ With `L(x) = log(x) / log(1.1)`, `G = L(total / 5000 + 1)` (total XP of all pool
 `mage` = 1 or 0 (all values are `ftol` truncated; Body/Spirit/Mind/Reaction are the capped values):
 
 ```
-max HP     = ftol( ftol( Body * (mage ? 1 : 2) + (mage ? 1 : 2) * G ) * (1 + 1.1**Body / 100) ) + bonus_hp      (only if the template HP != 0)
-max mana   = ftol( ftol( 2*Spirit + (mage ? 2 : 1) * G ) * (1 + 1.1**Spirit / 100) ) + bonus_mana              (only if the template mana != 0, else mana = 0)
+max HP     = ftol( ftol( Body * (mage ? 1 : 2) + (mage ? 1 : 2) * G ) * (1 + 1.1**Body / 100) ) + bonus_hp      (always: +0x96 is first overwritten with Body * k, the template healthMax is never used)
+max mana   = ftol( ftol( 2*Spirit + (mage ? 2 : 1) * G ) * (1 + 1.1**Spirit / 100) ) + bonus_mana              (only if the stored max mana, i.e. the template manaMax, is non-zero, else mana = 0)
 scan range = ftol( ((Mind + Reaction) / 25 + 4) * 256 ) + bonus      (+0xa4 in 1/256 cell; +0xa5 = whole cells)
 speed      = Reaction                if Reaction < 12 else Reaction/5 + 12      (+10 for unit types 0x13, 0x15), - load penalty, min 6
 load cap   = Body*10 + 1  (+0x92);  load = +0x8e + (the +0x7c object's field +0x20)/2, at most 32000 (INFERRED: weight);  if load >= cap: speed -= load / cap
@@ -165,7 +165,8 @@ through `FUN_00514cf2` (a -1 keeps the constructor value, skills 0); `mana_max >
 spellbook `+0x140` from the known-spells bit mask (p25; bit n = spell n, n = 1..29; `FUN_0051906d` + `FUN_0051c29e`; no spellbook
 otherwise); the 10 equipment strings through vtable `+0x44` (slot 0 weapon `FUN_00528808`, 1 shield-class `FUN_00527e23`, 2-9
 armour `FUN_005273f0`); `FUN_00513497` start pools; recompute `vtable+0x58`; HP and mana set to the new maxima. Back in `FUN_00561bf9`
-the map's `max_hp`/`hp` override HP (`0x562013`; a hero at full HP resets to the template) and the recompute is not repeated.
+the map's `max_hp`/`hp` override HP (`0x562013`; any human, record flag `0x10`, with `hp == max_hp` is reset to *default*, i.e. keeps the derived maximum) and the recompute is not repeated.
+Order in `FUN_00561bf9` (CONFIRMED `0x561e20`-`0x562099`): create, difficulty tweak, behaviour bits, **recompute** (`0x562010`), map HP override.
 `FUN_00514cf2` sets the best school `+0x23c` = first strictly highest school skill when the template name contains `_Hero` or `Start_`
 (case-sensitive substring; 0 when all schools are 0); the server constructor flag `_Hero` additionally fixes the type to
 `0x21 + gender (+2 mage)`. Map section 6 carries no skills, XP or spells: a map hero is exactly its template at skill 20-25.
@@ -185,9 +186,22 @@ Templates (6 records; pools `thr[skill]`):
 non-default skill; the other schools are 0. Only map `scenario/40.alm` places a `_Hero` template (a `Mage_Hero`, HP 5 of 30); `Start_*`
 appear in no campaign map (INFERRED: the new-game characters of the creation screens `0x490xxx`/`0x491xxx`, which use the named constructor).
 
-**Consequence for the engine:** the derived max HP/mana of §3 replace the template `healthMax`/`manaMax`: Start_MF 116 HP, Fighter_Hero 122,
-Mage_Hero 14 HP and 146 mana, Start_MM 35 HP and 77 mana (worked from §3). `World._load_units` still uses the raw template HP, so
-human HP differs from the exe until the recompute is implemented (phase I); the golden dump keeps the raw value.
+**Consequence for the engine (CONFIRMED, measured on the install):** every one of the 605 human units of the 46 campaign maps carries
+`hp = max_hp = 0xFFFF` (default), so **all** of them take the derived maximum, none the template `healthMax` and none a map value. The recompute also
+discards the difficulty tweak for humans (it rewrites max HP, to-hit `+0xa6` and defence `+0xbe` after it; only the brain `+0x44` halving of easy mode
+survives). Examples (template -> exe; derived from the template attributes, start pools and the §3 formulas, equipment adds no HP/mana: no human
+template has a `health`/`mana` modifier, only `spirit`, `speed`, `scanRange`, protections, defence, to-hit, castSpell):
+
+| Unit | template HP / mana | exe HP / mana |
+|---|--:|--:|
+| Start_MF | 50 / - | 116 / - |
+| Mage_Hero | 30 / 70 | 14 / 146 |
+| 2U_PeasantMale | 75 / - | 55 / - |
+| 2A_Knight4 | 351 / - | 167 / - |
+| 2M_Knight4 | 137 / 390 | 58 / 267 |
+
+`World._load_units` still uses the template value for these units, so every human is wrong in HP (mages also in mana, which is not modelled yet)
+until the recompute is implemented (phase I); the golden dump keeps the raw value.
 
 Carry-over of hero state between maps: the maps hold nothing (§6 above), so it must live in the campaign save / `.a2c`: UNKNOWN (out of scope
 until saves are read).

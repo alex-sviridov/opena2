@@ -498,7 +498,7 @@ class World:
             tpl = types.lookup(rec.is_human, rec.server_id)
             hp, hp_max = rec.hp, rec.max_hp
             if rec.is_human and hp_max != fent.NO_HP and hp_max == hp:
-                hp = hp_max = fent.NO_HP                    # FUN_00561bf9 0x562013: a hero at full HP = default
+                hp = hp_max = fent.NO_HP                    # FUN_00561bf9 0x562013: a human at full HP = default, which in the exe is the recomputed maximum (progression.md §6; TODO phase I)
             base = tpl.hp_max if tpl is not None else 0     # map overrides replace the template value
             face = tpl.face if tpl is not None else 1
             move = tpl.movement_type if tpl is not None else 1

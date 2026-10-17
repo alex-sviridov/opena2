@@ -607,7 +607,7 @@ Version 1300 layout:
 **Defaults vs overrides** (CONFIRMED, `0x561d0f`–`0x562264`): everything comes from the data.bin
 record found by `server_id` (stats, mana, speed, damage, spells, equipment strings). The
 record overrides only HP: max HP `+0x96` ← `max_hp`, HP `+0x94` ← `hp` (if `hp` is 0xFFFF,
-HP = max HP); a hero whose `hp == max_hp` is reset to "default". Level, mana and equipment
+HP = max HP); a human (flag `0x10`) whose `hp == max_hp` is reset to "default" (the recomputed maximum, [progression §6](../data/progression.md#6-hero-start)). Level, mana and equipment
 are not in the record.
 
 **Difficulty** (CONFIRMED, `FUN_00561bf9` `0x561e20`–`0x561f0b`; settings `+0xd8` = game option,
