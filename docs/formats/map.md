@@ -459,8 +459,9 @@ Wall of Fire, Wall of Earth …) the wall or the area routine
 around the effect, radius at `+0x4d`), which call `FUN_005184bf` per cell:
 `FUN_0055a325` adds the area effect to the cell, and when the flag argument is
 set `FUN_00559c28` marks it. The flag is 1 when the effect list holds
-`Effect_DirectDamage` and the effect record's byte `+0x5c` is non-zero
-(INFERRED meaning: scorched ground under damaging area spells). When a
+`Effect_DirectDamage` and the effect record's byte `+0x5c` is non-zero. CONFIRMED meaning: `+0x5c` is the
+damage-spread byte of the damage carrier (`FUN_00543040` ff. store min `+0x5b`, spread `+0x5c`, element
+`+0x5d`), so the ground is scorched under area spells that deal damage ([spells](../data/spells.md#4-effect-handlers)). When a
 player joins, `0x4f2326` sends message 155: `FUN_00559d70` run-length
 encodes bit `0x10` over the playable area (first word = the bit of the first
 cell, then alternating run lengths, rows from (8, 8)), and the client
@@ -698,7 +699,7 @@ unit → object; it stands at `(X·32 >> 8, Y·32 >> 8 − ground height)` (vert
 `idle` frame at clock `--clock`, direction 8 (the render has no facing); flyers (`Z ≠ 0`) draw last, 16 px raised. A pile is
 the backpack sprite (`graphics/backpack/sprites.256`, `FUN_00461292`), frame = `min(5, floor(log10(total)))` with
 total = gold + sum of the items' `+0x1c` (`FUN_0052a895`, sent in message 0x7a; CONFIRMED): 100 gold
-→ frame 2, 5000 → 3, 10000 → 4; the item `+0x1c` is not decoded, so item piles are not framed (frame 0). Groups on one cell
+→ frame 2, 5000 → 3, 10000 → 4; the item `+0x1c` is its price ([items](../data/items.md#4-price)), but the engine does not use it yet, so item piles are not framed (frame 0). Groups on one cell
 are one pile. Sacks of dead monsters are runtime objects (`FUN_00510a70` → `FUN_005109f5`), not map data.
 
 **Placement at load** (CONFIRMED): the server places a unit with `FUN_00510089(cell, r = 0)`, which tries only the file cell
@@ -719,13 +720,12 @@ inside the data.bin ranges, section 9 links in range, and the scene draws units 
 Id tables the next phases need, all present in data: units.reg (type → sprites; `Palette`,
 `Dying`), data.bin monsters/humans (`serverID` → record: stats, equipment strings, `face`),
 data.bin qualities / materials / armour / shields / weapons / special items / stat names
-(item codes and section 9 stat ids), `humans/human.pal` (colour rows). Still open: the equipment
-string → item chain of data.bin records, the item `+0x1c` field.
+(item codes and section 9 stat ids), `humans/human.pal` (colour rows). Item definitions, equipment strings and the
+item `+0x1c` price: [items](../data/items.md).
 
 ## Open questions
 
-- Dirt: the meaning of effect byte `+0x5c`, the caller of `FUN_00559ce5`
-  (clear), and when the mark disappears.
+- Dirt: the caller of `FUN_00559ce5` (clear), and when the mark disappears.
 - Line of sight: the distance tables (`+0x22000` steps, `+0x28000`
   `ftol` of a power of `dx² + dy²`) and the `FUN_00559536` gate of
   `FUN_00552c28`; callers (`FUN_00552929` has no direct caller: vtable?).
@@ -739,8 +739,8 @@ string → item chain of data.bin records, the item `+0x1c` field.
   cases 7, 10–12 are in the exe).
 - Part 5: the event classes of `behaviour` bits 1, 2, 4 (`FUN_005303ed`); section 9 per-cell
   payload (`FUN_0055ba36`, records with `a`/`b` ≠ 0 and kind < 4; 30 records in `76`, `93`–`96`);
-  gold pickup and the link between a pile's `+0x3c` gold and `Player.money`; the item field
-  `+0x1c` (sack frame of item piles); the `(41, v)` remap to `0x31`.
+  gold pickup and the link between a pile's `+0x3c` gold and `Player.money`. Answered in [items](../data/items.md): `+0x1c` = price,
+  the `(41, v)` remap to `0x31` (= 49 `damageBonus`; a pair cannot carry castSpell).
 - Section 12 (28-byte circle zones with four `-1`-or-number values, consumer `0x475500` picks
   one at random into `0x5f1a08`: INFERRED music/ambience zones; users of the global untraced);
   sections 7 and 11 key slots by coded numbers 8000–9999 and structure uids.

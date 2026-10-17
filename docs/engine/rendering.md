@@ -256,7 +256,7 @@ Code: `engine/ui/layout.py`, `cursor.py`, `selection.py`; `engine/view/pick.py`,
 - Cell effects (CONFIRMED, not drawn yet): `FUN_0040af69` draws spell-area cell sprites keyed by view message
   0x87: wall of fire (bit 3, P3 f, projectile 15, frame `3 + abs(clock/2 + x*y) % 5`), wall of earth (bit 17,
   P3 f, projectile 43), poison cloud (bit 6, P6, projectile 21, frame `abs(clock/2 + x*y) % phases`), at
-  `(32 col + 16, mean of the cell's two diagonal heights)`; bit 3 also marks burnt ground. Needs the spell system.
+  `(32 col + 16, mean of the cell's two diagonal heights)`; bit 3 also marks burnt ground. Needs the spell system ([spells §4](../data/spells.md#4-effect-handlers): carriers, shapes, registration `FUN_0055a325`).
 - Units: invisibility and stone-curse drawing, hover/selection, the exe's visit order when two units share a layer cell,
   the sender of client message 0x74 (flag 0x80, moves a unit to the corpse layer). Starting routine `FUN_004632a1`, `0x415bda`.
 - Item-only piles: the item field `+0x1c` (pile frame), see [map.md](../formats/map.md#open-questions).

@@ -16,20 +16,36 @@ from both places when answered).
 ## data.bin
 
 - Human and structure fields in code (`FUN_004a65b0`, `FUN_004a65d0`
-  users; column names known), item-class i16s, special-item byte,
-  `castSpell`/`damage*` modifier values (`FUN_0051f1c3`, `FUN_0051f072`).
-  [databin](formats/databin.md#open-questions)
+  users; column names known). [databin](formats/databin.md#open-questions)
 
 - Unit stat table: damage kinds 1/2 → elements, protection/resistance scaling, negative damage spread
-  (`0x516f6f`); XP level thresholds (`FUN_005128ac`); item generator categories and `item[+0x1c]`
-  (`FUN_00525f67`); equipment strings → items, hero carry-over. [units](data/units.md#open-questions)
+  (`0x516f6f`); XP level thresholds (`FUN_005128ac`); item generator categories
+  (`FUN_00525f67`); hero carry-over. [units](data/units.md#open-questions)
+
+## Items
+
+- What reads `magic_cap` (item `+0x48`); parameters of the random modifier roll and pool builders
+  (`FUN_00526ec4`, `FUN_005247db`, `FUN_00524e31`). [items](data/items.md#open-questions)
+- Item class params 0, 1, 16, the special-item byte, itemname.pkt header bytes (`FUN_00474268`, `0x4388a2`).
+  [items](data/items.md#open-questions)
+- Requirements outside the item code, how spell names are added to `Book` / `Scroll`, scroll price (record 100 vs
+  pkt 41; `FUN_0052340f`). [items](data/items.md#open-questions)
+
+## Spells
+
+- Distribution 5 carriers (Blizzard, Acid Stream), the area pulse and hit delivery. Start `FUN_00518833`, `FUN_00518681`.
+  [spells](data/spells.md#11-open-questions)
+- Summon and Control Spirit internals; player-side cast validation (range, mana) and the `spells.txt` consumer. Start `0x51a595`,
+  `0x51a91f`, `0x4c628f`. [spells](data/spells.md#11-open-questions)
+- Bless/Curse effect kind (`FUN_0051d175`); params 3, 10, 12, 13, 15, 19 are never read (editor leftovers?).
+  [spells](data/spells.md#11-open-questions)
 
 ## Not started (from the reversing plan)
 
 - `.alm` triggers (sections 7, 10–12); the server reader `FUN_00534ad4` parses all of them
   (switch on the section id). Sections 0–6, 8, 9 are done. [map](formats/map.md#open-questions)
 - Part 5 leftovers: event classes of unit `behaviour` bits 1, 2, 4, section 9 per-cell payload,
-  gold pickup vs `Player.money`, item `+0x1c`. [map](formats/map.md#open-questions)
+  gold pickup vs `Player.money`. [map](formats/map.md#open-questions)
 - Section 12 zones (INFERRED music) and the 8000–9999 slot codes of sections 7 and 11.
   [map](formats/map.md#open-questions)
 - Unit struct: path finder `FUN_0054d76e`, group AI, damage resolution, orders 0x16/0x18/0x19/0x1a.
@@ -37,12 +53,12 @@ from both places when answered).
 - Line of sight tables and the `FUN_00559536` gate; block-layer dynamic bits
   and per-class `movementType` (`FUN_00557a89`, vtable `+0x20`); the search
   `FUN_0054d76e` (phase H). [map](formats/map.md#open-questions)
-- Meaning of effect byte `+0x5c` (spell dirt mark, `FUN_00559c28`), caller of the clear `FUN_00559ce5`.
+- Dirt mark: caller of the clear `FUN_00559ce5` (the `+0x5c` byte is answered: damage spread, [spells](data/spells.md#4-effect-handlers)).
   [map](formats/map.md#open-questions)
 - Structure registration at load: does a unit-made cell record exist before the structures (then
   `FUN_00559890` skips the refresh)? Do triggers name only structures? `FUN_005508a0` callers.
   [map](formats/map.md#open-questions)
-- `itemname.bin` / `.pkt`, `famehall.dat`, saves (`game%d.sav`; the
+- `famehall.dat`, saves (`game%d.sav`; the
   client state is a [`.reg`](formats/reg.md#writing) tree, `FUN_0048dc9f`), `.a2c`
   characters. [inventory §6](inventory.md#6-plan-custom-formats-to-reverse-in-order)
 - Text conventions of `main/text/*.txt` (line lists, `#key` sections,
@@ -63,7 +79,7 @@ from both places when answered).
   [architecture](engine/architecture.md#open-questions)
 - Unregistering a structure (`FUN_0055995a`) clears cells held by another structure; engine releases only
   its own cells. [architecture](engine/architecture.md#open-questions)
-- [Cell effects](engine/rendering.md#open-questions) (answered: spell-area sprites; drawing needs the spell system), unit invisibility / stone curse / hover, message 0x74 (flag 0x80); start at `FUN_004632a1`.
+- [Cell effects](engine/rendering.md#open-questions) (answered: spell-area sprites, registered by [spells §4](data/spells.md#4-effect-handlers); drawing needs the spell system), unit invisibility / stone curse / hover, message 0x74 (flag 0x80); start at `FUN_004632a1`.
 - [Engine object drawing](engine/rendering.md#open-questions): burnt ground, light-map lights on objects; start at `FUN_00404a2a`.
 - [Engine minimap](engine/rendering.md#open-questions): final channel pass `0x4ac030`, fog background surface `DAT_00626be0`, fog gate of the unit dots; start at `FUN_004ac414`.
 - Phantom units (9 on blocked cells, never created by the server) and HP-0 units: engine keeps and draws them; decide with the phase H sim. [architecture §9](engine/architecture.md#9-world-state)

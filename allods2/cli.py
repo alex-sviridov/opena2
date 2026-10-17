@@ -7,6 +7,7 @@
     python -m allods2 map info MAP [--install DIR]
     python -m allods2 map render MAP DEST.png [--layers terrain objects structures units items | all] [--relief] [--dirt]
                                  [--rect X Y W H] [--install DIR]
+    python -m allods2 data export units|items|spells DEST.json [--install DIR]
     python -m allods2 res ls [PATH] [--install DIR]
     python -m allods2 res list ARCHIVE.res
     python -m allods2 res extract INSTALL|ARCHIVE.res DEST
@@ -269,13 +270,26 @@ def res_extract(a):
 
 def data_export(a):
     import json
-    from .formats import unitstats
-    table = unitstats.load(as_fs(a.install))
+    fs = as_fs(a.install)
+    if a.table == "items":
+        from .formats import itemdefs
+        table = itemdefs.load(fs)
+        msg = "%d item definitions (%d weapons, %d shields, %d armour, %d special), %d names -> %s" % (
+            len(table), *(len(table.of_kind(k)) for k in itemdefs.KINDS), len(table.names), a.dest)
+    elif a.table == "spells":
+        from .formats import spelldefs
+        table = spelldefs.load(fs)
+        msg = "%d spells (%d empty records), %d with descriptions -> %s" % (
+            len(table), table.extra_records, sum(1 for d in table if d.description), a.dest)
+    else:
+        from .formats import unitstats
+        table = unitstats.load(fs)
+        msg = "%d unit types (%d monsters, %d humans) -> %s" % (
+            len(table), len(table.of_kind("monster")), len(table.of_kind("human")), a.dest)
     os.makedirs(os.path.dirname(os.path.abspath(a.dest)), exist_ok=True)
     with open(a.dest, "w", encoding="utf-8") as f:
         json.dump(table.to_dict(), f, indent=1, sort_keys=True)
-    print("%d unit types (%d monsters, %d humans) -> %s" % (
-        len(table), len(table.of_kind("monster")), len(table.of_kind("human")), a.dest))
+    print(msg)
     return 0
 
 
@@ -339,8 +353,8 @@ def main(argv=None):
     x.add_argument("dest")
     x.set_defaults(func=res_extract)
     g = groups.add_parser("data", help="game database tables").add_subparsers(dest="cmd", required=True)
-    de = g.add_parser("export", help="write a table as JSON (units: monsters and humans from data.bin)")
-    de.add_argument("table", choices=("units",))
+    de = g.add_parser("export", help="write a table as JSON (units: monsters and humans; items: weapons, shields, armour, special items; spells)")
+    de.add_argument("table", choices=("units", "items", "spells"))
     de.add_argument("dest")
     de.add_argument("--install", default=INSTALL)
     de.set_defaults(func=data_export)

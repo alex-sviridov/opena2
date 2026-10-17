@@ -66,6 +66,22 @@ def units_hash(install=None):
     return {"sha256": hashlib.sha256(blob.encode("utf-8")).hexdigest()}
 
 
+def items_hash(install=None):
+    """SHA-256 of the items.json that `data export items` writes."""
+    from allods2.common import as_fs
+    from allods2.formats import itemdefs
+    blob = json.dumps(itemdefs.load(as_fs(install)).to_dict(), indent=1, sort_keys=True)
+    return {"sha256": hashlib.sha256(blob.encode("utf-8")).hexdigest()}
+
+
+def spells_hash(install=None):
+    """SHA-256 of the spells.json that `data export spells` writes."""
+    from allods2.common import as_fs
+    from allods2.formats import spelldefs
+    blob = json.dumps(spelldefs.load(as_fs(install)).to_dict(), indent=1, sort_keys=True)
+    return {"sha256": hashlib.sha256(blob.encode("utf-8")).hexdigest()}
+
+
 def rgb_hash(rgb):
     return hashlib.sha256(rgb.tobytes()).hexdigest()
 
@@ -126,6 +142,8 @@ def main(argv):
     out["minimaps"] = minimap_hashes(install)
     out["interface"] = interface_hash(install)
     out["units"] = units_hash(install)
+    out["items"] = items_hash(install)
+    out["spells"] = spells_hash(install)
     with open(GOLDEN, "w", encoding="ascii") as f:
         json.dump(out, f, indent=1, sort_keys=True)
         f.write("\n")

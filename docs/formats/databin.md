@@ -60,7 +60,7 @@ record at `obj+0x3c`, params at `+8`).
 Item weight uses f64 #1 (record `+0x38`) of both lists (below). Values:
 Common 1.0, Uncommon 1.1, Rare 1.2, Very Rare 1.3, Elven 1.0; Iron 1.0,
 Bronze 0.5, Steel 1.3, Wood 0.5, Leather 0.2, Mithrill 0.5, Crystal 2.0.
-INFERRED: f64 #0 is a price factor (1, 2, 4, 10 for Common … Very Rare).
+CONFIRMED: the 7 f64 are price, weight, damage, to hit, defence, absorption, level (quality) / magic capacity (material); see [items §3](../data/items.md#3-quality-material-masks).
 
 ## Stat names and modifier text
 
@@ -152,16 +152,17 @@ material.f64[1])` (+0.5, `ftol`); inventory adds `weight · count`
 compares with capacity `Body·10 + 1` (CONFIRMED). `param[12]`, `[13]` →
 attack windup/recovery (kept when −1). Also `param[6]`→`+0x68`,
 `[7]`→`+0x69`, `[8]`→`+0x5a`, `[9]`→`+0x72`, `[11]`→`+0x58` (default 1).
-INFERRED: `[6]`, `[7]` damage, `[2]` price. Long Sword: weight 20,
+`[2]` price, `[6]`, `[7]` damage ([items](../data/items.md#2-class-records-weapons-shields-armour)). Long Sword: weight 20,
 attack 7 + 4.
 
 **Spells**: `param[5] == 2` = missile, `param[7]` = missile speed in
 1/256 cell per tick (Fire Arrow 200, Fire Ball 384, Lightning 60);
-[animation §3.4](animation.md#34-where-the-speeds-come-from).
+[animation §3.4](animation.md#34-where-the-speeds-come-from). All 22 params, the modifier text and their readers:
+[spells](../data/spells.md#2-fields).
 
 ## Open questions
 
 - Human and structure fields in code (loaders via `FUN_004a65b0`,
-  `FUN_004a65d0`; the column names above give their meaning); 7 × i16 of
-  item classes; special-item byte; `castSpell`/`damage*` modifier values
-  (`FUN_0051f1c3`, `FUN_0051f072`).
+  `FUN_004a65d0`; the column names above give their meaning). The 7 × i16
+  of item classes (material masks per quality), `castSpell`/`damage*`
+  values and the `stats` columns are answered in [items](../data/items.md); the special-item byte is not read.

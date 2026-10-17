@@ -178,7 +178,7 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   exe `0x40 + rand(128)` (engine: hash of uid). Also answered: exe scrolls whole cells within the 8-cell border; cell effects =
   spell-area sprites (fire/earth wall, poison cloud); server drops units on blocked cells (9 in the install), HP-0 walkers stay
   corpses; ShadowY +-20000 has no gate. docs/engine/rendering.md §13, architecture.md §9
-- Not started: saves, Scenario.dll, item names/definitions (phase F), triggers (sections 7, 10-12).
+- Not started: saves, Scenario.dll, triggers (sections 7, 10-12).
 - Engine G3b (interface, cursor, selection) done: `engine/ui/layout.py` (three modes, one table citing exe routines),
   original cursors (`choose_cursor`: 8 arrows by the screen-border rule, select, pickup), rectangle picking (exe: per-object
   `Selection` rect, last registered first, 3x3 box; drag > screenW*10/640 px, overlap > 10 px^2), `SelectUnits` command +
@@ -191,4 +191,13 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   `Unit.stats`, `data export units`, `world-info --units`; REA: p33 = dyingTime, p34-36 AI thresholds, p37 XP
   (killed `+0x1c`×0.5), p38-44 loot (chance, gold base+spread, item value range, flags), humans-only serverID
   reduction; golden `["units"]`. docs/data/units.md
-- Next: F2. Also G3c (fonts). Also (docs/open-questions.md): town-scene animations, text conventions.
+- Items (F2) done: `allods2/formats/itemdefs.py` (162 definitions, `AssetCache.items()`, `data export items`, `tools/validate_items.py`);
+  REA: exe rounding `ftol(x+0.5)` of `param x material x quality` (7 f64: price, weight, damage, toHit, defence, absorption, level/magcap),
+  price `+0x1c` = base + effects (`1.5^(s/70)` curve, castSpell by scrollCost), 7 i16 = material masks per quality (regenerate the 395 named
+  class items exactly), `stats` group = cost/min/max/UsableBy/cumulative slot weights, `suitableFor` bit 1 fighter / 2 mage, icon
+  `%02d%02d%1d%02d.16a`, names `itemname.bin`+`.txt`, equipment strings parsed (`Soft`/`Wooden` prefixes); itemname.pkt cross-checks all prices.
+  docs/data/items.md
+- Spells (F2b) done: `allods2/formats/spelldefs.py` (29 spells, `AssetCache.spells()`, `data export spells`, `tools/validate_spells.py`);
+  REA: record n at `0x68f5cc`+n*0x20, sphere 1-5 fire..astral, level = skill-30+Mind, scaling m=L/30+1, damage `0x516f6f`, behaviour = per-number
+  switch `FUN_00519db8` + data-driven carriers (missile/point/area), sound 500+projectile id; prototype spell = Fire Arrow. docs/data/spells.md
+- Next: F3. Also F2 follow-ups (item generator, magic capacity). Also G3c (fonts). Also (docs/open-questions.md): town-scene animations, text conventions.

@@ -141,8 +141,8 @@ bytes beyond its declared 644. IDs always in order 0, 1, 2, 3, 5, 11, 4,
 
 | File | Observations |
 |---|---|
-| `world/data/itemname.bin` (982 B) | starts `ab f8 ae f7 ad f7 02 15 …`: item ids → names/sprites |
-| `world/data/itemname.pkt` (7,763 B) | `00 00 00 eb 01 00 00 4a 1e …`: packed item-name records |
+| `world/data/itemname.bin` (982 B) | 491 u16 item codes, line order of `itemname.txt` ([items](data/items.md)) |
+| `world/data/itemname.pkt` (7,763 B) | 491 item packets: code, price, stat pairs ([items §8](data/items.md#8-names-icons-packets)) |
 | `famehall.dat` (228 B, loose) | u32 count?, records `{u32 len, name\0, u32 score, …}`: hall of fame |
 | `main/text/*.txt` | cp1251; one string per line (`main.txt`, `itemname.txt`) or `#key` sections (`town.txt` `#tips1`, `quest.txt`, `globalmap.txt`, `mission%d.txt` `#briefing`, `#failure2`, `===` comments) |
 | `video/*/NN.reg` | `Common/Fading1…`, `startx/starty/nFadings/startframe/endframe/startfade/endfade` |
@@ -155,8 +155,7 @@ Small bounded formats first, dependencies before dependants. Done:
 
 1. **`main/text` conventions**: line-indexed vs `#key` sections; needed by
    UI, items, quests, mission briefings.
-2. **`itemname.bin` / `.pkt`**: item IDs → names/sprites; need the
-   data.bin item model.
+2. **`itemname.bin` / `.pkt`**: done, see [items](data/items.md).
 3. **`.alm` sections 0, 4–12**: structures, units, players, triggers of
    the 46 campaign maps; the server reader `FUN_00534ad4` switches on the
    section id. "Map version too new (update loader!)".

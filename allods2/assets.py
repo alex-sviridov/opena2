@@ -17,6 +17,8 @@ class AssetCache:
         self._sprites = {}
         self._databin = None
         self._unit_stats = None
+        self._items = None
+        self._spells = None
         self._objects_reg = None
         self._structures_reg = None
         self._object_sets, self._structure_sets = {}, {}
@@ -48,6 +50,21 @@ class AssetCache:
             from .formats import unitstats
             self._unit_stats = unitstats.build(self.databin())
         return self._unit_stats
+
+    def items(self):
+        """The item definition table (`formats.itemdefs.ItemTable`, display names included), loaded once."""
+        if self._items is None:
+            from .formats import itemdefs
+            from .common import as_fs
+            self._items = itemdefs.build(self.databin(), itemdefs.load_names(self.fs))
+        return self._items
+
+    def spells(self):
+        """The spell definition table (`formats.spelldefs.SpellTable`, display texts included), loaded once."""
+        if self._spells is None:
+            from .formats import spelldefs
+            self._spells = spelldefs.build(self.databin(), spelldefs.load_texts(self.fs))
+        return self._spells
 
     def objects_reg(self):
         """objects.reg records by ID with Parent inheritance (`anim.objects.load_object_records`)."""
