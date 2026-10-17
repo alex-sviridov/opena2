@@ -155,3 +155,18 @@ def test_draw_list_row_order_and_water_phase():
     assert {(i.phase) for t in range(0, 16) for i in build_terrain_items(tv, c, t) if (i.col, i.row) == (2, 2)} == {0, 1, 2, 3}
     assert all(i.phase == 0 for i in build_terrain_items(tv, c, 7) if (i.col, i.row) != (2, 2))
     assert water
+
+
+def test_hover_cell_follows_relief_like_the_exe():
+    """FUN_00417f31: linear vertex lines, ascending rows, inclusive bounds (a raised vertex moves the cell up)."""
+    import numpy as np
+    from engine.view import Projection
+    flat = Projection(np.zeros((6, 6), np.int8))
+    assert flat.hover_cell(40, 70) == (1, 2)
+    assert flat.hover_cell(40, 64) == (1, 1)            # shared line: the smaller row wins (ascending scan)
+    assert flat.hover_cell(-1, 10) is None and flat.hover_cell(6 * 32, 10) is None
+    h = np.zeros((6, 6), np.int8)
+    h[3, 1] = 4                                         # raises vertex (1, 3): world y 96 - H
+    p = Projection(h)
+    top, bot = int(p.vy[3, 1]), int(p.vy[4, 1])
+    assert p.hover_cell(32, (top + bot) // 2) == (1, 3)

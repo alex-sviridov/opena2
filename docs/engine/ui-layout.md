@@ -117,6 +117,14 @@ All CONFIRMED from the table order. Chooser `FUN_0040b2b8` (run each frame from 
      cursor `gamestate+0x3f4` overrides.
 3. Setting a cursor resets its animation frame only when it differs from the current one (`FUN_0047b8f5`).
 
+**Item cell under the pointer** (CONFIRMED, `FUN_004180c6` flag 0x40 with `FUN_00417f31`): the column is `mx >> 5`;
+the row is found by scanning view rows upward from the smallest: row r matches when the pixel column's top line <= my <=
+bottom line, a line being the vertex screen y of rows r / r+1 interpolated linearly by `mx & 31` and truncated toward
+zero (relief-aware, ascending scan: the smaller row wins on a shared line; no match -> past the last row). The flag is
+set only when the four cells around it are all fully visible (visibility word & 0xc000 == 0xc000 for each: no fog) and
+the view's item grid holds a non-zero entry for that cell. Engine: `Projection.hover_cell`; fog is not modelled yet, so
+the visibility test is vacuously true.
+
 G3b implements: the eight arrows, default, select (hover over a unit), pickup (own selection of one hero over a ground
 item, no click action yet). Later phases: move, attack, swarm, defend, patrol, cast, town, cantput, dice, wait,
 backpack, the small `s*` cursors over the minimap, and the pending-target modes.

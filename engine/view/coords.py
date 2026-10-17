@@ -55,6 +55,28 @@ class Projection:
                 return col, row
         return None
 
+    def hover_cell(self, wx, wy):
+        """(col, row) under world px (wx, wy) by the exe's hover rule, or None (CONFIRMED
+        FUN_00417f31, used by the hover flags of FUN_004180c6, docs/engine/ui-layout.md section 6).
+        Rows are scanned upward from the smallest; the first row whose top line <= wy <= bottom
+        line at the pixel column wins.  A line is the linear interpolation, truncated toward zero,
+        of the two vertex y values by the pixel column (no edge_offsets)."""
+        col, fx = divmod(int(wx), TILE)
+        if not 0 <= col < self.cols:
+            return None
+        vy = self.vy
+
+        def line(row):
+            a, b = int(vy[row, col]), int(vy[row, col + 1])
+            return a + int((b - a) * fx / TILE)      # int() truncates toward zero, as the exe
+
+        lo = max(0, math.floor((wy + self.hmin) / TILE) - 2)
+        hi = min(self.rows - 1, math.floor((wy + self.hmax) / TILE) + 1)
+        for row in range(lo, hi + 1):
+            if line(row) <= wy <= line(row + 1):
+                return col, row
+        return None
+
     def visible_cells(self, camera):
         """(x0, x1, y0, y1): cells x0 <= col < x1, y0 <= row < y1 that can touch the
         viewport.  Rows are padded by the map's height range."""

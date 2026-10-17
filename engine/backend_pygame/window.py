@@ -6,7 +6,7 @@ import pygame
 
 from engine.sim import DEFAULT_SPEED, CommandQueue, Simulation, selection_system, tick_period_ms
 from engine.ui import CursorInput, DebugFlags, Layout, MinimapPanel, ScrollInput, SelectionInput, choose_cursor
-from engine.view import DrawOptions, build_draw_list, build_terrain_items
+from engine.view import DrawOptions, Projection, build_draw_list, build_terrain_items
 from engine.view.pick import pick_at
 
 from .cursor import CursorSprites, draw_cursor, hide_os_cursor
@@ -40,14 +40,15 @@ def hostile_to(world, viewer):
     return fn
 
 
-def cursor_input(world, camera, layout, picks, mouse, player_id=PLAYER_ID):
+def cursor_input(world, camera, layout, picks, mouse, player_id=PLAYER_ID, projection=None):
     """The `CursorInput` of this frame (docs/engine/ui-layout.md section 6)."""
     in_view = mouse is not None and layout.viewport.contains(*mouse)
     hover = pick_at(picks, *mouse) if in_view else None
     sel = world.players[player_id].selection
     item_cell = False
     if in_view:
-        item_cell = bool(world.items_at((camera.ix + mouse[0]) // 32, (camera.iy + mouse[1]) // 32))
+        cell = (projection or Projection(world.heights)).hover_cell(camera.ix + mouse[0], camera.iy + mouse[1])
+        item_cell = cell is not None and bool(world.items_at(*cell))
     return CursorInput(mouse, layout.screen.w, layout.screen.h, in_view, hover is not None,
                        hover is not None and hostile_to(world, player_id)(hover), item_cell,
                        selection_state(world, player_id), len(sel),
@@ -81,6 +82,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     caches = Caches(SurfaceCache(terrain_view), SpriteCache(assets))
     period = tick_period_ms(speed)
     clock = pygame.time.Clock()
+    projection = Projection(world.heights)
     held, acc, frames = set(), 0, 0
     running = True
     while running:
@@ -117,7 +119,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
         items = build_draw_list(world, camera, world.tick, assets, options, debug, player.selection)
         ui.draw(screen, caches, build_terrain_items(terrain_view, camera, world.tick), items, camera,
                 world, player_id, minimap, panel, title_of)
-        state = choose_cursor(cursor_input(world, camera, layout, items.picks, mouse, player_id))
+        state = choose_cursor(cursor_input(world, camera, layout, items.picks, mouse, player_id, projection))
         draw_cursor(screen, cursors, state, mouse, pygame.time.get_ticks())
         pygame.display.flip()
         frames += 1
