@@ -46,11 +46,10 @@ from both places when answered).
   [map](formats/map.md#open-questions)
 - Section 12 zones (INFERRED music) and the 8000–9999 slot codes of sections 7 and 11.
   [map](formats/map.md#open-questions)
-- Unit struct: path finder `FUN_0054d76e`, group AI, damage resolution, orders 0x16/0x18/0x19/0x1a.
+- Unit struct: group AI, damage resolution, orders 0x16/0x18/0x19/0x1a.
   [unit-struct](engine/unit-struct.md#open-questions)
 - Line of sight tables and the `FUN_00559536` gate; block-layer dynamic bits
-  and per-class `movementType` (`FUN_00557a89`, vtable `+0x20`); the search
-  `FUN_0054d76e` (phase H). [map](formats/map.md#open-questions)
+  and per-class `movementType` (`FUN_00557a89`, vtable `+0x20`). [map](formats/map.md#open-questions)
 - Dirt mark: caller of the clear `FUN_00559ce5` (the `+0x5c` byte is answered: damage spread, [spells](data/spells.md#4-effect-handlers)).
   [map](formats/map.md#open-questions)
 - Structure registration at load: does a unit-made cell record exist before the structures (then
@@ -83,4 +82,6 @@ from both places when answered).
 - Movement (H1) [simulation](engine/simulation.md#open-questions): waypoint removal and the tick an order ends after
   arrival (`FUN_00569321`, `FUN_00555dc2`); group speed and Haste/Slow in `unit_speed`; the regeneration job
   vs its `tick & 3` test (`FUN_0052bbb7`, `0x50fc5a`); the group-AI pass at `tick & 15 == 6` (`FUN_0056fe4d`).
+- Pathfinding (H2) [simulation §7](engine/simulation.md#open-questions): friendly-unit yield/swap `FUN_0056fc69`, live-layer stamps
+  (`FUN_0055c2ce`, `FUN_005589ab`), follow-target `FUN_00557f08`/`FUN_0055574d`, unreachable feedback `FUN_005052d2`.
 - Phantom units (9 on blocked cells, never created by the server) and HP-0 units: engine keeps and draws them; decide with the phase H sim. [architecture §9](engine/architecture.md#9-world-state)

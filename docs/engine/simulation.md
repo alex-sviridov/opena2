@@ -227,6 +227,161 @@ and actions (it is never reset, CONFIRMED). The unit is drawn from its server po
 6. **Diagonal vs straight cost**: diagonal cells take `ceil(256 / trunc(v·0.707))` ticks, 1.47× a
    straight cell at v = 18 although the cell distance is 1.41×.
 
+## 7. Pathfinding (phase H2)
+
+Code: `engine/sim/pathfinding.py` (pure planners), `engine/sim/movement.py` (`MoveTo`, the driver). All
+facts below were read in the GOG `allods2.exe` with REA unless marked **INFERRED**. The path-finder object
+(`this` of `FUN_0054d76e`) owns 256x256 grids: costs at `+0x0000` (byte), **static layer** `+0x10000`,
+**live layer** `+0x20000` (static + dynamic stamps), distance field `+0x30000` (u16, `0xFFFF` = unvisited),
+frontier lists, and the config below. Cell index = `y * 256 + x`; the 8-cell map border is blocked in
+the layers, so a plan never leaves the map.
+
+### 7.1 The search (CONFIRMED `FUN_0054d76e`, wrapper `FUN_0054d72d`)
+
+It is **not A\***: no heuristic, no priority queue. It is a **label-correcting wave fill** over a distance
+field, then a **backward walk** from the target. `FUN_0054d72d(unit, tx, ty, mode, follow)` reads the start
+cell from the unit's position (`FUN_0054ffb0/c0`) and calls `FUN_0054d76e(start, target, mode, follow)`.
+`mode != 0` is the **static** plan, `mode == 0` the **dynamic** one.
+
+```
+dist = max(|dx|, |dy|)                             # Chebyshev (FUN_00551463)
+start == target -> nothing (list left empty)
+field[start] = 0; frontier X = [start]; it = 0
+while field[target] == 0xFFFF and X non-empty and it < limit:
+    Y = []; for c in X: expand(c) appending improved cells to Y     # half step 1
+    X = []; for c in Y: expand(c) appending improved cells to X     # half step 2
+    it += 2
+expand(c): for each of the 8 neighbours n not blocked:
+    new = field[c] + step(c, n)
+    if new < field[n]:  field[n] = new; append n         # strict, a cell can be appended again
+```
+
+| Variant | Condition | Expander | Block layer | Order of the 8 neighbours | `limit` |
+|---|---|---|---|---|---|
+| static, size 1 | `mode != 0`, size (vtable `+0x1c`) == 1 | `FUN_0055d010` / `FUN_0055d830` | `+0x10000` | (-1,-1) (+1,-1) (-1,+1) (+1,+1), then (0,-1) (-1,0) (+1,0) (0,+1) | `dist + min(StaticScanAhead, dist>>2)`; **1000 (unbounded) when the owner's `+0x2c` is 0 (the human player) and `FUN_0055c440(target)` is passable** |
+| static, sized | `mode != 0`, size > 1 | `FUN_0055c6f0` / `FUN_0055c910` | `+0x10000`, footprint test `FUN_0055c440` | x outer -1..+1, y inner -1..+1 (self included, never improves) | `dist + StaticScanAhead` |
+| dynamic, size 1 | `mode == 0`, size 1 | `FUN_0055e050` / `FUN_0055e870` | `+0x20000` | as static size 1 | `dist + min(DynamicScanAhead, dist>>2)` |
+| dynamic, sized | `mode == 0`, size > 1 | `FUN_0055cb30` / `FUN_0055cdf0` | `+0x20000` | as static sized | `dist + DynamicScanAhead` |
+
+- Bodies of the A/B twins and of the size-1 / sized pairs are identical apart from list and layer offsets
+  (compared instruction by instruction); the sized expanders were read in `FUN_0055c6f0`/`FUN_0055c910`, the
+  dynamic ones are INFERRED to be the same code on the live layer (offset `+0x20000` read in `FUN_0055e050`).
+- A cell is blocked when `layer[cell] & mask != 0`; `mask` = mover byte `+5` (0x41 walker, 0x44 ghost/bee, 0x82
+  flyer, [map part 3](../formats/map.md)). A sized unit tests a `size x size` footprint with the neighbour as
+  its top-left cell (`FUN_0055c440`: cells `(x + i, y + j)`).
+- **No corner rule**: a diagonal step tests only its own target cell, so the unit may cut a corner between two
+  blocked cells (CONFIRMED by the code; the walk itself does not check either).
+- **Step cost**: straight `+2`, diagonal `+3`. When the unit's movement class (vtable `+0x20`, `FUN_0055f330`) is
+  1 (walker) the cost layer is used instead: straight `+c`, diagonal `+c + (c >> 1)` with `c` = the cost byte of
+  the **entered** cell (`map.reg` terrain costs, [map part 3](../formats/map.md)). Heights never enter.
+- The field is cleared per search (a window of `limit * 257 + 512` indices around the start for size 1, the whole
+  field for sized units; the window is wide enough that stale values are never read). The wave is a BFS by
+  *levels* (`it` counts levels, 2 per loop), not by cost: a cheaper route found later still lowers a label
+  (re-appended), but the search stops after `limit` levels. Both half steps run before `field[target]` is tested.
+- **Config** (`map.reg` `[Path Finding]`, constructor `0x5543d9`-`0x5545d6`, defaults): SpeedMultiplier 8,
+  StaticScanAhead 5 (`+0x58584`), DynamicScanAhead 3 (`+0x58588`), StaticRefreshRate 16 (`+0x5858c`),
+  DynamicRefreshRate 32 (`+0x58590`), DynamicByStaticLookup 3 (`+0x58594`), StaticIsntNeeded 5 (`+0x58598`).
+
+**Extracting the path** (`FUN_0054e58c` static, `FUN_0054e886` dynamic; the code is identical): starting at the
+end cell `e` (the target, or the fallback below), repeat until `cur == start` (at most 1000 steps, else the plan is
+dropped): look at the 9 cells `cur + (dx, dy)`, dx outer -1..+1, dy inner -1..+1, inside `[8, size + 8]`; an
+unvisited one is skipped. Orthogonal or self: `cand = field[n] + (walker ? cost[cur] : 2)`, taken when
+`cand <= best` (**ties go to the later cell**); diagonal: `cand = field[n] + (walker ? c + c>>1 : 3)`, taken when
+`cand < best` (**strict**). `cur += step`. Cells are pushed at the head of the list (`FUN_0055f170`), the start
+cell last and then popped (`FUN_0055f110`), so the list reads first step ... end cell. The tie rule decides
+which of two equal routes is walked: the walk goes target -> start and prefers, among equal costs, the *last*
+orthogonal neighbour in (dx, dy) order and the first-best diagonal.
+
+**Unreachable target** (`field[target]` still `0xFFFF`): `FUN_005585f4(unit, 0, target, radius)` scans rings
+`r = 1 .. radius - 1` around the target (per `o = -r .. r`: cells (+o, +r), (+o, -r), (+r, +o), (-r, +o)) for the
+visited cell with the **smallest field value** (first one in scan order wins ties), stops at the first ring
+that has any, returns 0 when none. So the unit walks to the reached cell *cheapest from itself* within the
+first ring around the target that the wave touched, not the one nearest the target. Static: `radius = dist>>2 + 4`;
+dynamic without follow target: 8; dynamic with a follow target: `FUN_00557f08` (open). No cell: the list stays
+empty (the order sees `mover+0x98 = 1`). The static branch also calls `FUN_005052d2(1, 0, owner)` (a
+notification, probably the "can't get there" feedback) when the fallback cell is more than 1 cell from the
+target (more than 2 when `FUN_00559bc9(target)` is non-zero), and a clause for unit class 0x12 on order 5
+(`FUN_00556f56`, `FUN_0056ac5b`) rewrites a range field of the brain: feedback and range logic, not routing (open).
+
+### 7.2 Two layers: static plan, dynamic hops (CONFIRMED `FUN_00555411`, `FUN_00555dc2`)
+
+The unit owns two lists (`+0x1c8` static, `+0x1e4` dynamic). The mover consumes the **dynamic** list
+(`FUN_00555c7e` peeks it; empty = a turn step); the static list is the long plan.
+
+Move order entry (wrapper `0x56e4b0` in the Brain function `FUN_0056dca2`): `mover+0x6c = 1`; if `mover+0x74`
+(last target) != the order's target cell then `mover+9 = 0xFF` (force a re-plan); then `FUN_00555411(target, arrive)`.
+
+`FUN_00555411` runs every tick:
+1. Not at a cell centre -> `FUN_00555b38` (continue the step). Nothing else.
+2. At a centre, `arrive < dist(cell, target)`: `mover+0x78 += 1` (ticks since the last hop plan), then
+   **static re-plan** when `mover+0x74 != target` or `mover+9 > StaticRefreshRate`: `FUN_0054d72d(target, mode 1)`
+   into the static list, `mover+0x90 = 0`, `+0x74 = target`, `+0x76` = last cell of the static list (own cell and
+   `+0x98 = 1` when empty), `+9 = 0`, dynamic list cleared.
+3. `cell == mover+0x76` -> `mover+0x90 = 1` (arrived; the brain ends the order, [open question 1](#open-questions)).
+4. Otherwise, if the dynamic list is empty or `mover+0x78 > DynamicRefreshRate`: **hop re-plan**. `next` = the
+   static list head if it is adjacent (`FUN_00558f64`). If `next` exists and its footprint is blocked in the live
+   layer (`FUN_0055c5a0`), `FUN_0056fc69` decides whether to wait for the blocker (human-owned units only, see
+   7.4). Otherwise `FUN_00555dc2`: with `n` = static list length and `d` = Chebyshev distance to its head,
+   goal = the static tail if `n <= StaticIsntNeeded`; else the head if `d > DynamicByStaticLookup`; else the element
+   `DynamicByStaticLookup` places behind the head. `FUN_0054d72d(goal, mode 0)` fills the dynamic list; if that
+   list is empty and the goal was the tail `+0x98 = 1`; if `n > 0` and `d <= DynamicByStaticLookup` the static head
+   is popped. Then `mover+9 += 1`, `mover+0x78 = 0`.
+5. `FUN_00555c7e`: start the next step from the dynamic list (turn first if needed, §4).
+6. `arrive >= dist` and `arrive != 0` -> `FUN_00556da2` (stop); with `arrive == 0` nothing happens at dist 0.
+
+A **blocked step is not detected during a step**: the unit walks its dynamic list; units entering those cells
+are noticed only at the next hop re-plan (list empty or 32 ticks). `FUN_0055574d` is the same driver for a
+follow target (re-plan every `len/3 + 1` consumed waypoints, StaticIsntNeeded gate; open).
+
+### 7.3 Engine implementation (DECISIONS)
+
+- `plan_static(grid, start, target, size, walker, ..., human)` and `plan_dynamic(...)` are pure functions of a
+  `PathGrid` (blocked bool grid already masked for the mover, cost grid or `None`, `size`) and return a
+  `PathResult(cells, searched, found, fallback)`; `searched` = the cells that received a label, in the order
+  they were first labelled (debug overlay). No pygame, no world mutation.
+- `blocked` for the static plan = `World.block & MOVE_MASK[move_type]`. **INFERRED**: the exe's static layer
+  (`+0x10000`) equals the block layer without structure stamps (`FUN_00550a96` writes `+0x20000`, the cells
+  `FUN_0055c2ce` test the `0x20` bit of `+0x10000`); the engine's block layer includes structures, so structures
+  block both plans. Impact: a structure raised after load is not visible to the exe's static plans, only to hops.
+- Live layer for hops = the static grid plus the footprint (`size x size` from the cell) of every **other**
+  living unit and the cell a walking unit is entering. **INFERRED** (the stamp bits of `FUN_0055c2ce` are not
+  decoded); the unit's own footprint is released before planning, as the exe does (`FUN_0055be86` mode 2).
+- `MoveTo(unit_id, x, y)` is the engine-level move order (order 1); the click mapping is H3. It follows steps
+  1-6 above with the unit's `Mover` carrying `dest (+0x74)`, `tail (+0x76)`, `consumed (+9)`, `since_hop (+0x78)`,
+  `arrived (+0x90)`, `failed (+0x98)`, `static_path`; `Unit.path` is the dynamic list. An arrived or failed unit
+  returns to order 0 / state 0 on the next centre tick (as `FollowPath` does).
+- `FUN_0056fc69` (yield/swap of a blocking friendly unit) is **not modelled**: the unit re-plans around the
+  blocker (what the exe does for computer-controlled units and when the blocker cannot yield).
+- Performance and search statistics: see 7.5.
+
+### 7.4 Not decoded (open, see Open questions)
+
+`FUN_0056fc69` (yield / swap places, human units), the live-layer stamps (`FUN_0055c2ce`, `FUN_0055c1fe`,
+`FUN_00550a96`, `FUN_005589ab`, `FUN_00558aab`, `FUN_00559c28`), `FUN_00557f08` (follow-target fallback),
+the unreachable feedback `FUN_005052d2`, and which pop empties the dynamic list in `FUN_00555b38`.
+
+### 7.5 Measured
+
+Filled in by `tools/bench_pathfinding.py` (see Open questions 5): worst-case search on the largest campaign
+map. Golden route hashes: `tests/golden.json["paths"]`.
+
+### 7.6 VERIFY IN GAME (pathfinding)
+
+1. **Corner cutting.** Two blocked cells touching at a corner (e.g. two trees on a diagonal): order a walker
+   through the diagonal gap. Predicted: it squeezes through (no corner rule); a 2-cell-wide pair of trees at
+   (x, y) and (x+1, y+1) lets a unit at (x+1, y) go to (x, y+1).
+2. **Equal routes.** On open grass from (0,0) to (4,2) the predicted route (walker, uniform cost) starts
+   with diagonal steps first or last: see `tests/test_pathfinding.py::test_open_ground_route` and compare the
+   original; this fixes the tie rule of 7.1.
+3. **Unreachable target.** Order a walk to the middle of a lake: the unit should stop on the shore cell that was
+   cheapest to reach among the first ring around the target, not the cell closest to it.
+4. **Search limit.** An AI (computer) unit ordered round a wall longer than `dist + min(5, dist/4)` levels stops
+   short at the fallback cell; the same order for the human player's unit walks all the way (limit 1000).
+5. **Re-plan.** Walk 40 cells and place a unit on the road ahead: the walker should re-route only at the next hop
+   re-plan (up to 32 ticks later), possibly walking into the new blocker before that.
+6. **Road preference.** Walker cost = terrain cost: a road (cost 6) beside grass (8) should attract the route
+   when it adds at most a few cells.
+
 ## Open questions
 
 1. Waypoint removal from the path list and the exact tick the order ends after arrival. Known: the
@@ -239,3 +394,10 @@ and actions (it is never reset, CONFIRMED). The unit is drawn from its server po
    `server tick & 3 == id & 3`: the interaction needs a check in phase I
    ([unit-struct §3](unit-struct.md)).
 4. The group-AI pass at `tick & 15 == 6` (`FUN_0056fe4d`): phase I and H3.
+5. Unit yield / swap of a blocking friendly unit (`FUN_0056fc69`, human-owned units only; waits with brain
+   `+8 = 10`) and the live-layer stamps: which bits `FUN_0055c2ce` / `FUN_0055c1fe` / `FUN_005589ab` /
+   `FUN_00559c28` write, and whether `+0x10000` really lacks the structure stamps (§7.3). H2 follow-up.
+6. Follow-target planning: `FUN_00557f08` (fallback with a follow target) and the driver `FUN_0055574d`.
+7. The unreachable feedback `FUN_005052d2` / `FUN_00559bc9` and the class-0x12 clause (`FUN_00556f56`).
+8. Which routine pops the dynamic list head during a step (`FUN_00555b38` / `FUN_00554fd2`); the engine pops
+   it at the step start, as `FollowPath` does.

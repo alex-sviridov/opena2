@@ -121,7 +121,7 @@ Offsets from the constructors 0x50d493, 0x50dc2b, init 0x50e173, copy 0x50e48e (
 | +0x1a8 | ~0x18 | object (ctor 0x59f003) | UNKNOWN |
 | +0x1c0 | 4 | ptr **Mover** (0xb4 bytes, ctor 0x551346, zeroed then +5=0x41, +8=5, +9=0xff, +0xa=0x10); +0 and +1 are facing bytes (init `0x40+rand(0x80)`, 0x50e2ac), +0xa turn rate (monsters param 9; humans: the recompute `FUN_0051366b` copies the low byte of the speed `+0x8c` at `0x513ffc`-`0x514005`, simulation.md 4.3) | CONFIRMED init; semantics partly INFERRED |
 | +0x1c4 | 4 | ptr **Brain/AI** (0xb8 bytes, ctor 0x569003): +8 AI mode (1..15, jump table 0x56e470), +9 current order (1 attack, 2 cast, 3 move, other -> state 0x1b), +0x15 retry counter, +0x2 word, +0xb0 word pending dest (x lo, y hi), +0x5c target, +0x71=1, +0x16=0xffdc | CONFIRMED order dispatch 0x56dd7d-0x56dfff; field meanings INFERRED |
-| +0x1c8, +0x1e4 | 0x1c | two arrays of 10 (ctor 0x5420f0(10)); INFERRED path ring / waypoints | INFERRED |
+| +0x1c8, +0x1e4 | 0x1c | two linked lists of u16 cells (ctor 0x5420f0, block size 10): `+0x1c8` static path, `+0x1e4` dynamic path; `[list+4]` head, `[+8]` tail, `FUN_0055f170` push-front, `FUN_0055f110` pop head, `FUN_0055f0d0` peek head, `FUN_0055f0f0` peek tail ([simulation §7](simulation.md#7-pathfinding-phase-h2)) | CONFIRMED (asm) |
 | +0x200 | 4 | ptr 0xc-byte object (ctor 0x54f955) | UNKNOWN |
 | +0x204 | 4 | dword | UNKNOWN |
 | Human only: +0x208..+0x23b | 13 x4 | equipment slot pointers (zeroed by 0x5121e1 loop <0xd) | CONFIRMED (size/loop) |
@@ -238,7 +238,7 @@ Speed source: `FUN_0055915a`: group byte (creature+0x70 -> +0x3c -> +0x44) if no
 1. `FUN_00554fd2` (above). 2. If the cell changed: `mover+0x72 = FUN_0055687d(...)`.
 3. If now at centre: clear +0xa8/+0xaa/+0xac; re-reserve cells (`0055be86(c,0,2)` then `(c,0,1)`); then a cell-table lookup (`FUN_0055f3e0(cell)` in a table at world+0x5402c) and, if the entry byte at world+0x54060 == 0x17, `FUN_0055a96c(creature, b+0x54064, b+0x54065)` (I: teleport/portal-like effect; not traced).
 `FUN_00555c7e` (start next step, called by the move drivers when at centre and not yet at the target):
-- path list (creature+0x1c8?, I: the 10-entry ring built by the pathfinder `FUN_0054d76e`) non-empty: `+6 = front waypoint` (peeked: `FUN_0055f0d0` returns the head element's address, nothing is removed there), `+0x70 = my cell`, `+0x9c=0`, reserve target cell (`0055be86(c,+6,0)`), `+1 = FUN_0054f618(c, +6)` (target facing = dir8*32 from sign(dx),sign(dy) of the cell-centre delta).
+- path list (creature+0x1c8?, the linked lists built by the pathfinder `FUN_0054d76e`, [simulation §7](simulation.md#7-pathfinding-phase-h2); `+0x1c8` static, `+0x1e4` dynamic) non-empty: `+6 = front waypoint` (peeked: `FUN_0055f0d0` returns the head element's address, nothing is removed there), `+0x70 = my cell`, `+0x9c=0`, reserve target cell (`0055be86(c,+6,0)`), `+1 = FUN_0054f618(c, +6)` (target facing = dir8*32 from sign(dx),sign(dy) of the cell-centre delta).
   If `+0==+1`: `FUN_00559195(c, mycell, facing)` computes (+0xa8,+0xaa,+0xb0,+0xb1,+0xae), `+0xac=0`, first `FUN_00554fd2` immediately. Else `FUN_00556454(c, +1)` starts a turn (below); no movement this tick.
 - path list empty: `FUN_005551ef` (just finish turning).
 Turn (C 00556454/005551ef/00555f86): angle d = (+0 - +1) folded to 0..128. If no turn is in progress (+0xa0==0) and d<=0x20 (45 deg): facing := target instantly, +0xa4=1. Otherwise `005551ef`: if d < rate: facing := target; else facing += rate toward the target (clockwise if (f+d)&0xff==target else counter-clockwise); +0xa4 = ceil(d/rate); +0xa0=1; +0x9d++; +0xa0=0 once equal. Movement starts on a later tick once +0==+1. `00555f86` variant (turn-to-cell): instant if d<=0x20.
@@ -381,7 +381,7 @@ the 13 equipment slots (human `+0x208`). Id tables: units.reg, data.bin groups 3
 
 ## Open questions
 
-- Not traced: the path finder `FUN_0054d76e` (A*) and occupancy grid (`0x55c1fe`, `0x55c2ce`), the group
+- Not traced: the occupancy stamps (`0x55c1fe`, `0x55c2ce`; the path finder is [simulation §7](simulation.md#7-pathfinding-phase-h2)), the group
   AI (`0x5691xx`–`0x56c9xx`: `0x56c840`, `0x56a981`, `0x56b059`, `0x56f0bb`), damage resolution
   (`0x516ceb`, `0x516ea0`), the cast request consumer `0x57b210`, orders 0x16, 0x18, 0x19, 0x1a, the
   cell table portal case (`0x55f3e0`, type 0x17), the wire format of `FUN_005040c4`.

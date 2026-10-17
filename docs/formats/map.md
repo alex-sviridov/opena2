@@ -734,7 +734,7 @@ item `+0x1c` price: [items](../data/items.md).
   whether section 7 names structures (section 11 does: keyed by structure uid, CONFIRMED `FUN_00561422`).
 - Block bits 3–7 and the dynamic stamping (`FUN_00550a96`,
   `FUN_0055c500`), the per-class `movementType` result (vtable `+0x20`),
-  and the search itself (`FUN_0054d76e`, `FUN_0055d010`): phase H.
+  (the search itself is answered: [simulation §7](../engine/simulation.md#7-pathfinding-phase-h2)).
 - Section 7 (trigger lists, 0x31c-byte records), 10, 11, 12 (the reader `FUN_00534ad4`
   cases 7, 10–12 are in the exe).
 - Part 5: the event classes of `behaviour` bits 1, 2, 4 (`FUN_005303ed`); section 9 per-cell
