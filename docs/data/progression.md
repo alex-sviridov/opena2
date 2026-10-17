@@ -121,7 +121,8 @@ fight the same sum). The kill credit is also the only place that updates the rep
 the victim's type, or appends it; at 5 entries the oldest is dropped), and it is skipped entirely when `spell != 0` and the killer is not a mage.
 A mage that kills with melee (`spell == 0`, school 0) gets no XP from the award (mages need an explicit school) but still updates the list.
 The same death branch also bumps the owner's kill counters (`player+0xa48` monster kills, `+0xa4c` player kills) and, for a monster killed
-by a human, runs killer slot `0x50(victim)` (not traced). CONFIRMED (`0x52b709`-`0x52b84a`, `0x512fcb`). **`Player+0x2c` = computer-controlled** (server player object): set to 1 at creation and cleared to 0 only for record 1 when
+by a human, runs killer slot `0x50` (`FUN_0051327b`, same function in both human vtables): its whole body is guarded by `[0x6044c4+0x74] != 0`, so it is a
+no-op in single player (a network session notifies via `FUN_00516238`, out of scope). CONFIRMED (`0x52b709`-`0x52b84a`, `0x512fcb`). **`Player+0x2c` = computer-controlled** (server player object): set to 1 at creation and cleared to 0 only for record 1 when
 `[0x6044c4+0x74] == 0` (single player, `0x5613d0`-`0x5613ec`). It gates the damage credit (`FUN_00513128`, `0x5131a3`: the **victim's** owner must
 be computer-controlled, so hitting a human-owned unit earns no per-damage XP; the kill and cast credits do not test it) and the client level-up
 notification (`FUN_005128cb`: sent only when the **killer's** owner is the human, `+0x2c == 0`). CONFIRMED.
@@ -199,5 +200,4 @@ the hero on map 40 and of all humans/monsters (`Unit.skills/xp/xp_total/best_sch
 
 ## Open questions
 
-- Killer slot `0x50(victim)` called just before the kill credit at `0x52b72e` (INFERRED: attacker bookkeeping). Start: `FUN_0052b459`.
 - Hero state between campaign maps (saves, `.a2c`). Start: `FUN_00514920`.
