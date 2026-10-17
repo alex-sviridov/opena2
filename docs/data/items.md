@@ -271,7 +271,7 @@ that (<= 100); stats `max(that, affectMin)`; damageFire..Astral: min `rnd1(min(m
 **magic_cap readers** (`+0x48`, short; scan of all word reads in the exe): the restricted pool filter (`0x524b0d`), `FUN_00526b5d` and
 `FUN_00526ec4` (capacity of every roll, reduced by the modifiers' cost), the wire decoder `FUN_004ed5f5` (after the effects:
 `+0x50 = (used > magic_cap x 3 / 2 && class != 14)`, then `magic_cap -= used`), the mission reward `0x5325ee` (when four of the
-five hero attributes exceed 75 and `v > 999,999`, or `FUN_0053dd90` holds: each equipped item with modifiers and capacity left gets
+five school skills exceed 75 and `v >= 1,000,000`, or `FUN_0053dd90` holds: each equipped item with modifiers and capacity left gets
 its first modifier raised by `max(1, v x step / 8,000,000)`, at most `step` and `capacity / cost`, only while the value is below its
 `affectMax`; step 1 for body, mind, reaction, spirit and the kinds 16-19, 8 for health, mana, to hit, defence, damage, castSpell
 charges and the damage kinds, 20 for the regenerations, 5 for protections and skills). Not read by the hero recompute, spell casting

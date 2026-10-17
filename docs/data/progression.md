@@ -126,16 +126,20 @@ reached only from the three credit routines (`0x513046` kill, `0x5131e6` damage,
 other `call [reg+0x64]` sites belong to view, network and MFC classes). `Scenario.dll` exports 18 functions, none touching a unit
 (locations, shops, inns, `ScenarioGetVar`/`SetVar`, save/load) and imports only system DLLs, so it cannot award XP. The quest payout is an item
 upgrade whose value is *derived from* the hero's XP total `+0x130` ([items §14](items.md#14-quests-and-the-item-upgrade-message-0x38)), never
-an XP gain. CONFIRMED (call-site scan of the full disassembly, export/import tables). Other readers of the skills: `0x530577` (picks the hero's best school, spawn/encounter
-strength `3 * best - 50 .. 3 * best + 75` against a unit's `FUN_00510a26`) and `0x533768` (counts skills > 75, needs 4 and gold < 1 000 000):
-roles INFERRED. `FUN_00514f59(school, level)` builds a level-L hero (school skill L, Shooting L/2, a school staff or weapon) for
+an XP gain. CONFIRMED (call-site scan of the full disassembly, export/import tables). Other readers of the skills: the quest generator `FUN_005303ed` loops `best = max(skill_1..skill_5)` of the quest hero (`0x530577`,
+CONFIRMED) and keeps as quest targets the candidate units whose **strength** `S` satisfies `3*best - 50 < S < 3*best + 75` (`0x5307ac`, `0x530cf9`,
+`0x530fc8`, `0x531524`, `0x531800`; role as target selection for the kill/hunt quests INFERRED). `S` = `FUN_00510a26(unit)` = `defence (+0xbe)`
+`+ 25` if MovementType (`+0x4a`) is 3 `+ 50` if max mana (`+0x9c`) is non-zero (CONFIRMED). The payout `FUN_005325ee` counts the schools with skill
+> 75 (`0x533768`); with at least four of them and a reward value `v >= 1 000 000` (or `FUN_0053dd90`) it upgrades the equipped items
+([items §11](items.md#11-random-generation)). The notes "needs 4 and gold < 1 000 000" and "four of the five hero attributes" in earlier drafts were wrong:
+these are the five **school skills** and the reward value. `FUN_00514f59(school, level)` builds a level-L hero (school skill L, Shooting L/2, a school staff or weapon) for
 `0x491d0c`/`0x4f2b04` (hero creation in the UI): not on the campaign path.
 
 ## 5. Skill table
 
 | Skill | Name | Affects | Use sites |
 |--:|---|---|---|
-| 0 | general | no level-up. Copied to the to-hit bonus `+0xe6` for non-melee weapon classes (`0x529200`); effect kinds 26/32 add to it; no other reader found (INFERRED role: general hit chance) | `0x529200` |
+| 0 | general | no level-up. Copied to the to-hit bonus `+0xe6` for non-melee weapon classes (`0x529200`); effect kinds 26/32 add to it; a scan of every word read at `+0xa8` in the creature code (`0x5114f3`-`0x5325ee`) found no other reader; template heroes have 0 (INFERRED: vestigial for humans, it is the monsters' to-hit copy) | `0x529200` |
 | 1 | Blade / Fire | melee to-hit +3, damage_min +1/5 per point with a blade (p5 = 1); level of Fire spells (`skill - 30 + Mind`) | `0x513dc0`, `0x513df0`, `0x511927`, `0x5194a7`, `0x519e69` |
 | 2 | Axe / Water | same with axes (2); Water spells | same |
 | 3 | Bludgeon / Air | same with bludgeons (3); Air spells | same |
@@ -191,6 +195,5 @@ the hero on map 40 and of all humans/monsters (`Unit.skills/xp/xp_total/best_sch
 ## Open questions
 
 - Killer slot `0x50(victim)` called just before the kill credit at `0x52b72e` (INFERRED: attacker bookkeeping). Start: `FUN_0052b459`.
-- Role of skill 0 (general) beyond the to-hit bonus copy at `0x529200`; roles of `0x530577` / `0x533768` (encounter strength?). Start: `FUN_00510a26`.
 - What `Player+0x2c` means (gates the damage credit `0x5131a3` and the level-up message `0x512a..`). Start: `FUN_00513128`.
 - Hero state between campaign maps (saves, `.a2c`). Start: `FUN_00514920`.
