@@ -113,7 +113,7 @@ Offsets from the constructors 0x50d493, 0x50dc2b, init 0x50e173, copy 0x50e48e (
 | +0x140 | 4 | spellbook object (0x1c bytes, ctor 0x53a600; spells added by 0x51c29e) created if maxMana>0; also built for carriers | CONFIRMED 0x514abf-0x514b00 |
 | +0x144 | 4 | stat-dirty mask, one bit per stat class set by effect application (§11); AI order 4 waits while bit 0x40000 is set (0x56dd39) | CONFIRMED |
 | +0x148 | 4 | dword (view +0x148 = 16 bit) | UNKNOWN |
-| +0x14c | 2 | **server/type id** (data param "serverID": human 24, monster 55; values >10000 reduced by (v/10)%1000) | CONFIRMED 0x4a4b8f, 0x4a4bb2, 0x4f3420 |
+| +0x14c | 2 | **server/type id** (data param "serverID": human 24, monster 55; humans only: values >10000 reduced by (v/10)%1000, monsters stored raw) | CONFIRMED 0x4a4b8f, 0x4a4bb2, 0x4f3420 |
 | +0x150 | 4 | dword 0 | UNKNOWN |
 | +0x154 | 0x40 | zeroed buffer | UNKNOWN |
 | +0x194,+0x198,+0x19c,+0x1a0 | 4 each | scenario flags from mapunit+0x50 bits 0,2,1,3 (file+16); +0x1a0 also set to 1 at 0x51a7cf/0x560c20 | CONFIRMED set. `+0x1a0` = summoned: no loot (`FUN_00510a70`), no XP (`FUN_005128cb`), set by summon/clone spells (`FUN_00519db8`). The other three only gate candidates of the event generator `FUN_005303ed` (not AI). See [map.md](../formats/map.md#units-section-6) |

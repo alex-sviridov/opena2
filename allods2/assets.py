@@ -16,6 +16,7 @@ class AssetCache:
         self._tileset = None
         self._sprites = {}
         self._databin = None
+        self._unit_stats = None
         self._objects_reg = None
         self._structures_reg = None
         self._object_sets, self._structure_sets = {}, {}
@@ -40,6 +41,13 @@ class AssetCache:
             from .databin import databin
             self._databin = databin(self.fs)
         return self._databin
+
+    def unit_stats(self):
+        """The unit and monster stat table (`formats.unitstats.UnitTable`), loaded once."""
+        if self._unit_stats is None:
+            from .formats import unitstats
+            self._unit_stats = unitstats.build(self.databin())
+        return self._unit_stats
 
     def objects_reg(self):
         """objects.reg records by ID with Parent inheritance (`anim.objects.load_object_records`)."""

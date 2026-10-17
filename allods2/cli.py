@@ -267,6 +267,18 @@ def res_extract(a):
     return 0
 
 
+def data_export(a):
+    import json
+    from .formats import unitstats
+    table = unitstats.load(as_fs(a.install))
+    os.makedirs(os.path.dirname(os.path.abspath(a.dest)), exist_ok=True)
+    with open(a.dest, "w", encoding="utf-8") as f:
+        json.dump(table.to_dict(), f, indent=1, sort_keys=True)
+    print("%d unit types (%d monsters, %d humans) -> %s" % (
+        len(table), len(table.of_kind("monster")), len(table.of_kind("human")), a.dest))
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python -m allods2", description="Allods 2 data tools.")
     groups = ap.add_subparsers(dest="group", required=True)
@@ -326,5 +338,11 @@ def main(argv=None):
     x.add_argument("source", help="ARCHIVE.res or an install directory")
     x.add_argument("dest")
     x.set_defaults(func=res_extract)
+    g = groups.add_parser("data", help="game database tables").add_subparsers(dest="cmd", required=True)
+    de = g.add_parser("export", help="write a table as JSON (units: monsters and humans from data.bin)")
+    de.add_argument("table", choices=("units",))
+    de.add_argument("dest")
+    de.add_argument("--install", default=INSTALL)
+    de.set_defaults(func=data_export)
     a = ap.parse_args(argv)
     return a.func(a)

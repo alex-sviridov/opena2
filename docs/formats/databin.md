@@ -133,7 +133,7 @@ CONFIRMED below), the labels being the authoring tool's columns.
 | 5 | `+0x98` | 24–28 | bytes `+0xcf … +0xd3` |
 | 6 | max mana `+0x9c` (`+0x9a`, `+0xa0`) | 29 | `+0xe` = units.reg type ID (Goblin_Pike 64) |
 | 7 | `+0x9e` | 30–32 | bytes `+0x4b` (palette variant, [units](units.md)), `+0x49`, `+0x4a` |
-| 8 | **speed** `+0x8c` | 33 | read, unused |
+| 8 | **speed** `+0x8c` | 33 | dyingTime (vtable +0x74 → timer `+0x6c`) |
 | 9 | **turn rate** `mover+0xa` | 34–36 | `+0x1c4` object `+0x40`, `+0x44`, `+0x71` |
 | 10 | `+0xa5` | 37 | `+0x1c` (also re-read by `FUN_00511959`) |
 | 11–13 | damage min, max, kind (`+0xb4`/`+0xb5`, `+0xb7`…`+0xba`) | 48–61 | `FUN_00511959`: 48–53 three (spell id, value) pairs (effects `FUN_0051906d`), 54 → `+0xaa … +0xb2` (five copies), 55 → `+0x14c`, 56 spell bit mask, 57–61 → `+0xaa … +0xb2` |

@@ -12,7 +12,7 @@ The company is legally entitled to recreate the game.
 - `allods2/formats/` decoded views of data files (`Map`); `allods2/alm.py` is the .alm container
 - `engine/` the game (world, sim, view, ui, `backend_pygame`; only the backend imports
   pygame-ce), built on the core; `allods2/assets.py` asset cache; docs/engine/
-- `docs/{formats,mechanics,...}/<name>.md` specs; each folder's README.md is its index
+- `docs/{formats,mechanics,data,...}/<name>.md` specs; each folder's README.md is its index
 - `allods2/common.py` `INSTALL` (`ALLODS2_INSTALL`), `game_fs()`, `as_fs()`, OUT
 - `tests/` · `tools/` thin CLIs over the package (`[INSTALL_DIR]` argument)
 - `samples/allods2_en_gog/` the GOG install (exe 1.01, ten `.res` archives)
@@ -186,4 +186,9 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   8-cell border, minimap flush at (W-160, 0); `run` always shows the interface, `screenshot --interface [--select]`; golden
   `["interface"]`. Selection is a per-object flag in the exe (engine: per-player tuple, DECISION); right click clears (DECISION).
   docs/engine/ui-layout.md, rendering.md §14, architecture.md §5, 8
-- Next: G3c (fonts). Also (docs/open-questions.md): town-scene animations, text conventions.
+- Unit stats (F1) done: the only source is data.bin groups 5 (monsters, `serverID` p55) and 6 (humans, p24);
+  `allods2/formats/unitstats.py` names all params (464 types, every map unit resolves), `AssetCache.unit_stats()`,
+  `Unit.stats`, `data export units`, `world-info --units`; REA: p33 = dyingTime, p34-36 AI thresholds, p37 XP
+  (killed `+0x1c`×0.5), p38-44 loot (chance, gold base+spread, item value range, flags), humans-only serverID
+  reduction; golden `["units"]`. docs/data/units.md
+- Next: F2. Also G3c (fonts). Also (docs/open-questions.md): town-scene animations, text conventions.

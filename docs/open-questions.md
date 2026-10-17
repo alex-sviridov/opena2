@@ -20,6 +20,10 @@ from both places when answered).
   `castSpell`/`damage*` modifier values (`FUN_0051f1c3`, `FUN_0051f072`).
   [databin](formats/databin.md#open-questions)
 
+- Unit stat table: damage kinds 1/2 → elements, protection/resistance scaling, negative damage spread
+  (`0x516f6f`); XP level thresholds (`FUN_005128ac`); item generator categories and `item[+0x1c]`
+  (`FUN_00525f67`); equipment strings → items, hero carry-over. [units](data/units.md#open-questions)
+
 ## Not started (from the reversing plan)
 
 - `.alm` triggers (sections 7, 10–12); the server reader `FUN_00534ad4` parses all of them

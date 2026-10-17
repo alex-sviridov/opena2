@@ -105,6 +105,7 @@ class Unit:
     group: int = 0                  # section 8 group index (1-based, 0 none): the carried items
     known: bool = True              # units.reg set and data.bin template both exist
     seq: int = 0                    # insertion order, the depth tie-break
+    stats: object = None            # allods2.formats.unitstats.UnitType template (None if unknown)
 
 
 @dataclass
@@ -484,29 +485,25 @@ class World:
         are kept with `known=False` and listed in `report.unknown_units`; an owner that is not
         a section 5 record is an error (the exe logs "Can't resolve player" and skips the unit,
         never the case in the 46 maps)."""
-        db = assets.databin()
+        types = assets.unit_stats()
         rep = self.report
         for rec in m.units:
             if rec.owner not in self.players:
                 raise ValueError("unit uid %d: owner %d is not a player" % (rec.uid, rec.owner))
-            tpl = fent.template(db, rec)
-            col = None
-            if tpl is not None:
-                col = db.columns("humans" if rec.is_human else "monsters")
-                col = [c.lower() for c in col].index("healthmax")
+            tpl = types.lookup(rec.is_human, rec.server_id)
             hp, hp_max = rec.hp, rec.max_hp
             if rec.is_human and hp_max != fent.NO_HP and hp_max == hp:
                 hp = hp_max = fent.NO_HP                    # FUN_00561bf9 0x562013: a hero at full HP = default
-            base = tpl.params[col] if tpl is not None else 0
-            cols = [c.lower() for c in db.columns("humans" if rec.is_human else "monsters")]
-            face = tpl.params[cols.index("face")] if tpl is not None else 1
-            move = tpl.params[cols.index("movementtype")] if tpl is not None else 1
+            base = tpl.hp_max if tpl is not None else 0     # map overrides replace the template value
+            face = tpl.face if tpl is not None else 1
+            move = tpl.movement_type if tpl is not None else 1
             hp_max = base if hp_max == fent.NO_HP else hp_max
             hp = hp_max if hp == fent.NO_HP else hp
             known = tpl is not None and assets.unit_set(rec.type) is not None
             u = Unit(UNIT_ID_BASE + rec.uid, rec.type, rec.owner, rec.x >> 8, rec.y >> 8,
                      rec.x & 255, rec.y & 255, unit_angle(rec.uid, facing), IDLE, 0, hp, hp_max,
-                     rec.uid, rec.server_id, rec.is_human, rec.behaviour, move, face, rec.squad, rec.group, known)
+                     rec.uid, rec.server_id, rec.is_human, rec.behaviour, move, face, rec.squad, rec.group, known,
+                     stats=tpl)
             self.add_unit(u)
             if not known:
                 rep.unknown_units.append((rec.uid, rec.type, rec.server_id, u.x, u.y))

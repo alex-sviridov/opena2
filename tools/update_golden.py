@@ -57,6 +57,15 @@ def golden_hash(spec, install=None):
     return World.from_map(open_map(spec, install), AssetCache(install)).dump_hash()
 
 
+def units_hash(install=None):
+    """SHA-256 of the units.json that `data export units` writes."""
+    import hashlib
+    from allods2.common import as_fs
+    from allods2.formats import unitstats
+    blob = json.dumps(unitstats.load(as_fs(install)).to_dict(), indent=1, sort_keys=True)
+    return {"sha256": hashlib.sha256(blob.encode("utf-8")).hexdigest()}
+
+
 def rgb_hash(rgb):
     return hashlib.sha256(rgb.tobytes()).hexdigest()
 
@@ -116,6 +125,7 @@ def main(argv):
     out["screenshots"] = shot_hashes(install)
     out["minimaps"] = minimap_hashes(install)
     out["interface"] = interface_hash(install)
+    out["units"] = units_hash(install)
     with open(GOLDEN, "w", encoding="ascii") as f:
         json.dump(out, f, indent=1, sort_keys=True)
         f.write("\n")

@@ -200,6 +200,10 @@ class FakeAssets:
     def objects_reg(self):
         return {1: {}, 2: {}}
 
+    def unit_stats(self):
+        from allods2.formats.unitstats import UnitTable
+        return UnitTable([])
+
 
 def test_from_map_ids_footprints_hp_and_unknown():
     from allods2.formats.objects import MapObject as Placed

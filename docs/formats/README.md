@@ -26,6 +26,8 @@ file) or INFERRED, with the routines they came from.
 | `world/data/data.bin` game database: records, monster/item/spell parameters, modifier text | [databin.md](databin.md) | CONFIRMED container (file consumed exactly); maps partial |
 | Animation: sources, unit layout, timing, `allods2/anim` API, whole-install check, combat handoff | [animation.md](animation.md) | CONFIRMED; 546 sets, 668/740 multi-frame files + 72 listed exclusions (47 town/world-map files open) |
 
+Data tables built on these formats: [../data/](../data/README.md).
+
 Open questions: [../open-questions.md](../open-questions.md). Mechanics:
 [../mechanics/](../mechanics/README.md). Install survey, binary triage,
 reversing plan: [../inventory.md](../inventory.md).

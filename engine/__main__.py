@@ -66,6 +66,17 @@ def world_info(a):
         print("  unit uid %d type %d serverID %d at (%d, %d)" % (uid, tid, sid, x, y))
     for kind, tid, x, y in r.unknown:
         print("  %s type %d at (%d, %d)" % (kind, tid, x, y))
+    if a.units:
+        for u in sorted(w.units.values(), key=lambda u: u.uid):
+            t = u.stats
+            if t is None:
+                print("  unit %d (unknown type, serverID %d) hp %d/%d" % (u.uid, u.server_id, u.hp, u.hp_max))
+                continue
+            print("  unit %d %s [%s] hp %d/%d mana %d speed %d turn %d scan %d dmg %s-%s def %d "
+                  "xp %s windup %d recovery %d" % (
+                      u.uid, t.name, t.kind, u.hp, u.hp_max, t.mana_max, t.speed, t.turn_rate, t.scan_range,
+                      t.get("damage_min", "-"), t.get("damage_max", "-"), t.defence, t.get("xp", "-"),
+                      t.windup, t.recovery))
     return 2 if (a.strict and r.unknown) else 0
 
 
@@ -149,6 +160,7 @@ def main(argv=None):
     i.add_argument("map")
     i.add_argument("--install")
     i.add_argument("--strict", action="store_true")
+    i.add_argument("--units", action="store_true", help="list each unit with its template stats")
     d = sub.add_parser("world-dump")
     d.add_argument("map")
     d.add_argument("dest")
