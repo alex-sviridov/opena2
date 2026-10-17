@@ -214,7 +214,7 @@ record whose uid equals the structure's. That list is empty in all 46 maps ([map
 maps would keep the defaults. `0x522767` (only when the shop list is empty, via `0x522d70` / `0x5228c1`; the latter returns 0 once the list
 holds 250 entries) generates each block and stamps each new item's `+0x4d` with the block index + 1. `FUN_00521d4c` picks the block an item
 returns to by its group byte `+0x44` (1 armour -> flag `0x1000000`, 2 weapon -> `0x400000`, 3-5 -> `0x4000000`). The branch
-`[0x6044c4 + 0x74] == 0` calls the null pointer `DAT_00627474` (never written: dead). The same loader gives the structure types 67-69,
+`[0x6044c4 + 0x74] == 0` (single player) calls `DAT_00627474` = `ScenarioGetShopAssortment` of `Scenario.dll` ([§13](#13-campaign-town-shops-scenariodll)). The same loader gives the structure types 67-69,
 99-101, 111-113 (`Multiplayer Inn 1-3` and the Kaarg / Druid ones) a class from the first 12-byte list (flag word: `& 2` value, `& 0x10`,
 `& 0x20`, `& 0x40`, `& 4`), and the types 70-75 (`Pointer`) a class from the second 12-byte list.
 
@@ -336,6 +336,46 @@ second operand is not class 1/2/7 the code clears the first key again instead of
 stack slot held from an earlier call (not recoverable statically). Ties between differently classed entries are therefore not reproduced;
 `loot_item` picks uniformly, so the distribution is unaffected.
 
+## 13. Campaign town shops (Scenario.dll)
+
+CONFIRMED by disassembly of `allods2.exe` and `Scenario.dll` (exports by ordinal; the exe takes them with `GetProcAddress` at
+`0x4818e7`, ordinal 15 into `0x627474`). In single player (`[0x6044c4 + 0x74] == 0`) the shop blocks of §11 do not come from a
+structure: `FUN_00522767` / `FUN_00521d4c` call the export `ScenarioGetShopAssortment` (`0x100037e8`), which returns
+`0x10037420 + 0x50 * town` with `town` = the index of the current location (`ScenarioEnterLocation` sets `0x10037560`). The record is
+the same four 20-byte blocks (`min`, `max`, `count`, `stack`, `flags`). Locations are `(type, index)` objects: type 2 = the three towns
+(index 1, 2, 3), type 1 = the missions (ids 10, 20, 21, 30-32, 40-43, 50-53, 60-63, 70-77, 80-87, 90-96, 100-103, 110; the tens are the main missions). The table is
+zero (BSS) until `ScenarioNewGame` (`0x100033be`) fills towns 1 and 2; `ScenarioSave` / `ScenarioLoad` copy it into the save. Town 0 has
+no record (all zero, never used).
+
+**Initial blocks** (`ScenarioNewGame`). `min 0` everywhere; `count` / `stack` and `flags` per block `b`:
+
+| Town | `max` | b0 | b1 | b2 | b3 |
+|---|---|---|---|---|---|
+| 1 | 1500 | 100 x 2, `0x1381cc03` | 100 x 2, `0x10418103` | 20 x 1, `0x28018100` | 20 x 1, `0x04000000` |
+| 2 | 5000 | 100 x 2, `0x1383c305` | 20 x 1, `0x2bc3c304` | 20 x 1, `0x04000000` | 100 x 2, `0x10438305` |
+
+(`count x stack`.) Flag meaning is §11: town 1 b0 = shields and armour (materials 0, 1, 10, 11, 14; qualities 0-1, 51 % plain), b1 =
+weapons (materials 0, 1, 8; qualities 0-1), b2 = staves with modifiers (material 8), b3 = books, scrolls and potions; town 2 adds
+qualities 0-2: b0 shields and armour, b1 everything with modifiers, b2 stock, b3 weapons.
+
+**Mission completion** (the function at `0x10001da5`, location id `n`; it runs the per-id case first, then if `n % 10 == 0` raises the
+chapter `C` by 10, `C` starts at 10, then applies the price caps below). Table effects of the cases:
+
+| `n` | Effect |
+|---|---|
+| 30 | town 2 flags: b0 `0x1383c22c`, b1 `0x2bc3c324`, b3 `0x10438324` |
+| 40 | town 2 flags: b0 `0x1387c26c`, b1 `0x2bc7c324`, b3 `0x10478264` |
+| 50 | town 3 is created: `min` 499 (b2: 0), `count x stack` 100 x 2 for b0 / b3 and 20 x 1 for b1 / b2, flags b0 `0x13c7d318`, b1 `0x2bc7d318`, b2 `0x04000000`, b3 `0x2bc042f0` (its `max` is already set by the caps) |
+| 60 | town 2 flags: b0 `0x1387c268`, b1 `0x2bc7c268`, b3 `0x10478260` |
+| 80 | town 2 flags: b0 `0x138752e0`, b1 `0x2bc752e0`, b3 `0x104702e0` |
+| 90 | town 2 flags: b0 `0x138772c0`, b1 `0x2bc772c0`, b3 `0x104722c0` |
+| other | none (10, 20, 31, 70, 100, 110 touch other state only) |
+
+Price caps by chapter `C` (every block of the named towns): `C = 30` town 2 `max` 10,000; 40: town 2 22,000; 50: towns 2 and 3 60,000; 60:
+150,000; 70: 400,000; 80: 800,000; 90: 1,500,000 and town 2 `min` 12,000 (b0, b1, b3); 100: 5,000,000 and town 2 `min` 40,000;
+110: 10,000,000. Town 1 never changes. One dialogue event raises town 3 b3 later: `ScenarioTalkTo` (`0x100032c0`) with code word `A`
+(low 16 bits) `= 0x2a3`, `B` (bits 16-27) `= 0x4e` ORs `0x80000` (quality 4) into town 3's b3 flags.
+
 ## VERIFY IN GAME
 
 - Price shown for a Common Iron Long Sword (600) and a Rare Bronze one (600), a Rare Mithrill Helm with `{defence=13}`.
@@ -353,5 +393,5 @@ stack slot held from an earlier call (not recoverable statically). Ties between 
   INFERRED: `+0x24` is written by the event handlers at `0x52f222` / `0x52f2d4` (event kind 8, 9: `(arg1 >> 16)^2 / 5`) and
   `0x52f386` (kind 10: `(arg1 >> 16)^2 >> 3`), each only when the record is still open (`FUN_00548510 == 0`); the senders of these
   event kinds and the meaning of `arg1 >> 16` are not traced. Left: how the upgrade step relates to the hero state kept between maps
-  (`FUN_00514920`, [units](units.md#open-questions)); where the campaign town shops get their stock (the exe's server shop above is
-  for the multiplayer shop buildings; `Scenario.dll` exports `ScenarioEnterShop`).
+  (`FUN_00514920`, [units](units.md#open-questions)); how the Scenario.dll mission-completion call is reached (whether
+  a lost mission also runs it; §13 assumes `ScenarioLeaveLocation` is called on completion only).

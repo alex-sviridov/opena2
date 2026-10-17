@@ -24,8 +24,8 @@ from both places when answered).
 ## Items
 
 - Mission reward `0x5325ee`: senders of the event kinds 8/9/10 that set the value `v` (record `+0x24`, handlers `0x52f222`,
-  `0x52f2d4`, `0x52f386`); where the campaign town shops get their stock (`Scenario.dll` `ScenarioEnterShop`; the exe shop object
-  at `0x522767` serves only the multiplayer shop buildings).
+  `0x52f2d4`, `0x52f386`); whether a lost mission also runs the
+  `ScenarioLeaveLocation` chapter update that raises the town shop price caps ([items §13](data/items.md#13-campaign-town-shops-scenariodll)).
   [items](data/items.md#open-questions)
 
 ## Spells
