@@ -7,7 +7,7 @@
     python -m allods2 map info MAP [--install DIR]
     python -m allods2 map render MAP DEST.png [--layers terrain objects structures units items | all] [--relief] [--dirt]
                                  [--rect X Y W H] [--install DIR]
-    python -m allods2 data export units|items|spells DEST.json [--install DIR]
+    python -m allods2 data export units|items|spells|progression DEST.json [--install DIR]
     python -m allods2 res ls [PATH] [--install DIR]
     python -m allods2 res list ARCHIVE.res
     python -m allods2 res extract INSTALL|ARCHIVE.res DEST
@@ -281,6 +281,10 @@ def data_export(a):
         table = spelldefs.load(fs)
         msg = "%d spells (%d empty records), %d with descriptions -> %s" % (
             len(table), table.extra_records, sum(1 for d in table if d.description), a.dest)
+    elif a.table == "progression":
+        from .formats import progression
+        table = progression.load(fs)
+        msg = "%d thresholds, %d hero templates -> %s" % (len(table.thresholds), len(table.hero_templates), a.dest)
     else:
         from .formats import unitstats
         table = unitstats.load(fs)
@@ -353,8 +357,8 @@ def main(argv=None):
     x.add_argument("dest")
     x.set_defaults(func=res_extract)
     g = groups.add_parser("data", help="game database tables").add_subparsers(dest="cmd", required=True)
-    de = g.add_parser("export", help="write a table as JSON (units: monsters and humans; items: weapons, shields, armour, special items; spells)")
-    de.add_argument("table", choices=("units", "items", "spells"))
+    de = g.add_parser("export", help="write a table as JSON (units: monsters and humans; items: weapons, shields, armour, special items; spells; progression: XP curve and hero templates)")
+    de.add_argument("table", choices=("units", "items", "spells", "progression"))
     de.add_argument("dest")
     de.add_argument("--install", default=INSTALL)
     de.set_defaults(func=data_export)

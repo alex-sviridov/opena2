@@ -19,6 +19,7 @@ class AssetCache:
         self._unit_stats = None
         self._items = None
         self._spells = None
+        self._progression = None
         self._objects_reg = None
         self._structures_reg = None
         self._object_sets, self._structure_sets = {}, {}
@@ -65,6 +66,13 @@ class AssetCache:
             from .formats import spelldefs
             self._spells = spelldefs.build(self.databin(), spelldefs.load_texts(self.fs))
         return self._spells
+
+    def progression(self):
+        """The XP curve and hero start templates (`formats.progression.Progression`), loaded once."""
+        if self._progression is None:
+            from .formats import progression
+            self._progression = progression.build(self.unit_stats(), self.spells())
+        return self._progression
 
     def objects_reg(self):
         """objects.reg records by ID with Parent inheritance (`anim.objects.load_object_records`)."""

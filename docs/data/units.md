@@ -22,8 +22,8 @@ Units, monsters and heroes are **separate tables**; a section 6 unit picks one b
 ([map.md](../formats/map.md#units-section-6)) and matches `server_id` against that table's `serverID`
 (`FUN_004fd62f` monsters, `FUN_004fd5ad` humans; both compare the raw param, CONFIRMED). The 4,212 units
 of the 46 campaign maps use 205 distinct (kind, serverID) pairs; every one has a record (no exclusions).
-Heroes have no separate stat source: a hero is a human record (`Hero…`/`Start…` names raise the best-skill
-field `+0x23c`, CONFIRMED `FUN_00514cf2`), levelled at run time (skills, `+0xa8…`). Campaign carry-over
+Heroes have no separate stat source: a hero is a human record (`_Hero`/`Start_` names set the best-school
+field `+0x23c`, CONFIRMED `FUN_00514cf2`), levelled at run time ([progression](progression.md)). Campaign carry-over
 (saves, hero state between maps) is not read here: **UNKNOWN**, phase F saves.
 
 Records with no params are editor slots and are skipped (61 monster slots). Monster record 241 `Human`
@@ -113,10 +113,9 @@ template in `Unit.stats` for the later systems (movement, combat, AI, loot).
 
 ## 4. Rewards
 
-- **XP.** `0x512fcb` (kill credit, `this` = killer): `xp = ftol(killed.+0x1c × 0.5)`, then `FUN_005128cb`
-  (humans only): repeat-kill penalty `xp·10/(kills+10)` (list at `+0x1a8`, 5 entries), off-skill `(xp+7)>>3`,
-  a per-level cap, accumulation in `+0x23c+4·skill` and `+0x130`, level-up at `0x5128ac(level+1)`
-  (threshold table not decoded). CONFIRMED structure.
+- **XP.** Awarded to the *attacker* (a human) per hit and per cast, not only per kill; formulas, the threshold
+  curve and the callers are in [progression](progression.md#4-xp-sources). The monster side is this table's `xp`
+  (`+0x1c`, p37). CONFIRMED.
 - **Loot.** `FUN_00510a70` at death, only if `unit_type ≥ 0x40` and not summoned (`+0x1a0 == 0`). Gold and
   item are rolled independently (fields 38–44). Gold is dropped by `0x5109f5`; the item is one random entry
   of the generated pool, count 1. CONFIRMED.
@@ -149,5 +148,4 @@ pairs resolve (exclusion list empty), range checks (HP > 0 except `ManMage_Unarm
 
 - Damage kinds 1/2 (`+0xb7…+0xba`) of weapons and negative damage spread in `0x516f6f`. (The elemental part is
   answered by [spells §5](spells.md#5-damage-and-protection): kind 1-5 = fire..astral, `ftol(d*(100-prot)/100+0.75)`.)
-- XP level thresholds `FUN_005128ac`; the callers of the kill credit (vtable dispatch).
 - Hero state between campaign maps. Start: `FUN_00514920`. (Equipment strings are resolved: [items §9](items.md#9-equipment-strings).)

@@ -19,7 +19,13 @@ from both places when answered).
   users; column names known). [databin](formats/databin.md#open-questions)
 
 - Unit stat table: damage kinds 1/2 → elements, protection/resistance scaling, negative damage spread
-  (`0x516f6f`); XP level thresholds (`FUN_005128ac`); hero carry-over. [units](data/units.md#open-questions)
+  (`0x516f6f`); hero carry-over. [units](data/units.md#open-questions)
+
+## Progression
+
+- Callers of the kill-credit slot `0x68` (`FUN_00512fcb`); quest / scenario XP rewards. Start: `FUN_00516f6f`, `FUN_00502019`. [progression](data/progression.md#open-questions)
+- Role of skill 0 (general) and of the skill readers `0x530577` / `0x533768`; meaning of `Player+0x2c`. Start: `FUN_00510a26`, `FUN_00513128`. [progression](data/progression.md#open-questions)
+- Human max HP / mana are derived by the recompute (`FUN_0051366b`), not the data.bin value the world uses; implement in phase I. [progression](data/progression.md#6-hero-start)
 
 ## Items
 
@@ -30,7 +36,6 @@ from both places when answered).
 
 - Client cast command path (range / mana / known-spell checks before messages `0x1e`/`0x1f`, `0x25`/`0x26`). Start `FUN_005702be`.
   [spells](data/spells.md#11-open-questions)
-- Hero sphere-skill growth (XP school thresholds). Start `FUN_00512fcb`. [spells](data/spells.md#11-open-questions)
 - Minion brain modes (`brain+0x20` 1 = Summon, 3 = Control Spirit). Start `FUN_005709d9`, `FUN_00570b8b`.
   [spells](data/spells.md#11-open-questions)
 - Spellbook tooltip rows Speed / Sight array pairing. Start `FUN_00416615`, `FUN_004c628f`. [spells](data/spells.md#11-open-questions)

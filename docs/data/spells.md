@@ -157,7 +157,7 @@ roll < -90 never hits; Bless / Curse change only the damage roll (§4): `min' = 
 `value` (`value > rand(0..100)`) for Bless, no random part (damage = min) for Curse. Units with flag
 `+0x4c & 8` take 0. Effect `FUN_0051e65b` runs once per application: missile/point once; area carriers once per 16-tick pulse per unit
 in the cells. The other protection uses are Stone Curse (earth) and Drain Life (astral); Poison (`health` continuous) ignores
-protection (no use found). XP: kill credit `0.5 * victim.xp` into the spell's school (`FUN_00512fcb`, `0x513010`); cast XP above.
+protection (no use found). XP: damage credit and cast credit into the spell's school, see [progression §4](progression.md#4-xp-sources).
 
 ## 6. Level and scaling
 
@@ -316,6 +316,5 @@ Display names come from `spell.txt`, descriptions only for these 24 spells (no e
 ## 11. Open questions
 
 - Client cast command path: cursor / spell button -> messages `0x1e`/`0x1f`, `0x25`/`0x26` (`FUN_005702be`, `FUN_0057033d`), range / mana / known-spell checks on the client; start `FUN_005702be`.
-- How a hero's sphere skills grow (XP school thresholds, `FUN_00512fcb` ff.); the cast side is known (level = skill + Mind - 30).
 - Brain registration of minions: Summon uses `FUN_005709d9` (brain byte `+0x20` = 1), Control Spirit `FUN_00570b8b` (`+0x20` = 3); meaning of the modes.
 - Spellbook tooltip arrays for the rows Speed (0xb6), Sight (0xb8) and which spell fills them (`FUN_00416615` ff., `FUN_004c628f`).

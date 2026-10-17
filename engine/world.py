@@ -17,6 +17,7 @@ import numpy as np
 from allods2.formats import entities as fent
 from allods2.formats import objects as fobj
 from allods2.formats import passability as pas
+from allods2.formats import progression as prog
 from allods2.formats.objects import MapObject as PlacedObject
 
 STRUCTURE_ID_BASE = 0x6000      # spec decision 2: runtime object id = 0x6000 + uid (CONFIRMED map.md part 4)
@@ -106,6 +107,10 @@ class Unit:
     known: bool = True              # units.reg set and data.bin template both exist
     seq: int = 0                    # insertion order, the depth tie-break
     stats: object = None            # allods2.formats.unitstats.UnitType template (None if unknown)
+    skills: tuple = ()              # humans: +0xa8..+0xb2 (general, blade, axe, bludgeon, pike, shooting); () for monsters
+    xp: tuple = ()                  # humans: XP pools of skills 1..5 (+0x23c+4k), pool = thr[skill] at start
+    xp_total: int = 0               # humans: +0x130, the sum of the pools
+    best_school: int = 0            # +0x23c for Hero_/Start_ templates: first highest school 1..5, else 0
 
 
 @dataclass
@@ -504,6 +509,10 @@ class World:
                      rec.x & 255, rec.y & 255, unit_angle(rec.uid, facing), IDLE, 0, hp, hp_max,
                      rec.uid, rec.server_id, rec.is_human, rec.behaviour, move, face, rec.squad, rec.group, known,
                      stats=tpl)
+            if rec.is_human and tpl is not None:        # docs/data/progression.md section 4: no award logic yet
+                u.skills = prog.skills_of(tpl)
+                u.xp, u.xp_total = prog.start_pools(u.skills)
+                u.best_school = prog.best_school(u.skills) if prog.is_hero_name(tpl.name) else 0
             self.add_unit(u)
             if not known:
                 rep.unknown_units.append((rec.uid, rec.type, rec.server_id, u.x, u.y))

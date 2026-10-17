@@ -82,6 +82,14 @@ def spells_hash(install=None):
     return {"sha256": hashlib.sha256(blob.encode("utf-8")).hexdigest()}
 
 
+def progression_hash(install=None):
+    """SHA-256 of the progression.json that `data export progression` writes."""
+    from allods2.common import as_fs
+    from allods2.formats import progression
+    blob = json.dumps(progression.load(as_fs(install)).to_dict(), indent=1, sort_keys=True)
+    return {"sha256": hashlib.sha256(blob.encode("utf-8")).hexdigest()}
+
+
 def rgb_hash(rgb):
     return hashlib.sha256(rgb.tobytes()).hexdigest()
 
@@ -144,6 +152,7 @@ def main(argv):
     out["units"] = units_hash(install)
     out["items"] = items_hash(install)
     out["spells"] = spells_hash(install)
+    out["progression"] = progression_hash(install)
     with open(GOLDEN, "w", encoding="ascii") as f:
         json.dump(out, f, indent=1, sort_keys=True)
         f.write("\n")

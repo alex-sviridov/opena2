@@ -11,6 +11,9 @@
   "20": "dca122fe8a63951581a254ce6d3f2809cae5043ab64ed67c44fa67aa3aef1063",
   "52": "ba1d06d4a4999d5b96e97a662c61cfb58cd46225e91c0d8944c09f454f593158"
  },
+ "progression": {
+  "sha256": "f6f260dfef3646e9668f4236805a910d5542e401afec62c73c2c201340fac8d1"
+ },
  "screenshots": {
   "full-10-shore-rock": "378642c68f40660afbf6e1300e8d087b1bc03cf51afa3b2e92d59dac1c9ba9bb",
   "full-10-units": "c9bbc50c1ad1c62753a4edc9b5a65994f4e450071262db879f865b0de460e5ff",
