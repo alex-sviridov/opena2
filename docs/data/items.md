@@ -125,8 +125,8 @@ Hero window, drop of the dragged item on a slot (`FUN_004b028d`, CONFIRMED). The
   (`FUN_00439d63`, string `0x5f0424`); a quest item with neither bit (`flags & 6 == 0`, code `0xe4d`) sends message `0x463`.
 - a book (teachSpell entry `0x2a` of the item, `FUN_004b10b0`) is refused for a non-mage hero and when the hero's learned
   spell mask (`+0x1c`) already has the spell bit.
-No skill, Body or level test exists in any of them. Not found: the server-side handler that applies the hero window's
-result (so whether the server repeats the mage/fighter test is open).
+No skill, Body or level test exists in any of them. The server side of a hero-window equip is message `0x22` (§12): it
+repeats no mage/fighter test.
 
 ## 7. Special items
 
@@ -199,16 +199,24 @@ monster drop `0x510da2` (p42, p43, 100 candidates, stack 1, flags p44; one list 
 `min, max, count, stack, flags`, see below). No xrefs (dead): `0x525b44` (an older
 generator) and `0x525a7f` (count by `+0x45`).
 
-**Shop stock blocks** (CONFIRMED by disassembly): the trader building is the structure object of vtable `0x5d12e8` (ctors `0x520d21`,
-`0x520e43`, `0x520ee6`), which owns a shop object (vtable `0x5d1358`, ctor `0x522289`, `shop+0x94` = the structure). The four blocks live
-in the structure at `+0x70`, `+0x84`, `+0x98`, `+0xac` (0x14 bytes each). The ctor writes only block 0 (`min 1,000,000`, `max 10,000,000`,
-`count 1`, `stack 1`, `flags 0x2fffffff`) and copies it to the other three with `memcpy`. `0x522767` (only when the shop list is empty,
-via `0x522d70` / `0x5228c1`; the latter returns 0 once the list holds 250 entries) builds a generator from each block, runs
-`FUN_00525f67(count, stack, min, max)` and stamps each new item's `+0x4d` with the block index + 1. `FUN_00521d4c` picks the block for an
-item by its group byte `+0x44` (1 armour -> pool `0x1000000`, 2 weapon -> `0x400000`, 3-5 -> `0x4000000`) and the block flag
-`0x20000000`. The branch `[0x6044c4 + 0x74] == 0` calls the null pointer `DAT_00627474` (never written: dead). No code in
-`0x500000..0x55ffff` writes the blocks again (immediate and register stores, `memcpy` of 0x14 bytes: only the ctor), yet the defaults
-lack the stock bit `0x4000000`, so the real values must arrive another way (INFERRED: a serialized or message path; not found).
+**Shop stock blocks** (CONFIRMED by disassembly): the server shop is the structure object of vtable `0x5d12e8` (ctor `0x520ee6`,
+the only live creator is the map loader `FUN_00561422`), which owns a shop object (vtable `0x5d1358`, ctor `0x522289`, `shop+0x94` = the
+structure). It is built only for the structure types (1-based data.bin id = section 4 `type`) 34 `Shop`, 35 `Shop 2`, 93-95
+`Multiplayer Kaarg Shop 1-3`, 105-107 `Multiplayer Druid Shop 1-3`; none of them occurs in the 46 campaign maps (the Kaarg and Druid
+shop buildings of the campaign, ids 90-92 and 102-104, are plain structures without this logic). The four blocks live in the structure at
+`+0x70`, `+0x84`, `+0x98`, `+0xac`, 20 bytes each: `+0 min`, `+4 max`, `+8 count`, `+0xc stack`, `+0x10 flags` (the order `FUN_005254e7`
+reads: `min -> gen+0x34`, `max -> gen+0x38`, `flags -> gen+0x54`; `FUN_00525f67(count, stack, min, max)`). The ctor fills block 0 with
+`min 1,000,000`, `max 10,000,000`, `count 1`, `stack 1`, `flags 0x2fffffff` (every material, quality and pool bit including `0x4000000`
+stock and `0x8000000` staves, `0x20000000` modifiers, but not `0x10000000`) and copies it to the other three. `FUN_00561422` then
+overwrites all four from the section 11 middle list (the 84-byte records `u32 structure uid`, `flags[4]`, `min[4]`, `max[4]`, `count[4]`,
+`stack[4]` at `+4`, `+0x14`, `+0x24`, `+0x34`, `+0x44`; read by `FUN_00534ad4` case 11 into the list at map object `+0x324`), matching the
+record whose uid equals the structure's. That list is empty in all 46 maps ([map](../formats/map.md)), so a shop built from the shipped
+maps would keep the defaults. `0x522767` (only when the shop list is empty, via `0x522d70` / `0x5228c1`; the latter returns 0 once the list
+holds 250 entries) generates each block and stamps each new item's `+0x4d` with the block index + 1. `FUN_00521d4c` picks the block an item
+returns to by its group byte `+0x44` (1 armour -> flag `0x1000000`, 2 weapon -> `0x400000`, 3-5 -> `0x4000000`). The branch
+`[0x6044c4 + 0x74] == 0` calls the null pointer `DAT_00627474` (never written: dead). The same loader gives the structure types 67-69,
+99-101, 111-113 (`Multiplayer Inn 1-3` and the Kaarg / Druid ones) a class from the first 12-byte list (flag word: `& 2` value, `& 0x10`,
+`& 0x20`, `& 0x40`, `& 4`), and the types 70-75 (`Pointer`) a class from the second 12-byte list.
 
 **Flags** (generator `+0x54`, monster p44, e.g. `0x1147ffff`, `0x2e7fffff`, `0x31ffffff`, `0x2c0fffff`):
 
@@ -297,7 +305,7 @@ hero's `+0x1f` object `+0x1c`). Further shop messages: `0x33` buy (`FUN_0052115f
   (price times count). If the gold is below the cost the loop stops (the earlier items stay bought); otherwise `gold -= cost`, the item
   leaves the cart, `+0x14` = hero, `+0x4c` (in-cart flag) = 0, and `FUN_00529ac2` files it in the pack. So the gold taken is the server
   item's `+0x1c` (§4 price with effects), **not** the pkt template price and not the short at `+0x4a`.
-- *Sell* (`FUN_00521ae3`): for each cart item owned by the hero with `+0x1c != 0`: `gold += ftol(price * count * 0.5 + 0.5)` (constant
+- *Sell* (`FUN_00521ae3`; the client table shows `((price + 1) / 2) x count`, the server rounds the whole stack once): for each cart item owned by the hero with `+0x1c != 0`: `gold += ftol(price * count * 0.5 + 0.5)` (constant
   `0x5d0828` = 0.5; half the price, rounded half up, truncating `__ftol`), then the item returns to the shop through `FUN_00521d4c`.
 - *Cancel* (`FUN_005220d9`): shop-owned cart items go back to their block, hero-owned ones back to the pack; no gold moves.
 - The container total at `+0x20` (`FUN_00529c96`, the pack insert) only sums `short +0x4a * count` of what it holds (stack merge: same code
@@ -344,6 +352,6 @@ stack slot held from an earlier call (not recoverable statically). Ties between 
   record (`FUN_005493d0`; no other reader), 0 if none; the upgrade step also runs when `FUN_0053dd90` (byte `+0xa78 > 0x32`).
   INFERRED: `+0x24` is written by the event handlers at `0x52f222` / `0x52f2d4` (event kind 8, 9: `(arg1 >> 16)^2 / 5`) and
   `0x52f386` (kind 10: `(arg1 >> 16)^2 >> 3`), each only when the record is still open (`FUN_00548510 == 0`); the senders of these
-  event kinds and the meaning of `arg1 >> 16` are not traced. Left: what overwrites the shop-stock blocks after the structure
-  ctor (see Shop stock blocks); how the upgrade step relates to the hero state kept between maps (`FUN_00514920`,
-  [units](units.md#open-questions)).
+  event kinds and the meaning of `arg1 >> 16` are not traced. Left: how the upgrade step relates to the hero state kept between maps
+  (`FUN_00514920`, [units](units.md#open-questions)); where the campaign town shops get their stock (the exe's server shop above is
+  for the multiplayer shop buildings; `Scenario.dll` exports `ScenarioEnterShop`).
