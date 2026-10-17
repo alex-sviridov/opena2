@@ -276,3 +276,57 @@ class TestInstall:
         tool = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(tool)
         assert tool.spells_hash(GFS)["sha256"] == want, "spells changed; if intended run tools/update_golden.py"
+
+
+class TestExeRules:
+    """Synthetic tests of the formulas recovered from allods2.exe (spells.md section 12)."""
+
+    def test_direction8(self):
+        assert [S.direction8(*v) for v in ((0, -5), (5, -5), (5, 0), (5, 5), (0, 5), (-5, 5), (-5, 0), (-5, -5))] \
+            == [0, 1, 2, 3, 4, 5, 6, 7]
+        assert S.direction8(0, 0) == 7                                    # quirk
+        assert S.direction8(5, -1) == 2 and S.direction8(5, -3) == 1 and S.direction8(1, -5) == 0
+
+    def test_acid_stream(self):
+        assert S.acid_cells((20, 20), 4, 0) == [(20, 20)]
+        assert S.acid_cells((20, 20), 4, 2) == [(21, 22), (21, 22), (20, 22), (19, 22), (18, 22)]   # duplicate row
+        assert S.acid_cells((20, 20), 0, 1) == [(19, 19), (20, 19), (21, 19)]
+        assert S.acid_cells((20, 20), 2, 1) == [(21, 19), (21, 20), (21, 21)]
+        assert S.acid_cells((20, 20), 4, 5) == [] and len(S.acid_cells((20, 20), 3, 5)) == 6
+        assert sorted(S.acid_cells((20, 20), 7, 1)) == [(19, 20), (20, 19)]
+        assert sum(len(S.acid_cells((0, 0), 6, k)) for k in range(6)) == 1 + 3 + 5 + 7 + 9
+
+    def test_blizzard_and_cells(self):
+        assert S.blizzard_offset(0, 5) == (-2, 3)
+        assert S.BLIZZARD_STONES * S.BLIZZARD_PERIOD == 96
+        assert S.cell_valid(8, 8, 96, 96) and not S.cell_valid(7, 8, 96, 96) and S.cell_valid(87, 87, 96, 96)
+        assert not S.cell_valid(88, 8, 96, 96)
+
+    def test_corpse_stage_and_raise(self):
+        assert [S.corpse_stage(h) for h in (-9, -11, -21, -41, -601)] == [1, 2, 3, 4, 5]
+        t, st = S.raise_dead(3, 10, 20, 30, 40, 51, 7, 9)
+        assert t == "F_Skeleton.1" and st["body"] == 6 and st["reaction"] == 11 and st["max_hp"] == 25
+        assert S.raise_dead(2, 10, 20, 30, 40, 51, 7, 9)[1]["max_hp"] == 51
+        assert "body" not in S.raise_dead(4, 10, 20, 30, 40, 51, 7, 9)[1]
+        assert S.raise_dead(1, 1, 1, 1, 1, 1, 1, 1) is None
+
+    def test_summon(self):
+        assert S.summon_unit(0, 1) == "Squirrel" and S.summon_unit(24, 2) == "Turtle"
+        assert S.summon_unit(25, 3) == "Foot_Animated.2" and S.summon_unit(500, 1) == "Squirrel.4"
+        assert S.minion_expiry_chance(1) == 0 and S.minion_expiry_chance(3) == 0.02
+
+    def test_bless_curse(self):
+        assert S.bless_value(0) == 20 and S.bless_value(30) == 44
+        assert S.physical_damage(5, 3, 2) == 7
+        assert S.physical_damage(5, 3, 2, bless=44, bless_roll=10) == 8      # max damage, no random part
+        assert S.physical_damage(5, 3, 2, curse=44, curse_roll=10) == 5      # min damage
+        assert S.physical_damage(5, 3, 2, bless=44, bless_roll=50) == 7
+
+    def test_spells_txt_order(self, spells):
+        assert sorted(S.SPELLS_TXT_ORDER) == sorted(set(S.SPELLS_TXT_ORDER)) and len(S.SPELLS_TXT_ORDER) == 24
+        for n in S.SPELLS_TXT_ORDER:
+            assert spells.get(n).description
+        assert [d.number for d in spells if not d.description] == [9, 14, 15, 28, 29]
+        lines = S.load_texts(GFS)[1]                                       # line k <-> SPELLS_TXT_ORDER[k]
+        for k, n in enumerate(S.SPELLS_TXT_ORDER):
+            assert lines[k].partition("#")[2].strip() == spells.get(n).description

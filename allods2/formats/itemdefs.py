@@ -343,6 +343,23 @@ class ItemTable:
         """Display name of an item code (itemname.bin / .txt), or None."""
         return self.names.get(code & 0xFFFF)
 
+    def display_name(self, code, effects=(), spell_names=None, of="of", tail=""):
+        """Name shown for an item (tooltip builder 0x43901f): the `itemname.txt` name, then for every
+        teachSpell effect, and for every castSpell effect of a special item (class 14), the text
+        `" %s %s%s" % (of, spell name, tail)`: `Scroll of Fire Arrow`, `Book of Haste`.  `of` / `tail`
+        are the interface texts 0x5a / 0x5b (`main.txt`: "of", ""), `spell_names` the lines of `spell.txt`
+        (line k = spell k + 1; default: the data.bin spell names).  castSpell of other classes is a
+        separate tooltip line ("casts X"), not part of the name.  None for an unknown code."""
+        name = self.names.get(code & 0xFFFF)
+        if name is None:
+            return None
+        special = (code >> 8) & 15 == 14
+        for e in effects:
+            if e.kind == STAT_TEACH or (e.kind == STAT_CAST and special):
+                sp = spell_names[e.value - 1] if spell_names else self.spells[e.value - 1][0]
+                name += " %s %s%s" % (of, sp, tail)
+        return name
+
     def parse_equipment(self, text, slot=None):
         """Resolve an equipment string `[Quality] [Material] Class{terms}` of a monster / human
         record: returns (ItemCode, effects) or None.  `slot` is the human equipment slot (0 weapon,
@@ -481,6 +498,19 @@ def load_names(fs):
         return {}
     codes = struct.unpack("<%dH" % (len(bin_) // 2), bin_)
     return {c: txt[i] for i, c in enumerate(codes) if i < len(txt)}
+
+
+def load_ui_texts(fs=None):
+    """(of, tail, spell_names) for `ItemTable.display_name`: `main/text/main.txt` lines 0x5a and 0x5b
+    (text list at 0x622600, FUN_00481186) and `main/text/spell.txt` (list 0x6226e0); ("of", "", []) defaults."""
+    from ..common import as_fs
+    fs = as_fs(fs)
+    try:
+        main = bytes(fs.read("main/text/main.txt")).decode("cp1251").split("\r\n")
+        spell = bytes(fs.read("main/text/spell.txt")).decode("cp1251").split("\r\n")
+    except (OSError, KeyError, FileNotFoundError):
+        return "of", "", []
+    return main[0x5A], main[0x5B], spell
 
 
 def load(fs=None):

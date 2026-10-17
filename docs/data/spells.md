@@ -31,7 +31,7 @@ was scanned (the by-wrapper pattern `[spell+4]+8` and the direct table `0x68f5cc
 | 0 | `complication_level` | extra **recovery ticks** after the cast: `0x50f7e8`-`0x50f80a` adds `*param[0]` of the unit's spell (`unit+0x64`) to the recovery countdown (`unit+0x6c`) | CONFIRMED use; name INFERRED |
 | 1 | `mana_cost` | mana spent at cast start; wrapper `+0xc`; also cast XP (§6) | CONFIRMED `0x51922e`, `0x519998` |
 | 2 | `sphere` | 1 fire, 2 water, 3 air, 4 earth, 5 astral: skill `unit+0xa8+2*sphere` (= `+0xaa..+0xb2`), damage element (carrier `+0x5d`; switch `0x51a0ff`: `FUN_00543040/70/a0/d0/100`), XP school | CONFIRMED |
-| 3 | `item` | never read (0 everywhere) | CONFIRMED unread |
+| 3 | `item` | never read (0 everywhere); see the note below the table | CONFIRMED unread |
 | 4 | `target` | 1 = target unit, 2 = cell/point (`FUN_00519441`: `param[4] == 1`) | CONFIRMED |
 | 5 | `delivery` | 2 = missile (flight ticks `dist / speed`, `0x519b17`, `0x51bde1`), 1 = direct (carrier acts at once) | CONFIRMED |
 | 6 | `max_range` | cells; wrapper `+9` (`FUN_005195b1`: `+level/30`, Teleport `+level/3`); the AI approach distance (`FUN_0056ac5b`, order `+0x14`) | CONFIRMED use; no range test found at cast (§3) |
@@ -50,6 +50,12 @@ was scanned (the by-wrapper pattern `[spell+4]+8` and the direct table `0x68f5cc
 | 20 | `scroll_cost` | scroll price weight ([items §4](items.md)) | CONFIRMED `0x51f48d`, `0x51f7d3` |
 | 21 | `book_cost` | book price ([items](items.md)) | CONFIRMED `0x52340f`, `0x524e31` |
 | text | modifier text | `name=value[:time]` terms, `"a,b"` for several, `Invisibility = ON`; only the kind and the time are used for 4, 8, 13, 19 (protection), 6 (Poison Cloud: kind `health`), 14/15, 18, 27: the **value is replaced** by a level formula (§6) | CONFIRMED `FUN_0051caa0` + `0x51b3fa` |
+
+Unread params 3, 10, 12, 13, 15, 19 (final answer): no reader exists. Evidence: every call of `FUN_0041e7e0` on a spell record
+passes an immediate index (scan of the whole exe, 0x41e7e0 call sites with `[spell+4]+8` and the `0x68f5cc` table), the
+only other record access is the loader, and the client spell overview `FUN_00416615` ff. copies a scaled wrapper (`+9`,
+`+0xc`, `+0xe..+0x10`) rather than params; no loop over params 0..21 exists (the wrapper fills `+9..+0x10` only). They
+are data-editor leftovers (INFERRED purpose); only the wrapper fields of section 3 reach the game.
 
 Classification helpers: `SpellDef.missile`, `.targets_unit`, `.element`, `.handler`. Sphere sizes: fire 4, water 5,
 air 6, earth 4, astral 10 (spells 1-4, 5-9, 10-15, 16-19, 20-29).
@@ -87,9 +93,11 @@ cast at a unit, `0xe` cast at a cell; phase `+0x58`, countdown `+0x6c`):
 4. **Effect (phase 5 reaches 0).** `FUN_00519d7f` (unit target; skips #11) or `FUN_00519db8` (cell) run the effect routine (§4).
 5. **Recovery (phase 7).** countdown `unit+0x135 + rand(0..3) + hero_delay + spell.param[0]` (`0x50f7e8`), then ready again
    ([animation §3.1](../formats/animation.md)).
-6. **Range / validity.** `max_range` only sets the AI approach distance (`FUN_0056ac5b`) and the order range byte `+0x14`.
-   No range or line-of-sight test on the server cast path (`FUN_00519998`, `U`) was found; the player UI is not traced
-   (INFERRED: the client refuses out-of-range targets). A failed mana check leaves phase 0 (retried every tick, INFERRED).
+6. **Range / validity.** `max_range` only sets the AI approach distance (`FUN_0056ac5b`) and the order range byte `+0x14`
+   (the order walks until within it). No range or line-of-sight test exists on the server cast path (`FUN_00519998`, `U`, the effect
+   routines): CONFIRMED by reading `FUN_00519998` and `FUN_00519db8` (the only distance computations are flight ticks). The client-side
+   command path (`0x1e`/`0x1f` builders, cursor) is not traced; so a cast from the player UI is limited only by the order
+   approach (`order+0x14`), not by a hard check. A failed mana check leaves phase 0 (retried every tick, INFERRED).
 7. **Texts.** Unknown spell id: "Invalid spell #0, can't cast" (`0x51be8c`).
 
 Wrapper object (class `0x5d1160`, ctor by name `FUN_005190e4`, by number `FUN_0051906d`, copy `FUN_0051937b`; filled from
@@ -110,10 +118,10 @@ the same spell id by max value / max time; Bless and Curse replace each other).
 | direct apply of damage | all | `FUN_0051e65b` (apply), `FUN_00516f6f` (target take-damage) | §5 |
 | point carrier | `distribution == 1` | `FUN_005178d4` (class `0x5d10a0`) | `delivery == 1`: `FUN_00542e60` at once |
 | missile carrier | `delivery == 2` | `FUN_00518d1e` (class `0x5d1120`, tick `FUN_00518efd`) | flight `dist/speed` ticks, then `FUN_00542e60` delivers to the carrier (Fire Arrow, Ice Missile, Diamond Dust, Lightning, Prismatic Spray, Fire Ball) |
-| area carrier | `distribution` 3, 4 | `FUN_00517c1a` (class `0x5d10e0`, tick `FUN_00517cfe`) | `FUN_00518024` picks the shape by `param[8]`: 4 wall `FUN_005182b6` (line from the direction tables `0x5f8400`/`0x5f84a8`, `FUN_00517ec3`), else diamond `FUN_005183a2`; `FUN_005184bf` adds the cell effect (`FUN_0055a325`; scorches the ground, `FUN_00559c28`, when it carries damage with spread > 0); then every 16 ticks `FUN_00518681` applies to the units in the radius cells until the lifetime `+0x50` (§6) ends (`FUN_00518594`). Wall of Fire (damage), Wall of Earth (cells blocked, no damage), Poison Cloud, Darkness, Light, Fire Ball explosion (`FUN_005183a2` once) |
-| field (hail) | `distribution == 5`: 7 9 | `FUN_00519db8` `0x51bd1b` (mode `+8 = 2`, `+0x50 = 0`), tick branch `FUN_00518833` | Blizzard, Acid Stream; projectile `0x17` hail ([animation §4.4](../formats/animation.md)); not traced |
+| area carrier | `distribution` 3, 4 | `FUN_00517c1a` (class `0x5d10e0`, tick `FUN_00517cfe`) | `FUN_00518024` picks the shape by `param[8]`: 4 wall `FUN_005182b6` (line from the direction tables `0x5f8400`/`0x5f84a8`, `FUN_00517ec3`), else diamond `FUN_005183a2`; `FUN_005184bf` adds the cell effect (`FUN_0055a325`; scorches the ground, `FUN_00559c28`, when it carries damage with spread > 0); then every 16 ticks `FUN_00518681` applies to the units in the radius cells until the lifetime `+0x50` (§6) ends (`FUN_00518594`). Mode bits `+8`: 1 = lifetime pulse, 2 = field (§9b), 0 = apply once (`FUN_00518833`: every cell of the radius square, units on both unit slots and the structure, plus scorch `FUN_005189b5`/`FUN_00559c28` for damage carriers; Fire Ball). Wall of Fire (damage), Wall of Earth (cells blocked, no damage), Poison Cloud, Darkness, Light, Fire Ball explosion (`FUN_005183a2` once) |
+| field | `distribution == 5`: 7 9 | `FUN_00519db8` `0x51bd1b` (area carrier, mode `+8 = 2`, `+0x50 = 0`), tick `FUN_0051806c` (carrier mode bit 2, `0x517cfe`) | Blizzard (hail stones) and Acid Stream (cone): CONFIRMED, §9b |
 | protection | 4 8 13 19 | case `0x51b385` | effect from the text (`FUN_0051caa0` -> `FUN_0051e8fa`, kind `protection<element>`), flags `|= 1`, value `L/2`, duration §6 |
-| Bless / Curse | 20 / 28 | case `0x51b82c` | plain effect, value `L*4/5 + 20`, duration §6; kind by spell id in `FUN_0051d175` (INFERRED: to hit +/-) |
+| Bless / Curse | 20 / 28 | case `0x51b82c` | plain effect (`FUN_0051ca4d`, kind byte `+0x3c` stays 0 = no stat change), value `L*4/5 + 20` (`+0x40`), duration §6, bit `1<<spell` set in `unit+0x144`. Not to-hit: the value is a **percent chance for physical hits to roll maximum (Bless) or minimum (Curse) damage**, §5 CONFIRMED `0x516fe6`-`0x5170c4`; spells.txt agrees (Bless: "chances to do maximum damage with a hand-held weapon"). `FUN_0051d175` (effect vtable `+0x40`, per-pulse) only has cases for spell 6 (health), 14, 15 (scan range) |
 | Haste / Slow | 21 / 29 | case `0x51b589` | value `L/15 + 1` (negated for Slow), kind speed, duration §6 |
 | Shield | 27 | case `0x51b484` | text `absorbtion`, value `L/10 + 3`, duration §6 |
 | Darkness / Light | 14 / 15 | `0x51b2de` / `0x51b239` | text `scanRange`, value `-(1 + L/30)` / `1 + L/30`, time from the text (`duration 1` = 16 ticks); area carrier |
@@ -122,13 +130,12 @@ the same spell id by max value / max time; Bless and Curse replace each other).
 | Poison Cloud | 6 | `0x51a206` | text `health=-2:continuous 8`: value `ftol(-2 * (L/45 + 1))` every 8 ticks (`FUN_0051cc9f`: mode bit 2 pulses when `ticks & 7 == 0`); area carrier |
 | Heal | 24 | `0x51a2b8` | target not hostile (relation matrix `[ +0xa8c4 ] & 1` clear), `hp > -10`, `+0x98 != 0`; amount `min' + rand(1..spread')` capped to `maxHP - HP` (`unit+0x96`, `+0x94`); `FUN_00510484(amount)` |
 | Drain Life | 26 | `0x51a3f3` | creature targets only; `amount = (min' + rand(1..spread')) * (100 - protAstral) / 100` (int, `unit+0xcc`), capped at `target HP + 10`; target HP `-= amount`, caster `FUN_00510484(amount)` (heal), XP credit vtable `+0x6c` |
-| Summon | 25 | `0x51a595` | creates a monster next to the caster (`FUN_0050dc2b`): family by a roll `FUN_0051fa4e` 1..3, tier `skillAstral/25 + 1` clamped 1..4 (`+0xb2`); INFERRED summary |
-| Control Spirit ("Animate Dead") | 22 | `0x51a91f` | searches units (`+0x13c` = 2, then 3, then 4; type id outside `0x52..0x62`; `FUN_0054fa73`), turns the found one into a new unit for the caster (`FUN_0050dc2b`, stats copied by class); INFERRED corpse raising (spells.txt: "Raises zombie, skeleton, or ghost from a unit's corpse") |
+| Summon | 25 | `0x51a595` | CONFIRMED, §9b: one monster per cast near the caster |
+| Control Spirit ("Animate Dead") | 22 | `0x51a91f` | CONFIRMED, §9b: raises a corpse on the target cell as zombie / skeleton / ghost |
 | Teleport | 23 | `0x51a554` | `FUN_0055a96c(caster, cell)` then `FUN_00502019`; client effect `0x36` ([animation §4.4](../formats/animation.md)) |
 | XP | all | vtable `+0x70` = `FUN_005131ef` (`0x519f42`) | `AddExp(ftol(0.5*mana + 0.5), 0, sphere)` when casting at a unit, mage flag only |
 
-Details of Summon / Control Spirit are phase I (INFERRED summaries; the routines are listed). Not reached from the switch:
-`FUN_00519d7f` skips spell 11.
+Not reached from the switch: `FUN_00519d7f` skips spell 11.
 
 ## 5. Damage and protection
 
@@ -144,7 +151,10 @@ protection[kind] = short at unit + 0xc4 / 0xc6 / 0xc8 / 0xca / 0xcc  // fire, wa
 HP (unit+0x94) -= dmg                                                 // FUN_0051e65b; the attacker gets XP credit
 ```
 
-Spells always hit (no to-hit roll: the elemental part is applied when the physical part is empty). Units with flag
+Spells always hit (no to-hit roll: the elemental part is applied when the physical part is empty, `0x5171a4`). The physical part
+of the same routine (weapon hits) rolls `rand(0..200) - 100` against defence: hit when `defence < toHit + roll`, or roll >= 90;
+roll < -90 never hits; Bless / Curse change only the damage roll (§4): `min' = min + spread` and no random part with chance
+`value` (`value > rand(0..100)`) for Bless, no random part (damage = min) for Curse. Units with flag
 `+0x4c & 8` take 0. Effect `FUN_0051e65b` runs once per application: missile/point once; area carriers once per 16-tick pulse per unit
 in the cells. The other protection uses are Stone Curse (earth) and Drain Life (astral); Poison (`health` continuous) ignores
 protection (no use found). XP: kill credit `0.5 * victim.xp` into the spell's school (`FUN_00512fcb`, `0x513010`); cast XP above.
@@ -201,7 +211,7 @@ sfx id `500 + obj+0xac` where `obj+0xac` = byte `msg+0xc` of message 0x86/0x8b =
 
 CONFIRMED by data (test): every missile spell has its projectile record, every record present loads, 27 of 29 cast ids have
 an `sfx.reg` entry whose wav exists (not 3, 7). `-` = no record / no `sfx.reg` entry (spells 12 14 15 18 21 22 25 29 have no sprite effect;
-Invisibility, Stone Curse draw through unit effects `0x20`, `0x2c`). Wall of Fire (514) and Blizzard (522) have no entry; the
+Invisibility, Stone Curse draw through unit effects `0x20`, `0x2c`). Wall of Fire (514) and Blizzard (522) have no entry (silent: the sound table `0x627740` is an array of `SfxCount`+1 = 661 slots filled by the loader `0x4c4a48` from keys `Sfx<i>` in `sfx\\sfx.reg` (200 keys exist, 514 and 522 are absent), lookup `FUN_00420eb0` = unchecked index, in bounds; CONFIRMED no file can be named for them, the slot content for an absent key is INFERRED empty; players skip null slots `0x467e1a`, `0x415189`); the
 files `sfx/magic/firewall.wav` (sfx id 2), `freeze.wav`, `sacrifice.wav` are not reached by these ids (INFERRED: id 2 is the
 cell sound of the wall). The Sfx ids 508 (`ex-water`) = `2*0+8` has no spell.
 
@@ -244,18 +254,68 @@ Everything it depends on:
 
 Damage example, hero staff (L=1): `5 + rand(0..5)`; Orc_Shaman.5 (`:99`): `21 + rand(0..22)` before protection.
 
+## 9b. Field carriers, summons, raising, tooltip
+
+All CONFIRMED in allods2.exe unless tagged. Code: `spelldefs.py` constants and functions named below.
+
+**Field carriers (Blizzard 7, Acid Stream 9; `distribution == 5`).** `FUN_00519db8` `0x51bd1b` builds the area carrier
+(`FUN_00517c1a`: centre = target cell, `+0x4d` radius, unused here) and forces mode `+8 = 2`, `+0x50 = 0`, ignoring `area_duration`
+and `radius`. Carrier tick `FUN_00517cfe` -> `FUN_0051806c`: `+0x50` counts down, a *step* runs when it reads 0 and reloads 2, so
+steps fall on the 1st tick and every 3rd tick after (`*_PERIOD = 3`). Per step, per cell of the pattern: the cell must be valid
+(`FUN_0054fca8`, 8..size-9, `cell_valid`); the effect id is set to `2n+9` and message `0x86` (cell effect, lifetime byte = the
+sprite ticks) is sent (`FUN_00504524`), then the damage effect is applied at once (before the sprite lands) to the unit in each of
+the two unit slots of the cell and to the structure (`FUN_0055201a`, `FUN_00552079`, `FUN_00559b7f` -> `FUN_00518681`). No
+friend/foe test in the loop. `FUN_00518681` (all carriers): skipped for Wall of Earth (17); Fire Ball takes the explosion path; otherwise
+effect vtable `+0x3c` (apply); for creatures it then records the caster as attacker (`param[0x10]`, the monster spell caster byte)
+and alerts the AI (`FUN_0056e6b8`), except for Light.
+- Blizzard: 32 steps (`BLIZZARD_STONES`), one stone per step at `target + (rand(0..5) - 2, rand(0..5) - 2)` (x then y, `blizzard_offset`),
+  96 ticks; stone sprite id 23 (`Meteor`), lifetime 16 ticks (cast sound 522 absent; hail plays 523 at age 8). Each stone hits one cell with
+  the spell damage (10..30 scaled, water) once.
+- Acid Stream: 6 steps (`ACID_STEPS`), 18 ticks; step `s` hits the rows of `ACID_AXIS[s]` (sectors 0, 2, 4, 6) or `ACID_DIAG[s]` (1, 3,
+  5, 7) around the target cell, rotated by `acid_cells`; the sector is `direction8(target - caster)` (`FUN_00556b2c`). Axis rows widen
+  1, 3, 5, 7, 9 cells forward; quirks kept: axis step 2 repeats cell (-1, 2) (that cell is hit twice, (-2, 2) never) and axis step 5 is empty
+  while the diagonal step 5 has 6 cells. Sprite id 27 (`acid`), lifetime 18 ticks, no sound (527 absent); damage 10..14 scaled, water.
+- Point/area activation: a missile carrier (`FUN_00518d1e`, flight `FUN_00516aae(dist)/speed` ticks; Lightning and Prismatic Spray
+  override it to 10 ticks, `0x51be87`) and direct casts end in `FUN_00542e60`, which is a plain list append of the pending carrier
+  to the world's active-carrier list (`*0x6044c4 + 0x7c`); carriers are then ticked each server tick. It sends no message.
+
+**Summon (25, `0x51a595`).** One unit per cast, no level dependence. Family roll `rand(1..3)` -> `Squirrel`, `Turtle`, `Foot_Animated`; tier
+`clamp(skill_astral / 25 + 1, 1, 4)` from the raw skill word `unit+0xb2` (not the level); tier 1 has no suffix, otherwise `.N`
+(`summon_unit`; the types exist as `Name`, `.2`..`.5`). The unit is created by name (`FUN_0050e173`), placed within 6 cells of the
+caster (`FUN_00510089`), owner = caster's player, `+0x1a0 = 1` (no loot, no XP), master id `+0x148` = caster id, brain mode 1.
+No timer: minions persist, but a master with `n >= 2` minions loses one every 16 ticks with probability `(n-1)/100`
+(`FUN_0052bbb7`, tick `& 0xf == 0xc`, `minion_expiry_chance`); a minion's death handler sets HP -10000 at once (`FUN_00510a70`), so no corpse
+remains.
+
+**Control Spirit / "Animate Dead" (22, `0x51a91f`).** Target = cell. Corpse stage `unit+0x13c` is derived from HP by the corpse
+decay `FUN_005110b8` (run every 16 ticks per corpse, HP -1 per run, types 0x21..0x24 heroes stop at HP -60): `corpse_stage`
+(HP < -10 -> 2, < -20 -> 3, < -40 -> 4, < -600 -> 5 removed). The spell searches the corpse list for a stage-2 corpse on exactly the
+target cell (`FUN_0054fa73`, cell index equality), then stage 3, then 4; types `unit_type` 0x52..0x62 (zombies, skeletons) are skipped.
+The corpse is consumed (stage 5, HP -10001). The new unit (`+0x1a0 = 1`, master 0, owner = caster's player, brain mode 3, permanent,
+level-independent) appears on that cell with copied stats (`raise_dead`): stage 2 `F_Zombie.1` (body, mind, spirit, max HP copied,
+reaction/2+1), stage 3 `F_Skeleton.1` (body and reaction /2+1, max HP/2), stage 4 `Ghost` (reaction/2+1, max HP/2); attack skill `+0xa6`
+and defence `+0xbe` copied; HP = max HP. Whether the template recompute (vtable `+0x58`) overrides the copy: INFERRED not.
+
+**Spell level of a hero (cast side).** The client overview (`FUN_00416615` loop over 24 spells, order `SPELLS_TXT_ORDER`) computes per party
+member `L = clamp(skill[sphere] + mind - 30, 0, 255)` from view bytes `+0x156+sphere` and `+0x145`, scales a wrapper copy (`FUN_0051951d`)
+and sums / min-maxes the party. Same formula as the server (`level_of`).
+
+**Spellbook tooltip (`FUN_004c628f`).** Shown for the spell under the cursor when the party knows it. Text: `spells.txt` line `k` (title
+and description, `#` = line break) for spell `SPELLS_TXT_ORDER[k]` (table `0x5f8124`), then rows built from `main.txt` labels, each shown
+as `x` or the party range `x...y`: Mana cost (117), Damage (118, sum over the party), Range (123), Duration (124, ticks/16 s, `%5.1f`),
+Speed (182), Resistance (183, protection `L/2`), Sight (184), Maximum Damage Probability (185, Bless value), rays (186, Prismatic Spray
+`min(7, L/20+2)`), Minimum Damage Probability (187, Curse value), Absorption (217, Shield `L/10+3`). Row-to-array pairing for Speed and
+Sight is INFERRED (spell-number helpers `0x5197e3`..`0x519966` fill the arrays; Stone Curse forces its minimum duration to 0).
+Display names come from `spell.txt`, descriptions only for these 24 spells (no entry for 9, 14, 15, 28, 29).
+
 ## 10. VERIFY IN GAME
 
 - Fire Arrow damage and flight time against §6/§5 (staff level 1 and a scroll `:50`: 5..10 vs 13..26; rounding of `m`).
-- That no range check rejects a cast beyond `max_range` (server) and what the player UI does.
-- Recovery length with `Complication Level` (3 for Fire Arrow, 20 for walls): ticks added after the cast.
-- Protection scaling `+0.75` rounding, Stone Curse duration reduction, Drain Life cap `HP + 10`.
-- Blizzard / Acid Stream (Distribution 5) lifetime and the sound ids 514/522 (silent?).
-- Heal on friendly vs neutral players (relation bit) and on corpses (`hp > -10`).
+- That the player UI refuses or walks to out-of-range targets (server has no check, §3); Blizzard / Acid Stream stone and cone visuals against §9b.
 
 ## 11. Open questions
 
-- Distribution 5 carriers (Blizzard, Acid Stream: mode `+8 = 2`, `FUN_00518833`), area pulse `FUN_00518681`, hit message `FUN_00542e60`. Start: `0x518833`.
-- Summon and Control Spirit internals (`0x51a595`, `0x51a91f`); spell level sources for the player hero (UI/skill levels `FUN_00512fcb` ff.).
-- Player-side cast validation (range, mana, known spell) and the spellbook UI text use of `spells.txt` (`0x4c628f`, list `0x6225f0`).
-- Effect kind of Bless/Curse values (`FUN_0051d175` case for spell 0x14/0x1c), and the unused params 3, 10, 12, 13, 15, 19 (unread: editor leftovers?).
+- Client cast command path: cursor / spell button -> messages `0x1e`/`0x1f`, `0x25`/`0x26` (`FUN_005702be`, `FUN_0057033d`), range / mana / known-spell checks on the client; start `FUN_005702be`.
+- How a hero's sphere skills grow (XP school thresholds, `FUN_00512fcb` ff.); the cast side is known (level = skill + Mind - 30).
+- Brain registration of minions: Summon uses `FUN_005709d9` (brain byte `+0x20` = 1), Control Spirit `FUN_00570b8b` (`+0x20` = 3); meaning of the modes.
+- Spellbook tooltip arrays for the rows Speed (0xb6), Sight (0xb8) and which spell fills them (`FUN_00416615` ff., `FUN_004c628f`).

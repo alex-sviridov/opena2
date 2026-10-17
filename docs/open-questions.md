@@ -19,26 +19,23 @@ from both places when answered).
   users; column names known). [databin](formats/databin.md#open-questions)
 
 - Unit stat table: damage kinds 1/2 → elements, protection/resistance scaling, negative damage spread
-  (`0x516f6f`); XP level thresholds (`FUN_005128ac`); item generator categories
-  (`FUN_00525f67`); hero carry-over. [units](data/units.md#open-questions)
+  (`0x516f6f`); XP level thresholds (`FUN_005128ac`); hero carry-over. [units](data/units.md#open-questions)
 
 ## Items
 
-- What reads `magic_cap` (item `+0x48`); parameters of the random modifier roll and pool builders
-  (`FUN_00526ec4`, `FUN_005247db`, `FUN_00524e31`). [items](data/items.md#open-questions)
-- Item class params 0, 1, 16, the special-item byte, itemname.pkt header bytes (`FUN_00474268`, `0x4388a2`).
-  [items](data/items.md#open-questions)
-- Requirements outside the item code, how spell names are added to `Book` / `Scroll`, scroll price (record 100 vs
-  pkt 41; `FUN_0052340f`). [items](data/items.md#open-questions)
+- Server settlement of a purchase (scroll: record price 100 vs pkt 41) and server-side equip test; start the messages of
+  `FUN_004b960c` / `FUN_004b028d`. [items](data/items.md#open-questions)
+- Mission reward generator `0x5325ee` (caller, value `v`), shop stock blocks of `0x522767`, item `+0x50` and wire flag bits 1 / 0x10
+  readers, exact sort order of the generator list (`FUN_0052571c`). [items](data/items.md#open-questions)
 
 ## Spells
 
-- Distribution 5 carriers (Blizzard, Acid Stream), the area pulse and hit delivery. Start `FUN_00518833`, `FUN_00518681`.
+- Client cast command path (range / mana / known-spell checks before messages `0x1e`/`0x1f`, `0x25`/`0x26`). Start `FUN_005702be`.
   [spells](data/spells.md#11-open-questions)
-- Summon and Control Spirit internals; player-side cast validation (range, mana) and the `spells.txt` consumer. Start `0x51a595`,
-  `0x51a91f`, `0x4c628f`. [spells](data/spells.md#11-open-questions)
-- Bless/Curse effect kind (`FUN_0051d175`); params 3, 10, 12, 13, 15, 19 are never read (editor leftovers?).
+- Hero sphere-skill growth (XP school thresholds). Start `FUN_00512fcb`. [spells](data/spells.md#11-open-questions)
+- Minion brain modes (`brain+0x20` 1 = Summon, 3 = Control Spirit). Start `FUN_005709d9`, `FUN_00570b8b`.
   [spells](data/spells.md#11-open-questions)
+- Spellbook tooltip rows Speed / Sight array pairing. Start `FUN_00416615`, `FUN_004c628f`. [spells](data/spells.md#11-open-questions)
 
 ## Not started (from the reversing plan)
 

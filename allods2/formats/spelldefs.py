@@ -256,3 +256,128 @@ def load(fs=None):
     from ..common import as_fs
     fs = as_fs(fs)
     return build(databin(fs), load_texts(fs))
+
+
+# ---------------------------------------------------------------------------------------------
+# Rules recovered from allods2.exe (docs/data/spells.md sections 4, 5, 12); pure formulas, no data.
+
+# spells.txt line k describes spell SPELLS_TXT_ORDER[k] (byte table 0x5f8124, read by the spell
+# overview FUN_00416615; CONFIRMED).  The 5 monster-only spells have no line.
+SPELLS_TXT_ORDER = (1, 2, 3, 4, 24, 20, 21, 26, 13, 12, 11, 10, 5, 6, 7, 8, 25, 22, 23, 27, 19, 18, 17, 16)
+
+BLIZZARD, ACID_STREAM, BLESS, CURSE, SUMMON, CONTROL_SPIRIT = 7, 9, 20, 28, 25, 22
+BLIZZARD_STONES, BLIZZARD_PERIOD, BLIZZARD_LIFETIME = 32, 3, 16     # FUN_0051806c; stone sprite ticks
+ACID_STEPS, ACID_PERIOD, ACID_LIFETIME = 6, 3, 18                    # FUN_0051806c; acid sprite ticks
+MAP_MARGIN = 8                                                       # FUN_0054fca8: cells 8..size-9
+
+# Acid Stream rows (FUN_00517ec3 tables 0x5f8550 axis, 0x5f8928 diagonal): (lateral, forward) per step.
+# The tables are copied as stored, including the duplicate (-1, 2) of axis step 2 and the empty axis step 5.
+ACID_AXIS = (((0, 0),), ((-1, 1), (0, 1), (1, 1)), ((-1, 2), (-1, 2), (0, 2), (1, 2), (2, 2)),
+             tuple((i, 3) for i in range(-3, 4)), tuple((i, 4) for i in range(-4, 5)), ())
+ACID_DIAG = (((0, 0),),) + tuple(tuple((n - i, i) for i in range(n + 1)) for n in range(1, 6))
+
+
+def direction8(dx, dy):
+    """Sector 0..7 (0 up, clockwise) of the vector caster -> target cell (FUN_00556b2c, `>> 5`).
+    dx == dy == 0 gives 7 (quirk: both non-positive branches fall to the last case)."""
+    ax, ay = abs(dx), abs(dy)
+    if dx > 0:
+        if dy > 0:
+            c = (4 if ax > 2 * ay else 5) if ax > ay else (7 if ay > 2 * ax else 6)
+        else:
+            c = (3 if ax > 2 * ay else 2) if ax > ay else (0 if ay > 2 * ax else 1)
+    elif dy > 0:
+        c = (11 if ax > 2 * ay else 10) if ax > ay else (8 if ay > 2 * ax else 9)
+    else:
+        c = (12 if ax > 2 * ay else 13) if ax > ay else (15 if ay > 2 * ax else 14)
+    if c:
+        c += 1
+    return ((c >> 1) << 5 & 0xFF) >> 5
+
+
+def acid_cells(center, direction, step):
+    """Cells hit by Acid Stream step `step` (0..5, one per 3 ticks) around `center` (x, y) for sector
+    `direction` (FUN_00517ec3: even sectors use the axis table with x/y swapped or negated, odd sectors
+    the diagonal table with signs)."""
+    cx, cy = center
+    axis = direction % 2 == 0
+    out = []
+    for a, b in (ACID_AXIS if axis else ACID_DIAG)[step]:
+        dx, dy = {0: (a, -b), 4: (-a, b), 2: (b, a), 6: (-b, a),
+                  1: (a, -b), 3: (a, b), 5: (-a, b), 7: (-a, -b)}[direction]
+        out.append((cx + dx, cy + dy))
+    return out
+
+
+def blizzard_offset(rand5_x, rand5_y):
+    """Offset of one hail stone from the target cell: `rand(0..5) - 2` per axis (FUN_0051806c)."""
+    return rand5_x - 2, rand5_y - 2
+
+
+def cell_valid(x, y, width, height):
+    """FUN_0054fca8: a stone / acid cell is used only inside the 8-cell border."""
+    return MAP_MARGIN <= x <= width - 9 and MAP_MARGIN <= y <= height - 9
+
+
+def corpse_stage(hp):
+    """Corpse stage `unit+0x13c` from the HP of a dead creature (FUN_005110b8): -10 -> 2, -20 -> 3, -40 -> 4,
+    -600 -> 5 (removed).  Stage 0/1 corpses are too fresh."""
+    stage = 1
+    for limit, s in ((-10, 2), (-20, 3), (-40, 4), (-600, 5)):
+        if hp < limit:
+            stage = s
+    return stage
+
+
+RAISE_TYPES = {2: "F_Zombie.1", 3: "F_Skeleton.1", 4: "Ghost"}
+NO_RAISE_TYPES = range(0x52, 0x63)                                   # zombie / skeleton unit_type ids
+
+
+def raise_dead(stage, body, reaction, mind, spirit, max_hp, attack, defence):
+    """Control Spirit ("Animate Dead", FUN_00519db8 0x51a91f): the unit type and the stats copied from
+    the corpse.  Returns (type name, dict) or None when the stage is not 2..4.  Keys not listed keep the
+    template value of the new type."""
+    t = RAISE_TYPES.get(stage)
+    if t is None:
+        return None
+    half = max_hp // 2 if max_hp >= 0 else -((-max_hp) // 2)
+    if stage == 2:
+        st = {"body": body, "reaction": reaction // 2 + 1, "mind": mind, "spirit": spirit, "max_hp": max_hp}
+    elif stage == 3:
+        st = {"body": body // 2 + 1, "reaction": reaction // 2 + 1, "mind": mind, "spirit": spirit, "max_hp": half}
+    else:
+        st = {"reaction": reaction // 2 + 1, "mind": mind, "spirit": spirit, "max_hp": half}
+    st.update(attack=attack, defence=defence, hp=st["max_hp"])
+    return t, st
+
+
+def summon_unit(astral_skill, family_roll):
+    """Summon (0x51a595): monster name for family roll 1..3 (Squirrel, Turtle, Foot_Animated) and tier
+    `clamp(astral_skill / 25 + 1, 1, 4)` (unit+0xb2, the raw skill, not the level); tier 1 has no suffix."""
+    tier = max(1, min(4, int(astral_skill) // 25 + 1))
+    base = {1: "Squirrel", 2: "Turtle", 3: "Foot_Animated"}[family_roll]
+    return base if tier == 1 else "%s.%d" % (base, tier)
+
+
+def minion_expiry_chance(count):
+    """Every 16 ticks one minion of a master with `count` minions (unit+0x148) is removed with probability
+    (count - 1) / 100: roll 1..100 < count (FUN_0052bbb7)."""
+    return max(0, count - 1) / 100.0
+
+
+def bless_value(level):
+    """Bless / Curse value (percent chance, compared with rand(0..100)): `level * 4 / 5 + 20`."""
+    return level * 4 // 5 + 20
+
+
+def physical_damage(minimum, spread, roll, bless=0, curse=0, bless_roll=100, curse_roll=100):
+    """Physical part of FUN_00516f6f for an attacker with Bless / Curse values (0 = none): Bless makes the
+    hit deal min + spread when `bless > bless_roll` (rolls are rand(0..100)); Curse makes it deal min when
+    `curse > curse_roll`; otherwise min + `roll` (rand(0..spread))."""
+    rolled = True
+    if bless and bless > bless_roll:
+        minimum += spread
+        rolled = False
+    if curse and curse > curse_roll:
+        rolled = False
+    return minimum + (roll if rolled else 0)

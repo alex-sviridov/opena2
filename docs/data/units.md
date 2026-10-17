@@ -69,7 +69,7 @@ Creature offset ([unit-struct](../engine/unit-struct.md#2-creature-layout-server
 | 39, 40 | gold_base, gold_spread | — | gold = base + rand(0..spread) (40 is a spread, not a max) | CONFIRMED `0x510cc3` |
 | 41 | item_chance | — | item drops if `p41 > rand(0..100)` | CONFIRMED `0x510cfd` |
 | 42, 43 | item_value_min, item_value_max | — | filter `min ≤ item[+0x1c] ≤ max` in generator `0x525f67` (value = price: CONFIRMED, [items](items.md#4-price)) | CONFIRMED passing |
-| 44 | item_flags | gen +0x54 | item-pool flags: 0x20000000 value filter + predicate, 0x10000000 51 % bypass, 0x4000000 +6 potions, 0x400000/0x800000/0x1000000/0x8000000 categories (names INFERRED) | CONFIRMED structure `0x5254e7`, `0x525f67` |
+| 44 | item_flags | gen +0x54 | item-pool flags: bits 0-14 materials, 15-21 qualities, 0x400000 fighter weapons, 0x800000 shields, 0x1000000 armour, 0x8000000 staves (with 0x20000000), 0x4000000 stock, 0x10000000 bypass, 0x20000000 enchant + window ([items §11](items.md#11-random-generation)) | CONFIRMED `0x5254e7`, `0x525f67`, `0x524bca` |
 | 45, 46 | not_used, not_used1 | — | no reader (all 198 `0x41e7e0` call sites checked) | INFERRED unused |
 | 47 | power | — | not read by either loader | CONFIRMED not read; INFERRED unused |
 | 48–53 | spell_1, probability_1 … spell_3, probability_3 | brain +0x7c+4i, +0x88+4i | spell ids and use chance, stored ×0x147 (327: percent on a 15-bit scale); AI `0x56ad00` takes the last slot that passes | CONFIRMED |
@@ -150,5 +150,4 @@ pairs resolve (exclusion list empty), range checks (HP > 0 except `ManMage_Unarm
 - Damage kinds 1/2 (`+0xb7…+0xba`) of weapons and negative damage spread in `0x516f6f`. (The elemental part is
   answered by [spells §5](spells.md#5-damage-and-protection): kind 1-5 = fire..astral, `ftol(d*(100-prot)/100+0.75)`.)
 - XP level thresholds `FUN_005128ac`; the callers of the kill credit (vtable dispatch).
-- Item generator categories (`item_flags`, [items](items.md#open-questions)). Start: `FUN_00525f67`, `FUN_005254e7`.
 - Hero state between campaign maps. Start: `FUN_00514920`. (Equipment strings are resolved: [items §9](items.md#9-equipment-strings).)

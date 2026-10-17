@@ -195,9 +195,10 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   REA: exe rounding `ftol(x+0.5)` of `param x material x quality` (7 f64: price, weight, damage, toHit, defence, absorption, level/magcap),
   price `+0x1c` = base + effects (`1.5^(s/70)` curve, castSpell by scrollCost), 7 i16 = material masks per quality (regenerate the 395 named
   class items exactly), `stats` group = cost/min/max/UsableBy/cumulative slot weights, `suitableFor` bit 1 fighter / 2 mage, icon
-  `%02d%02d%1d%02d.16a`, names `itemname.bin`+`.txt`, equipment strings parsed (`Soft`/`Wooden` prefixes); itemname.pkt cross-checks all prices.
+  `%02d%02d%1d%02d.16a`, names `itemname.bin`+`.txt`, equipment strings parsed (`Soft`/`Wooden` prefixes); itemname.pkt cross-checks all prices. Generator (`allods2/formats/itemgen.py`): pool flags, enchant/roll/magnitude, shop stock,
+  `magic_cap` readers, UI equip checks, display name `Scroll of X`, pkt header bytes: CONFIRMED (items §6, §8, §11).
   docs/data/items.md
 - Spells (F2b) done: `allods2/formats/spelldefs.py` (29 spells, `AssetCache.spells()`, `data export spells`, `tools/validate_spells.py`);
   REA: record n at `0x68f5cc`+n*0x20, sphere 1-5 fire..astral, level = skill-30+Mind, scaling m=L/30+1, damage `0x516f6f`, behaviour = per-number
   switch `FUN_00519db8` + data-driven carriers (missile/point/area), sound 500+projectile id; prototype spell = Fire Arrow. docs/data/spells.md
-- Next: F3. Also F2 follow-ups (item generator, magic capacity). Also G3c (fonts). Also (docs/open-questions.md): town-scene animations, text conventions.
+- Next: F3. Also G3c (fonts). Also (docs/open-questions.md): town-scene animations, text conventions.
