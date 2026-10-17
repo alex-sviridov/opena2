@@ -15,7 +15,7 @@ SCHOOLS = {1: "Blade/Fire", 2: "Axe/Water", 3: "Bludgeon/Air", 4: "Pike/Earth", 
 
 THRESHOLDS = 150            # entries of the curve table (0x6a8998)
 SKILL_CAP = 100             # an award is ignored once the skill is 100
-KILL_FACTOR = 0.5           # kill credit = victim.xp * 0.5
+KILL_FACTOR = 0.5           # kill credit = victim.xp * 0.5  (FUN_00512fcb, called when a death completes)
 OFF_SCHOOL_SHIFT = 3        # xp = (xp + 7) >> 3 outside the best school (shooting excepted)
 REPEAT_WINDOW = 5           # distinct victim types remembered for the repeat-kill discount
 MIND_XP_DIV = 30.0          # award = trunc(xp * (Mind / 30 + 0.25))

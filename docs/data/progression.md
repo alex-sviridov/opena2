@@ -113,11 +113,15 @@ Callers (the `xp_in` of each):
 | damage spell | spell effect `FUN_00519db8` calls slot `0x6c` at `0x51a4b3` with the final damage (after protection, capped at victim HP + 10) and the spell number | same formula | spell p2 |
 | projectile / carrier / poison tick | `FUN_0051e65b` (`0x51e6ed`), `FUN_0051d175` for Poison Cloud (spell 6, `0x51d235`) | same formula | spell p2 |
 | spell cast | `FUN_00519db8` calls slot `0x70` at `0x519f42` when a *unit* (not an item) casts | `trunc( 0.5 * mana_cost + 0.5 )` (`FUN_005131ef`, [spells p1](spells.md)) | spell p2 |
-| kill credit | slot `0x68` `FUN_00512fcb`: `trunc(victim.xp * 0.5)` with the explicit spell school | - | - |
+| kill credit | slot `0x68` `FUN_00512fcb(victim, spell)`, called at `0x52b74b` from the creature update loop `FUN_0052b459` when a victim's death completes (state `+0x54 == 0x10`) and its killer (`victim+0x40`) is a hero-type unit (0x21..0x3f) with HP >= 0 (`FUN_00542770` tests `+0x94 < 0`); `spell` = signed byte `victim+0x48` (spell of the killing blow, 0 = melee) | `trunc( 0.5 * victim.xp )`, passed through the same award (repeat-kill discount, off-school, cap) | spell p2 when `spell != 0` and the killer is a mage; 0 otherwise |
 
-Per-damage credit and the `+1` mean XP accrues **continuously during a fight**, in proportion to the damage dealt, not on the kill;
-`0.5 * xp` is therefore the total for a victim killed in one blow of its max HP. No creature-code caller of the kill-credit slot `0x68`
-was found (the other `call [reg+0x68]` sites belong to other classes), so it may be unused: UNKNOWN. Quest and scenario XP rewards are not
+Per-damage credit and the `+1` mean XP accrues **continuously during a fight**, in proportion to the damage dealt; the **kill credit adds a
+second `0.5 * victim.xp` when the victim dies** (so a victim killed in one blow of its max HP yields about `1.0 * xp` before the discounts, a long
+fight the same sum). The kill credit is also the only place that updates the repeat-kill list (`+0x1a8`: it increments the high-word count of
+the victim's type, or appends it; at 5 entries the oldest is dropped), and it is skipped entirely when `spell != 0` and the killer is not a mage.
+A mage that kills with melee (`spell == 0`, school 0) gets no XP from the award (mages need an explicit school) but still updates the list.
+The same death branch also bumps the owner's kill counters (`player+0xa48` monster kills, `+0xa4c` player kills) and, for a monster killed
+by a human, runs killer slot `0x50(victim)` (not traced). CONFIRMED (`0x52b709`-`0x52b84a`, `0x512fcb`). Quest and scenario XP rewards are not
 read in `allods2.exe` (Scenario.dll side): UNKNOWN. Other readers of the skills: `0x530577` (picks the hero's best school, spawn/encounter
 strength `3 * best - 50 .. 3 * best + 75` against a unit's `FUN_00510a26`) and `0x533768` (counts skills > 75, needs 4 and gold < 1 000 000):
 roles INFERRED. `FUN_00514f59(school, level)` builds a level-L hero (school skill L, Shooting L/2, a school staff or weapon) for
@@ -182,7 +186,7 @@ the hero on map 40 and of all humans/monsters (`Unit.skills/xp/xp_total/best_sch
 
 ## Open questions
 
-- Who calls the kill-credit slot `0x68` (`FUN_00512fcb`), or is it dead code? Start: `FUN_00516f6f` death path, `FUN_00510a70`.
+- Killer slot `0x50(victim)` called just before the kill credit at `0x52b72e` (INFERRED: attacker bookkeeping). Start: `FUN_0052b459`.
 - Quest / scenario XP rewards (Scenario.dll interface; none found in `allods2.exe`). Start: `FUN_005052d2`, `FUN_00502019`.
 - Role of skill 0 (general) beyond the to-hit bonus copy at `0x529200`; roles of `0x530577` / `0x533768` (encounter strength?). Start: `FUN_00510a26`.
 - What `Player+0x2c` means (gates the damage credit `0x5131a3` and the level-up message `0x512a..`). Start: `FUN_00513128`.

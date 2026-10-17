@@ -23,7 +23,7 @@ from both places when answered).
 
 ## Progression
 
-- Callers of the kill-credit slot `0x68` (`FUN_00512fcb`); quest / scenario XP rewards. Start: `FUN_00516f6f`, `FUN_00502019`. [progression](data/progression.md#open-questions)
+- Quest / scenario XP rewards; killer slot `0x50(victim)` before the kill credit. Start: `FUN_005052d2`, `FUN_0052b459`. [progression](data/progression.md#open-questions)
 - Role of skill 0 (general) and of the skill readers `0x530577` / `0x533768`; meaning of `Player+0x2c`. Start: `FUN_00510a26`, `FUN_00513128`. [progression](data/progression.md#open-questions)
 - Human max HP / mana are derived by the recompute (`FUN_0051366b`), not the data.bin value the world uses; implement in phase I. [progression](data/progression.md#6-hero-start)
 

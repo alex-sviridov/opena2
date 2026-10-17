@@ -199,7 +199,7 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   REA: record n at `0x68f5cc`+n*0x20, sphere 1-5 fire..astral, level = skill-30+Mind, scaling m=L/30+1, damage `0x516f6f`, behaviour = per-number
   switch `FUN_00519db8` + data-driven carriers (missile/point/area), sound 500+projectile id; prototype spell = Fire Arrow. docs/data/spells.md
 - Progression (F3) done: no single level, six skill words (0 general, 1-5 schools) each with its own XP pool; curve `thr[n] = trunc(1.1^n)` capped at
-  skill 100; XP per melee hit and per damaging spell (scaled by Mind, repeat-kill and off-school reductions); a skill-up changes to-hit/min damage,
+  skill 100; XP per melee hit, per damaging spell and a kill credit when the victim dies (scaled by Mind, repeat-kill and off-school reductions); a skill-up changes to-hit/min damage,
   spell level, max HP/mana via the recompute (exe values replace the template HP/mana: engine still raw until phase I); 6 hero templates;
   `formats/progression.py`, `AssetCache.progression()`, `Unit.skills/xp`, golden `["progression"]`. Data close-out: all tables and map
   references resolve (`tests/test_data_integration.py`, explicit exclusions). docs/data/progression.md, docs/data/overview.md (tables + handoff to movement and combat)
