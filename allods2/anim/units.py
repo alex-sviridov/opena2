@@ -151,14 +151,16 @@ class UnitSet(AnimationSet):
         source, i, m = self.frame(action, facing, phase)
         return FrameRef(source, i, m, self.hotspot(source, i), action, phase, tuple(events))
 
-    def frame_at(self, action, facing, tick, *, start=0, ticks_per_cell=None):
+    def frame_at(self, action, facing, tick, *, start=0, ticks_per_cell=None, odometer=None):
         """The frame `action` shows on its tick `tick` (0 = first tick).
 
         idle: counter `start` (obj+0x9c) then +1 per tick, element
               (start + tick + 1) mod len (0x466238).
         move: odometer from `start`, walking cell after cell in `facing`
               at `ticks_per_cell` (default walk_ticks_per_cell());
-              element (odometer // 16) mod len.
+              element (odometer // 16) mod len.  With `odometer` (the distance
+              actually walked, map units; the simulation's `Unit.odometer`) that
+              value is used and `tick`, `start` and `ticks_per_cell` are ignored.
         attack: element `tick`; past the end, the idle state with the
               counter continuing from len (§3.3).
         dying: phase tick // 2; past the end, the corpse.
@@ -167,6 +169,8 @@ class UnitSet(AnimationSet):
         a = self.actions[action]
         if action == "idle":
             return self.ref(action, facing, a.phases[(start + tick + 1) % a.ticks])
+        if action == "move" and odometer is not None:
+            return self.ref(action, facing, a.phases[(odometer // MOVE_UNITS_PER_ELEMENT) % a.ticks])
         if action == "move":
             if ticks_per_cell is None:
                 ticks_per_cell = walk_ticks_per_cell(diagonal=bool(facing & 2))

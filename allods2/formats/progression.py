@@ -143,6 +143,21 @@ def derived_vitals(t, skills=None, bonus_hp=0, bonus_mana=0):
     return hp, mana
 
 
+CAVALRY_TYPES = (19, 21)        # units.reg types that get +10 speed in the recompute
+
+
+def derived_speed(t, type_id=0):
+    """Speed stat (+0x8c) of a human of template `t` as the recompute `FUN_0051366b` sets it
+    (`0x513a78`-`0x513bbe`, docs/data/progression.md section 3): Reaction `R` (capped by class)
+    gives `R` if `R < 12` else `12 + R // 5`, +10 for the cavalry unit types; the load penalty and
+    effect deltas are not included."""
+    mage = t.get("mana_max", -1) > 0
+    female = t.get("gender", 0) == 1
+    r = t.get("reaction", -1)
+    r = min(ATTR_DEFAULT if r < 0 else r, ATTR_CAPS[(mage, female)][1])
+    return (r if r < 12 else 12 + r // 5) + (10 if type_id in CAVALRY_TYPES else 0)
+
+
 def hero_template(t, spells=None):
     """The start state of one hero template (`unitstats.UnitType` of kind human)."""
     skills = skills_of(t)

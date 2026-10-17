@@ -16,7 +16,7 @@ Dependencies point down only (a layer imports layers with a smaller number).
 |---|---|---|---|
 | 1-2 | `a2res/`, `allods2/` (incl. `allods2/assets.py`) | archives, formats, decoders, asset cache | stdlib, numpy, Pillow; never pygame, never `engine` |
 | 3 | `engine/world.py` | `World`: cells, heights, tick counter, entity tables, spatial index, block layer | layers 1-2 |
-| 4 | `engine/sim/` | `Simulation.step` (+ command log), systems list (selection system), `Command` / `SelectUnits`, `CommandQueue`, tick clock | 1-3 |
+| 4 | `engine/sim/` | `Simulation.step` (+ command log), systems list (selection, movement), `Command` / `SelectUnits` / `FollowPath`, `CommandQueue`, tick clock ([simulation](simulation.md)) | 1-3 |
 | 5 | `engine/ui/` | `Layout`, `choose_cursor`, `SelectionInput` (-> `SelectUnits`), `ScrollInput`, `MinimapPanel` | 1-4, `engine.view` (camera, `pick`) |
 | 6 | `engine/view/` | `Camera`, coordinates, visible range, per-cell compositing, draw list | 1-3 |
 | 7 | `engine/backend_pygame/` | window, surface cache, blitting, events, main loop, screenshot, `interface.py` (panels, info panel), `cursor.py`, `text.py` (`draw_text`) | everything; the only layer that imports pygame |
@@ -217,8 +217,8 @@ code `engine/world.py`; map facts in [map.md parts 3-4](../formats/map.md).
   as inert phantoms (INFERRED). The engine keeps and draws them. Four units start at HP 0 (file `hp` 0, max default): a
   walker stays at HP 0 as a corpse for good, a flyer or ghost dies on tick 1 (CONFIRMED `0x50f1b9`-`0x50f24b`,
   `0x50fecb`); no behaviour yet, they idle.
-- **Simulation** (G3a): `Simulation.step` only advances `world.tick`; units stay in `idle` with
-  `action_start_tick = 0`, so animation time (`world.tick - action_start_tick`) comes from the simulation and
+- **Simulation** (G3a, H1): `Simulation.step` runs the systems (selection, then [movement](simulation.md)) and
+  advances `world.tick`; units stay in `idle` with `action_start_tick = 0` until ordered, so animation time (`world.tick - action_start_tick`) comes from the simulation and
   never from the render clock (tested at 30 and 60 fps render rates).
 - **`World.from_map(map, assets, facing=None)`**: structures in record order, then section 3 cells of the loaded
   window, then players, units, piles; unknown types go to `world.report.unknown` (entity kept, `known=False`). `dump_json()` /

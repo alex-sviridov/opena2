@@ -73,6 +73,27 @@ class Player:
 
 
 @dataclass
+class Mover:
+    """Movement state of a unit: the exe's Mover object (creature +0x1c0, 0xb4 bytes),
+    docs/engine/unit-struct.md section 7.  Facing and the sub-cell offset live on the Unit
+    (mover[0] and the Position object); everything else of a step is here.  Steps are in 1/256
+    cell."""
+    turn_rate: int = 16             # +0x0a facing units per tick (data.bin turn rate; ctor default 0x10)
+    target_facing: int = -1         # +0x01 (-1: equal to the unit's facing, as the ctor sets both)
+    step_target: tuple = None       # +0x06 cell being entered (x, y) while a step is in progress
+    step_from: tuple = None         # +0x70 cell where the step began
+    steps: int = 0                  # +0xac ticks done in the step
+    step_ticks: int = 0             # +0xaa ticks the step takes (ceil(256 / larger component))
+    step_len: int = 0               # +0xa8 length per tick, 1..63
+    step_dir: int = 0               # +0xae dir8 of the step (0 N, 1 NE, 2 E ... 7 NW)
+    dx: int = 0                     # +0xb0 signed per-tick offset, x
+    dy: int = 0                     # +0xb1 y
+    turning: bool = False           # +0xa0 a multi-tick turn is in progress
+    turn_ticks: int = 0             # +0xa4 ticks the current turn takes
+    turn_done: int = 0              # +0x9d turn ticks done
+
+
+@dataclass
 class Unit:
     """A unit or monster (section 6 record).  Field names and meanings follow the exe's
     Creature, docs/engine/unit-struct.md section 2; only what is needed now is here, the rest
@@ -113,6 +134,16 @@ class Unit:
     best_school: int = 0            # +0x23c for Hero_/Start_ templates: first highest school 1..5, else 0
     mana: int = 0                   # humans: +0x9a (starts at the maximum)
     mana_max: int = 0               # humans: +0x9c, derived like the max HP (0 for fighters)
+    speed_mod: int = 0              # Haste/Slow effect delta added to the speed stat (+0x8c)
+    order: int = 0                  # +0x50 order id (0 none, 1 move to cell); sim/movement.py
+    state: int = 0                  # +0x54 state (0 idle, 1 move step); sim/movement.py
+    path: list = field(default_factory=list)    # cells still to enter, front first (the exe's list at +0x1c8)
+    mover: Mover = field(default_factory=Mover)
+    odometer: int = 0               # client walk counter obj+0x9c: map units moved, 16 per walk frame
+
+    def __post_init__(self):
+        if self.mover.target_facing < 0:
+            self.mover.target_facing = self.facing      # the ctor writes mover[0] and mover[1] together
 
 
 @dataclass
@@ -192,6 +223,9 @@ class World:
         self._ucells = {}           # (x, y) -> set of unit ids   (never part of the block layer)
         self._icells = {}           # (x, y) -> set of item ids
         self._next_seq = 1
+        self.costs = pas.DEFAULT_COSTS      # map.reg [Terrain] Cost<name> (from_map loads the install's)
+        self.speed_multiplier = 8           # map.reg [Path Finding] SpeedMultiplier (CONFIRMED 8)
+        self._cost = None
         self._base = pas.terrain_base(self.terrain)         # computed once
         self._block = self._base.copy()
         self._border()
@@ -199,6 +233,17 @@ class World:
         self._view.flags.writeable = False
 
     # --- views ---------------------------------------------------------------
+
+    @property
+    def cost(self):
+        """(h, w) uint8 terrain movement cost (FUN_0055494d / FUN_0055a147), cached."""
+        if self._cost is None:
+            self._cost = pas.cost_layer(self.terrain, self.costs)
+        return self._cost
+
+    def set_costs(self, costs):
+        """Install a terrain cost table (index = terrain type, `passability.costs_from_reg`)."""
+        self.costs, self._cost = tuple(costs), None
 
     @property
     def block(self):
@@ -447,6 +492,9 @@ class World:
         (the exe's rand, here a fixed hash of the uid so a map always loads the same);
         an int puts every unit at that angle byte (0x80 = front view, as `map render`)."""
         w = cls(m.runtime_terrain(), m.heights_i8, m.name, terrain=m.terrain)
+        if hasattr(assets, "map_reg"):                  # test doubles keep the defaults
+            costs, w.speed_multiplier = assets.map_reg()
+            w.set_costs(costs)
         stats = assets.databin().structures
         reg = assets.objects_reg()
         rep = w.report
@@ -514,6 +562,8 @@ class World:
                      rec.x & 255, rec.y & 255, unit_angle(rec.uid, facing), IDLE, 0, hp, hp_max,
                      rec.uid, rec.server_id, rec.is_human, rec.behaviour, move, face, rec.squad, rec.group, known,
                      stats=tpl)
+            if tpl is not None and not rec.is_human:
+                u.mover.turn_rate = max(1, tpl.turn_rate)       # mover+0xa: monster p9; humans: the speed stat (sim/movement.py)
             if rec.is_human and tpl is not None:        # docs/data/progression.md section 4: no award logic yet
                 u.skills = prog.skills_of(tpl)
                 u.mana = u.mana_max = mana_max
@@ -575,10 +625,24 @@ class World:
                 "units": [[u.id, u.type_id, u.owner, u.x, u.y, u.sub_x, u.sub_y, u.facing, u.action,
                            u.action_start_tick, u.hp, u.hp_max, u.uid, u.server_id, int(u.human),
                            u.behaviour, u.move_type, u.face, u.squad, u.group, int(u.known)]
+                          + self._mover_dump(u)
                           for _, u in sorted(self.units.items())],
                 "items": [[i.id, i.x, i.y, i.sub_x, i.sub_y, i.gold, list(i.codes), list(i.groups)]
                           for _, i in sorted(self.items.items())],
                 "block": [bytes(row).hex() for row in self._block]}
+
+    @staticmethod
+    def _mover_dump(u):
+        """Movement state, only for a unit that has any (idle units keep the short entry)."""
+        m = u.mover
+        if not (u.order or u.state or u.path or u.odometer or m.steps or m.turning
+                or m.target_facing != u.facing):
+            return []
+        return [{"order": u.order, "state": u.state, "path": [list(c) for c in u.path],
+                 "odometer": u.odometer, "target_facing": m.target_facing,
+                 "step": [list(m.step_target) if m.step_target else None, m.steps, m.step_ticks,
+                          m.step_len, m.step_dir, m.dx, m.dy],
+                 "turn": [int(m.turning), m.turn_ticks, m.turn_done]}]
 
     def dump_json(self):
         return json.dumps(self.dump(), sort_keys=True, separators=(",", ":"))

@@ -20,6 +20,9 @@ Shift toggles, right click clears); --size only 640x480 (default), 800x600 or 10
 `screenshot --interface` renders that whole window headless (default 640x480; --select UID,...
 selects those unit ids first); without --interface it renders the bare viewport as before.
 `minimap` writes its base image (no pygame).  Docs: docs/engine/architecture.md.
+`run --debug-move UID X,Y [X,Y ...]` (developer tool, not for players) walks map unit UID
+through the given cells: each leg must be straight or diagonal from the previous cell (the unit's own
+cell first); no pathfinding, no blocking.  docs/engine/simulation.md.
 """
 
 import argparse
@@ -130,6 +133,25 @@ def _setup(a):
     return world, tv, cam, assets, opts, DebugFlags.parse(a.debug)
 
 
+def debug_move_commands(world, args):
+    """`--debug-move UID X,Y ...` -> [FollowPath]: straight or diagonal legs from the unit's cell."""
+    if not args:
+        return []
+    from engine.sim import FollowPath, expand_line
+    from engine.world import UNIT_ID_BASE
+    uid = UNIT_ID_BASE + int(args[0])
+    if uid not in world.units:
+        raise ValueError("--debug-move: no unit with uid %s" % args[0])
+    try:
+        ends = [tuple(int(v) for v in c.split(",")) for c in args[1:]]
+    except ValueError:
+        raise ValueError("--debug-move: cells are X,Y") from None
+    if not ends or any(len(c) != 2 for c in ends):
+        raise ValueError("--debug-move: give UID and at least one X,Y cell")
+    u = world.units[uid]
+    return [FollowPath(uid, expand_line((u.x, u.y), ends))]
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="python -m engine")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -171,6 +193,8 @@ def main(argv=None):
     m.add_argument("--install")
     m.add_argument("--units", action="store_true", help="add the unit dots")
     r.add_argument("--no-minimap", action="store_true")
+    r.add_argument("--debug-move", nargs="+", metavar="UID_OR_CELL",
+                   help="developer tool: UID X,Y [X,Y ...] walks the unit along straight legs")
     a = p.parse_args(argv)
     if a.cmd == "minimap":
         return minimap_cmd(a)
@@ -195,8 +219,12 @@ def main(argv=None):
         from engine.view import Minimap
         mm = None if a.no_minimap else Minimap(world, load_color_table(as_fs(a.install)),
                                                load_dot_colors(as_fs(a.install)))
+        try:
+            commands = debug_move_commands(world, a.debug_move)
+        except ValueError as e:
+            p.error(str(e))
         window.run(world, tv, camera, a.layout, a.speed, "Allods 2 - " + world.name,
-                   assets=assets, options=opts, debug=debug, minimap=mm)
+                   assets=assets, options=opts, debug=debug, minimap=mm, commands=commands)
     elif a.interface:
         from engine.backend_pygame.interface import screenshot_window
         from engine.world import UNIT_ID_BASE

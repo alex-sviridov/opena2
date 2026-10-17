@@ -298,6 +298,10 @@ def unit_frame(aset, u, tick):
     """FrameRef of unit `u` at world tick `tick`: its action's frame at `tick - action_start_tick`
     (animation time comes from the simulation, never from the render clock)."""
     action = aset.idle_action if u.action == IDLE else u.action
+    if action == "turn":                                # the stand frame of the stepping facing
+        action = "stand"
+    if action == "move":                                # distance-driven: 1 frame per 16 units walked
+        return aset.frame_at(action, (u.facing >> 4) & 15, tick - u.action_start_tick, odometer=u.odometer)
     return aset.frame_at(action, (u.facing >> 4) & 15, tick - u.action_start_tick)
 
 

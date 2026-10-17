@@ -80,4 +80,7 @@ from both places when answered).
 - [Cell effects](engine/rendering.md#open-questions) (answered: spell-area sprites, registered by [spells §4](data/spells.md#4-effect-handlers); drawing needs the spell system), unit invisibility / stone curse / hover, message 0x74 (flag 0x80); start at `FUN_004632a1`.
 - [Engine object drawing](engine/rendering.md#open-questions): burnt ground, light-map lights on objects; start at `FUN_00404a2a`.
 - [Engine minimap](engine/rendering.md#open-questions): final channel pass `0x4ac030`, fog background surface `DAT_00626be0`, fog gate of the unit dots; start at `FUN_004ac414`.
+- Movement (H1) [simulation](engine/simulation.md#open-questions): waypoint removal and the tick an order ends after
+  arrival (`FUN_00569321`, `FUN_00555dc2`); group speed and Haste/Slow in `unit_speed`; the regeneration job
+  vs its `tick & 3` test (`FUN_0052bbb7`, `0x50fc5a`); the group-AI pass at `tick & 15 == 6` (`FUN_0056fe4d`).
 - Phantom units (9 on blocked cells, never created by the server) and HP-0 units: engine keeps and draws them; decide with the phase H sim. [architecture §9](engine/architecture.md#9-world-state)

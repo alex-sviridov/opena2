@@ -4,7 +4,7 @@ import dataclasses
 
 import pygame
 
-from engine.sim import DEFAULT_SPEED, CommandQueue, Simulation, selection_system, tick_period_ms
+from engine.sim import DEFAULT_SPEED, CommandQueue, Simulation, tick_period_ms
 from engine.ui import CursorInput, DebugFlags, Layout, MinimapPanel, ScrollInput, SelectionInput, choose_cursor
 from engine.view import DrawOptions, Projection, build_draw_list, build_terrain_items
 from engine.view.pick import pick_at
@@ -56,12 +56,12 @@ def cursor_input(world, camera, layout, picks, mouse, player_id=PLAYER_ID, proje
 
 
 def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Allods 2", max_frames=None,
-        assets=None, options=None, debug=None, minimap=None, player_id=PLAYER_ID):
+        assets=None, options=None, debug=None, minimap=None, player_id=PLAYER_ID, commands=()):
     """Accumulator main loop: fixed-step sim, variable-rate drawing.  Returns when the window
     closes (or after `max_frames`, for tests).  `layout`: `Layout` of the window size (the camera
     is built from `layout.viewport`).  F1/F2/F3 toggle the debug overlays, Ctrl+H the health bars,
     left mouse selects (click / drag, Shift toggles), right mouse clears, the minimap moves the
-    camera."""
+    camera.  `commands` are queued before the first tick (the debug-move order)."""
     options, debug = options or DrawOptions(), debug or DebugFlags()
     layout = layout or Layout.for_size(camera.view_w + 160, camera.view_h)
     screen = ensure_display(*layout.size)
@@ -73,7 +73,9 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     cursors = CursorSprites(fs)
     title_of = unit_title_fn(assets)
     panel = MinimapPanel.from_layout(minimap.geometry, layout) if minimap else None
-    sim, queue, scroll = Simulation(world, systems=[selection_system]), CommandQueue(), ScrollInput()
+    sim, queue, scroll = Simulation(world), CommandQueue(), ScrollInput()
+    for cmd in commands:
+        queue.put(cmd)
     player = world.players[player_id]
     items = build_draw_list(world, camera, world.tick, assets, options, debug, player.selection)
     selecting = SelectionInput(player_id, layout.screen.w, lambda: items.picks,

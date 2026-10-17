@@ -203,4 +203,11 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   spell level, max HP/mana via the recompute (`derived_vitals`, used by `World` for all 605 campaign humans; never the template HP/mana); 6 hero templates;
   `formats/progression.py`, `AssetCache.progression()`, `Unit.skills/xp`, golden `["progression"]`. Data close-out: all tables and map
   references resolve (`tests/test_data_integration.py`, explicit exclusions). docs/data/progression.md, docs/data/overview.md (tables + handoff to movement and combat)
-- Status: E and F done. Next: H1: unit movement state and the tick. Also G3c (fonts). Also (docs/open-questions.md): town-scene animations, text conventions.
+- Simulation (H1) done: tick CONFIRMED (fixed step, 8-32 ticks/s by speed 0..8) and the update order inside `server.step` (commands first,
+  then carriers, area effects, creatures in creation order `FUN_0052b459`); unit states/orders documented, movement implemented
+  (`engine/sim/movement.py`, `Unit.mover`): step length `FUN_00559195` (speed x8 / mean cost, +-height, clamp 1..63, diagonal x0.707),
+  cell-to-cell steps in 1/256, occupied cell changes when the offset crosses the boundary (~mid step), no gap between cells, turning (<=45 deg snaps,
+  else `rate`/tick, no movement while turning), human turn rate = speed stat (recompute copies it), runtime human speed = integer Reaction rule
+  (templates' p6 rounded by hand), walk animation by odometer (`frame_at(odometer=)`), `FollowPath` debug order,
+  `python -m engine run MAP --debug-move UID X,Y ...`, replay hash test. docs/engine/simulation.md
+- Status: E, F and H1 done. Next: H2 pathfinding. Also G3c (fonts). Also (docs/open-questions.md): town-scene animations, text conventions.

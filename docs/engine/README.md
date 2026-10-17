@@ -7,6 +7,7 @@ The recreated game, built on the core library (`allods2/`, `a2res/`).
 | [architecture.md](architecture.md) | layers, import rules, coordinate systems, tick, main loop, terrain drawing, CLI | G1 skeleton done |
 | [rendering.md](rendering.md) | draw list and backend: pass order, placement, shadows, light rows, smoothing, culling, debug overlays, timings, interface / cursor / picking / marker (§14) | G2b, G3b done |
 | [ui-layout.md](ui-layout.md) | screen layout per mode, cursors, picking, selection, marker, info panel (REA facts) | G3b done |
+| [simulation.md](simulation.md) | tick, update order inside a server tick, unit state machine, movement formulas (step length, turning, cell occupancy), exe addresses, VERIFY IN GAME | H1 done |
 | [unit-struct.md](unit-struct.md) | runtime unit struct of the exe: classes, sizes, allocation sites, field table, per-tick behaviour, client mirror | CONFIRMED / INFERRED / UNKNOWN per field |
 
 Design specs: [../superpowers/specs/](../superpowers/specs/). Format and

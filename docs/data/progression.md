@@ -62,6 +62,7 @@ max HP     = ftol( ftol( Body * (mage ? 1 : 2) + (mage ? 1 : 2) * G ) * (1 + 1.1
 max mana   = ftol( ftol( 2*Spirit + (mage ? 2 : 1) * G ) * (1 + 1.1**Spirit / 100) ) + bonus_mana              (only if the stored max mana, i.e. the template manaMax, is non-zero, else mana = 0)
 scan range = ftol( ((Mind + Reaction) / 25 + 4) * 256 ) + bonus      (+0xa4 in 1/256 cell; +0xa5 = whole cells)
 speed      = Reaction                if Reaction < 12 else Reaction/5 + 12      (+10 for unit types 0x13, 0x15), - load penalty, min 6
+turn rate  = low byte of the speed above (mover+0xa, `0x513ffc`-`0x514005`; [simulation §4.3](../engine/simulation.md))
 load cap   = Body*10 + 1  (+0x92);  load = +0x8e + (the +0x7c object's field +0x20)/2, at most 32000 (INFERRED: weight);  if load >= cap: speed -= load / cap
 damage     = ftol(1.1**Body / 20) (+0xb4 min, +0xb5 spread; bytes)
 to-hit     = ftol((1.1**Body + 1.1**Reaction) / 5)        (+0xa6)

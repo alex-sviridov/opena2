@@ -119,7 +119,7 @@ Offsets from the constructors 0x50d493, 0x50dc2b, init 0x50e173, copy 0x50e48e (
 | +0x194,+0x198,+0x19c,+0x1a0 | 4 each | scenario flags from mapunit+0x50 bits 0,2,1,3 (file+16); +0x1a0 also set to 1 at 0x51a7cf/0x560c20 | CONFIRMED set. `+0x1a0` = summoned: no loot (`FUN_00510a70`), no XP (`FUN_005128cb`), set by summon/clone spells (`FUN_00519db8`). The other three only gate candidates of the event generator `FUN_005303ed` (not AI). See [map.md](../formats/map.md#units-section-6) |
 | +0x1a4,+0x1a6 | 2 | word pair (read by messaging 0x502019, 0x52b368) | UNKNOWN |
 | +0x1a8 | ~0x18 | object (ctor 0x59f003) | UNKNOWN |
-| +0x1c0 | 4 | ptr **Mover** (0xb4 bytes, ctor 0x551346, zeroed then +5=0x41, +8=5, +9=0xff, +0xa=0x10); +0 and +1 are facing bytes (init `0x40+rand(0x80)`, 0x50e2ac), +0xa turn rate (human param 7) | CONFIRMED init; semantics partly INFERRED |
+| +0x1c0 | 4 | ptr **Mover** (0xb4 bytes, ctor 0x551346, zeroed then +5=0x41, +8=5, +9=0xff, +0xa=0x10); +0 and +1 are facing bytes (init `0x40+rand(0x80)`, 0x50e2ac), +0xa turn rate (monsters param 9; humans: the recompute `FUN_0051366b` copies the low byte of the speed `+0x8c` at `0x513ffc`-`0x514005`, simulation.md 4.3) | CONFIRMED init; semantics partly INFERRED |
 | +0x1c4 | 4 | ptr **Brain/AI** (0xb8 bytes, ctor 0x569003): +8 AI mode (1..15, jump table 0x56e470), +9 current order (1 attack, 2 cast, 3 move, other -> state 0x1b), +0x15 retry counter, +0x2 word, +0xb0 word pending dest (x lo, y hi), +0x5c target, +0x71=1, +0x16=0xffdc | CONFIRMED order dispatch 0x56dd7d-0x56dfff; field meanings INFERRED |
 | +0x1c8, +0x1e4 | 0x1c | two arrays of 10 (ctor 0x5420f0(10)); INFERRED path ring / waypoints | INFERRED |
 | +0x200 | 4 | ptr 0xc-byte object (ctor 0x54f955) | UNKNOWN |
@@ -179,7 +179,7 @@ spell with weapon-object: `+ byte FUN_0041e7e0(0)`. phase 7: `+0x6c--`; at 0: `+
 `rand(n)`=FUN_0051fa25: `rand15*(n+1)>>15` (0..n incl.), rand15 = CRT-style `FUN_00583290` (0..0x7fff).
 
 ## 7. Mover
-Creature init sets facing +0 = +1 = 0x40+rand(0x80) (0x50e2ac, existing doc); data load sets +0xa (turn rate: monster param 9, human param 7;
+Creature init sets facing +0 = +1 = 0x40+rand(0x80) (0x50e2ac, existing doc); data load sets +0xa (turn rate: monster param 9; humans: the recompute copies the speed byte, simulation.md 4.3;
 effect kind 18 adds to it, `FUN_0051d436`).
 Position object (creature+0x10, existing doc): +0 cell x, +1 cell y, +2 packed (y<<8)+x, +4/+5 sub-cell x/y; full coordinate = cell*256+sub
 (`FUN_0054ff5b` x, `0054ff7c` y, `0054ff9e` packed cell, `0054ffb0` cell x, `0054ffc0` cell y; setter `FUN_0054fc41(x16,y16)` splits both). "At centre" = sub x==sub y==0x80 (`FUN_00551383`).
@@ -238,7 +238,7 @@ Speed source: `FUN_0055915a`: group byte (creature+0x70 -> +0x3c -> +0x44) if no
 1. `FUN_00554fd2` (above). 2. If the cell changed: `mover+0x72 = FUN_0055687d(...)`.
 3. If now at centre: clear +0xa8/+0xaa/+0xac; re-reserve cells (`0055be86(c,0,2)` then `(c,0,1)`); then a cell-table lookup (`FUN_0055f3e0(cell)` in a table at world+0x5402c) and, if the entry byte at world+0x54060 == 0x17, `FUN_0055a96c(creature, b+0x54064, b+0x54065)` (I: teleport/portal-like effect; not traced).
 `FUN_00555c7e` (start next step, called by the move drivers when at centre and not yet at the target):
-- path list (creature+0x1c8?, I: the 10-entry ring built by the pathfinder `FUN_0054d76e`) non-empty: `+6 = front waypoint`, `+0x70 = my cell`, `+0x9c=0`, reserve target cell (`0055be86(c,+6,0)`), `+1 = FUN_0054f618(c, +6)` (target facing = dir8*32 from sign(dx),sign(dy) of the cell-centre delta).
+- path list (creature+0x1c8?, I: the 10-entry ring built by the pathfinder `FUN_0054d76e`) non-empty: `+6 = front waypoint` (peeked: `FUN_0055f0d0` returns the head element's address, nothing is removed there), `+0x70 = my cell`, `+0x9c=0`, reserve target cell (`0055be86(c,+6,0)`), `+1 = FUN_0054f618(c, +6)` (target facing = dir8*32 from sign(dx),sign(dy) of the cell-centre delta).
   If `+0==+1`: `FUN_00559195(c, mycell, facing)` computes (+0xa8,+0xaa,+0xb0,+0xb1,+0xae), `+0xac=0`, first `FUN_00554fd2` immediately. Else `FUN_00556454(c, +1)` starts a turn (below); no movement this tick.
 - path list empty: `FUN_005551ef` (just finish turning).
 Turn (C 00556454/005551ef/00555f86): angle d = (+0 - +1) folded to 0..128. If no turn is in progress (+0xa0==0) and d<=0x20 (45 deg): facing := target instantly, +0xa4=1. Otherwise `005551ef`: if d < rate: facing := target; else facing += rate toward the target (clockwise if (f+d)&0xff==target else counter-clockwise); +0xa4 = ceil(d/rate); +0xa0=1; +0x9d++; +0xa0=0 once equal. Movement starts on a later tick once +0==+1. `00555f86` variant (turn-to-cell): instant if d<=0x20.

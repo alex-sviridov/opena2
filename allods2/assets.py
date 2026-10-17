@@ -74,6 +74,14 @@ class AssetCache:
             self._progression = progression.build(self.unit_stats(), self.spells())
         return self._progression
 
+    def map_reg(self):
+        """`(costs, speed_multiplier)` from `world/data/map.reg` (docs/formats/animation.md 3.4):
+        the 11-entry terrain cost table and [Path Finding] SpeedMultiplier (default 8)."""
+        from . import reg
+        from .formats import passability as pas
+        r = reg.load_reg("world/data/map.reg", self.fs)
+        return pas.costs_from_reg(r), int(r.get("Path Finding/SpeedMultiplier", 8))
+
     def objects_reg(self):
         """objects.reg records by ID with Parent inheritance (`anim.objects.load_object_records`)."""
         if self._objects_reg is None:
