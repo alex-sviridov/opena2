@@ -11,6 +11,38 @@
   "20": "dca122fe8a63951581a254ce6d3f2809cae5043ab64ed67c44fa67aa3aef1063",
   "52": "ba1d06d4a4999d5b96e97a662c61cfb58cd46225e91c0d8944c09f454f593158"
  },
+ "paths": {
+  "10:33,67>69,40": {
+   "found": true,
+   "len": 48,
+   "sha256": "fdc9169e2cf8f55e67d48575971c492838bfc115c4025acf58ff2fd8ee7e679d"
+  },
+  "10:33,69>64,20": {
+   "found": true,
+   "len": 75,
+   "sha256": "5a9b17a54a26f9914f2414ea19c03d09a3dabbb31ead9d1cfb247d02d3261051"
+  },
+  "20:20,66>32,11": {
+   "found": true,
+   "len": 77,
+   "sha256": "aeec5484aff1153903e2e97f807fc378f57ce47b0d499e49d498357ec0f4c691"
+  },
+  "20:54,26>15,8": {
+   "found": true,
+   "len": 55,
+   "sha256": "677f9082f353d71db0a9871e39c1478e8fd77e6466222193b80a483c1eb7c80e"
+  },
+  "52:25,101>92,41": {
+   "found": true,
+   "len": 154,
+   "sha256": "bf1def354df29b130e767953659912c5e92f82a070bcbb5f0e6424ffce510f96"
+  },
+  "52:84,40>18,104": {
+   "found": true,
+   "len": 166,
+   "sha256": "42190798a815a62b5d9ad52bd5db0ec1dd6b14913fee18c01c4ac3354cf01861"
+  }
+ },
  "progression": {
   "sha256": "f6f260dfef3646e9668f4236805a910d5542e401afec62c73c2c201340fac8d1"
  },

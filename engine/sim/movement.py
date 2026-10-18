@@ -3,7 +3,8 @@
 Spec: docs/engine/simulation.md (formulas, exe addresses, update order).  Layer 4: reads and
 writes `engine.world` only.  Fixed-point throughout: positions are cell * 256 + sub-cell, a
 step is `step_len` units per tick, a cell takes `step_ticks` ticks.  No pathfinding and no
-dynamic blocking (phase H2): the path is taken as given.
+dynamic blocking for `FollowPath`: the path is taken as given.  `MoveTo` plans with the exe's two
+layers (static plan, dynamic hops: `pathfinding.py`, docs/engine/simulation.md section 7).
 """
 
 import math
@@ -13,6 +14,8 @@ from dataclasses import dataclass
 from allods2.formats import progression as prog
 
 from .commands import Command
+from .pathfinding import DEFAULT_CONFIG, PathGrid, plan_dynamic, plan_static, chebyshev
+from allods2.formats import passability as pas
 
 # Direction tables (path-finder object, CONFIRMED 0x553e4e..0x553f2f): 0 N, 1 NE, 2 E ... 7 NW.
 DIR_DX = (0, 1, 1, 1, 0, -1, -1, -1)
@@ -24,6 +27,7 @@ SNAP_TURN = 0x20                # a turn of at most 45 degrees snaps (FUN_005564
 
 IDLE_STATE, MOVE_STATE = 0, 1   # unit.state (+0x54)
 NO_ORDER, MOVE_ORDER = 0, 1     # unit.order (+0x50)
+STATIC_PLAN_FORCED = 0xFF       # mover.consumed value that forces a static re-plan (brain wrapper 0x56e4b0)
 IDLE, MOVE, TURN = "idle", "move", "turn"       # unit.action (the client's actions 0, 1, 5)
 
 
@@ -36,6 +40,15 @@ class FollowPath(Command):
 
     def __post_init__(self):
         object.__setattr__(self, "cells", tuple((int(x), int(y)) for x, y in self.cells))
+
+
+@dataclass(frozen=True)
+class MoveTo(Command):
+    """Order 1: walk `unit_id` to cell (x, y), planning the way as the exe does (docs/engine/simulation.md
+    section 7).  The click mapping (H3) issues these.  Rejected: unknown or dead unit, cell outside the map."""
+    unit_id: int
+    x: int
+    y: int
 
 
 def expand_line(start, ends):
@@ -229,8 +242,127 @@ def apply_follow_path(world, cmd):
             return False
         prev = c
     u.path = list(cmd.cells)
+    u.mover.goal = u.mover.dest = u.mover.tail = None
+    u.mover.static_path = []
     u.order, u.state = MOVE_ORDER, MOVE_STATE
     return True
+
+
+def unit_size(u):
+    """Footprint side in cells: token size (+0x49, vtable +0x1c `0x542360`, CONFIRMED)."""
+    return max(1, int(getattr(u.stats, "token_size", 1) or 1)) if u.stats is not None else 1
+
+
+def path_grid(world, move_type):
+    """Static PathGrid for a mover class (block layer masked with the mover byte, terrain costs), cached
+    per block revision."""
+    cache = world.__dict__.setdefault("_path_grids", {})
+    key = (move_type, world.block_rev, id(world.cost))
+    g = cache.get(key)
+    if g is None:
+        cache.clear()
+        blocked = (world.block & pas.MOVE_MASK[move_type]) != 0
+        g = cache[key] = PathGrid.from_arrays(blocked, world.cost if move_type == 1 else None)
+    return g
+
+
+def live_cells(world, u):
+    """Cells the other living units hold (footprint at their cell, and the cell being entered): the
+    dynamic stamps over the static layer.  INFERRED, docs/engine/simulation.md 7.3."""
+    out = set()
+    for o in world.units.values():
+        if o is u or o.hp <= 0:
+            continue
+        n = unit_size(o)
+        for j in range(n):
+            for i in range(n):
+                out.add((o.x + i, o.y + j))
+        if o.mover.step_target:
+            tx, ty = o.mover.step_target
+            for j in range(n):
+                for i in range(n):
+                    out.add((tx + i, ty + j))
+    return out
+
+
+def _is_human(world, u):
+    p = world.players.get(u.owner)
+    return bool(p and p.human)
+
+
+def apply_move_to(world, cmd):
+    u = world.units.get(cmd.unit_id)
+    if u is None or u.hp <= 0 or not _in_map(world, (cmd.x, cmd.y)):
+        return False
+    u.order, u.state = MOVE_ORDER, MOVE_STATE
+    u.mover.goal = (cmd.x, cmd.y)
+    return True
+
+
+def _static_plan(world, u):
+    """FUN_00555411 step 2: plan the whole way, reset the hop state."""
+    m, here = u.mover, (u.x, u.y)
+    res = plan_static(path_grid(world, u.move_type), here, m.goal, size=unit_size(u),
+                      walker=u.move_type == 1, human=_is_human(world, u))
+    m.static_path = list(res.cells)
+    m.dest = m.goal
+    m.arrived = False
+    m.tail = m.static_path[-1] if m.static_path else here
+    m.failed = not m.static_path
+    m.consumed = 0
+    u.path = []                                         # the dynamic list is cleared
+    m.last_plan = res
+
+
+def _hop_plan(world, u):
+    """FUN_00555dc2: plan a short hop towards a point of the static plan over the live layer."""
+    m, cfg, here = u.mover, DEFAULT_CONFIG, (u.x, u.y)
+    n = len(m.static_path)
+    head = m.static_path[0] if n else None
+    d = chebyshev(here, head) if n else 0
+    if n > cfg.static_isnt_needed:
+        goal = head if d > cfg.dynamic_by_static_lookup else m.static_path[cfg.dynamic_by_static_lookup]
+        final = False
+    else:
+        goal, final = m.tail, True
+    grid = path_grid(world, u.move_type).with_blocked(live_cells(world, u))
+    res = plan_dynamic(grid, here, goal, size=unit_size(u), walker=u.move_type == 1)
+    u.path = list(res.cells)
+    m.last_hop = res
+    if not u.path and final:
+        m.failed = True
+    if n and d <= cfg.dynamic_by_static_lookup:
+        m.static_path.pop(0)
+
+
+def _drive(world, u):
+    """The move driver at a cell centre (FUN_00555411 steps 2-4, wrapper 0x56e4b0).  Returns False when
+    the order ended."""
+    m, cfg, here = u.mover, DEFAULT_CONFIG, (u.x, u.y)
+    if m.dest != m.goal:                                # wrapper: target changed -> force a static re-plan
+        m.consumed = STATIC_PLAN_FORCED
+    if here == m.goal:
+        return False
+    m.since_hop = min(255, m.since_hop + 1)
+    if m.dest != m.goal or m.consumed > cfg.static_refresh_rate:
+        _static_plan(world, u)
+    if here == m.tail:
+        m.arrived = True
+        return False
+    if not u.path or m.since_hop > cfg.dynamic_refresh_rate:
+        _hop_plan(world, u)
+        m.consumed = (m.consumed + 1) & 255
+        m.since_hop = 0
+    return True
+
+
+def _stop(world, u):
+    m = u.mover
+    u.order, u.state = NO_ORDER, IDLE_STATE
+    m.target_facing = u.facing
+    m.goal = m.dest = None          # DECISION: a finished order forgets its plan (the exe keeps +0x74; open)
+    m.static_path = []
+    _set_action(world, u, IDLE)
 
 
 def _tick_unit(world, u):
@@ -241,6 +373,9 @@ def _tick_unit(world, u):
             _end_step(u)
         return
     if u.order != MOVE_ORDER:
+        return
+    if m.goal is not None and not _drive(world, u):
+        _stop(world, u)
         return
     if u.path:
         _start_step(world, u)
@@ -256,5 +391,7 @@ def movement_system(world, commands):
     for cmd in commands:
         if isinstance(cmd, FollowPath):
             apply_follow_path(world, cmd)
+        elif isinstance(cmd, MoveTo):
+            apply_move_to(world, cmd)
     for u in list(world.units.values()):
         _tick_unit(world, u)

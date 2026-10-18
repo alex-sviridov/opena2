@@ -1,7 +1,7 @@
 # Simulation: tick, update order, unit states, movement
 
 Phase H1. The game tick, what a server tick runs and in what order, the unit state machine, and the
-rules by which a unit walks a given path (no path finding yet: H2). Code: `engine/sim/` (`clock.py`,
+rules by which a unit walks a given path, and (§7, H2) how it finds one. Code: `engine/sim/` (`clock.py`,
 `simulation.py`, `movement.py`), `engine.world.Unit` / `Mover`. Facts are marked **CONFIRMED** (GOG
 `allods2.exe`, sha256 in [formats/README](../formats/README.md), address given) or **INFERRED**;
 engine choices are **DECISION**. Unit struct and mover offsets: [unit-struct](unit-struct.md) §2, §7,
@@ -210,6 +210,11 @@ and actions (it is never reset, CONFIRMED). The unit is drawn from its server po
 | centre snap / check | `FUN_005551d6` / `FUN_00551383` |
 | cell lists / reservation | `FUN_00550697`, `FUN_0055020a`, `FUN_0055be86` |
 | client message | `FUN_0050ff2d`, `FUN_005040c4` (`0x6d` turn, move per cell) |
+| search / wrapper | `FUN_0054d76e` / `FUN_0054d72d`; expanders `FUN_0055d010`/`0055d830` (static, size 1), `0055c6f0`/`0055c910` (static, sized), `0055e050`/`0055e870`, `0055cb30`/`0055cdf0` (dynamic) |
+| path walk / fallback | `FUN_0054e58c`, `FUN_0054e886` / `FUN_005585f4` (rings), `FUN_00557f08` (follow, open) |
+| drivers | `FUN_00555411` (move to cell), `FUN_0055574d` (follow), `FUN_00555dc2` (hop plan), `FUN_00558f64`, wrapper `0x56e4b0` in `FUN_0056dca2` |
+| lists | `FUN_0055f170` push front, `FUN_0055f110` pop head, `FUN_0055f0d0`/`0055f0f0` peek head/tail, `FUN_005421b0` clear |
+| layers / stamps | `FUN_0055fa70` (`+0x10000`), `FUN_0055fa20` (`+0x20000`), `FUN_0055be86`, `FUN_0055c2ce`, `FUN_0055c1fe`, `FUN_0055c440`, `FUN_0055c5a0`, `FUN_0056fc69` |
 
 ## 6. VERIFY IN GAME
 
@@ -350,6 +355,12 @@ follow target (re-plan every `len/3 + 1` consumed waypoints, StaticIsntNeeded ga
   1-6 above with the unit's `Mover` carrying `dest (+0x74)`, `tail (+0x76)`, `consumed (+9)`, `since_hop (+0x78)`,
   `arrived (+0x90)`, `failed (+0x98)`, `static_path`; `Unit.path` is the dynamic list. An arrived or failed unit
   returns to order 0 / state 0 on the next centre tick (as `FollowPath` does).
+- Size = `token_size` (vtable `+0x1c` = `0x542360` reads `+0x49`, CONFIRMED); movement class = `movement_type`
+  (vtable `+0x20` = `0x542380` reads `+0x4a`, CONFIRMED). The hop goal "`DynamicByStaticLookup` places behind the
+  head" is the 4th element (index 3): the loop fetches `lookup + 1` elements with `FUN_0055f1f0`, taken as
+  MFC-style get-and-advance (INFERRED).
+- A finished order clears `dest`/`static_path` (DECISION; the exe keeps `+0x74`, so a repeated order to the
+  same cell would skip the static plan there: open).
 - `FUN_0056fc69` (yield/swap of a blocking friendly unit) is **not modelled**: the unit re-plans around the
   blocker (what the exe does for computer-controlled units and when the blocker cannot yield).
 - Performance and search statistics: see 7.5.
@@ -362,8 +373,13 @@ the unreachable feedback `FUN_005052d2`, and which pop empties the dynamic list 
 
 ### 7.5 Measured
 
-Filled in by `tools/bench_pathfinding.py` (see Open questions 5): worst-case search on the largest campaign
-map. Golden route hashes: `tests/golden.json["paths"]`.
+`tools/bench_pathfinding.py` (pure Python, 200 random walkable pairs per map, human unit = unbounded search,
+one core of this machine): worst case **444 ms on the largest map** (`110.alm`, 256 x 256, 40,465 labelled
+cells), 124-160 ms on the 144 x 144 maps, typically 4-25 ms for a 50-150 cell route. The wave labels every
+cell within the route's cost radius, so cost grows with the area, not the route length. Acceptable at one
+plan per order and per 17 hops; many units ordered at once on a big map would hitch (numpy/`array` rewrite
+or a per-tick plan budget if it shows). Golden routes: `tests/golden.json["paths"]`
+(`tests/test_pathfinding_maps.py`, regenerate with `tools/update_golden.py`).
 
 ### 7.6 VERIFY IN GAME (pathfinding)
 
@@ -379,7 +395,9 @@ map. Golden route hashes: `tests/golden.json["paths"]`.
    short at the fallback cell; the same order for the human player's unit walks all the way (limit 1000).
 5. **Re-plan.** Walk 40 cells and place a unit on the road ahead: the walker should re-route only at the next hop
    re-plan (up to 32 ticks later), possibly walking into the new blocker before that.
-6. **Road preference.** Walker cost = terrain cost: a road (cost 6) beside grass (8) should attract the route
+6. **Standing orders.** Order the same walk twice from different spots (second time to the cell the first
+   ended on): the engine plans afresh; the exe may reuse `+0x74` (see 7.3).
+7. **Road preference.** Walker cost = terrain cost: a road (cost 6) beside grass (8) should attract the route
    when it adds at most a few cells.
 
 ## Open questions

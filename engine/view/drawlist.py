@@ -71,7 +71,7 @@ class DrawOptions:
 
 @dataclass(frozen=True)
 class DrawItem:
-    kind: str                   # "sprite" | "shadow" | "marker" | "passability" | "depth" | "bar"
+    kind: str                   # "sprite" | "shadow" | "marker" | "passability" | "depth" | "bar" | "searched" | "path" | "hop"
     entity: int = None          # world id
     sprite: tuple = None        # (set_kind "object"|"structure"|"bridge"|"unit"|"backpack", type_id, source)
     frame: int = 0              # index into the sprite file
@@ -397,7 +397,7 @@ def _item(ctx, it):
         ctx.sprite(it, BACKPACK_KEY, "main_b", frame, x, y, ow[0], ow[1], dep + (0, 3), "half")
 
 
-def _debug_items(ctx, debug):
+def _debug_items(ctx, debug, selection=()):
     """Overlay items for the DebugFlags set in `debug` (attributes passability, markers, depth)."""
     out = []
     vx, vy, w, hv = ctx.win
@@ -428,6 +428,8 @@ def _debug_items(ctx, debug):
                     hx, hy = CELL * ent.x, CELL * ent.y - z
                 out.append(DrawItem("marker", ent.id, None, 0, hx - ctx.cx, hy - ctx.cy, 1, 1,
                                     text="hotspot", depth=(PASS_DEBUG, ent.y, -ent.x, 2, ent.seq, 0, 0)))
+    if getattr(debug, "paths", False):
+        out.extend(_path_items(ctx, selection))
     if getattr(debug, "depth", False):
         for it in ctx.items:
             if it.kind == "sprite" and it.blend != "half":
@@ -435,6 +437,32 @@ def _debug_items(ctx, debug):
                 out.append(DrawItem("depth", it.entity, None, 0, it.sx, it.sy, it.w, it.h,
                                     text="P%d r%d c%d s%d" % (p, row, -ncol, slot),
                                     depth=(PASS_DEBUG, row, ncol, 3, seq) + tuple(it.depth[5:])))
+    return out
+
+
+def _path_items(ctx, selection):
+    """Path overlay of the selected units (docs/engine/simulation.md 7): "searched" = cells the last static
+    plan labelled, "path" = the rest of the static plan, "hop" = the dynamic list being walked."""
+    out = []
+    relief = ctx.relief
+
+    def cell(kind, x, y, n):
+        if in_window(ctx.win, x, y) and 0 <= x < ctx.world.width and 0 <= y < ctx.world.height:
+            out.append(DrawItem(kind, None, None, 0, CELL * x - ctx.cx, CELL * y - int(relief[y, x]) - ctx.cy,
+                                CELL, CELL, depth=(PASS_DEBUG, y, -x, 4 + n, 0, 0, 0)))
+
+    for uid in selection:
+        u = ctx.world.units.get(uid)
+        if u is None:
+            continue
+        m = u.mover
+        if m.last_plan is not None and m.goal is not None:
+            for x, y in m.last_plan.searched:
+                cell("searched", x, y, 0)
+        for x, y in m.static_path:
+            cell("path", x, y, 1)
+        for x, y in u.path:
+            cell("hop", x, y, 2)
     return out
 
 
@@ -480,5 +508,5 @@ def build_draw_list(world, camera, tick, assets, options=None, debug=None, selec
     ctx.items.picks = [r for _, r in sorted(ctx.picks, key=lambda p: p[0] + (0, 2))]
     ctx.items.extend(_bars(ctx, selection))
     if debug is not None:
-        ctx.items.extend(sorted(_debug_items(ctx, debug), key=lambda i: i.depth))
+        ctx.items.extend(sorted(_debug_items(ctx, debug, selection), key=lambda i: i.depth))
     return ctx.items

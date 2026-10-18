@@ -3,7 +3,7 @@ backend event loop; the view turns them into overlay items."""
 
 from dataclasses import dataclass
 
-NAMES = ("passability", "markers", "depth")
+NAMES = ("passability", "markers", "depth", "paths")
 
 
 @dataclass
@@ -11,6 +11,7 @@ class DebugFlags:
     passability: bool = False       # tint of blocked cells (walker mask 0x41)
     markers: bool = False           # footprint cell outlines + hotspot crosses
     depth: bool = False             # the draw-order key as text
+    paths: bool = False             # selected units: cells the last plans searched, static path, current hop
 
     def toggle(self, name):
         if name not in NAMES:
@@ -28,4 +29,4 @@ class DebugFlags:
         return flags
 
     def any(self):
-        return self.passability or self.markers or self.depth
+        return self.passability or self.markers or self.depth or self.paths

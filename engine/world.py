@@ -91,6 +91,17 @@ class Mover:
     turning: bool = False           # +0xa0 a multi-tick turn is in progress
     turn_ticks: int = 0             # +0xa4 ticks the current turn takes
     turn_done: int = 0              # +0x9d turn ticks done
+    # path-finding state (docs/engine/simulation.md section 7); the exe's offsets in brackets
+    goal: tuple = None              # target cell of the move order (the brain's argument of FUN_00555411)
+    dest: tuple = None              # +0x74 target cell the static plan was made for
+    tail: tuple = None              # +0x76 last cell of the static plan (own cell when it failed)
+    consumed: int = 0               # +0x09 hop plans since the static plan (0xFF = force a re-plan)
+    since_hop: int = 0              # +0x78 ticks since the last hop plan
+    arrived: bool = False           # +0x90 the unit stands on `tail`
+    failed: bool = False            # +0x98 a plan came out empty
+    static_path: list = field(default_factory=list)     # the static list (+0x1c8); Unit.path is the dynamic one
+    last_plan: object = None        # debug: PathResult of the last static plan (not dumped)
+    last_hop: object = None         # debug: PathResult of the last hop plan (not dumped)
 
 
 @dataclass
@@ -226,6 +237,7 @@ class World:
         self.costs = pas.DEFAULT_COSTS      # map.reg [Terrain] Cost<name> (from_map loads the install's)
         self.speed_multiplier = 8           # map.reg [Path Finding] SpeedMultiplier (CONFIRMED 8)
         self._cost = None
+        self.block_rev = 0                  # bumped whenever a block cell is recomputed (path-grid cache key)
         self._base = pas.terrain_base(self.terrain)         # computed once
         self._block = self._base.copy()
         self._border()
@@ -289,6 +301,7 @@ class World:
 
     def _refresh(self, cells):
         """Recompute exactly `cells` (local recompute, spec)."""
+        self.block_rev += 1
         for x, y in cells:
             if 0 <= x < self.width and 0 <= y < self.height:
                 self._block[y, x] = self._cell_value(x, y)
@@ -638,11 +651,16 @@ class World:
         if not (u.order or u.state or u.path or u.odometer or m.steps or m.turning
                 or m.target_facing != u.facing):
             return []
-        return [{"order": u.order, "state": u.state, "path": [list(c) for c in u.path],
-                 "odometer": u.odometer, "target_facing": m.target_facing,
-                 "step": [list(m.step_target) if m.step_target else None, m.steps, m.step_ticks,
-                          m.step_len, m.step_dir, m.dx, m.dy],
-                 "turn": [int(m.turning), m.turn_ticks, m.turn_done]}]
+        d = {"order": u.order, "state": u.state, "path": [list(c) for c in u.path],
+             "odometer": u.odometer, "target_facing": m.target_facing,
+             "step": [list(m.step_target) if m.step_target else None, m.steps, m.step_ticks,
+                      m.step_len, m.step_dir, m.dx, m.dy],
+             "turn": [int(m.turning), m.turn_ticks, m.turn_done]}
+        if m.goal is not None or m.dest is not None or m.static_path:      # only planned orders
+            d["plan"] = [list(m.goal) if m.goal else None, list(m.dest) if m.dest else None,
+                         list(m.tail) if m.tail else None, m.consumed, m.since_hop, int(m.arrived),
+                         int(m.failed), [list(c) for c in m.static_path]]
+        return [d]
 
     def dump_json(self):
         return json.dumps(self.dump(), sort_keys=True, separators=(",", ":"))

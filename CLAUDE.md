@@ -210,4 +210,10 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   else `rate`/tick, no movement while turning), human turn rate = speed stat (recompute copies it), runtime human speed = integer Reaction rule
   (templates' p6 rounded by hand), walk animation by odometer (`frame_at(odometer=)`), `FollowPath` debug order,
   `python -m engine run MAP --debug-move UID X,Y ...`, replay hash test. docs/engine/simulation.md
-- Status: E, F and H1 done. Next: H2 pathfinding. Also G3c (fonts). Also (docs/open-questions.md): town-scene animations, text conventions.
+- Pathfinding (H2) done: not A*: a label-correcting wave fill (`FUN_0054d76e`, levels limited to `dist + min(5, dist/4)`, unbounded for the
+  human player's units to a free cell; costs 2/3 or terrain cost for walkers, no corner rule, strict `<`) and a backward walk with the exe's
+  tie rule (`<=` orthogonal, `<` diagonal), unreachable -> cheapest labelled cell of the first ring around the target; two layers: a static
+  plan (re-planned on target change or after 16 hops) and 3-4 cell dynamic hops over the live layer (every 32 ticks or when empty);
+  `engine/sim/pathfinding.py` (pure), `MoveTo` order, overlay `--debug paths` (F4), `tools/bench_pathfinding.py`
+  (444 ms worst, 256x256), goldens `["paths"]`. Not decoded: friendly-unit yield/swap, live-layer stamp bits, follow-target. docs/engine/simulation.md §7
+- Status: E, F, H1 and H2 done. Next: H3 click-to-move. Also G3c (fonts). Also (docs/open-questions.md): town-scene animations, text conventions.

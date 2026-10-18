@@ -22,7 +22,9 @@ selects those unit ids first); without --interface it renders the bare viewport 
 `minimap` writes its base image (no pygame).  Docs: docs/engine/architecture.md.
 `run --debug-move UID X,Y [X,Y ...]` (developer tool, not for players) walks map unit UID
 through the given cells: each leg must be straight or diagonal from the previous cell (the unit's own
-cell first); no pathfinding, no blocking.  docs/engine/simulation.md.
+cell first); no pathfinding, no blocking.  `run --debug-moveto UID X,Y` orders a `MoveTo` (the original's
+path finding); with `--debug paths` and the unit selected the overlay shows searched cells (blue), the static
+path (yellow) and the current hop (green).  docs/engine/simulation.md.
 """
 
 import argparse
@@ -133,6 +135,22 @@ def _setup(a):
     return world, tv, cam, assets, opts, DebugFlags.parse(a.debug)
 
 
+def debug_moveto_commands(world, args):
+    """`--debug-moveto UID X,Y` -> [MoveTo]."""
+    if not args:
+        return []
+    from engine.sim import MoveTo
+    from engine.world import UNIT_ID_BASE
+    try:
+        uid = UNIT_ID_BASE + int(args[0])
+        x, y = (int(v) for v in args[1].split(","))
+    except (ValueError, IndexError):
+        raise ValueError("--debug-moveto: give UID and X,Y") from None
+    if uid not in world.units:
+        raise ValueError("--debug-moveto: no unit with uid %s" % args[0])
+    return [MoveTo(uid, x, y)]
+
+
 def debug_move_commands(world, args):
     """`--debug-move UID X,Y ...` -> [FollowPath]: straight or diagonal legs from the unit's cell."""
     if not args:
@@ -195,6 +213,8 @@ def main(argv=None):
     r.add_argument("--no-minimap", action="store_true")
     r.add_argument("--debug-move", nargs="+", metavar="UID_OR_CELL",
                    help="developer tool: UID X,Y [X,Y ...] walks the unit along straight legs")
+    r.add_argument("--debug-moveto", nargs="+", metavar="UID_OR_CELL",
+                   help="developer tool: UID X,Y orders a path-found move (use with --debug paths)")
     a = p.parse_args(argv)
     if a.cmd == "minimap":
         return minimap_cmd(a)
@@ -220,7 +240,7 @@ def main(argv=None):
         mm = None if a.no_minimap else Minimap(world, load_color_table(as_fs(a.install)),
                                                load_dot_colors(as_fs(a.install)))
         try:
-            commands = debug_move_commands(world, a.debug_move)
+            commands = debug_move_commands(world, a.debug_move) + debug_moveto_commands(world, a.debug_moveto)
         except ValueError as e:
             p.error(str(e))
         window.run(world, tv, camera, a.layout, a.speed, "Allods 2 - " + world.name,

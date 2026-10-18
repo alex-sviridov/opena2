@@ -53,6 +53,26 @@ SHOTS["full-10-units"] = ("10", 400, 1792, 8, False)
 SHOTS["full-52-bats"] = ("52", 1000, 300, 5, False)
 
 
+# Real-map routes for the pathfinding goldens: (map, start, target); human static plan, unit type walker.
+ROUTES = (("10", (33, 67), (69, 40)), ("10", (33, 69), (64, 20)), ("20", (20, 66), (32, 11)),
+          ("20", (54, 26), (15, 8)), ("52", (25, 101), (92, 41)), ("52", (84, 40), (18, 104)))
+
+
+def path_hashes(install=None):
+    """{"map:sx,sy>tx,ty": {"len", "sha256" of the route}} of ROUTES (docs/engine/simulation.md 7)."""
+    from engine.sim.movement import path_grid
+    from engine.sim.pathfinding import plan_static
+    assets, worlds, out = AssetCache(install), {}, {}
+    for spec, a, b in ROUTES:
+        if spec not in worlds:
+            worlds[spec] = World.from_map(open_map(spec, install), assets)
+        r = plan_static(path_grid(worlds[spec], 1), a, b, human=True)
+        key = "%s:%d,%d>%d,%d" % ((spec,) + a + b)
+        out[key] = {"found": r.found, "len": len(r.cells),
+                    "sha256": hashlib.sha256(json.dumps(r.cells).encode("ascii")).hexdigest()}
+    return out
+
+
 def golden_hash(spec, install=None):
     return World.from_map(open_map(spec, install), AssetCache(install)).dump_hash()
 
@@ -153,6 +173,7 @@ def main(argv):
     out["items"] = items_hash(install)
     out["spells"] = spells_hash(install)
     out["progression"] = progression_hash(install)
+    out["paths"] = path_hashes(install)
     with open(GOLDEN, "w", encoding="ascii") as f:
         json.dump(out, f, indent=1, sort_keys=True)
         f.write("\n")

@@ -16,7 +16,7 @@ from .sprites import SpriteCache
 from .surfaces import SurfaceCache
 
 MAX_FRAME_MS = 250
-DEBUG_KEYS = {pygame.K_F1: "passability", pygame.K_F2: "markers", pygame.K_F3: "depth"}
+DEBUG_KEYS = {pygame.K_F1: "passability", pygame.K_F2: "markers", pygame.K_F3: "depth", pygame.K_F4: "paths"}
 KEYS = {pygame.K_LEFT: "left", pygame.K_RIGHT: "right", pygame.K_UP: "up", pygame.K_DOWN: "down"}
 PLAYER_ID = 1       # single player: the human is record 1 (map.md part 5)
 

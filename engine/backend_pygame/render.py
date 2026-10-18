@@ -57,11 +57,18 @@ def draw_bar(surface, it, ball=None):
         surface.blit(ball, (it.sx + it.w - 4, it.sy))
 
 
+PATH_TINTS = {"searched": (80, 120, 255, 60), "path": (255, 220, 0, 110), "hop": (0, 255, 90, 150)}
+
+
 def _overlay(surface, caches, it):
     r = pygame.Rect(it.sx, it.sy, it.w, it.h)
     if it.kind == "passability":
         tint = pygame.Surface((it.w, it.h), pygame.SRCALPHA)
         tint.fill(PASSABILITY_TINT)
+        surface.blit(tint, r.topleft)
+    elif it.kind in PATH_TINTS:
+        tint = pygame.Surface((it.w, it.h), pygame.SRCALPHA)
+        tint.fill(PATH_TINTS[it.kind])
         surface.blit(tint, r.topleft)
     elif it.kind == "marker" and it.text == "hotspot":
         x, y = it.sx, it.sy
