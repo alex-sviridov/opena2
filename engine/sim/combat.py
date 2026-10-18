@@ -5,8 +5,11 @@ Spec: docs/engine/combat.md (C§ numbers in the comments); routine addresses are
 
 from typing import NamedTuple
 
-from .combatstats import u8
-from .pathfinding import centre_x, centre_y
+from engine.world import Damage, Died
+
+from . import movement as mv        # movement reaches back into this module only at call time (`_tick_unit`, `follow_drive`)
+from .combatstats import CombatStats, u8, unit_combat_stats
+from .pathfinding import centre_x, centre_y, foot
 from .pathfinding import follow_distance as reach_gap       # `FUN_00556dcd`: whole cells between footprints + 1 (touching = 1)
 
 # --- hit resolution (C§5.2, `FUN_00516f6f`) -----------------------------------------------------
@@ -137,3 +140,140 @@ def can_attack(att_move, att_range, tgt_move, tgt_range):
     col = 0 if tgt_move == 1 and tgt_range > 1 else tgt_move
     row = 0 if att_range > 1 else att_move
     return ATTACK_MATRIX[row][col] != 0
+
+
+# =====================================================================================================================
+# The fight: order 3, the executor, Brain mode 5 and the swing (C§2-C§5).  Layer 4: reads and writes `engine.world` only.
+# =====================================================================================================================
+
+BRAIN_SWING = 1                    # unit.brain_order: swing in progress (brain+0x9 == 1)
+STATE_ATTACK = mv.ATTACK_STATE     # unit.state 3
+PHASE_START, PHASE_WINDUP, PHASE_RECOVERY = 0, 5, 7
+LOG_LIMIT = 20000
+
+
+def log(world, entry):
+    """Append to the fight log, keeping it bounded for sessions nobody drains."""
+    world.fight_log.append(entry)
+    if len(world.fight_log) > LOG_LIMIT:
+        del world.fight_log[:LOG_LIMIT // 2]
+
+
+def combat_stats(world, u):
+    """The unit's `CombatStats`, built from its template and the item table on first use (None template: all zeros)."""
+    st = u.combat
+    if st is None:
+        st = unit_combat_stats(u.stats, world.item_table, u.skills or None) or CombatStats()
+        u.combat = st
+    return st
+
+
+def move_class(u):
+    """movementType as the attack matrix reads it (humans carry -1 in data.bin and walk)."""
+    return u.move_type if u.move_type in (1, 2, 3) else 1
+
+
+def can_order_attack(world, u, t):
+    """`FUN_005711ea` != 0xffffff: the matrix of C§2.2 for attacker `u` and target `t`."""
+    return can_attack(move_class(u), combat_stats(world, u).range, move_class(t), combat_stats(world, t).range)
+
+
+def set_attack(world, u, t):
+    """`FUN_0056d1be(unit, target)`: a member that is the target stops (`FUN_0056dba1`); else cancel, order 3, target, range, Brain mode 0
+    (the executor sets mode 5 at the next group pass, C§2.3)."""
+    if u is t:
+        mv.fail_stop(world, u)
+        return
+    mv.cancel(u)
+    u.order = mv.ATTACK_ORDER
+    u.target = t.id
+    u.range = combat_stats(world, u).range
+    u.mode_go = u.mode_attack = False
+    u.anchor = None
+    u.mover.waiting = u.mover.parked = False
+
+
+def refresh_attack(world, u):
+    """`FUN_00569321` case 3 -> `FUN_0056acc8`, run for every member of a group with order 0 at `tick & 15 == 6`: stop when the target is gone
+    (the exe: state 0x10; I1: HP <= 0, C§9.1), else Brain mode 5 with the target and the range."""
+    t = world.units.get(u.target)
+    if t is None or t.hp <= 0:
+        mv.stop_unit(world, u)
+        return
+    u.mode_go = False
+    u.mode_attack = True
+    u.mover.waiting = u.mover.parked = False
+    u.range = combat_stats(world, u).range
+
+
+def attack_mode(world, u):
+    """Brain mode 5 (`FUN_0056eab5`): in range -> start the swing (`FUN_0056e8c3`), else approach with the follow driver (`FUN_0056ea52`)."""
+    t = world.units.get(u.target)
+    if t is None or t.hp <= 0:
+        mv.stop_unit(world, u)                      # C§9.1: the exe keeps hitting the corpse until it is removed (I2)
+        return
+    a, b = foot(u), foot(t)
+    if u.facing == octant(a, b) and reach_gap(a, b) <= u.range:
+        u.brain_order = BRAIN_SWING
+        u.swing_count = 0
+        u.state = STATE_ATTACK
+        u.swing_target = t.id
+        return
+    step = mv.follow_drive(world, u, t)
+    u.state = mv.MOVE_STATE
+    if step and u.path:
+        mv._start_step(world, u)
+    elif not u.mover.turning:
+        mv._set_action(world, u, mv.IDLE)
+
+
+def brain_swing(u):
+    """Brain order 1 (`FUN_0056dca2`): state 3, count one tick, and once more than 2 ticks old with the done flag set, back to order 0."""
+    u.state = STATE_ATTACK
+    u.swing_count = (u.swing_count + 1) & 0xFF
+    if u.swing_count > 2 and u.done:
+        u.brain_order = 0
+        u.state = mv.IDLE_STATE
+
+
+def swing_tick(world, u):
+    """State 3 of the creature tick (`FUN_0050f12c`): phase 0 starts the swing, phase 5 counts the wind-up down and resolves the hit at 0,
+    phase 7 counts the recovery down and sets the done flag.  The timer is a byte."""
+    st = combat_stats(world, u)
+    t = world.units.get(u.swing_target)
+    if u.phase == PHASE_START:
+        extra = 0
+        if t is not None and u.hp > 0:              # FUN_00516b2f: the start message needs both units and the attacker's HP
+            extra = attack_extra(attack_gap(foot(u), foot(t)))
+            u.action, u.action_start_tick = mv.ATTACK, world.tick       # message 0x71: the client restarts the attack animation
+        u.done = False
+        u.phase = PHASE_WINDUP
+        u.timer = (st.windup + extra) & 0xFF
+    elif u.phase == PHASE_WINDUP:
+        u.timer = (u.timer - 1) & 0xFF
+        if u.timer == 0:
+            if t is not None:
+                resolve_attack(world, u, t, st)
+            u.phase = PHASE_RECOVERY
+            delay = hero_delay(st.weapon_weight, st.reaction) if st.human and st.has_weapon else 0
+            u.timer = (st.recovery + delay + world.rng.rand(3)) & 0xFF
+    elif u.phase == PHASE_RECOVERY:
+        u.timer = (u.timer - 1) & 0xFF
+        if u.timer == 0:
+            u.phase = PHASE_START
+            u.done = True
+
+
+def resolve_attack(world, a, t, st):
+    """`FUN_00516c1f` -> `FUN_00516ceb` for a creature target (C§5.1): range gate, `take_hit`, HP, log.  HP is clamped at 0 (C§9.1)."""
+    if a.hp <= 0 or not in_attack_range(foot(a), foot(t), a.range):
+        return
+    ts = combat_stats(world, t)
+    res = take_hit_detail(st.record, ts.block, world.rng, human=st.human, sure_hit=st.sure_hit)
+    before = t.hp
+    t.hp = max(before - res.damage, 0)
+    if a.stats is not None:
+        t.last_attacker = a.id
+    log(world, Damage(world.tick, a.id, t.id, res.damage, t.hp, res.roll, res.hit))
+    if before > 0 and t.hp == 0:
+        log(world, Died(world.tick, t.id, a.id))

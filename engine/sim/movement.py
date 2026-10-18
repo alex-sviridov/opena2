@@ -16,7 +16,7 @@ from allods2.formats import progression as prog
 from engine.world import NoWay
 
 from .commands import Command
-from .pathfinding import DEFAULT_CONFIG, PathGrid, chebyshev, plan_dynamic, plan_static, unit_size
+from .pathfinding import DEFAULT_CONFIG, PathGrid, chebyshev, follow_distance, foot, plan_dynamic, plan_static, unit_size
 from allods2.formats import passability as pas
 
 # Direction tables (path-finder object, CONFIRMED 0x553e4e..0x553f2f): 0 N, 1 NE, 2 E ... 7 NW.
@@ -28,10 +28,11 @@ MIN_STEP, MAX_STEP = 1, 63
 SNAP_TURN = 0x20                # a turn of at most 45 degrees snaps (FUN_00556454)
 
 IDLE_STATE, MOVE_STATE = 0, 1   # unit.state (+0x54)
-NO_ORDER, MOVE_ORDER, STAND_ORDER = 0, 1, 0xC   # unit.order (+0x50): none, move to cell, stand/guard
+NO_ORDER, MOVE_ORDER, ATTACK_ORDER, STAND_ORDER = 0, 1, 3, 0xC   # unit.order (+0x50): none, move to cell, attack, stand/guard
+ATTACK_STATE = 3                # unit.state: melee swing (docs/engine/combat.md section 4)
 STATIC_PLAN_FORCED = 0xFF       # mover.consumed value that forces a static re-plan (brain wrapper 0x56e4b0)
 WAIT = "wait"                    # _drive result: a blocker wait began (not an ended order)
-IDLE, MOVE, TURN = "idle", "move", "turn"       # unit.action (the client's actions 0, 1, 5)
+IDLE, MOVE, TURN, ATTACK = "idle", "move", "turn", "attack"       # unit.action (the client's actions 0, 1, 5, 3)
 
 
 @dataclass(frozen=True)
@@ -260,6 +261,7 @@ def apply_follow_path(world, cmd):
     u.mover.static_path = []
     u.order, u.state = MOVE_ORDER, MOVE_STATE
     u.mode_go = True
+    u.mode_attack = False
     u.mover.waiting = u.mover.parked = False
     return True
 
@@ -340,18 +342,20 @@ def _static_plan(world, u):
         _maybe_no_way(world, u, res)
 
 
-def _maybe_no_way(world, u, res):
+def _maybe_no_way(world, u, res, goal=None):
     """`FUN_0054d76e` 0x54e1c7..0x54e240: after the cell fallback the planner posts message 0x92 ("No way") when
     the end cell is more than 1 cell from the target (more than 2 when the target is a building cell:
     `FUN_00559bc9` = the cell record holds a structure).  No fallback cell: the packed end is 0, cell (0, 0)."""
+    goal = u.mover.goal if goal is None else goal
     end = res.end if res.end is not None else (0, 0)
-    limit = 2 if world._claim.get(tuple(u.mover.goal)) is not None else 1
-    if chebyshev(end, u.mover.goal) > limit:
+    limit = 2 if world._claim.get(tuple(goal)) is not None else 1
+    if chebyshev(end, goal) > limit:
         world.events.append(NoWay(u.owner, world.tick))
 
 
-def _hop_plan(world, u):
-    """FUN_00555dc2: plan a short hop towards a point of the static plan over the live layer."""
+def _hop_plan(world, u, follow=None):
+    """FUN_00555dc2: plan a short hop towards a point of the static plan over the live layer.  `follow`: the target `Unit` of a follow
+    driver (`FUN_00555dc2(unit, target)`): the hop plan then uses the follow fallback round that unit."""
     m, cfg, here = u.mover, DEFAULT_CONFIG, (u.x, u.y)
     n = len(m.static_path)
     head = m.static_path[0] if n else None
@@ -362,7 +366,8 @@ def _hop_plan(world, u):
     else:
         goal, final = m.tail, True
     grid = path_grid(world, u.move_type).with_blocked(live_cells(world, u))
-    res = plan_dynamic(grid, here, goal, size=unit_size(u), walker=u.move_type == 1)
+    res = plan_dynamic(grid, here, goal, size=unit_size(u), walker=u.move_type == 1,
+                       follow=None if follow is None else (foot(u), foot(follow)))
     # FUN_0054e886 push-fronts the new cells onto the list it is given and never clears it (only the static
     # plan, mode != 0, clears its list first, FUN_0054d76e 0x54d7be): a non-empty dynamic list (a turn in
     # progress at the centre re-planning after DynamicRefreshRate ticks) keeps its old cells behind the hop.
@@ -489,6 +494,7 @@ def cancel(u):
     it) and a reservation is kept mid-step; at a centre the engine has no reservation to release (the live layer is
     derived from positions).  Plans, `dest`, `turning` and the dynamic list are untouched."""
     u.mover.target_facing = u.facing
+    u.mover.follow = None                       # FUN_0056d969: mover+0x7c := 0
     u.state = IDLE_STATE
     u.stopped = False
 
@@ -514,6 +520,7 @@ def set_stand(world, u):
     """`FUN_0056d52b`: order 0xc (stand/guard), anchor = the own cell, mode 0."""
     cancel(u)
     u.mode_go = False
+    u.mode_attack = False
     u.order = STAND_ORDER
     u.anchor = (u.x, u.y)
     u.mover.waiting = u.mover.parked = False
@@ -528,6 +535,7 @@ def set_move(world, u, x, y):
     m = u.mover
     u.order = MOVE_ORDER
     u.mode_go = True
+    u.mode_attack = False
     u.anchor = None
     m.goal = (x, y)
     m.arrived = m.failed = False
@@ -535,10 +543,15 @@ def set_move(world, u, x, y):
 
 
 def _tick_unit(world, u):
-    """One Brain tick (`FUN_0056dca2`), then the failure event: `mover+0x98` ends an order 1 at once
-    (`0x56e1b0` -> `FUN_0056dc24` = cancel + order 0xc, `brain+0x50` stays 0), unlike arrival, which waits for the
-    group pass.  Under any other order the event sets Brain mode 0 (`0x56e320`: the auto target scan
-    `FUN_0056ed4e` finds no enemy; its mode 0xb for computer players is phase I)."""
+    """One creature tick (`FUN_0050f12c`): the Brain tick (`FUN_0056dca2`), then the failure event, then the state switch: state 3 runs the
+    swing phases (`sim/combat.py`).  A unit without HP gets no Brain tick (death is phase I2).
+
+    The failure event: `mover+0x98` ends an order 1 at once (`0x56e1b0` -> `FUN_0056dc24` = cancel + order `0xc`, `brain+0x50`
+    stays 0), unlike arrival, which waits for the group pass.  Under any other order the event sets Brain mode 0 (`0x56e320`: the auto
+    target scan `FUN_0056ed4e` finds no enemy; the scan and the computer players' mode 0xb are phase I, combat.md 9.3)."""
+    from . import combat as fight          # combat imports this module: resolved at call time
+    if u.hp <= 0:
+        return
     _tick_inner(world, u)
     m = u.mover
     if m.failed:
@@ -547,10 +560,17 @@ def _tick_unit(world, u):
             fail_stop(world, u)
         else:
             u.mode_go = False
+            u.mode_attack = False
+    if u.state == ATTACK_STATE:
+        fight.swing_tick(world, u)
 
 
 def _tick_inner(world, u):
+    from . import combat as fight
     m = u.mover
+    if u.brain_order == fight.BRAIN_SWING:              # Brain order 1: the swing runs, no mode (FUN_0056dca2 order switch)
+        fight.brain_swing(u)
+        return
     if m.step_ticks:                                    # a step is in progress (FUN_00555b38)
         u.state = MOVE_STATE
         _advance(world, u)
@@ -558,6 +578,9 @@ def _tick_inner(world, u):
             _end_step(u)
             if m.goal is not None:
                 u.path = []             # FUN_00555b38 clears the dynamic list (+0x1e4) at every step end
+        return
+    if u.mode_attack:                                   # Brain mode 5 (FUN_0056eab5)
+        fight.attack_mode(world, u)
         return
     if not u.mode_go or m.parked:
         return
@@ -581,6 +604,59 @@ def _tick_inner(world, u):
     else:                                               # no hop yet: wait for the next tick's driver
         u.state = IDLE_STATE
         _set_action(world, u, IDLE)
+
+
+def follow_drive(world, u, t):
+    """The follow driver `FUN_0055574d(unit, target, range)` (docs/engine/simulation.md 7.4, combat.md 3.4), called by Brain mode 5 with
+    `range = u.range` while the target is out of range.  Same two layers as the move driver, planned towards the target's cell:
+    at a centre and within range it turns to the target and nothing else; otherwise a static re-plan when the target changed or
+    `consumed > len(static) / 3 + 1`, arrival at the hop goal, a hop plan with the follow fallback, and (by the caller) the step.
+    The not-at-centre branch (`FUN_00555b38`) is the step branch of `_tick_inner`: the Brain never gets here mid-step."""
+    from .combat import octant
+    m, cfg, here = u.mover, DEFAULT_CONFIG, (u.x, u.y)
+    tcell = (t.x, t.y)
+    if follow_distance(foot(u), foot(t)) <= u.range:
+        face = octant(foot(u), foot(t))                 # FUN_00556d78 = FUN_00556454(unit, FUN_005568e4(unit, target))
+        if u.facing != face or m.turning:
+            _set_action(world, u, TURN)
+        _turn_toward(u, face)
+        return False
+    m.since_hop = (m.since_hop + 1) & 255               # byte at mover+0x78
+    if m.follow != t.id:                                # a new object: force the static re-plan
+        m.consumed = STATIC_PLAN_FORCED
+        m.static_path = []
+        m.static_len = 0xFF
+        m.tail = m.follow_cell = tcell
+    if m.consumed > len(m.static_path) // 3 + 1:
+        if m.static_len <= cfg.static_isnt_needed:      # short list: no search, the list becomes its old tail cell
+            m.static_path = [m.tail]
+        else:
+            res = plan_static(path_grid(world, u.move_type), here, tcell, size=unit_size(u),
+                              walker=u.move_type == 1, human=_is_human(world, u))
+            m.static_path = list(res.cells)
+            m.last_plan = res
+            if res.reason in ("fallback", "unreachable"):
+                _maybe_no_way(world, u, res, tcell)
+        m.static_len = len(m.static_path)
+        m.dest = tcell
+        if not m.static_path:
+            m.tail, m.follow_cell, m.failed = here, tcell, True
+        else:
+            m.tail, m.follow_cell = m.static_path[-1], tcell
+        m.follow = t.id
+        m.consumed = 0
+        if m.static_len > cfg.static_isnt_needed:
+            u.path = []
+    if here == m.tail and m.follow_cell == tcell:       # arrived at the hop goal: no step this tick
+        m.consumed = (m.consumed + 1) & 255
+        m.follow = None
+        return False
+    if not u.path or m.since_hop > cfg.dynamic_refresh_rate:
+        if u.facing == m.target_facing:
+            _hop_plan(world, u, follow=t)
+            m.consumed = (m.consumed + 1) & 255
+            m.since_hop = 0
+    return True
 
 
 def movement_system(world, commands):

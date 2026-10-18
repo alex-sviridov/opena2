@@ -34,6 +34,18 @@ class MoveUnits(Command):
 
 
 @dataclass(frozen=True)
+class AttackUnit(Command):
+    """Exe command 0x19 (object target, `msg+0xe`): the player's units attack unit `target_id`.  Intake and effect: docs/engine/combat.md
+    section 2."""
+    player_id: int
+    unit_ids: tuple
+    target_id: int
+
+    def __post_init__(self):
+        object.__setattr__(self, "unit_ids", tuple(self.unit_ids))
+
+
+@dataclass(frozen=True)
 class Stop(Command):
     """Exe command 0x18 (key T, stand ground): cancel the walk, order 0xc."""
     player_id: int

@@ -89,6 +89,27 @@ class OrderGroup:
 
 
 @dataclass(frozen=True)
+class Damage:
+    """Fight log entry: one resolved blow (`World.fight_log`, never in the dump).  `amount` 0 for a miss or an absorbed hit; `hp` is the
+    target's HP after it; `roll` the `rand(200) - 100` of the exe (0 when nothing was drawn)."""
+    tick: int
+    attacker: int
+    target: int
+    amount: int
+    hp: int
+    roll: int = 0
+    hit: bool = False
+
+
+@dataclass(frozen=True)
+class Died:
+    """Fight log entry: a unit's HP reached 0 (death itself is phase I2)."""
+    tick: int
+    unit: int
+    by: int
+
+
+@dataclass(frozen=True)
 class NoWay:
     """Event: the static planner of one of `player_id`'s units ended far from its target (message `0x92`,
     text "No way").  Lives in `World.events`, never in the dump or the hash."""
@@ -124,6 +145,9 @@ class Mover:
     arrived: bool = False           # +0x90 the unit stands on `tail`
     failed: bool = False            # +0x98 a plan came out empty
     static_path: list = field(default_factory=list)     # the static list (+0x1c8); Unit.path is the dynamic one
+    follow: int = None              # +0x7c the unit id the follow driver last planned for (0 after a cancel / arrival at the hop goal)
+    follow_cell: tuple = None       # +0x8c the target cell the follow plan was made for
+    static_len: int = 0             # +0x8a length of the static list after the last follow re-plan (0xFF = forced)
     waiting: bool = False           # brain mode 10 (`FUN_00556b2c`/`00555411`): turning to face the blocker
     parked: bool = False            # brain mode 0 under a move order after a wait: no driver restarts it
     last_plan: object = None        # debug: PathResult of the last static plan (not dumped)
@@ -185,6 +209,18 @@ class Unit:
     mode_go: bool = False           # Brain mode 1 (go to brain+0xa, mover.goal): the move order and the group-pass restart
                                     # (FUN_0056c8af) set it, the stand orders (FUN_0056d52b) and a failure under another order clear it
     anchor: tuple = None            # brain anchor cell of the stand orders 0xb/0xc
+    # fight state (docs/engine/combat.md; sim/combat.py): the exe's offsets in brackets
+    combat: object = None           # sim.combatstats.CombatStats, built on first use from `stats` and the item table
+    target: int = None              # brain+0xc id of the attack target (order 3, Brain mode 5)
+    mode_attack: bool = False       # Brain mode 5 (attack with approach)
+    range: int = 1                  # brain+0x14 attack / approach range in cells
+    brain_order: int = 0            # brain+0x9: 1 = swing in progress (a step in progress is `mover.step_ticks`)
+    swing_count: int = 0            # brain+0x15 ticks into the swing
+    phase: int = 0                  # +0x58 swing phase: 0 start, 5 wind-up, 7 recovery
+    timer: int = 0                  # +0x6c byte countdown of the phase
+    done: bool = True               # +0x136 the swing has finished (set when the recovery ends)
+    swing_target: int = None        # +0x5c target of the swing in progress
+    last_attacker: int = None       # +0x40 whoever hit this unit last
 
     def __post_init__(self):
         if self.mover.target_facing < 0:
@@ -266,6 +302,8 @@ class World:
         self.players = {}           # id (1-based record) -> Player
         self.groups = {}            # id -> OrderGroup, in creation order (sim/orders.py)
         self.events = []            # NoWay ...: for the UI, not part of dump()/the hash
+        self.fight_log = []         # Damage / Died entries (sim/combat.py), drained by the UI, not part of the dump
+        self.item_table = None      # allods2.formats.itemdefs.ItemTable (from_map); combat stats read it
         self._next_group = 1
         self.report = BuildReport()
         self._cells = {}            # (x, y) -> set of ids over present footprint cells
@@ -555,6 +593,8 @@ class World:
         if hasattr(assets, "map_reg"):                  # test doubles keep the defaults
             costs, w.speed_multiplier = assets.map_reg()
             w.set_costs(costs)
+        if hasattr(assets, "items"):
+            w.item_table = assets.items()
         stats = assets.databin().structures
         reg = assets.objects_reg()
         rep = w.report
@@ -759,8 +799,9 @@ class World:
     def _mover_dump(u):
         """Movement state, only for a unit that has any (idle units keep the short entry)."""
         m = u.mover
-        if not (u.order or u.state or u.path or u.odometer or m.steps or m.turning or u.order_group
-                or u.stopped or m.waiting or m.parked or m.target_facing != u.facing):
+        fight = World._fight_state(u)
+        if fight is None and not (u.order or u.state or u.path or u.odometer or m.steps or m.turning or u.order_group
+                                  or u.stopped or m.waiting or m.parked or m.target_facing != u.facing):
             return []
         d = {"order": u.order, "state": u.state, "path": [list(c) for c in u.path],
              "odometer": u.odometer, "target_facing": m.target_facing,
@@ -777,7 +818,22 @@ class World:
             d["cmd"] = [u.order_group, int(u.stopped), list(u.anchor) if u.anchor else None]
         if u.mode_go and u.order != 1:                                      # a restarted unit under the stand order
             d["mode"] = 1
+        if fight is not None:
+            d["fight"] = fight
         return [d]
+
+    @staticmethod
+    def _fight_state(u):
+        """Fight state as a dict, None for a unit that never fought (old goldens stay valid)."""
+        m = u.mover
+        if (u.target is None and not u.mode_attack and not u.brain_order and not u.phase and u.done and not u.timer
+                and not u.swing_count and u.last_attacker is None and u.swing_target is None and m.follow is None
+                and m.follow_cell is None):
+            return None
+        return {"target": u.target, "mode": int(u.mode_attack), "range": u.range, "brain": u.brain_order,
+                "count": u.swing_count, "phase": u.phase, "timer": u.timer, "done": int(u.done),
+                "swing": u.swing_target, "by": u.last_attacker,
+                "follow": [m.follow, list(m.follow_cell) if m.follow_cell else None, m.static_len]}
 
     def dump_json(self):
         return json.dumps(self.dump(), sort_keys=True, separators=(",", ":"))

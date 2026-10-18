@@ -7,8 +7,9 @@ comments; routine addresses there).  Layer 4: reads and writes `engine.world` on
 
 from engine.world import OrderGroup
 
-from .commands import MoveUnits, SetFormation, Stop
-from .movement import (CENTRE, MoveTo, _in_map, _set_action, IDLE, cancel, live_cells, path_grid,
+from .commands import AttackUnit, MoveUnits, SetFormation, Stop
+from .combat import can_order_attack, refresh_attack, set_attack
+from .movement import (ATTACK_ORDER, CENTRE, MoveTo, _in_map, _set_action, IDLE, cancel, fail_stop, live_cells, path_grid,
                        set_move, set_stand, stop_unit, unit_size, unit_speed)
 from .pathfinding import chebyshev
 
@@ -16,7 +17,7 @@ MAX_IDS = 253                       # FUN_0050bbb8 stops appending at 253 (R 2)
 FORMATION_LIMIT = 2                 # server+0xa724: Chebyshev distance an Auto group may be spread over (R 3.2)
 SERVER_FORMATION = (0, 2, 1)        # client mode 0 off, 1 auto, 2 on -> server 0 off, 2 auto, 1 on (0x4f688c..0x4f68f8)
 BORDER = 8                          # clamp margin of FUN_0056d032
-GROUP_MOVE, GROUP_STAND = 4, 3      # group order (record+0x20)
+GROUP_ORDERS, GROUP_MOVE, GROUP_STAND = 0, 4, 3      # group order (record+0x20): 0 = every member runs its own order executor
 PASS_PHASE = 6                      # group pass runs when the tick counter before its increment has & 15 == 6
 
 
@@ -150,6 +151,8 @@ def group_pass(world):
         for g in [g for g in world.groups.values() if g.owner == pid]:
             if g.members and g.order == GROUP_MOVE:
                 _pass_move(world, g)
+            elif g.members and g.order == GROUP_ORDERS:
+                _pass_orders(world, g)
 
 
 def _pass_move(world, g):
@@ -170,6 +173,7 @@ def _pass_move(world, g):
         # FUN_0056c8af: brain mode := 1, destination := brain+0xa.  No test of the unit's order: it restarts a
         # parked unit (order 1) and a unit whose order the failure turned into 0xc (`stopped` still 0)
         u.mode_go = True
+        u.mode_attack = False
         m.waiting = m.parked = False
         if (not _target_free(world, u, g.target) and m.goal == g.target
                 and chebyshev(cell, g.target) < 2):
@@ -178,6 +182,27 @@ def _pass_move(world, g):
             m.parked = True
             if not m.step_ticks:
                 _set_action(world, u, IDLE)
+
+
+def _pass_orders(world, g):
+    """Group order 0: `FUN_00569321` for every member, list order.  Only the attack order (3) has an effect here (combat.md 2.3); the
+    executors of the other orders are no-ops for what the engine models (guard scan, state := 0)."""
+    for i in list(g.members):
+        u = world.units[i]
+        if u.order == ATTACK_ORDER:
+            refresh_attack(world, u)
+
+
+def attack_group(world, g, target):
+    """`FUN_00570946` (combat.md 2.1): cancel every member (group order 0), then per member the attack matrix; a refused member stands
+    (`FUN_0056dba1`), the others get order 3 (a member that is the target stops)."""
+    _cancel_group(world, g)
+    for i in g.members:
+        u = world.units[i]
+        if can_order_attack(world, u, target):
+            set_attack(world, u, target)
+        else:
+            fail_stop(world, u)
 
 
 def orders_system(world, commands):
@@ -189,6 +214,11 @@ def orders_system(world, commands):
             g = intake(world, cmd.player_id, cmd.unit_ids)
             if g is not None:
                 move_group(world, g, *cmd.cell)
+        elif isinstance(cmd, AttackUnit):
+            g = intake(world, cmd.player_id, cmd.unit_ids)      # the group exists before the target is looked up (0x4f5283)
+            target = world.units.get(cmd.target_id)
+            if g is not None and target is not None:
+                attack_group(world, g, target)
         elif isinstance(cmd, Stop):
             g = intake(world, cmd.player_id, cmd.unit_ids)
             if g is not None:
