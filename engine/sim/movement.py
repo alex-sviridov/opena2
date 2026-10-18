@@ -266,22 +266,34 @@ def path_grid(world, move_type):
     return g
 
 
+UNIT_STAMP_GROUND, UNIT_STAMP_AIR = 0x40, 0x80   # live-layer bits of FUN_00550de0 / FUN_00550e12 (CONFIRMED)
+
+
+def unit_stamp(u):
+    """Live-layer bit a unit's footprint sets: 0x80 for movement class 3 (flyer), else 0x40
+    (`FUN_0055c2ce` picks the slot by the class from vtable +0x20, `FUN_00550a96` stamps it)."""
+    return UNIT_STAMP_AIR if u.move_type == 3 else UNIT_STAMP_GROUND
+
+
 def live_cells(world, u):
-    """Cells the other living units hold (footprint at their cell, and the cell being entered): the
-    dynamic stamps over the static layer.  INFERRED, docs/engine/simulation.md 7.3."""
+    """Cells the other living units stamp into the live layer as seen by mover `u` (CONFIRMED
+    docs/engine/simulation.md 7.3): every other unit holds its `size x size` footprint at its cell and,
+    while walking, the footprint at the cell being entered (`FUN_0055be86` modes 0/1).  The stamp is 0x40
+    (ground classes) or 0x80 (flyers), so only movers whose mask contains it (0x41/0x44 resp. 0x82) are
+    blocked.  Not modelled: the exe's first-come slot per cell (an overlapping later unit does not stamp)."""
+    seen = pas.MOVE_MASK.get(u.move_type, pas.MOVE_MASK[1])
     out = set()
     for o in world.units.values():
-        if o is u or o.hp <= 0:
+        if o is u or o.hp <= 0 or not (unit_stamp(o) & seen):
             continue
         n = unit_size(o)
-        for j in range(n):
-            for i in range(n):
-                out.add((o.x + i, o.y + j))
+        origins = [(o.x, o.y)]
         if o.mover.step_target:
-            tx, ty = o.mover.step_target
+            origins.append(tuple(o.mover.step_target))
+        for ox, oy in origins:
             for j in range(n):
                 for i in range(n):
-                    out.add((tx + i, ty + j))
+                    out.add((ox + i, oy + j))
     return out
 
 

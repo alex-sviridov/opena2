@@ -354,13 +354,15 @@ follow target (re-plan every `len/3 + 1` consumed waypoints, StaticIsntNeeded ga
   `PathGrid` (blocked bool grid already masked for the mover, cost grid or `None`, `size`) and return a
   `PathResult(cells, searched, found, fallback)`; `searched` = the cells that received a label, in the order
   they were first labelled (debug overlay). No pygame, no world mutation.
-- `blocked` for the static plan = `World.block & MOVE_MASK[move_type]`. **INFERRED**: the exe's static layer
-  (`+0x10000`) equals the block layer without structure stamps (`FUN_00550a96` writes `+0x20000`, the cells
-  `FUN_0055c2ce` test the `0x20` bit of `+0x10000`); the engine's block layer includes structures, so structures
-  block both plans. Impact: a structure raised after load is not visible to the exe's static plans, only to hops.
-- Live layer for hops = the static grid plus the footprint (`size x size` from the cell) of every **other**
-  living unit and the cell a walking unit is entering. **INFERRED** (the stamp bits of `FUN_0055c2ce` are not
-  decoded); the unit's own footprint is released before planning, as the exe does (`FUN_0055be86` mode 2).
+- `blocked` for the static plan = `World.block & MOVE_MASK[move_type]`. **CONFIRMED** that the exe's static layer
+  (`+0x10000`) holds the structure stamps too (see "Live layer" in 7.4): `FUN_00550a96`, `FUN_005589ab` OR `5`
+  into `+0x10000` and `+0x20000` alike, so `World.block` (which includes structures) is the right static grid.
+  Only the unit stamps (0x40 / 0x80) are live-only.
+- Live layer for hops = the static grid plus the unit stamps of every **other** living unit, **CONFIRMED** in
+  7.4: `size x size` footprint at its cell and, while it walks, at the cell it is entering; bit 0x40 (ground
+  classes) is seen by walkers and ghosts, bit 0x80 (class 3) only by flyers (`engine/sim/movement.py
+  live_cells`). The unit's own footprint is released before planning (`FUN_0054d76e` calls `FUN_0055be86`
+  mode 2). Death/removal of a stamp for hp <= 0 is INFERRED. The exe's first-come slot per cell is not modelled.
 - `MoveTo(unit_id, x, y)` is the engine-level move order (order 1); the click mapping is H3. It follows steps
   1-6 above with the unit's `Mover` carrying `dest (+0x74)`, `tail (+0x76)`, `consumed (+9)`, `since_hop (+0x78)`,
   `arrived (+0x90)`, `failed (+0x98)`, `static_path`; `Unit.path` is the dynamic list. An arrived or failed unit
@@ -391,9 +393,40 @@ follow target (re-plan every `len/3 + 1` consumed waypoints, StaticIsntNeeded ga
   and `B`'s `+10` != the cell: 2 (ask it to move out of the way, the swap), else 0. A non-zero result makes the
   driver face the cell (`FUN_00556b2c`, `FUN_00556da2`) and set the follower's brain `+8 = 10` (wait) instead of
   re-planning; the brain states are phase I. Until then the engine always re-plans around blockers.
-- **Live layer** `+0x20000`: `FUN_00550a96` (structures, already in `World.block`), `FUN_0055c2ce` / `FUN_0055c1fe`
-  (unit footprint stamps from `FUN_0055be86`: interior value 2/3, border 1) register occupants in a cell table at
-  `+0x5402c` guarded by bit `0x20` of `+0x10000`; the engine's live layer is the INFERRED approximation of 7.3.
+- **Live layer** `+0x20000` and the cell-record table (CONFIRMED, GOG exe):
+  - The path-finder keeps a hash map of 60-byte **cell records** at `+0x54084` (lookup `FUN_0055f3e0` copies a
+    record into the scratch record at `+0x5402c`, `FUN_0055f430` writes it back, `FUN_0055f460` deletes it) for
+    every cell that carries a stamp. Bit `0x20` of `+0x10000` = "this cell has a record" (set by `FUN_005508a0`,
+    which creates the record from the cell's current cost byte (rec `+0`) and static byte (rec `+1`), cell
+    index at rec `+0x3a`). `FUN_00559bc9` (7.1) reads it.
+  - `FUN_00550a96(rec)` rebuilds one cell from its record: cost := rec`+0`, static := rec`+1` | 0x20, live :=
+    static, then re-applies the contributions: rec`+0x2c` (ground unit slot) -> live |= `0x40`
+    (`FUN_00550de0`); rec`+0x30` (class-3 unit slot) -> live |= `0x80` (`FUN_00550e12`); rec`+0xc` (a
+    structure with a footprint bitmask at `+0x64`, width `+0x60`) -> static and live |= `5` when the cell's
+    mask bit is set, else `&= 0xfa` and cost := `+0x5414b`; rec`+0x20` non-zero -> static and live |= `5`;
+    each non-zero rec`+0x14 .. +0x28` entry shifts the cost byte left by 2; the `0x10` bit is preserved.
+    So `+0x10000` DOES contain the structure stamps (5 = 1|4) and `0x20`; unit stamps are live only.
+  - `FUN_0055c2ce(unit, cell)` stamps: make the record if needed, then take the slot (rec`+0x2c`, or
+    rec`+0x30` when the unit's movement class `FUN_0055f330` is 3) **only if empty or already this unit**
+    (first come, first served), then `FUN_00550a96`. `FUN_0055c1fe(unit, cell)` releases: if the cell has a
+    record, clear the slot when this unit holds it, rebuild, and when the record is empty (`FUN_005513b6`)
+    delete it and restore cost and static bytes (`FUN_00550966`).
+  - `FUN_0055be86(unit, cell, mode)` builds an 8 x 8 table around the unit (origin = its cell - 1): the
+    `(size+2)^2` square is 1 (release ring), mode 0 sets the `size^2` footprint at `cell` to 2, modes 0 and 1 set
+    the footprint at the current cell to 3 (3 overwrites 2), mode 2 sets neither; then 1 -> `FUN_0055c1fe`,
+    2 and 3 -> `FUN_0055c2ce`. Mode 0 also records `cell` in the unit's mover `+0x80`, mode 1 the unit's own
+    cell, mode 2 zero. Sizes up to 6 fit the table.
+  - Calls of `FUN_0055be86`: step start mode 2 then mode 0 with the next cell (asm `0x554f56`-`0x554f9f`,
+    `0x555136`-`0x555181`, `0x555cee`-`0x555d15`), step end mode 2 then mode 1 (`FUN_00555b38`, `0x555bf4`-`0x555c0f`),
+    standing units mode 1 (`0x558b7c`, `0x56a5df`), planner entry mode 2 (`FUN_0054d76e`, `0x54dd04`), removal
+    `FUN_00553891` (mode 2). A walking unit thus holds its footprint at both its cell and the cell it enters.
+  - Masks: walker 0x41, ghost 0x44 contain `0x40`; flyer 0x82 contains `0x80`; none contains `0x20` or
+    `0x10`. So ground units block walkers and ghosts, flyers block only flyers, and a flyer ignores structures
+    (bits 1 and 4 not in 0x82). Walkers and ghosts see structure stamps (1 resp. 4).
+  - Other writers: `FUN_005589ab(.., w, h, mask)` ORs 5 into both layers over a w x h box for set mask bits
+    (structure footprint); `FUN_00559c28` / `FUN_00559ce5` set / clear bit `0x10` in both layers (bit in no
+    mover mask; meaning not decoded); `FUN_00558aab` adds a fixed 4 x 3 block at (0x3e..0x41, 0x18..0x1a)
+    (static += 5, live |= 5), a leftover test stamp.
 - **Unreachable feedback**: client message `0x92` (7.1), a UI matter for H3.
 
 ### 7.5 Measured
@@ -438,9 +471,8 @@ or a per-tick plan budget if it shows). Golden routes: `tests/golden.json["paths
    `server tick & 3 == id & 3`: the interaction needs a check in phase I
    ([unit-struct §3](unit-struct.md)).
 4. The group-AI pass at `tick & 15 == 6` (`FUN_0056fe4d`): phase I and H3.
-5. Unit yield / swap (`FUN_0056fc69` read in 7.4; the brain sub-states `+8`, 1/4/10, are phase I) and the live-layer
-   stamp bits (`FUN_0055c2ce` / `FUN_0055c1fe` / `FUN_005589ab` / `FUN_00559c28`), and whether `+0x10000` lacks the
-   structure stamps (§7.3).
+5. Unit yield / swap (`FUN_0056fc69` read in 7.4; the brain sub-states `+8`, 1/4/10, are phase I). The meaning of live/static
+   bit `0x10` (`FUN_00559c28`, callers `0x518589`, `0x51899b`) and the death-time stamp release.
 6. Follow-target planning: the ring order of `FUN_00557f08` (float helpers `FUN_0050d884/8c0`, `FUN_00557cf1`) and
    the driver `FUN_0055574d` (7.4); phase I with attack orders.
 7. The class-0x12 / order-5 clause of the static fallback (`FUN_00556f56`, `FUN_0056ac5b`); the text of

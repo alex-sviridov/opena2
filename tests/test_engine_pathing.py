@@ -196,3 +196,34 @@ def test_dynamic_list_lives_one_step_and_the_static_plan_is_renewed_every_17_cel
             break
     assert (u.x, u.y) == (50, 10)
     assert plans == 1 + 40 // 17 + 1 or plans == 1 + 40 // 17    # first plan + a re-plan per 17 hop plans
+
+
+def test_live_layer_unit_stamps_are_class_specific():
+    """FUN_00550de0 stamps 0x40 for ground classes, FUN_00550e12 0x80 for class 3; masks 0x41/0x44 see
+    only 0x40, 0x82 only 0x80 (docs/engine/simulation.md 7.3)."""
+    from engine.sim.movement import live_cells, unit_stamp
+    w = world()
+    walker = unit(w, 1, 5, 5)
+    ghost = unit(w, 2, 9, 9)
+    flyer = unit(w, 3, 12, 12)
+    ghost.move_type, flyer.move_type = 2, 3
+    assert unit_stamp(walker) == 0x40 and unit_stamp(ghost) == 0x40 and unit_stamp(flyer) == 0x80
+    assert live_cells(w, walker) == {(9, 9)}     # the flyer is invisible to ground
+    assert live_cells(w, ghost) == {(5, 5)}
+    assert live_cells(w, flyer) == set()                                # a flyer sees no ground unit
+    other = unit(w, 4, 20, 20)
+    other.move_type = 3
+    assert live_cells(w, flyer) == {(20, 20)}                           # but sees another flyer
+
+
+def test_live_layer_holds_footprint_and_entered_cell_of_others_only():
+    from engine.sim.movement import live_cells
+    w = world()
+    me = unit(w, 1, 5, 5)
+    big = unit(w, 2, 10, 10)
+    big.stats = type("S", (), {"token_size": 2})()
+    big.mover.step_target = (11, 10)
+    assert live_cells(w, me) == {(x, y) for x in (10, 11, 12) for y in (10, 11)}
+    assert (5, 5) not in live_cells(w, me)                              # own footprint released
+    big.hp = 0
+    assert live_cells(w, me) == set()
