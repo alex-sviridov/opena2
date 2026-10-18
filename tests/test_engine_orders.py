@@ -322,8 +322,48 @@ def test_failure_ends_the_order_at_once_not_at_the_pass():
     u = unit(w, 1, 10, 10)
     sim = Simulation(w)
     sim.step([MoveUnits(1, ids(u), (20, 10))])
-    assert u.order == 0xC and u.stopped and u.anchor == (10, 10) and not u.mover.failed   # same tick (R 7)
+    assert u.order == 0xC and u.anchor == (10, 10) and not u.mover.failed   # same tick (R 7)
+    assert not u.stopped and not u.mode_go                            # FUN_0056dc24 does not set brain+0x50 (unlike FUN_0056dbc6)
     assert w.events == [NoWay(1, 0)]                                  # no fallback cell at all: packed end 0 = cell (0, 0)
+
+
+def failed_walker():
+    """A unit under order 1 whose planner raised the failure event (`mover.failed`, `mover+0x98`) with the plan's tail
+    away from its cell (a hop plan that came out empty), then ended by the failure: order 0xc, `brain+0x50` = 0."""
+    w = world()
+    u = unit(w, 1, 10, 10)
+    sim = Simulation(w)
+    sim.step([MoveUnits(1, ids(u), (20, 10))])
+    u.mover.failed = True
+    sim.step()
+    return w, u, sim
+
+
+def test_pass_restarts_a_failed_unit_under_order_0xc():
+    """brain+0x50 is 0 after a failure, so FUN_00573198 runs FUN_0056c8af on it (brain mode := 1, no test of the order):
+    the unit walks again with order 0xc and ends at the goal, where the pass stops it for good (brain+0x50 := 1)."""
+    w, u, sim = failed_walker()
+    assert u.order == 0xC and not u.stopped and not u.mode_go
+    tick_to(sim, 6)
+    sim.step()                                                         # the pass restarts it; the same step moves it on
+    assert u.order == 0xC and u.mode_go and not u.stopped
+    run_until(sim, lambda: u.stopped)
+    assert (u.x, u.y) == (20, 10) and u.order == 0xC and not u.mode_go and u.anchor == (20, 10)
+
+
+def test_failure_under_another_order_sets_brain_mode_0():
+    """FUN_0056dca2 end (0x56e320): the event flag under an order other than 1/0xa/0x18 sets mode 0 (the target scan finds
+    nothing); the next pass restarts the unit again (every 16 ticks, no `stopped`)."""
+    w, u, sim = failed_walker()
+    tick_to(sim, 6)
+    sim.step()
+    assert u.mode_go
+    u.mover.failed = True                                              # the restarted plan fails as well
+    sim.step()
+    assert u.order == 0xC and not u.mode_go and not u.stopped and not u.mover.failed
+    tick_to(sim, 6)
+    sim.step()
+    assert u.mode_go                                                   # restarted again, 16 ticks later
 
 
 def test_parked_unit_is_restarted_by_the_pass_every_16_ticks():

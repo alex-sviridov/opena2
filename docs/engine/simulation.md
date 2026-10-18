@@ -748,14 +748,19 @@ order 4, target (x, y) as sent, speed.
   group order 3. The step in progress finishes; plans are kept (`dest`, `static_path`). The guard scan of order 0xc
   (`FUN_0056a1fb`) needs enemies: nothing happens yet. The other stand commands (`G` 0x17, `L` 0x12, `R` 0x14) are
   phase I.
-- **Failure** (`mover.failed`, set by the planners) is consumed at the end of the Brain tick: order 1 -> `stop_unit`
-  (`FUN_0056dbc6`: cancel, order `0xc`, anchor, mode 0, `stopped := 1`) in the same tick.
+- **Failure** (`mover.failed`, set by the planners) is consumed at the end of the Brain tick: order 1 -> `fail_stop`
+  (`FUN_0056dc24` = cancel + `FUN_0056dba1`: order `0xc`, anchor, mode 0, **`stopped` stays 0**, CONFIRMED asm; the older
+  text and code used `FUN_0056dbc6`, which also sets `brain+0x50`) in the same tick; under any other order the event
+  only sets Brain mode 0 (`0x56e320`; the target scan finds no enemy; mode `0xb` of computer players is phase I).
+  `Unit.mode_go` is Brain mode 1 (the walking switch: set by `set_move` and the restart, cleared by `set_stand` and
+  by that failure); the blocker verdict and the tick read it instead of the order.
 - **Arrival leaves order 1** (unit at the goal, or at the end of its static plan): nothing happens in the unit's tick
   (state 0, action idle). The **group pass** (`orders.group_pass`, `world.tick & 15 == 6`, before the drain; per
   owner in id order, groups in creation order; only group order 4, `FUN_00573198`, is decoded) then, per member in
   list order: at its `goal`, at a centre and not `stopped` -> `stop_unit`, `arrived := False`; or `arrived` and
   `tail == cell` -> the same. A `stopped` member is skipped (the guard scan has no enemies yet). Otherwise
-  (`order == 1`) **restart**: `waiting = parked = False` (`FUN_0056c8af`), so a unit parked by the blocker wait (§7.4)
+  **restart** (no test of the unit's order: a unit the failure turned into order `0xc` is restarted too, and walks again
+  until it arrives): `mode_go`, `waiting = parked = False` (`FUN_0056c8af`), so a unit parked by the blocker wait (§7.4)
   moves again within 16 ticks if its blocker left; and if the footprint at the group target is not free in the live
   layer, the member's `goal` is that target and it is within Chebyshev 1 -> parked again at once (the guard scan with
   no target sets mode 0 for a human player's non-ranged unit, `FUN_0056afd9` -> `FUN_0056b025`, CONFIRMED in the
@@ -774,7 +779,7 @@ order 4, target (x, y) as sent, speed.
 - `MoveTo` (debug) bypasses intake validation, wrap and clamp (the H2 tests use arbitrary cells); it still makes a
   group of one so the pass ends its order.
 - The pass runs the move handler for every owner including computer players (their branch is phase I).
-- Not implemented: group handlers for orders 1, 3, 5, 0x13, the retreat post pass `FUN_00573713`, voices.
+- Not implemented: group handlers for orders 1, 3, 5, 0x13, the retreat/withdraw post step `FUN_00573713` (hook in §9), voices.
 - A finished or stopped order keeps `goal`/`dest`/`static_path` (the exe keeps `+0x74`): a later order to the same cell
   reuses the old static plan (INFERRED reading of `FUN_00555411` step 2; stale-plan quirk).
 
@@ -811,7 +816,7 @@ target; **14.** `T` (stand ground) while a unit turns leaves it facing where it 
   min(5, dist/4)` levels, a sized unit's footprint may not fit; the unit stays on its cell); `blocked` / `boxed in` (the
   failure rule: the final hop plan came out empty because the plan's end cell is occupied / every route is, checked at the
   failure tick); `parked` (blocked-target rule or a blocker wait with a unit adjacent); `gridlock` (below); `queueing`
-  (a crowd still moving at the cap).
+  (a crowd still moving at the cap); a unit the failure stopped (order `0xc`, `stopped` 0) counts as mode 1 again while the pass has restarted it.
 - `tests/test_engine_orders_determinism.py`: a scripted session (selects, moves, mid-walk re-orders, Ctrl+F twice, T,
   right-click deselect) fed through `OrderInput` is recorded at 30 fps; replays driven like `window.run` (frame times
   against `tick_period_ms`, one `step(queue.drain())` per period, logged commands queued before the step of their tick)
@@ -831,7 +836,7 @@ tests); a unit whose own cell is the nearest labelled cell to the hop goal (a co
 8 neighbours) plans empty again and again: the dynamic fallback scan sees the start cell (label 0) in the first ring that
 has a labelled cell, so the result is "walk to the own cell" = nothing. The unit is not parked (mode 1) and not waiting
 (the wait is human size-1 only and needs a walking or idle blocker, §7.4), so nothing but the blocker moving, a new order, or
-the failure above resolves it; in a mutual jam of computer-player units (map 110, a column through one gap, order 4)
+the failure above resolves it (the pass restarts the failed unit 16 ticks later, so it tries again as soon as a way exists); in a mutual jam of computer-player units (map 110, a column through one gap, order 4)
 several units stand like this for thousands of ticks. Reproduced as documented behaviour, not fixed.
 Cost note: such a unit makes a hop plan per tick.
 
@@ -882,7 +887,16 @@ HP > 0 test stands in for it, 8.1).
 **Orders and group handlers still to build:** `0x17` guard (G), `0x12` (L), `0x14` (R) next to the `0x18` stand ground done here;
 `0x19` attack (`+0xe`, order 3), `0x1a` swarm (formation + group order 5, handler `572e1e`), `0x1b` follow (group `570c84`, orders 8/0x11),
 `0x1d` patrol (0xa); group handlers for orders 1, 3, 5, `0x13` (`57275f`, `57309d`, `572e1e`, `57311c`; only 4 is decoded, 8.3),
-the computer players' branch of the pass and the retreat post pass `FUN_00573713` (thresholds `brain+0x40/+0x44`).
+the computer players' branch of the pass.
+
+**The retreat/withdraw post step `FUN_00573713`** ([research §4.5](click-to-move-research.md#45-the-post-step-fun_00573713-retreat-and-withdraw),
+CONFIRMED, combat-only for now): after every group handler, every 16 ticks, each member with HP <= `brain+0x44` (10 cells) or <= `brain+0x40`
+(2 cells) and a hostile (war relation bit, visible) in that Chebyshev radius gets Brain mode 1 with `brain+0xa` := a cell 3 beyond itself
+away from the hostiles' mean position (`FUN_00558b92`), overriding a move group's destination. The engine has none of its inputs (no
+hostility/visibility test, no thresholds, no retreat option): human units have thresholds 0 in the default configuration (data
+HP > 0 never satisfies it) and the engine's AI units are never ordered, so no order it can give today is affected. Phase I adds
+`Unit.wimpy/withdraw` (data.bin p34/p35 for monsters, `maxHP * x / 100` with x = 0/10/30 from a `SetRetreatMode` command for the
+player's units), the enemy scan and the flee cell, called after `_pass_move` for every member of every group.
 The guard scan of order 0xc (`FUN_0056a1fb`) is a no-op here; arrival and the blocked-target rule already call it.
 
 **UI still stubbed:** hotkeys G, L, R, A/D/S act only on the cursor (pending modes 1/4/6 give no order), cursor rows
@@ -901,7 +915,7 @@ is not filtered by recipient.
    re-plan at the next centre; repeated order to the same cell; road preference (H2 §7.6 items 1-7).
 6. Cursor and input: right button, attack cursor over ground/unit/structure, Ctrl/Alt rows, minimap order row (expect the
    exe's wrong row), formation Off/On/Auto with a slow member's group speed, edge wrap, arrival delay of up to 16 ticks,
-   re-order mid-step, "No way" for 3 s, stop commands G/T/L/R, no click marker (research VERIFY items 1-12).
+   re-order mid-step, "No way" for 3 s, stop commands G/T/L/R, no click marker (research VERIFY items 1-12), failed units retrying every 16 ticks and the retreat mode `Ctrl+W` (research VERIFY items 13, 14).
 7. Stage B: Ctrl+Alt hover (Alt first over a unit, Ctrl first over ground); `M` then click on a hostile walks to it; `T` mid-walk
    finishes the step; formation text lifetime about 2 s and its colour; left drag on the minimap streams orders; right click
    on the bar and info panel deselects; minimap order zone on maps >= 145 cells (design spec, Stage B items a-g).
@@ -917,8 +931,9 @@ is not filtered by recipient.
 2. Haste/Slow vs the group speed byte: the byte is fixed (§8.2); the effect system is phase I.
 3. The regeneration job runs from `FUN_0052bbb7` at `tick & 15 == 12` while the slot itself tests
    `server tick & 3 == id & 3`: the interaction needs a check in phase I ([unit-struct §3](unit-struct.md)).
-4. Group orders 1, 3, 5, 0x13 (`57275f`, `57309d`, `572e1e`, `57311c`), the computer players' branch of the pass and the
-   retreat post pass `FUN_00573713`: phase I ([research §9](click-to-move-research.md)).
+4. Group orders 1, 3, 5, 0x13 (`57275f`, `57309d`, `572e1e`, `57311c`) and the computer players' branch of the pass: phase I
+   ([research §9](click-to-move-research.md)). The retreat post step `FUN_00573713` is decoded (§9 hook); its spell branches and
+   the hidden-enemy detection `FUN_00556dcd` remain.
 5. The stored occupant/stamp slots with their release quirks (7.4 "Cell record"): `FUN_0055073f` clears a slot of any unit, so a first-come loser loses its record when the winner leaves; the engine derives the occupant instead. Starting routine `FUN_0055be86` callers `0x558b7c`, `0x56a5df` (how often a standing unit re-stamps, which decides how long such a cell stays unowned).
 6. The x87 control word at run time (precision / exception mask) for the slope in `FUN_00557f08`: only the follower-on-target-centre case (`0/0`) depends on it (7.4 step 3). Starting routine CRT start-up before `0x557f08`; DirectDraw init.
 7. `FUN_004e9b95` (loading a saved game, the branch of `FUN_004eb715` that skips `server+0 := 0; server+4 := 0`): which tick counter and block counter a loaded game restarts with (phase of the group pass after a load).

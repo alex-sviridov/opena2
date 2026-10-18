@@ -246,8 +246,9 @@ def corridor(human=True, n=32):
 def test_head_on_in_a_one_cell_corridor_nobody_swaps():
     """The exe has no swap: the first unit in list order waits (turns to face the other, brain mode 10 -> 0),
     the second sees a walking blocker too?  No: `a` waits for the walking `b`; `b` re-plans round `a`, finds no way
-    and stops at once (failure = order 0xc).  The group pass at tick & 15 == 6 restarts the parked `a`, which now
-    sees an idle blocker, finds no way and stops too.  Both end on their cells."""
+    and stops at once (failure = order 0xc, `brain+0x50` stays 0).  The group pass at tick & 15 == 6 restarts both (the
+    stopped flag is what would keep `b` out): `a` sees `b` walking again (brain mode 1) and waits once more, `b` fails
+    again.  Both stay on their cells, every 16 ticks."""
     w = corridor()
     a = unit(w, 1, 10, 10)
     b = unit(w, 2, 11, 10)                                  # adjacent, facing each other
@@ -258,11 +259,11 @@ def test_head_on_in_a_one_cell_corridor_nobody_swaps():
         sim.step()
     assert (a.x, a.y) == (10, 10) and (b.x, b.y) == (11, 10)        # nobody passed
     assert a.mover.parked and a.order == 1 and not a.mover.waiting and a.facing == 64   # the waiting unit idles
-    assert b.order == 0xC and b.stopped                              # b: no way, stopped at once (failure)
+    assert b.order == 0xC and not b.stopped                          # b: no way, order 0xc at once (failure: brain+0x50 stays 0)
     while w.tick < 7:                                                # the pass at tick 6 restarts a
         sim.step()
     sim.step()
-    assert a.order == 1 and not a.mover.parked                       # restarted: it sees an idle blocker, re-plans
+    assert a.order == 1 and b.order == 0xC and not b.stopped         # both were restarted by the pass; b failed again
     for _ in range(100):                                             # round it (no way in a corridor): it spins, the
         sim.step()                                                   # order stays 1 and nobody passes
     assert (a.x, a.y) == (10, 10) and (b.x, b.y) == (11, 10) and a.order == 1
@@ -274,14 +275,17 @@ def test_blocker_verdicts():
     a = unit(w, 1, 10, 10)
     b = unit(w, 2, 11, 10)
     a.order = b.order = 1
+    a.mode_go = b.mode_go = True
     a.mover.goal = (20, 10)
     assert blocker_verdict(w, a, (11, 10)) == 2             # blocker at a centre in a move mode: wait (the swap code)
     a.mover.goal = (11, 10)
     assert blocker_verdict(w, a, (11, 10)) == 0             # my own destination: never wait
     a.mover.goal = (20, 10)
     b.order = 0
+    b.mode_go = False
     assert blocker_verdict(w, a, (11, 10)) == 0             # idle blocker: go round
     b.order = 1
+    b.mode_go = True
     b.mover.parked = True
     assert blocker_verdict(w, a, (11, 10)) == 0             # a parked unit is mode 0
     b.mover.parked, b.sub_x = False, 200
@@ -298,6 +302,7 @@ def test_only_size_one_units_of_the_human_player_wait():
     a = unit(w, 1, 10, 10)
     b = unit(w, 2, 11, 10)
     a.order = b.order = 1
+    a.mode_go = b.mode_go = True
     a.mover.goal = (20, 10)
     assert blocker_verdict(w, a, (11, 10)) == 2
     a.stats = type("S", (), {"token_size": 2})()
@@ -313,6 +318,7 @@ def test_ai_unit_replans_round_a_friend_instead_of_waiting():
     a = unit(w, 1, 10, 10)
     b = unit(w, 2, 11, 10)
     b.order = 1
+    b.mode_go = True
     sim = Simulation(w)
     sim.step([MoveTo(a.id, 20, 10)])
     assert not a.mover.waiting and not a.mover.parked and a.path
@@ -326,6 +332,7 @@ def test_human_unit_behind_a_walker_turns_to_it_and_is_restarted_by_the_group_pa
     a = unit(w, 1, 10, 10)
     b = unit(w, 2, 11, 10)
     b.order = 1                                             # b is under a move order (mode 1)
+    b.mode_go = True
     b.mover.goal = (30, 10)
     sim = Simulation(w)
     a.facing = 128                                          # facing away: a real turn is needed
@@ -336,7 +343,7 @@ def test_human_unit_behind_a_walker_turns_to_it_and_is_restarted_by_the_group_pa
             break
         sim.step()
     assert a.mover.parked and a.facing == 64 and a.action == "idle"
-    b.order, b.mover.goal = 0, None                         # b leaves the way
+    b.order, b.mover.goal, b.mode_go = 0, None, False       # b leaves the way
     w.move_unit(b.id, 14, 12, 128, 128)
     while (w.tick & 15) != 5:                               # parked until the pass (tick & 15 == 6) restarts it
         sim.step()
@@ -546,6 +553,7 @@ def test_dead_occupant_still_blocks_but_the_verdict_is_replan():
     a = unit(w, 1, 10, 10)
     b = unit(w, 2, 11, 10)
     a.order = b.order = 1
+    a.mode_go = b.mode_go = True
     a.mover.goal = (20, 10)
     b.hp = 0
     assert (11, 10) in live_cells(w, a) and blocker_verdict(w, a, (11, 10)) == 0
@@ -560,4 +568,5 @@ def test_mode_4_blocker_is_judged_like_mode_1():
     w = corridor()
     b = unit(w, 2, 11, 10)
     b.order = 1
+    b.mode_go = True
     assert _mode_move(b)

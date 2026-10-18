@@ -99,8 +99,9 @@ def make_orders(w, rnd, max_units=None):
 
 
 def active(u):
-    """A unit the move driver works on: order 1, not parked, not in the blocker-wait turn."""
-    return u.order == 1 and not u.mover.parked and not u.mover.waiting
+    """A unit the move driver works on: Brain mode 1 (order 1, or order 0xc after a failure that the group pass restarted),
+    not parked, not in the blocker-wait turn."""
+    return u.mode_go and not u.mover.parked and not u.mover.waiting
 
 
 def spinning(w, u):
@@ -172,7 +173,7 @@ class Watch:
 
 def key_of(u):
     m = u.mover
-    return (u.x, u.y, u.sub_x, u.sub_y, u.facing, u.odometer, u.order, m.parked, m.waiting, m.step_ticks)
+    return (u.x, u.y, u.sub_x, u.sub_y, u.facing, u.odometer, u.order, u.mode_go, m.parked, m.waiting, m.step_ticks)
 
 
 def stamps_independent(w, u):
@@ -193,16 +194,18 @@ def run_batch(w, sim, watch, ordered, label, report, cap=MAX_TICKS):
     """Step until every ordered unit is stopped or parked for two group-pass periods, or `cap` ticks; checks the
     invariants on the way.  Returns True when everything settled, False at the cap (a crowd still queueing through a chokepoint)."""
     prev, quiet = {}, 0
-    walking = {u.id for u in w.units.values() if u.id in ordered}
+    go = {u.id: u.mode_go for u in w.units.values() if u.id in ordered}
     fails = report.setdefault("fails", {})
     for n in range(1, cap + 1):
         sim.step()
-        for i in list(walking):
+        for i in list(go):
             u = w.units[i]
-            if u.order != 1:
-                walking.discard(i)
+            was, go[i] = go[i], u.mode_go
+            if was and not u.mode_go and not u.stopped:
+                # Brain mode 1 ended without `brain+0x50`: the failure (FUN_0056dc24 under order 1, mode 0 under order 0xc);
+                # the pass restarts the unit 16 ticks later and a failing retry lands here again
                 m = u.mover
-                if (u.x, u.y) != m.goal and not (u.x, u.y) == m.tail:      # not an arrival: the failure stop
+                if (u.x, u.y) != m.goal and not (u.x, u.y) == m.tail:      # not an arrival
                     fails[i] = {"tick": w.tick, "cell": (u.x, u.y), "tail": m.tail,
                                 "tail_free": _target_free(w, u, m.tail) if m.tail else None,
                                 "hop_empty": m.last_hop is not None and not m.last_hop.cells,
@@ -224,7 +227,7 @@ def run_batch(w, sim, watch, ordered, label, report, cap=MAX_TICKS):
 
 def classify(w, u, human_ids, report, watch, settled):
     m, cell = u.mover, (u.x, u.y)
-    if u.order == 1:
+    if u.mode_go:
         if not (m.parked or m.waiting):
             if watch.spinning(w, u):
                 return "gridlock"
@@ -234,7 +237,7 @@ def classify(w, u, human_ids, report, watch, settled):
         if any(chebyshev((o.x, o.y), cell) <= 1 for o in w.units.values() if o is not u and o.hp > 0):
             return "parked"                                     # blocker wait (7.4 item 5)
         return "PARKED ALONE"
-    assert u.order == 0xC and u.stopped, (hex(u.id), u.order)
+    assert u.order == 0xC, (hex(u.id), u.order)           # stopped (arrival, 56dbc6) or failed and waiting for the next pass
     if cell == m.goal:
         return "goal"
     r = m.last_plan

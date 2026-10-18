@@ -302,8 +302,9 @@ is closer to the map edge than the member's offset. Clamping is per axis.
 
 ### 3.4 Cancel and what a new order does to a unit mid-step (CONFIRMED)
 
-`FUN_0056dbfb(unit)` = `FUN_0056d969(unit)` then `unit.brain+0x50 := 0` (this is *brain* `+0x50`, a "stopped/arrived" flag: set to 1
-only by `FUN_0056dbc6`, read by the group pass; not the unit's order at `unit+0x50`, which the issuer overwrites next).
+`FUN_0056dbfb(unit)` = `FUN_0056d969(unit)` then `unit.brain+0x50 := 0` (this is *brain* `+0x50`, the **stopped flag**: set to 1 only by
+`FUN_0056dbc6`, read only by the group pass `FUN_00573198` (§4.4); not the unit's order at `unit+0x50`, which the issuer overwrites next;
+all writers and readers: [unit-struct §8.1](unit-struct.md#81-field-table), CONFIRMED by a scan of every access reached from `creature+0x1c4`).
 `FUN_0056d969`:
 1. `mover[1] := mover[0]` (target facing := current facing: a turn in progress stops at the facing it has);
 2. if `mover+0x80` (the reserved cell, u16) != 0 **and the unit is at a cell centre** (`FUN_00551383`) **and** the reserved cell
@@ -362,7 +363,8 @@ How many fit is therefore not a number: one per free cell the fallback finds, in
 active** (otherwise it stays at its initial 0 of the fresh group). `FUN_0055915a(unit)`: base speed =
 `group.record+0x44` if non-zero else `s16 unit+0x8c`; it feeds `FUN_00559195` (simulation §4.1). The value is fixed for the group's life
 (Haste/Slow after the order do not change it); the group itself ends when emptied and deleted by the next command's `FUN_0052b06f`.
-`FUN_00570e22` (which would zero it) has no caller.
+`FUN_00570e22` (which would zero it) has no caller. The pass also sets `brain+0x6c := 1` for every non-stopped member of such a group
+(`0x5732d3`); nothing reads that field (CONFIRMED scan), so formation changes nothing there beyond the speed base.
 
 ### 4.4 The group pass (`FUN_0056fe4d`, tick & 15 == 6) (CONFIRMED)
 
@@ -372,7 +374,7 @@ visits each of the player's groups; `FUN_005700f3(group)` first sets the group o
 then dispatches on the **group order** (`record+0x20`, table `0x570232`, bytes `0x57025a`):
 0 -> run `FUN_0056fe34(unit)` for every member (= `FUN_00569321`, the per-unit order executor, via `FUN_005692d5`);
 1 -> `57275f`; 2 -> `572d57`; 3 -> `57309d`; **4 -> `FUN_00573198(group, record+0xa)`**; 5 -> `572e1e`; 0x11 `572ec4`; 0x12 `5728fa`;
-0x13 `57311c`; 0xff -> `573159`. Afterwards every member gets `FUN_00573713` (retreat tests against `brain+0x40/+0x44`, HP `unit+0x94`; out of scope).
+0x13 `57311c`; 0xff -> `573159`. Afterwards, **whatever the group order** (all values, also `0xff`, fall through to `0x570220`), `FUN_0057377d` runs `FUN_00573713` on every member (§4.5).
 
 **`FUN_00573198` (group order 4 = move), for each member `u` in list order:**
 ```
@@ -381,8 +383,9 @@ if u.cell == u.brain+0xa and u at a centre and u.brain+0x50 == 0:   FUN_0056dbc6
 elif u.mover+0x90 != 0 and u.mover+0x76 == u.cell:                  FUN_0056dbc6(u); u.mover+0x90 = 0       # arrived at the end of its plan (fallback cell)
 if u.brain+0x50 != 0:                                               FUN_0056afac(u, 0)                      # stopped units: guard scan (FUN_0056a1fb)
 else:
-      if group.record+0x44 != 0: u.brain+0x6c = 1
-      FUN_0056c8af(u, u.brain+0xa)                                  # brain mode := 1, dest := brain+0xa   (RESTARTS parked units)
+      if group.record+0x44 != 0: u.brain+0x6c = 1                   # write-only, see unit-struct 8.1
+      FUN_0056c8af(u, u.brain+0xa)                                  # brain mode := 1, dest := brain+0xa   (RESTARTS parked units;
+                                                                    #  NO test of the unit's order: also a unit the failure turned into 0xc)
       if FUN_0055cd50(pf, u, groupTarget) == 0                      # the size x size footprint at the group target is not free (live layer, unit's mask)
          and u.brain+0xa == groupTarget and cheb(u.cell, groupTarget) < 2:
             FUN_0056a1fb(u)                                         # stand/guard scan: sets mode 0 (human non-ranged, FUN_0056b025) -> the unit stops next to a blocked target
@@ -393,7 +396,42 @@ So: **arrival ends order 1 at the next group pass (up to 16 ticks later), by con
 until then the unit stands with order 1, mode 1, state 0/1 and the "arrived" flag set. A unit parked by the blocker rule
 (simulation §7.4: mode 0/10) is **restarted every 16 ticks** by `FUN_0056c8af` (this resolves simulation open question 5: no "parked
 for good"; it waits for the pass, which re-runs the blocker verdict). The same rule never restarts a unit whose group order is not 4
-(swarm = 5 is handled by `572e1e`, not decoded).
+(swarm = 5 is handled by `572e1e`, not decoded). **A failed unit is restarted too:** the failure (§7) leaves order `0xc` with `brain+0x50 == 0`,
+so every 16 ticks the pass sets its Brain mode back to 1 with the old `brain+0xa` and it plans again (a unit that failed standing on the tail
+of its plan has `mover+0x90 = 1` and is stopped by the second test instead). Under order `0xc` a new failure only sets mode 0 (§7).
+
+### 4.5 The post step `FUN_00573713`: retreat and withdraw
+
+CONFIRMED (asm `0x573713`-`0x573757`, `0x56cb0c`, `0x56cd11`, `0x56c9bc`, `0x56ce0f`, `0x567a16`, `0x54ec6a`, `0x558b92`, `0x56f765`):
+```
+FUN_00573713(unit):                          # after the group's handler, for every member of every group, every 16 ticks
+    if   HP(s16 unit+0x94) <= brain+0x44 and enemies(unit, mover+8 + 5 = 10)  nonempty:  FUN_0056c9bc(unit)   # "wimpy" retreat
+    elif HP(s16 unit+0x94) <= brain+0x40 and enemies(unit, 2)                  nonempty:  FUN_0056ce0f(unit)   # "withdraw"
+enemies(u, r):  54ec6a = all objects in the cells within Chebyshev r of u's cell (cell-table bit 0x20, occupant 551edb),
+                then 567a16 deletes the ones the owner is not at war with (relation matrix server+0xa8bc,
+                [owner.index*0x46 + 8 + other.index] & 1 == 0), and keeps a hidden enemy (obj+0x144 & 0x1000) only when some
+                member of u's group detects it (0x556dcd level <= that member's brain+0x71)
+56c9bc / 56ce0f, units WITHOUT a spell list (unit+0x140 == 0; INFERRED = spells/abilities):
+    live = enemies with HP > 0 (56c9bc; 56ce0f needs only a non-empty list)
+    if live:  p = 56f765(list) = mean of the 16-bit positions (packed y<<16 | x)
+              flee = 558b92(pf, u, p, 3): the point 3 cells beyond u on the ray p -> u along the dominant axis (x87 float32 slope),
+                     per axis clamped to [8, size-9]
+              FUN_0056c8af(u, flee)             # brain mode := 1, brain+0xa := flee   (the unit's order is NOT touched)
+    else:     FUN_0056afac(u, 0)                # guard scan
+units WITH a spell list: a cast of spell kind 0x17 (FUN_0056bb0d, FUN_0056969c / FUN_0056c72b / FUN_0056cb8c), else the same flee
+```
+**Effect on a move group.** The handler `FUN_00573198` restarts the unit towards `brain+0xa` first, then `FUN_00573713` overwrites mode and
+`brain+0xa` with the flee cell in the same pass: the unit leaves its route for a cell 3 cells away from the hostiles, the pass after that
+sees `cell == brain+0xa`, ends the order (`FUN_0056dbc6`: order 0xc, stopped), and the group target is never resumed. The blocked-target rule
+also stops matching (`brain+0xa != group target`). While hostiles stay near and the HP test holds the unit flees again every 16 ticks.
+
+**Who can trigger it.** Thresholds (unit-struct §8.1): monsters carry data.bin p34/p35 (`Orc_Bow` withdraw 90 >= hp_max 60: always true, so an
+archer withdraws from any hostile within 2 cells; `Goblin_Pike` wimpy 10 of 40 HP); **human-player units have 0 in both** (their templates have no
+such parameters and the retreat-mode message writes 0 for `+0x40`), and an HP > 0 unit never satisfies `HP <= 0`. A human unit can trigger only
+after the player cycles the retreat mode (`Ctrl+W`, registry `WimpyMode`, default 0): then `+0x44 = maxHP * 10 / 100` or `* 30 / 100` for the
+units existing at that moment (the client resends the stored mode at game start). Player-owned monsters created later keep their data.bin values. So in
+single player with the default option a human unit's move is never overridden; AI-owned units (phase I) and the retreat option are the only users.
+
 
 ## 5. Stop
 
@@ -408,7 +446,8 @@ There is no "Stop" button or message; four stand-type commands cancel a move (RE
 
 All first run `FUN_00570e83` and the unit's cancel (§3.4): `brain` mode set to 0, state 0, target facing = facing; the in-progress step
 runs to its centre (Brain order 3); the static list/`mover+0x74` stay (harmless: a later move to the same cell reuses the remaining static path).
-`FUN_0056dba1` (cancel + order `0xc`) is the internal "stop" used by arrival, failure (`mover+0x98`, `FUN_0056dc24`) and the group pass.
+`FUN_0056dba1` (cancel + order `0xc`) is the internal "stop" used by failure (`mover+0x98`, `FUN_0056dc24`, which leaves `brain+0x50` at 0) and
+by `FUN_0056dbc6` (arrival and the group pass: the same plus `brain+0x50 := 1`).
 
 ## 6. Feedback
 
@@ -445,9 +484,10 @@ sub-code 1 (`0x40e266`): if `DAT_00622810 != 0` (**constant 1**, its only writer
   `order == 1 and mover+0x90 and mover+0x76 == cell -> FUN_0056dbc6`. For orders 3 and 8/0x11 it stops when the target is state `0x10` (dead).
   A group-order-4 member never goes through it.
 - **Failure ends the order immediately** (not at the pass): `mover+0x98` (set by `FUN_00555411`/hop planners when no path exists) is consumed at the end of the
-  Brain tick (`0x56e1b0`): order 1 -> `FUN_0056dc24` (cancel + order `0xc`).
-- A move order in a tick when the unit is **at a centre but has an unconsumed `brain+0xb0`** (pending destination, handled at the centre by `FUN_0055a96c`) is
-  consumed before the mode runs (Brain tick, `0x56e024`).
+  Brain tick (`0x56e1b0`): order 1 -> `FUN_0056dc24` (cancel + order `0xc`, **`brain+0x50` stays 0**, so the next pass restarts the unit, §4.4); any other order
+  except `0xa`/`0x18` -> brain mode 0 and the auto target scan `FUN_0056ed4e` (no enemy: mode 0; mode `0xb` for computer players).
+- `brain+0xb0` is not a move destination but a pending **teleport** target (cell record effect `0x17`, consumed at a centre by `FUN_0055a96c` before the mode
+  runs, `0x56e024`); nothing in the exe writes the record field, so it never fires in single player (unit-struct §8.1, INFERRED).
 - Right-drag scroll and edge scroll are independent of orders.
 
 ## 8. What each later phase needs
@@ -461,8 +501,8 @@ sub-code 1 (`0x40e266`): if `DAT_00622810 != 0` (**constant 1**, its only writer
 
 ## 9. Open questions
 
-1. Group handlers for orders 5 (swarm `572e1e`), 1/3/0x13 (`57275f`, `57309d`, `57311c`) and the post pass `573713`/retreat thresholds `brain+0x40/+0x44` (do they override a move group in play?).
-2. `brain+0x50` and `brain+0x6c`, `brain+0x38`: meaning beyond what the readers show (the "stopped" flag; the `brain+0x6c = 1` set only in formation).
+1. Group handlers for orders 5 (swarm `572e1e`), 1/3/0x13 (`57275f`, `57309d`, `57311c`) and the computer players' branch of the pass.
+2. `FUN_00556dcd` (detection level used by `FUN_00567a16` for hidden enemies) and the spell branches of the post step (`FUN_0056bb0d` kind `0x17`, `FUN_0056cb8c`, `FUN_0056969c`).
 3. `FUN_00417f31` for columns beyond the view width (minimap move order y): array overrun behaviour (§1.6).
 4. Voice-unit selection `FUN_0041da16` and the per-order voice slots (class lists, exact rule).
 5. Whether the AI-owned "No way" messages are dropped by the single local client (recipient filter `0x92`, `+7`).
@@ -478,6 +518,7 @@ sub-code 1 (`0x40e266`): if `DAT_00622810 != 0` (**constant 1**, its only writer
   only"; a move group is driven by `FUN_00573198` (§4.4), which ends the order at arrival (up to 16 ticks after the snap) and **restarts parked units every 16 ticks**.
 - [unit-struct §9](unit-struct.md#9-orders-0x50) column "Per-tick executor `FUN_00569321`": it is the group-order-0 executor, run every 16 ticks; msg `0x1c` shares `0x16`'s code.
 - [animation §3.6](../formats/animation.md): "group order byte `+0x44`" is only non-zero in formation (§4.3).
+- [simulation §8.3](simulation.md#83-cancel-timeline-group-pass-stop-r-34-44-5-7) (and the engine): the failure stop is `FUN_0056dc24`, not `FUN_0056dbc6`: it leaves `brain+0x50` at 0, so the group pass restarts the failed unit (§4.4, §7); fixed in the engine with `Unit.mode_go`.
 
 ## VERIFY IN GAME
 
@@ -493,4 +534,6 @@ sub-code 1 (`0x40e266`): if `DAT_00622810 != 0` (**constant 1**, its only writer
 10. **Stop commands.** `G`, `T`, `L`, `R` during a walk: all finish the current step; afterwards `T`/`G` units fight enemies in range, `L` units do not.
 11. **No marker.** Order a walk and look for any ground sprite at the destination (none expected).
 12. **Edge wrap.** Select a wide group near the west edge, Formation On, click within 2 cells of the edge: members whose offset is larger than the click column should run to the far east edge (the `& 0xff` wrap).
-13. Stage B UI items: see [design spec, Stage B](../superpowers/specs/2026-10-18-click-to-move-design.md) (VERIFY IN GAME additions a-g).
+13. **Failed units retry.** Order a walk into a spot where a unit ends with "No way" short of the target (a crowded corridor, a unit standing on the target): the unit stops (order 0xc) but walks on within 16 ticks whenever the way has cleared, and prints "No way" again at each failed retry; only arrival (or a new order) ends it for good.
+14. **Retreat mode.** `Ctrl+W` to mode 1/2 (text `0x5f`/`0x60`), then wound a unit below 10 %/30 % of its maximum HP with enemies within 10 cells during a walk: it should turn away at the next group pass (every ~1 s) and stop 3 cells beyond its position; with mode 0 it never does (§4.5).
+15. Stage B UI items: see [design spec, Stage B](../superpowers/specs/2026-10-18-click-to-move-design.md) (VERIFY IN GAME additions a-g).

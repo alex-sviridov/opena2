@@ -219,7 +219,7 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
 - Orders (H3) done: click to move, REA-checked (docs/engine/click-to-move-research.md): left release dispatches on the cursor chosen at release
   (move; attack over ground = move), right release = cancel pending mode / deselect, right drag scrolls, minimap left click = move; no Stop
   message (T = cmd 0x18, order 0xc), no click marker, "No way" text; every command makes a new group, formation Off/Auto/On = rigid translation
-  around the truncated centroid (no free-cell search), group pass at `tick & 15 == 6` ends arrivals and restarts parked units; commands
+  around the truncated centroid (no free-cell search), group pass at `tick & 15 == 6` ends arrivals and restarts parked and failed units (a failure leaves brain+0x50 at 0); commands
   `MoveUnits`/`Stop`/`SetFormation`, `engine/sim/orders.py`, `engine/ui/orders.py`; 46-map integration (`ALLODS2_ALL_MAPS=1`), 30/60/144 fps
   replay hash, goldens `["orders"]`, `tools/bench_orders.py`. docs/engine/simulation.md §8-9, spec docs/superpowers/specs/2026-10-18-click-to-move-design.md
 - Status: E, F, G3b, H (H1-H3) done. Next: I1: melee attack. Also G3c (fonts). Also (docs/open-questions.md): town-scene animations, text conventions.

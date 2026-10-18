@@ -61,8 +61,8 @@ Creature offset ([unit-struct](../engine/unit-struct.md#2-creature-layout-server
 | 30 | face | +0x4b | palette variant ([units](../formats/units.md)) | CONFIRMED |
 | 31, 32 | token_size, movement_type | +0x49, +0x4a | footprint token; mover class 1 walker, 2 ghost/bee, 3 flyer | CONFIRMED |
 | 33 | dying_time | vtable +0x74 → timer +0x6c | ticks of the death animation (`dying − 1`) | CONFIRMED `0x50f048`, `0x50f221` (corrects databin.md "unused") |
-| 34 | withdraw | brain obj +0x40 | HP threshold: at HP ≤ it the AI looks for a spot and moves (`0x56cd11`); name INFERRED | CONFIRMED compare |
-| 35 | wimpy | brain obj +0x44 | HP threshold of a second flee move (`0x56cb0c`); halved by the difficulty tweak | CONFIRMED compare; flee semantics INFERRED |
+| 34 | withdraw | brain obj +0x40 | HP threshold: at HP ≤ it and a hostile within 2 cells the unit flees 3 cells away (`0x56cd11` -> `0x56ce0f`, [research §4.5](../engine/click-to-move-research.md#45-the-post-step-fun_00573713-retreat-and-withdraw)); name INFERRED | CONFIRMED compare and effect |
+| 35 | wimpy | brain obj +0x44 | HP threshold of the retreat (`0x56cb0c` -> `0x56c9bc`, hostile within 10 cells, same flee move; tested first); halved by the difficulty tweak | CONFIRMED |
 | 36 | see_invisible | brain obj +0x71 | detection level compared at `0x567ae7`; default 1 | compare CONFIRMED, effect INFERRED |
 | 37 | xp | +0x1c | XP reward base, see §4 | CONFIRMED |
 | 38 | gold_chance | — | gold drops if `p38 > rand(0..100)` | CONFIRMED `0x510ca0` |

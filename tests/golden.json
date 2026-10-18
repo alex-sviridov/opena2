@@ -37,7 +37,7 @@
     ]
    },
    "ended": 223,
-   "hash": "9a74dd819d328619a529cca2e0b950887096d1dbd300080044352b4fd1f800d8",
+   "hash": "fd0db9f1cc09c8a6829511e5088e2a97ef02b091d3c1d562a2ffd90a07201e7c",
    "no_way": 0
   },
   "crossing_on": {
@@ -71,24 +71,24 @@
   "gap_jam": {
    "cells": {
     "1": [
-     19,
-     17
+     27,
+     19
     ],
     "2": [
      29,
      19
     ],
     "3": [
-     19,
-     18
+     27,
+     21
     ],
     "4": [
      29,
      21
     ]
    },
-   "ended": 215,
-   "hash": "2d8076bafe7063285fce123b23aa99d5059da41fe67a230bd3beae8d6ae3eaf6",
+   "ended": 241,
+   "hash": "7e07ac2272b5f5c28ec2315d5a09e5aec4316cfa783652b949263f1aef849cb3",
    "no_way": 0
   },
   "unreachable": {

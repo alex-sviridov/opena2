@@ -8,7 +8,7 @@ comments; routine addresses there).  Layer 4: reads and writes `engine.world` on
 from engine.world import OrderGroup
 
 from .commands import MoveUnits, SetFormation, Stop
-from .movement import (CENTRE, MOVE_ORDER, MoveTo, _in_map, _set_action, IDLE, cancel, live_cells, path_grid,
+from .movement import (CENTRE, MoveTo, _in_map, _set_action, IDLE, cancel, live_cells, path_grid,
                        set_move, set_stand, stop_unit, unit_size, unit_speed)
 from .pathfinding import chebyshev
 
@@ -167,15 +167,17 @@ def _pass_move(world, g):
             m.arrived = False
         if u.stopped:
             continue                                    # guard scan (FUN_0056a1fb): no enemies exist yet
-        if u.order == MOVE_ORDER:
-            m.waiting = m.parked = False                # FUN_0056c8af: brain mode := 1 restarts a parked unit
-            if (not _target_free(world, u, g.target) and m.goal == g.target
-                    and chebyshev(cell, g.target) < 2):
-                # FUN_0056a1fb -> FUN_0056afd9 -> FUN_0056b025: no target in range, mode 0 (DECISION: also for
-                # ranged and computer-player units, whose branches 56bc7b / mode 0xb are phase I)
-                m.parked = True
-                if not m.step_ticks:
-                    _set_action(world, u, IDLE)
+        # FUN_0056c8af: brain mode := 1, destination := brain+0xa.  No test of the unit's order: it restarts a
+        # parked unit (order 1) and a unit whose order the failure turned into 0xc (`stopped` still 0)
+        u.mode_go = True
+        m.waiting = m.parked = False
+        if (not _target_free(world, u, g.target) and m.goal == g.target
+                and chebyshev(cell, g.target) < 2):
+            # FUN_0056a1fb -> FUN_0056afd9 -> FUN_0056b025: no target in range, mode 0 (DECISION: also for
+            # ranged and computer-player units, whose branches 56bc7b / mode 0xb are phase I)
+            m.parked = True
+            if not m.step_ticks:
+                _set_action(world, u, IDLE)
 
 
 def orders_system(world, commands):

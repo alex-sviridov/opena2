@@ -259,6 +259,7 @@ def apply_follow_path(world, cmd):
     u.mover.goal = u.mover.dest = u.mover.tail = None
     u.mover.static_path = []
     u.order, u.state = MOVE_ORDER, MOVE_STATE
+    u.mode_go = True
     u.mover.waiting = u.mover.parked = False
     return True
 
@@ -406,7 +407,7 @@ def _mode_move(o):
     """Brain mode 1 or 4 (CONFIRMED consumers 0x56fdca/0x56fddd): a unit walking a move order.  Mode 4 (approach
     an object, FUN_0056ea52 -> follow driver FUN_0055574d) gets the same verdict as mode 1 (CONFIRMED); it needs
     attack orders and is not modelled."""
-    return o.order == MOVE_ORDER and not o.mover.waiting and not o.mover.parked
+    return o.mode_go and not o.mover.waiting and not o.mover.parked
 
 
 def blocker_verdict(world, u, cell):
@@ -499,15 +500,25 @@ def cancel(u):
 
 def stop_unit(world, u):
     """`FUN_0056dbc6`: cancel, then order 0xc with the anchor on the own cell and Brain mode 0 (`FUN_0056dba1` ->
-    `FUN_0056d52b`), and `brain+0x50 := 1`.  Used by arrival, failure and the blocked-target rule."""
+    `FUN_0056d52b`), and `brain+0x50 := 1`.  Used by the group pass at arrival (the only caller of the move
+    group's handler, `FUN_00573198`)."""
     cancel(u)
     set_stand(world, u)
     u.stopped = True
 
 
+def fail_stop(world, u):
+    """`FUN_0056dc24` (the failure of an order 1, `0x56e1d9`): `FUN_0056d969` then `FUN_0056dba1` = cancel (which
+    clears `brain+0x50`) and `FUN_0056d52b`.  Unlike `FUN_0056dbc6` it does NOT set `brain+0x50` (CONFIRMED
+    asm 0x56dc24-0x56dc46, 0x56dba1-0x56dbc3): the group pass will restart the unit (unit-struct 8.1)."""
+    cancel(u)
+    set_stand(world, u)
+
+
 def set_stand(world, u):
     """`FUN_0056d52b`: order 0xc (stand/guard), anchor = the own cell, mode 0."""
     cancel(u)
+    u.mode_go = False
     u.order = STAND_ORDER
     u.anchor = (u.x, u.y)
     u.mover.waiting = u.mover.parked = False
@@ -521,6 +532,7 @@ def set_move(world, u, x, y):
     cancel(u)
     m = u.mover
     u.order = MOVE_ORDER
+    u.mode_go = True
     u.anchor = None
     m.goal = (x, y)
     m.arrived = m.failed = False
@@ -529,13 +541,17 @@ def set_move(world, u, x, y):
 
 def _tick_unit(world, u):
     """One Brain tick (`FUN_0056dca2`), then the failure event: `mover+0x98` ends an order 1 at once
-    (`0x56e1b0` -> `FUN_0056dc24` = stop), unlike arrival, which waits for the group pass."""
+    (`0x56e1b0` -> `FUN_0056dc24` = cancel + order 0xc, `brain+0x50` stays 0), unlike arrival, which waits for the
+    group pass.  Under any other order the event sets Brain mode 0 (`0x56e320`: the auto target scan
+    `FUN_0056ed4e` finds no enemy; its mode 0xb for computer players is phase I)."""
     _tick_inner(world, u)
     m = u.mover
     if m.failed:
         m.failed = False
         if u.order == MOVE_ORDER:
-            stop_unit(world, u)
+            fail_stop(world, u)
+        else:
+            u.mode_go = False
 
 
 def _tick_inner(world, u):
@@ -548,7 +564,7 @@ def _tick_inner(world, u):
             if m.goal is not None:
                 u.path = []             # FUN_00555b38 clears the dynamic list (+0x1e4) at every step end
         return
-    if u.order != MOVE_ORDER or m.parked:
+    if not u.mode_go or m.parked:
         return
     if m.waiting:
         _tick_wait(world, u)
