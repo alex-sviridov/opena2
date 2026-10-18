@@ -334,8 +334,15 @@ Move order entry (wrapper `0x56e4b0` in the Brain function `FUN_0056dca2`): `mov
 5. `FUN_00555c7e`: start the next step from the dynamic list (turn first if needed, §4).
 6. `arrive >= dist` and `arrive != 0` -> `FUN_00556da2` (stop); with `arrive == 0` nothing happens at dist 0.
 
-A **blocked step is not detected during a step**: the unit walks its dynamic list; units entering those cells
-are noticed only at the next hop re-plan (list empty or 32 ticks). `FUN_0055574d` is the same driver for a
+**The dynamic list lives for one step** (CONFIRMED `FUN_00555b38`, asm `0x555c14`-`0x555c1d`: the step end
+clears the list at `unit+0x1e4`; nothing else consumes it, and the only other pops are the extraction's start
+cell and the static-list pop in `FUN_00555dc2`). So a hop plan is made at **every cell centre**, only its first
+step is walked, `mover+9` grows by one per cell and the static list shrinks by one per cell (head popped when
+within `DynamicByStaticLookup`): the static plan is renewed every 17 cells. The 32-tick `DynamicRefreshRate`
+is only a fallback for a non-empty list (never so at a centre). `FUN_0054f38a` (peek/pop of the list, trims the
+static list to the current cell with `FUN_005516dd`) has no caller or vtable reference in the exe (dead code).
+Units entering the next cell between two centres are therefore noticed at the next centre, not mid-step: a step
+is never aborted. `FUN_0055574d` is the same driver for a
 follow target (re-plan every `len/3 + 1` consumed waypoints, StaticIsntNeeded gate; open).
 
 ### 7.3 Engine implementation (DECISIONS)
@@ -369,7 +376,7 @@ follow target (re-plan every `len/3 + 1` consumed waypoints, StaticIsntNeeded ga
 
 `FUN_0056fc69` (yield / swap places, human units), the live-layer stamps (`FUN_0055c2ce`, `FUN_0055c1fe`,
 `FUN_00550a96`, `FUN_005589ab`, `FUN_00558aab`, `FUN_00559c28`), `FUN_00557f08` (follow-target fallback),
-the unreachable feedback `FUN_005052d2`, and which pop empties the dynamic list in `FUN_00555b38`.
+the unreachable feedback `FUN_005052d2`, and (the dynamic-list pop question is answered in 7.2).
 
 ### 7.5 Measured
 
@@ -393,8 +400,9 @@ or a per-tick plan budget if it shows). Golden routes: `tests/golden.json["paths
    cheapest to reach among the first ring around the target, not the cell closest to it.
 4. **Search limit.** An AI (computer) unit ordered round a wall longer than `dist + min(5, dist/4)` levels stops
    short at the fallback cell; the same order for the human player's unit walks all the way (limit 1000).
-5. **Re-plan.** Walk 40 cells and place a unit on the road ahead: the walker should re-route only at the next hop
-   re-plan (up to 32 ticks later), possibly walking into the new blocker before that.
+5. **Re-plan.** Walk 40 cells and place a unit on the road ahead: the walker should re-route at the next cell
+   centre (hop plans are made every cell), not mid-step; it may share the cell if the blocker steps in during
+   the step.
 6. **Standing orders.** Order the same walk twice from different spots (second time to the cell the first
    ended on): the engine plans afresh; the exe may reuse `+0x74` (see 7.3).
 7. **Road preference.** Walker cost = terrain cost: a road (cost 6) beside grass (8) should attract the route
@@ -417,5 +425,3 @@ or a per-tick plan budget if it shows). Golden routes: `tests/golden.json["paths
    `FUN_00559c28` write, and whether `+0x10000` really lacks the structure stamps (§7.3). H2 follow-up.
 6. Follow-target planning: `FUN_00557f08` (fallback with a follow target) and the driver `FUN_0055574d`.
 7. The unreachable feedback `FUN_005052d2` / `FUN_00559bc9` and the class-0x12 clause (`FUN_00556f56`).
-8. Which routine pops the dynamic list head during a step (`FUN_00555b38` / `FUN_00554fd2`); the engine pops
-   it at the step start, as `FollowPath` does.

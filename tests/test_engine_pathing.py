@@ -178,3 +178,21 @@ def test_human_player_unit_searches_without_a_level_limit():
     sim.step([MoveTo(ai.id, 40, 14)])
     sim.step()
     assert not ai.mover.last_plan.found                     # the computer's search stops at dist + 5
+
+
+def test_dynamic_list_lives_one_step_and_the_static_plan_is_renewed_every_17_cells():
+    w = world(n=64)
+    u = unit(w, 1, 10, 10, speed=40)
+    sim = Simulation(w)
+    sim.step([MoveTo(u.id, 50, 10)])                        # 40 cells straight
+    plans, last = 0, None
+    for _ in range(3000):
+        sim.step()
+        if u.mover.last_plan is not last:
+            plans, last = plans + 1, u.mover.last_plan
+        if u.mover.step_ticks == 0:
+            assert u.path == [] or u.order == 0             # cleared at every step end (FUN_00555b38)
+        if u.order == 0:
+            break
+    assert (u.x, u.y) == (50, 10)
+    assert plans == 1 + 40 // 17 + 1 or plans == 1 + 40 // 17    # first plan + a re-plan per 17 hop plans

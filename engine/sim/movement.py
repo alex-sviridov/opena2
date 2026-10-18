@@ -371,6 +371,8 @@ def _tick_unit(world, u):
         _advance(world, u)
         if (u.sub_x, u.sub_y) == (CENTRE, CENTRE):
             _end_step(u)
+            if m.goal is not None:
+                u.path = []             # FUN_00555b38 clears the dynamic list (+0x1e4) at every step end
         return
     if u.order != MOVE_ORDER:
         return
