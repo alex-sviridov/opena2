@@ -925,6 +925,29 @@ filtered by recipient (`drain_no_way`, research 6.3 CONFIRMED routing).
    about `len - 5` ticks (human units wait first); a lone unit boxed in by friends keeps order 1.
 10. Order spike (8.7): ordering 20+ units over 60 cells in one click is instantaneous in the exe (native planner).
 
+## 10. RNG
+
+**Generator (CONFIRMED, REA):** the game uses the MSVC C runtime `rand`/`srand`, not a private generator. `FUN_00583290` =
+`rand()`: `state = state * 0x343FD + 0x269EC3 (mod 2^32)`, result `(state >> 16) & 0x7FFF`; `FUN_00583280` = `srand(seed)`: `state = seed`.
+The state is the CRT's per-thread word (`+0x14` of the block returned by `FUN_0058a930`, `_getptd`); a fresh block holds 1
+(`FUN_0058a910`), so an unseeded stream starts 41, 18467, 6334, 26500, 19169, 15724 (tested). `FUN_0051fa25(n)` is the game's
+`rand(n)`: `0` when `n == 0` (**no draw**), else `(rand() * (n + 1)) >> 15`, uniform on `0..n` inclusive. 93 call sites use `FUN_0051fa25`,
+39 call `FUN_00583290` directly (the latter with `rand() > 0xcc`-style comparisons against the raw 15-bit value).
+
+**Seeds (CONFIRMED call sites):** `srand(timeGetTime())` at `0x45ae54` (client object init, function `0x45ade7`) and in `FUN_0051f9f8`
+(`0x51fa02`), which both server constructors call (`0x4e97d6`, `0x4eb75d`: a new game or a loaded one); `srand(time(0))` at `0x57af92`
+(function `0x57af80`, called from the order manager's constructor `0x56811b`, object `0x66832c`). The last reseed wins, so a game's
+stream starts from the **wall clock**. Single player runs client and server on one thread, so the client's draws (sound variants,
+idle-animation timers such as `FUN_004cae28`, text effects) are interleaved with the server's between ticks.
+
+**Consequence:** the original is not reproducible even with a known seed, and a recorded original session cannot be replayed against ours.
+**Engine (DECISION):** `engine/sim/rng.py` implements exactly this generator (`Rng(seed)`: `srand`, `rand15`, `rand(n)` with the `n == 0`
+rule), one instance owned by the `World` (`World.rng`), seeded per game (default 1 = an unseeded CRT; `engine run` picks the clock and prints
+it; the session log keeps it). Every system in `sim/` draws from it in update order and nowhere else (no Python `random`; a test scans the
+imports); the view and backend have their own generators. So **our sequence equals the original algorithm's for the same seed; it does not
+equal a recorded original session** (seed from the clock + client draws). Draw order inside a hit: [combat §5.2](combat.md#52-take_hit-fun_00516f6f-confirmed-vtable-54-of-every-creature-class).
+The state is part of `World.dump()` once it differs from its initial value (old goldens unchanged).
+
 ## Open questions
 
 1. What a unit does at a centre with an empty dynamic list after a failed hop plan (`FUN_00555c7e` empty-list "turn step" path, `0x555c7e`) beyond the failure stop; and whether the stale-list case (turn > 32 ticks) is reachable with real data.bin turn rates.
