@@ -1247,6 +1247,8 @@ frame 0's size minus the projectile's current `obj+0x6c + obj+0x10`. (x ≥
 
 ### 5.3 Handoff to combat
 
+Built in I1: [combat](../engine/combat.md) (timeline §4, client messages `0x71`/`0x73` and the floating damage numbers §8).
+
 1. **The server decides hits** (§3.4, CONFIRMED `FUN_0050f12c`): melee
    `+0x134` after `0x71`, arrows `+0x134` + `(dist·256 + 128)/200`;
    recovery `+0x135 + rand(0..3)` + hero delay. `units.reg` is client

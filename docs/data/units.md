@@ -137,7 +137,7 @@ pairs resolve (exclusion list empty), range checks (HP > 0 except `ManMage_Unarm
 
 ## VERIFY IN GAME
 
-- A `Goblin_Pike` has 40 HP, speed 24, hits 4–8 (select it: HP bar and info panel).
+- A `Goblin_Pike` has 40 HP, speed 24, template damage 4–8; with its Bronze Pike the exe merges the weapon (8–16 before absorption, [combat §6](../engine/combat.md#6-stats-that-feed-the-record-what-the-engine-must-build)): confirm in game.
 - Gold/item drop chances (`gold_chance`, `item_chance`) and amounts for a few monsters (e.g. `Goblin_Pike`:
   60 %, 30–120 gold).
 - XP per kill (`xp × 0.5`) and the repeat-kill penalty after 5 kills of one type.
@@ -146,6 +146,5 @@ pairs resolve (exclusion list empty), range checks (HP > 0 except `ManMage_Unarm
 
 ## Open questions
 
-- Damage kinds 1/2 (`+0xb7…+0xba`) of weapons and negative damage spread in `0x516f6f`. (The elemental part is
-  answered by [spells §5](spells.md#5-damage-and-protection): kind 1-5 = fire..astral, `ftol(d*(100-prot)/100+0.75)`.)
+- Damage kinds 1/2 and the record layout are answered by [combat §5.2, §6](../engine/combat.md#52-take_hit-fun_00516f6f-confirmed-vtable-54-of-every-creature-class) (no monster uses kind 1 or 2; kind 3 = sure hit).
 - Hero state between campaign maps. Start: `FUN_00514920`. (Equipment strings are resolved: [items §9](items.md#9-equipment-strings).)

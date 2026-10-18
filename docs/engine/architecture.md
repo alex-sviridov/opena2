@@ -15,10 +15,10 @@ Dependencies point down only (a layer imports layers with a smaller number).
 | # | Package | Role | May import |
 |---|---|---|---|
 | 1-2 | `a2res/`, `allods2/` (incl. `allods2/assets.py`) | archives, formats, decoders, asset cache | stdlib, numpy, Pillow; never pygame, never `engine` |
-| 3 | `engine/world.py` | `World`: cells, heights, tick counter, entity tables, spatial index, block layer | layers 1-2 |
-| 4 | `engine/sim/` | `Simulation.step` (+ command log), systems list (orders, selection, movement), `Command` / `SelectUnits` / `MoveUnits` / `Stop` / `SetFormation` / `FollowPath` / `MoveTo` (debug), `CommandQueue`, tick clock ([simulation](simulation.md)) | 1-3 |
-| 5 | `engine/ui/` | `Layout`, `choose_cursor` / `choose_minimap_cursor`, `SelectionInput` (-> `SelectUnits`), `OrderInput` (-> `MoveUnits`, `Stop`, `SetFormation`; pending mode, right button, minimap orders), `MessageLine` / `drain_no_way`, `ScrollInput`, `MinimapPanel` | 1-4, `engine.view` (camera, `pick`) |
-| 6 | `engine/view/` | `Camera`, coordinates, visible range, per-cell compositing, draw list | 1-3 |
+| 3 | `engine/world.py`, `engine/rng.py` | `World`: cells, heights, tick counter, entity tables, spatial index, block layer, the game's `Rng` (`World.rng`, seeded per game), `fight_log` | layers 1-2 |
+| 4 | `engine/sim/` | `Simulation.step` (+ command log), systems list (orders, selection, movement + the creature tick with the swing), `Command` / `SelectUnits` / `MoveUnits` / `AttackUnit` / `Stop` / `SetFormation` / `FollowPath` / `MoveTo` (debug), combat (`combat.py`, `combatstats.py`), `CommandQueue`, tick clock ([simulation](simulation.md), [combat](combat.md)) | 1-3 |
+| 5 | `engine/ui/` | `Layout`, `choose_cursor` / `choose_minimap_cursor`, `SelectionInput` (-> `SelectUnits`), `OrderInput` (-> `MoveUnits`, `AttackUnit`, `Stop`, `SetFormation`; pending mode, right button, minimap orders), `MessageLine` / `drain_no_way`, `ScrollInput`, `MinimapPanel` | 1-4, `engine.view` (camera, `pick`) |
+| 6 | `engine/view/` | `Camera`, coordinates, visible range, per-cell compositing, draw list, floating damage numbers (`damage.py`) | 1-3 |
 | 7 | `engine/backend_pygame/` | window, surface cache, blitting, events, main loop, screenshot, `interface.py` (panels, info panel), `cursor.py`, `text.py` (`draw_text`) | everything; the only layer that imports pygame |
 
 Rules (enforced by `tests/test_engine_boundaries.py`, an AST scan):
@@ -113,12 +113,14 @@ to `Simulation.log` as `(tick, command)` (rejected ones too: the log is the inpu
 **Orders from the UI (H3 stage B, [ui-layout §6, §8](ui-layout.md))**: a left click with a non-empty selection is
 dispatched by `OrderInput.release` on the cursor chosen at the release (`choose_cursor`, modifiers read from pygame
 by the backend: `window.modifiers`); the target cell is `window.click_target` (`(mx >> 5) + camera cell`,
-`Projection.hover_cell` row). `window.run` queues the commands, they apply on the next tick, and it returns the
-`Simulation` (its `log` shows what the UI sent). `World.events` is drained by the UI each frame (`NoWay` only).
+`Projection.hover_cell` row; the entity under the pointer is returned as well: the attack cursor over a unit id sends `AttackUnit`). `window.run` queues the commands, they apply on the next tick, and it returns the
+`Simulation` (its `log` shows what the UI sent). `World.events` is drained by the UI each frame (`NoWay` only); `World.fight_log`
+(`Damage` / `Died`, I1) is drained by `window.feed_fight_log` into the floating damage numbers (the original's "Flying damage" option, default on, Ctrl+L)
+and, with `--debug combat`, console lines. The RNG seed is part of the session: `engine run` prints it (`--seed N` fixes it).
 
 **Commands and selection (G3b, spec
 [interface and selection](../superpowers/specs/2026-10-17-interface-selection-design.md))**:
-Orders (H3): `MoveUnits(player_id, unit_ids, cell)` (exe cmd 0x16), `Stop(player_id, unit_ids)` (cmd 0x18) and
+Orders (H3): `MoveUnits(player_id, unit_ids, cell)` (exe cmd 0x16), `AttackUnit(player_id, unit_ids, target_id)` (cmd 0x19, I1), `Stop(player_id, unit_ids)` (cmd 0x18) and
 `SetFormation(player_id, mode)` (cmd 0x46), intake rules and groups in [simulation §8](simulation.md#8-orders-h3).
 `SelectUnits(player_id, unit_ids, toggle)`. Set: accepted when every id is owned by the player or
 exactly one unit of another owner (info only), else rejected and the selection kept; empty clears.

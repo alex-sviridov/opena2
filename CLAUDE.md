@@ -224,4 +224,13 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   around the truncated centroid (no free-cell search), group pass at `tick & 15 == 6` ends arrivals and restarts parked and failed units (a failure leaves brain+0x50 at 0); commands
   `MoveUnits`/`Stop`/`SetFormation`, `engine/sim/orders.py`, `engine/ui/orders.py`; 46-map integration (`ALLODS2_ALL_MAPS=1`), 30/60/144 fps
   replay hash, goldens `["orders"]`, `tools/bench_orders.py`. docs/engine/simulation.md §8-9, spec docs/superpowers/specs/2026-10-18-click-to-move-design.md
-- Status: E, F, G3b, G3c (fonts), H (H1-H3) done. Next: G4 close-out, then I1: melee attack. Also (docs/open-questions.md): town-scene animations, text conventions.
+- Melee attack (I1) done, REA-checked ([combat](docs/engine/combat.md), design docs/superpowers/specs/2026-10-18-combat-design.md): `AttackUnit` (cmd `0x19`)
+  sets order 3 + mode 0 and **the unit starts at the next `tick & 15 == 6`** (group-pass executor), melee ground units and ghosts cannot attack flyers;
+  Brain mode 5: in range = facing equal to the octant and reach gap <= range, else the follow driver `FUN_0055574d` (`movement.follow_drive`); swing:
+  hit `windup` ticks after the start, then recovery (+ hero delay + `rand(0..3)`) + 2 ticks; `take_hit` `FUN_00516f6f` exact (`T + rand(0..200) - 100 > D`
+  or roll >= 90, sure-hit flag, absorption, percent resistance by weapon type, elemental / second parts), monster stats = template + equipped weapon
+  (byte merge), human stats = recompute + equipment (`engine/sim/combatstats.py`); the RNG is the MSVC CRT LCG owned by the world (`engine/rng.py`, seed per
+  game, [simulation §10](docs/engine/simulation.md#10-rng)); damage numbers are the original's default-on "Flying damage" option (Ctrl+L), `--debug combat` logs
+  blows, `--seed`, `--debug-attack`. HP clamps at 0 (death is I2). Not modelled: AI reaction, scans, spells, XP, structures, Bless / Curse sources.
+- Status: E, F, G3b, G3c (fonts), H (H1-H3), I1 done. Next: I2 (death: dying and corpse states, removal at HP <= -10, kill XP, the exe keeps hitting corpses until
+  removal, retaliation of attacked monsters). Also (docs/open-questions.md): town-scene animations, text conventions.

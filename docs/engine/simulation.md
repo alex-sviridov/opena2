@@ -860,6 +860,10 @@ Cost note: such a unit makes a hop plan per tick.
 
 ## 9. Handoff to combat (phase I)
 
+**I1 (melee attack) is done: [combat](combat.md)** implements brain modes 5 and the follow driver (`movement.follow_drive`), order 3 / command `0x19`, the group
+pass executor for group order 0, the swing (state 3) and the hit. What stays open below: modes 4, 6, 8 and the other group handlers, guard / swarm /
+patrol / follow orders, the retreat post step, spells and the AI. The text below is the pre-I1 handoff, kept for the facts.
+
 What phase I builds on, and what is still open. Orders now: `0` none, `1` move, `0xc` stand/guard; groups 3 (stand) and 4
 (move); brain modes 0 (idle, parked), 1 (go to cell), 10 (turn to a blocker).
 
@@ -924,6 +928,7 @@ filtered by recipient (`drain_no_way`, research 6.3 CONFIRMED routing).
 9. Gridlock (8.7): send a column of computer-owned units through a one-cell gap: the units that cannot plan give up after
    about `len - 5` ticks (human units wait first); a lone unit boxed in by friends keeps order 1.
 10. Order spike (8.7): ordering 20+ units over 60 cells in one click is instantaneous in the exe (native planner).
+11. Combat (I1): the eight items of [combat §11](combat.md#11-verify-in-game) (monster damage = template + weapon, hero hit/miss/damage counts over 20 blows, 0-15 tick start latency, flyer refusal, reach rule, Ctrl+L numbers, absorbed hits show no number, sure-hit monsters).
 
 ## 10. RNG
 

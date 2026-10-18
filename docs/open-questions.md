@@ -18,8 +18,7 @@ from both places when answered).
 - Human and structure fields in code (`FUN_004a65b0`, `FUN_004a65d0`
   users; column names known). [databin](formats/databin.md#open-questions)
 
-- Unit stat table: damage kinds 1/2 → elements, protection/resistance scaling, negative damage spread
-  (`0x516f6f`); hero carry-over. [units](data/units.md#open-questions)
+- Unit stat table: hero carry-over. [units](data/units.md#open-questions)
 
 ## Progression
 
@@ -38,6 +37,13 @@ from both places when answered).
   [spells](data/spells.md#11-open-questions)
 - Spellbook tooltip rows Speed / Sight array pairing. Start `FUN_00416615`, `FUN_004c628f`. [spells](data/spells.md#11-open-questions)
 
+## Combat (I1)
+
+- Monster damage = template + equipped weapon: confirm in play. [combat](engine/combat.md#open-questions)
+- AI reaction on being hit (`FUN_0056e6b8`), guard and auto target scans (`FUN_0056a1fb`, `FUN_0056ed4e`), special attacks (`FUN_0056a981`),
+  mage casting (`FUN_0056b059`). [combat](engine/combat.md#10-not-modelled-kept-for-later-phases)
+- Client reaction on message `0x73` beyond the number (view unit vtable `+0x74`); the recovery-timer byte wrap. [combat](engine/combat.md#open-questions)
+
 ## Not started (from the reversing plan)
 
 - `.alm` triggers (sections 7, 10–12); the server reader `FUN_00534ad4` parses all of them
@@ -46,7 +52,7 @@ from both places when answered).
   [map](formats/map.md#open-questions)
 - Section 12 zones (INFERRED music) and the 8000–9999 slot codes of sections 7 and 11.
   [map](formats/map.md#open-questions)
-- Unit struct: group AI, damage resolution, orders 0x16/0x18/0x19/0x1a.
+- Unit struct: group AI, orders 0x16/0x1a, structure damage `0x516ea0`.
   [unit-struct](engine/unit-struct.md#open-questions)
 - Line of sight tables and the `FUN_00559536` gate; block-layer dynamic bits
   and per-class `movementType` (`FUN_00557a89`, vtable `+0x20`). [map](formats/map.md#open-questions)

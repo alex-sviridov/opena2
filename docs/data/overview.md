@@ -48,12 +48,12 @@ no damage fields: they come from the weapon (itemdefs `damage_min`, `damage_max`
 the AI approach distance is `FUN_0056ac5b` ([unit-struct](../engine/unit-struct.md)). Cooldown: server hit at `windup` ticks
 after the attack message, recovery `+0x135 + rand(0..3)` + hero delay ([animation §5.3](../formats/animation.md)).
 
-**Still to reverse and implement in phase I.**
-- Hit chance and damage: `FUN_00516f6f` (`0x516f6f`, re-read for this page, CONFIRMED) is the whole resolution: with
-  `r = rand(200) - 100` a physical hit lands if `defence < toHit + r`, or `r >= 90` (always hits), and never if `r < -90`;
+**Phase I1 (melee attack) is implemented: [combat](../engine/combat.md); still to do in later phases:**
+- (done in I1, kept for the facts) Hit chance and damage: `FUN_00516f6f` (`0x516f6f`, re-read for this page, CONFIRMED) is the whole resolution: with
+  `r = rand(200) - 100` a physical hit lands if `defence < toHit + r`, or `r >= 90` (always hits; there is no never-hit rule below -90);
   flag `0x10` of the attacker skips the roll and the absorption; absorption is subtracted from physical damage (min 0),
   element parts follow with their protection (`+0xc4..+0xcc`); the attack record packs min/spread (bit 7 = stored /15).
-  Open: scaling of resistances and protections, damage kinds 1/2 ([units](units.md)). To-hit sources for
+  Resistance / protection scaling and the damage kinds are answered in [combat §5.2](../engine/combat.md). To-hit sources for
   humans ([progression §3](progression.md)): `(1.1^Body + 1.1^Reaction) / 5`, +3 per school skill with a melee weapon.
 - Derived max HP/mana: the exe never uses the template `healthMax` of humans; the recompute (`FUN_0051366b`) sets it and the manaMax-derived
   mana. All 605 campaign human units take this value (their map HP is default), e.g. `2A_Knight4` 167 not 351. `progression.derived_vitals`

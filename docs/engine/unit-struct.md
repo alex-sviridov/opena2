@@ -170,6 +170,9 @@ Server-wide alternative entry: `FUN_0056dc49` loops all creatures of a world lis
 Order validity runs elsewhere: `FUN_00569321` (§9).
 
 ### 6.1 Attack timer details (C, 0x50f12c case 3/0xd/0xe)
+Implemented and re-read in I1: [combat §4](combat.md#4-the-swing-state-3-fun_0050f12c-confirmed) (timeline, byte timers, `+0x15`/`+0x136` handshake);
+the hit is [combat §5](combat.md#5-hit-resolution). Correction: vtable `+0x58` of the monster class (`0x5118be`) is the small mana-regen
+recompute, not a template load; the monster template init is `FUN_00511959` (loader `FUN_005114f3`, equipment strings, then the merge `FUN_005113e7`).
 phase 0: start -> `FUN_00516b2f(creature, target+0x5c, &extra)` (melee start, picks swing, `extra=(sVar1*256+128)/200` if sVar1>1);
 sets `+0x136=0`, `+0x58=5`, `+0x6c = +0x134` (wind-up ticks) (+extra for melee; spells: +0x134 only).
 phase 5: `+0x6c--`; at 0: melee `FUN_00516c1f(creature,target)` -> vcall target+0x2c => `FUN_00516ceb` (creature target),
@@ -387,8 +390,8 @@ the 13 equipment slots (human `+0x208`). Id tables: units.reg, data.bin groups 3
 ## Open questions
 
 - Not traced: the occupancy stamps (`0x55c1fe`, `0x55c2ce`; the path finder is [simulation §7](simulation.md#7-pathfinding-phase-h2)), the group
-  AI (`0x5691xx`–`0x56c9xx`: `0x56c840`, `0x56a981`, `0x56b059`, `0x56f0bb`), damage resolution
-  (`0x516ceb`, `0x516ea0`), the cast request consumer `0x57b210`, orders 0x19, 0x1a (the move group, orders 1 and 0xc stop are done: [simulation §8](simulation.md#8-orders-h3)), the
-  the wire format of `FUN_005040c4`.
+  AI (`0x5691xx`–`0x56c9xx`: `0x56c840`, `0x56a981`, `0x56b059`, `0x56f0bb`), the structure damage `0x516ea0`, the cast request
+  consumer `0x57b210`, order 0x1a (orders 1, 0xc and 3 are done: [simulation §8](simulation.md#8-orders-h3), [combat](combat.md)), the
+  wire format of `FUN_005040c4`. Damage resolution (`0x516ceb`, `0x516f6f`) and the attack order are [combat](combat.md) (I1).
 - Meaning of the event classes of the three scenario booleans `+0x194`, `+0x198`, `+0x19c` (`FUN_005303ed`).
 - Cell record `+0x34..+0x39` (effect id, level, parameters; `0x5503af`, `0x555c58`): no writer found, so the Teleport case (`0x17`, `brain+0xb0`, `FUN_0055a96c`) looks unreachable in single player. Starting routine `FUN_0055f3e0` callers that copy a record out of a stream (`0x55f6b0` reader branch).

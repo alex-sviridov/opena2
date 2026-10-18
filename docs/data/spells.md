@@ -153,7 +153,7 @@ HP (unit+0x94) -= dmg                                                 // FUN_005
 
 Spells always hit (no to-hit roll: the elemental part is applied when the physical part is empty, `0x5171a4`). The physical part
 of the same routine (weapon hits) rolls `rand(0..200) - 100` against defence: hit when `defence < toHit + roll`, or roll >= 90;
-roll < -90 never hits; Bless / Curse change only the damage roll (§4): `min' = min + spread` and no random part with chance
+there is no "roll < -90 never hits" rule (the branch exists but changes nothing, [combat §5.2](../engine/combat.md)); Bless / Curse change only the damage roll (§4): `min' = min + spread` and no random part with chance
 `value` (`value > rand(0..100)`) for Bless, no random part (damage = min) for Curse. Units with flag
 `+0x4c & 8` take 0. Effect `FUN_0051e65b` runs once per application: missile/point once; area carriers once per 16-tick pulse per unit
 in the cells. The other protection uses are Stone Curse (earth) and Drain Life (astral); Poison (`health` continuous) ignores

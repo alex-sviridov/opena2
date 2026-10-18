@@ -287,6 +287,10 @@ Unmodelled effect kinds are listed in section 10.
 
 ## 7. Engine mapping
 
+Files: `engine/rng.py`, `engine/sim/combatstats.py`, `engine/sim/combat.py`, `engine/sim/movement.py` (creature tick `_tick_unit`, `follow_drive`),
+`engine/sim/orders.py` (`attack_group`, `_pass_orders`), `engine/view/damage.py`, tests `test_engine_rng`, `_combatstats`, `_combat_formulas`, `_combat`,
+`_combat_data`, `_combat_window`, `_damage_numbers`. Brain order 3 (a step in progress) is `mover.step_ticks`; the swing is `Unit.brain_order == 1`.
+
 | Piece | Place |
 |---|---|
 | `Rng` | `engine/rng.py` (layer 3, so `World` can own it; re-exported by `engine/sim/rng.py`), `World.rng` |
@@ -321,7 +325,12 @@ Unmodelled effect kinds are listed in section 10.
 4. **Difficulty:** the map-load tweak of monster to-hit/defence (`[0x6044c4+0xd8]`, [unit-struct §1](unit-struct.md)) is not applied
    (normal difficulty, mode 2 = skip).
 5. **Seed:** per game, explicit (section 2 of simulation §10).
-6. **Ranged attacks** (range > 1) use the same code: wind-up + `extra`, no projectile in the simulation; the visual arrow is a view matter.
+6. **Ranged attacks** (range > 1) use the same code: wind-up + `extra`, no projectile in the simulation; the visual arrow is a view matter (not drawn yet).
+7. **Stats are built lazily** (`combat_stats(world, unit)`, from `Unit.stats`, `World.item_table`, `Unit.skills`) and cached in `Unit.combat`; a skill-up or an
+   equipment change must clear it (progression hook, later). A unit without a template fights with all-zero stats.
+8. **Units without HP get no Brain tick** (`_tick_unit` returns): death states are I2.
+9. **Intake** creates the group (and moves the members into it) before the target lookup, as the exe does; a command for an unknown or structure target
+   therefore leaves the orders untouched but changes the groups.
 
 ## 10. Not modelled (kept for later phases)
 
