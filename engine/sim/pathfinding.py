@@ -113,8 +113,83 @@ def _footprint_free(blocked, x, y, size):
     return True
 
 
-def _wave(grid, start, target, size, walker, limit, order, cost):
-    """The wave fill.  Returns (field array('H'), searched cells in labelling order, levels run)."""
+_TEMPLATES = []                 # last few (blocked bytes, size, dead bytes, field template): grids repeat across plans
+_DIAG = []                      # last (cost bytes, k + (k >> 1) list)
+
+
+def _dead_cells(blocked, size):
+    """Cells a label can never land on: blocked (size 1) or whose size x size footprint is not free
+    (FUN_0055c440, out of the 256 x 256 grid counts as blocked)."""
+    key = bytes(blocked)
+    for k, sz, dead, tmpl in _TEMPLATES:
+        if sz == size and k == key:
+            return dead, tmpl
+    free = (np.frombuffer(key, np.uint8) == 0).reshape(GRID, GRID)
+    if size > 1:
+        ok = np.zeros_like(free)
+        m = GRID - size + 1
+        acc = free[:m, :m].copy()
+        for j in range(size):
+            for i in range(size):
+                if i or j:
+                    acc &= free[j:j + m, i:i + m]
+        ok[:m, :m] = acc
+        free = ok
+    dead = (~free).astype(np.uint8).tobytes()
+    tmpl = np.where(free, UNSEEN, 0).astype(np.uint16).ravel().tolist()
+    _TEMPLATES.insert(0, (key, size, dead, tmpl))
+    del _TEMPLATES[4:]
+    return dead, tmpl
+
+
+def _diag_costs(cost):
+    for k, d in _DIAG:
+        if k == cost:
+            return d
+    c = np.frombuffer(bytes(cost), np.uint8).astype(np.uint16)
+    d = (c + (c >> 1)).tolist()
+    _DIAG[:] = [(bytes(cost), d)]
+    return d
+
+
+_EXPANDERS = {}
+
+
+def _expander(order, use_cost):
+    """Source-generated half-step for one neighbour order: the 8 neighbours unrolled with literal deltas
+    (no tuple unpacking or table lookups per neighbour).  Semantics of the loops in `_wave` exactly."""
+    key = (order, use_cost)
+    fn = _EXPANDERS.get(key)
+    if fn is not None:
+        return fn
+    body = []
+    for dx, dy in order:
+        d = dy * GRID + dx
+        straight = dx == 0 or dy == 0
+        step = ("cost[n]" if straight else "diag[n]") if use_cost else ("2" if straight else "3")
+        body.append("n = c + %d\nnew = cur + %s\nold = fld[n]\nif new < old:\n"
+                    "    if old == 65535:\n        sappend(n)\n    fld[n] = new\n    nappend(n)\n" % (d, step))
+    slow = []
+    for dx, dy in order:
+        d = dy * GRID + dx
+        straight = dx == 0 or dy == 0
+        step = ("cost[n]" if straight else "diag[n]") if use_cost else ("2" if straight else "3")
+        slow.append("n = (c + %d) & 0xFFFF\nnew = (cur + %s) & 0xFFFF\nold = fld[n]\nif new < old:\n"
+                    "    if old == 65535:\n        sappend(n)\n    fld[n] = new\n    nappend(n)\n" % (d, step))
+    ind = lambda blocks, n: "".join(" " * n + line + "\n" for b in blocks for line in b.rstrip("\n").split("\n"))
+    src = ("def expand(frontier, fld, cost, diag, sappend):\n"
+           " nxt = []\n nappend = nxt.append\n"
+           " for c in frontier:\n  cur = fld[c]\n"
+           "  if cur > 0xF000 or c < 257 or c > 65278:\n" + ind(slow, 3) +
+           "  else:\n" + ind(body, 3) + " return nxt\n")
+    ns = {}
+    exec(src, ns)
+    fn = _EXPANDERS[key] = ns["expand"]
+    return fn
+
+
+def _wave_ref(grid, start, target, size, walker, limit, order, cost):
+    """The plain sequential wave fill (kept for starts on the last rows/columns with sized movers)."""
     fld = array("H", b"\xff\xff" * (GRID * GRID))
     blocked = grid.blocked
     sidx, tidx = start[1] * GRID + start[0], target[1] * GRID + target[0]
@@ -149,12 +224,39 @@ def _wave(grid, start, target, size, walker, limit, order, cost):
                         nxt.append(n)
             frontier = nxt
         it += 2
-    return fld, searched, it
+    return fld, searched, it, None
 
 
-def _walk_back(fld, cost, start, end, walker_cost):
+def _wave(grid, start, target, size, walker, limit, order, cost):
+    """The wave fill.  Returns (field, searched cells in labelling order, levels run, dead).
+
+    Same label-correcting order as the exe: cells are expanded one by one in frontier order and read their
+    label at expansion time.  Cells that can never be labelled (blocked, or footprint not free) hold 0 in
+    the working field, so the strict `<` rejects them without a test; `dead` (bytes, 1 = such a cell) lets
+    the callers read them as unlabelled."""
+    sidx, tidx = start[1] * GRID + start[0], target[1] * GRID + target[0]
+    if size > 1 and (start[0] + size > GRID or start[1] + size > GRID):
+        return _wave_ref(grid, start, target, size, walker, limit, order, cost)
+    dead, tmpl = _dead_cells(grid.blocked, size)
+    fld = tmpl[:]
+    fld[sidx] = 0
+    tdead = bool(dead[tidx]) and tidx != sidx
+    searched = [sidx]
+    sappend = searched.append
+    diag = None if cost is None else _diag_costs(cost)
+    expand = _expander(tuple(order), cost is not None)
+    frontier, it = [sidx], 0
+    while frontier and it < limit and (tdead or fld[tidx] == UNSEEN):
+        frontier = expand(frontier, fld, cost, diag, sappend)      # half step A -> B
+        frontier = expand(frontier, fld, cost, diag, sappend)      # then B -> A
+        it += 2
+    return fld, searched, it, dead
+
+
+def _walk_back(fld, cost, start, end, walker_cost, dead=None):
     """FUN_0054e58c / FUN_0054e886: from `end` back to `start` along the smallest label; returns the cells
     from the first step to `end`, or None when the walk exceeds MAX_STEPS."""
+    sidx = start[1] * GRID + start[0]
     cx, cy = end
     out = [end]
     steps = 0
@@ -168,8 +270,9 @@ def _walk_back(fld, cost, start, end, walker_cost):
             nx, ny = cx + dx, cy + dy
             if not (8 <= nx <= GRID - 8 and 8 <= ny <= GRID - 8):
                 continue
-            v = fld[ny * GRID + nx]
-            if v == UNSEEN:
+            i = ny * GRID + nx
+            v = fld[i]
+            if v == UNSEEN or (dead is not None and dead[i] and i != sidx):
                 continue
             if dx == 0 or dy == 0:
                 cand = (v + (cost[c] if walker_cost else 2)) & 0xFFFF
@@ -186,7 +289,7 @@ def _walk_back(fld, cost, start, end, walker_cost):
     return out[1:]                                          # the start cell is pushed last and popped
 
 
-def _nearest_reached(fld, target, radius):
+def _nearest_reached(fld, target, radius, dead=None, sidx=-1):
     """FUN_005585f4: scan rings r = 1 .. radius - 1 around `target` for the labelled cell with the
     smallest label (first in scan order on ties); the first ring that has one decides.  Packed 16-bit
     index arithmetic as in the exe.  None when no ring cell is labelled."""
@@ -196,11 +299,21 @@ def _nearest_reached(fld, target, radius):
         for o in range(-r, r + 1):
             for idx in ((r << 8) + t + o, (-r << 8) + t + o, (o << 8) + t + r, (o << 8) + t - r):
                 idx &= 0xFFFF
-                if fld[idx] < best:
+                if fld[idx] < best and not (dead is not None and dead[idx] and idx != sidx):
                     best, found = fld[idx], idx
         if best < UNSEEN:
             break
     return None if found is None else (found & 255, found >> 8)
+
+
+_XY = []
+
+
+def _xy_table():
+    """(x, y) tuple of every cell index, built once (the searched list is mapped through it)."""
+    if not _XY:
+        _XY.extend(zip(list(range(GRID)) * GRID, [y for y in range(GRID) for _ in range(GRID)]))
+    return _XY
 
 
 def _plan(grid, start, target, size, walker, human, static, cfg, radius):
@@ -220,19 +333,21 @@ def _plan(grid, start, target, size, walker, human, static, cfg, radius):
         limit = dist + (cfg.static_scan_ahead if static else cfg.dynamic_scan_ahead)
         order = ORDER_SIZED
     cost = grid.cost if (walker and grid.cost is not None) else None
-    fld, searched, levels = _wave(grid, start, target, size, walker, limit, order, cost)
-    res.searched = [(i & 255, i >> 8) for i in searched]
+    fld, searched, levels, dead = _wave(grid, start, target, size, walker, limit, order, cost)
+    res.searched = list(map(_xy_table().__getitem__, searched))
     res.limit, res.levels = limit, levels
     end = target
-    if fld[target[1] * GRID + target[0]] == UNSEEN:
-        end = _nearest_reached(fld, target, radius if radius is not None else (quarter + 4 if static else 8))
+    tidx, sidx = target[1] * GRID + target[0], start[1] * GRID + start[0]
+    if fld[tidx] == UNSEEN or (dead is not None and dead[tidx] and tidx != sidx):
+        end = _nearest_reached(fld, target, radius if radius is not None else (quarter + 4 if static else 8),
+                               dead, sidx)
         if end is None:
             res.reason = "unreachable"
             return res
         res.reason = "fallback"
     else:
         res.found, res.reason = True, "found"
-    route = _walk_back(fld, grid.cost, start, end, cost is not None)
+    route = _walk_back(fld, grid.cost, start, end, cost is not None, dead)
     if route is None:
         res.found, res.reason = False, "too long"
         return res

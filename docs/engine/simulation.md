@@ -456,11 +456,17 @@ follow target (re-plan every `len/3 + 1` consumed waypoints, StaticIsntNeeded ga
 ### 7.5 Measured
 
 `tools/bench_pathfinding.py` (pure Python, 200 random walkable pairs per map, human unit = unbounded search,
-one core of this machine): worst case **444 ms on the largest map** (`110.alm`, 256 x 256, 40,465 labelled
-cells), 124-160 ms on the 144 x 144 maps, typically 4-25 ms for a 50-150 cell route. The wave labels every
-cell within the route's cost radius, so cost grows with the area, not the route length. Acceptable at one
-plan per order and per 17 hops; many units ordered at once on a big map would hitch (numpy/`array` rewrite
-or a per-tick plan budget if it shows). Golden routes: `tests/golden.json["paths"]`
+one core of this machine): worst case **168 ms on the largest map** (`110.alm`, 256 x 256, 40,465 labelled
+cells), 44-50 ms on the 144 x 144 maps, typically 2-10 ms for a 50-150 cell route (the first version of
+the planner measured 444 ms and 124-160 ms). The wave labels every cell within the route's cost radius, so cost
+grows with the area, not the route length. Speed-up (results bit-identical, pinned by
+`tests/test_pathfinding_differential.py` against the frozen original `tests/pathfinding_reference.py`): the
+sequential label-correcting order is kept (a cell reads its label when expanded, re-appends define `searched`,
+so a numpy level fill cannot reproduce it); blocked / footprint-not-free cells hold label 0 in the working
+field so the strict `<` rejects them with no test (the field template is cached per blocked layer and size),
+the field is a list, and the 8 neighbours are source-generated and unrolled per order. About 2.6-3x faster; the rest
+is the irreducible per-expansion cost (~9 expansions per labelled cell). Still one plan per order and per 17
+hops; a per-tick plan budget stays a gameplay decision. Golden routes: `tests/golden.json["paths"]`
 (`tests/test_pathfinding_maps.py`, regenerate with `tools/update_golden.py`).
 
 ### 7.6 VERIFY IN GAME (pathfinding)

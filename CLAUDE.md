@@ -215,5 +215,5 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   tie rule (`<=` orthogonal, `<` diagonal), unreachable -> cheapest labelled cell of the first ring around the target; two layers: a static
   plan (re-planned on target change or after 16 hops) and 3-4 cell dynamic hops over the live layer (every 32 ticks or when empty);
   `engine/sim/pathfinding.py` (pure), `MoveTo` order, overlay `--debug paths` (F4), `tools/bench_pathfinding.py`
-  (444 ms worst, 256x256), goldens `["paths"]`. Blocker wait (no swap: the first human size-1 unit turns to a walking friend and stops until re-ordered, 7.4) modelled; not decoded: follow-target. docs/engine/simulation.md §7
+  (168 ms worst, 256x256; was 444), goldens `["paths"]`. Blocker wait (no swap: the first human size-1 unit turns to a walking friend and stops until re-ordered, 7.4) modelled; not decoded: follow-target. docs/engine/simulation.md §7
 - Status: E, F, H1 and H2 done. Next: H3 click-to-move. Also G3c (fonts). Also (docs/open-questions.md): town-scene animations, text conventions.
