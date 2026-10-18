@@ -5,7 +5,7 @@ Spec: docs/engine/combat.md (C§ numbers in the comments); routine addresses are
 
 from typing import NamedTuple
 
-from engine.world import Damage, Died
+from engine.world import DEAD, Damage, Died
 
 from . import movement as mv        # movement reaches back into this module only at call time (`_tick_unit`, `follow_drive`)
 from .combatstats import CombatStats, u8, unit_combat_stats
@@ -195,9 +195,9 @@ def set_attack(world, u, t):
 
 def refresh_attack(world, u):
     """`FUN_00569321` case 3 -> `FUN_0056acc8`, run for every member of a group with order 0 at `tick & 15 == 6`: stop when the target is gone
-    (the exe: state 0x10; I1: HP <= 0, C§9.1), else Brain mode 5 with the target and the range."""
-    t = world.units.get(u.target)
-    if t is None or t.hp <= 0:
+    (state 0x10, a corpse, or an id the world freed), else Brain mode 5 with the target and the range."""
+    t = world.find_unit(u.target)
+    if t is None or t.state == DEAD:
         mv.stop_unit(world, u)
         return
     u.mode_go = False
@@ -208,9 +208,9 @@ def refresh_attack(world, u):
 
 def attack_mode(world, u):
     """Brain mode 5 (`FUN_0056eab5`): in range -> start the swing (`FUN_0056e8c3`), else approach with the follow driver (`FUN_0056ea52`)."""
-    t = world.units.get(u.target)
-    if t is None or t.hp <= 0:
-        mv.stop_unit(world, u)                      # C§9.1: the exe keeps hitting the corpse until it is removed (I2)
+    t = world.find_unit(u.target)
+    if t is None:
+        mv.stop_unit(world, u)                      # the id was freed (stage 5, flyer): the exe's pointer lookup fails
         return
     a, b = foot(u), foot(t)
     if u.facing == octant(a, b) and reach_gap(a, b) <= u.range:
@@ -240,7 +240,7 @@ def swing_tick(world, u):
     """State 3 of the creature tick (`FUN_0050f12c`): phase 0 starts the swing, phase 5 counts the wind-up down and resolves the hit at 0,
     phase 7 counts the recovery down and sets the done flag.  The timer is a byte."""
     st = combat_stats(world, u)
-    t = world.units.get(u.swing_target)
+    t = world.find_unit(u.swing_target)
     if u.phase == PHASE_START:
         extra = 0
         if t is not None and u.hp > 0:              # FUN_00516b2f: the start message needs both units and the attacker's HP
@@ -265,15 +265,21 @@ def swing_tick(world, u):
 
 
 def resolve_attack(world, a, t, st):
-    """`FUN_00516c1f` -> `FUN_00516ceb` for a creature target (C§5.1): range gate, `take_hit`, HP, log.  HP is clamped at 0 (C§9.1)."""
+    """`FUN_00516c1f` -> `FUN_00516ceb` for a creature target (C§5.1): range gate, `take_hit`, HP (s16, may go below 0), log by the message 0x73
+    rule, XP credit.  No test of the target's HP or state: a dying body and a corpse are hit (C§12.2)."""
     if a.hp <= 0 or not in_attack_range(foot(a), foot(t), a.range):
         return
     ts = combat_stats(world, t)
     res = take_hit_detail(st.record, ts.block, world.rng, human=st.human, sure_hit=st.sure_hit)
     before = t.hp
-    t.hp = max(before - res.damage, 0)
+    t.hp = before - res.damage                      # the exe's s16 (no wrap here: HP stays within +-32767 in play)
     if a.stats is not None:
         t.last_attacker = a.id
-    log(world, Damage(world.tick, a.id, t.id, res.damage, t.hp, res.roll, res.hit))
-    if before > 0 and t.hp == 0:
+    if before > 0 or t.hp > -10:                    # message 0x73 (C§5.1 step 5)
+        log(world, Damage(world.tick, a.id, t.id, res.damage, t.hp, res.roll, res.hit))
+    xp.damage_credit(world, a, t, res.damage, before)
+    if before > 0 and t.hp <= 0:
         log(world, Died(world.tick, t.id, a.id))
+
+
+from . import xp    # noqa: E402  xp reads `combat_stats` and `log` from this module: bound at the end (circular on purpose)

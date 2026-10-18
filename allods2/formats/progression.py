@@ -123,7 +123,19 @@ ATTR_CAPS = {(False, False): (52, 50, 48, 46), (False, True): (50, 52, 46, 48),
 XP_VITALS_DIV = 5000.0      # G = log(total / 5000 + 1) / log(1.1)
 
 
-def derived_vitals(t, skills=None, bonus_hp=0, bonus_mana=0):
+def attributes(t):
+    """Capped (Body, Reaction, Mind, Spirit) of a human template (the caps of the recompute, section 3; no equipment bonus)."""
+    mage = t.get("mana_max", -1) > 0
+    female = t.get("gender", 0) == 1
+    caps = ATTR_CAPS[(mage, female)]
+    vals = []
+    for name, cap in zip(("body", "reaction", "mind", "spirit"), caps):
+        v = ATTR_DEFAULT if t.get(name, -1) < 0 else t.get(name)
+        vals.append(min(v, cap))
+    return tuple(vals)
+
+
+def derived_vitals(t, skills=None, bonus_hp=0, bonus_mana=0, total=None):
     """Max HP and max mana of a freshly built human of template `t` (`unitstats.UnitType`), as the exe's
     recompute `FUN_0051366b` computes them (docs/data/progression.md section 3); the data.bin `healthMax`
     is never used.  `bonus_*`: the equipment / effect bonus block (+0xdc / +0xe0), 0 for the templates of
@@ -133,7 +145,8 @@ def derived_vitals(t, skills=None, bonus_hp=0, bonus_mana=0):
     caps = ATTR_CAPS[(mage, female)]
     attr = lambda name: ATTR_DEFAULT if t.get(name, -1) < 0 else t.get(name)
     body, spirit = min(attr("body"), caps[0]), min(attr("spirit"), caps[3])
-    _, total = start_pools(skills_of(t) if skills is None else skills)
+    if total is None:
+        _, total = start_pools(skills_of(t) if skills is None else skills)
     g = math.log(total / XP_VITALS_DIV + 1.0) / math.log(1.1)
     k = 1 if mage else 2
     hp = int(int(body * k + k * g) * (1.0 + 1.1 ** body / 100.0)) + bonus_hp

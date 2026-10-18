@@ -1,10 +1,10 @@
-# Combat (phase I1): attack order, approach, swing, hit and damage
+# Combat (phases I1, I2): attack order, approach, swing, hit, damage, death, XP, loot and regeneration
 
 How a unit ordered to attack an enemy walks into range, swings with the exe's timing and hurts it with the exe's formulas.
 Marks as in CLAUDE.md (**CONFIRMED** = read in the GOG `allods2.exe` with REA, routine given; **INFERRED** otherwise). Exe
 build: sha256 in [formats/README.md](../formats/README.md). No decompiled code here: formulas are written as math.
-Ranged and spell attacks share the code up to the damage call (section 5), so they are listed where they differ; spells,
-death, XP and AI retaliation are other phases (section 10). RNG: [simulation §10](simulation.md#10-rng). Struct offsets:
+Ranged and spell attacks share the code up to the damage call (section 5), so they are listed where they differ; spells and
+AI retaliation are other phases (section 10); death, corpses, loot, XP and regeneration are I2 (sections 12-13). RNG: [simulation §10](simulation.md#10-rng). Struct offsets:
 [unit-struct](unit-struct.md); click side: [click-to-move-research](click-to-move-research.md); stats: [units](../data/units.md),
 [items](../data/items.md), [progression](../data/progression.md).
 
@@ -81,7 +81,7 @@ are equipped in the monster constructor `FUN_00511959`); bows are 4-6 ([items §
 
 ### 2.5 End of the order
 
-- Target state `0x10` (removed after the corpse is gone, [I2]): executor stops the unit (2.3).
+- Target state `0x10` (the unit was removed, 12.3): executor stops the unit (2.3); until then it keeps swinging (12.2).
 - Self target: stop at once (2.1). Pathing failure (`mover+0x98`, no way to the target): Brain mode := 0, then the exe runs the
   **auto target scan** `FUN_0056ed4e` (nearest visible enemy becomes the new target, mode 6); the engine sets mode 0 only
   (DECISION, section 9), the executor restores mode 5 after at most 16 ticks.
@@ -178,7 +178,7 @@ At the end of the wind-up the target in `+0x5c` is dispatched by class: creature
 5. Message `0x73` to the clients (`FUN_00504b1d` -> `FUN_00503672`) when the target had HP > 0 before **or** has HP > -10 now:
    carries the new HP (section 8).
 6. Experience: slot `0x6c` of the attacker (`FUN_00513128`) when `dmg > 0`, the target had HP > 0 before and has HP > -10 after
-   ([progression §4](../data/progression.md#4-xp-sources)). Not applied in I1 (section 9).
+   ([progression §4](../data/progression.md#4-xp-sources)). Applied since I2 (`xp.damage_credit`, section 13).
 
 ### 5.2 `take_hit` (`FUN_00516f6f`, CONFIRMED; vtable `+0x54` of every creature class)
 
@@ -317,9 +317,8 @@ Files: `engine/rng.py`, `engine/sim/combatstats.py`, `engine/sim/combat.py`, `en
 
 ## 9. Decisions (I1)
 
-1. **HP clamp:** death is I2. `take_hit` is exact, HP is stored as the exe does (s16, may go below 0 internally); the engine clamps
-   it at 0, logs `died` once, and an order 3 whose target has HP <= 0 stops at once (the exe keeps hitting the corpse until it is removed:
-   I2 restores that).
+1. **HP clamp (I1 only, removed in I2):** `take_hit` is exact; I1 clamped HP at 0 and stopped attackers at once. I2 stores the exe's HP (below 0 allowed)
+   and attackers keep hitting the body until the executor sees state `0x10` (12.2, section 13).
 2. **Retaliation, XP, weapon spells, mage spells, structure targets, ranged hit sound/arrows:** not in I1 (section 10).
 3. **Pathing failure under order 3:** mode 0 (no auto scan), restored by the executor.
 4. **Difficulty:** the map-load tweak of monster to-hit/defence (`[0x6044c4+0xd8]`, [unit-struct §1](unit-struct.md)) is not applied
@@ -328,17 +327,17 @@ Files: `engine/rng.py`, `engine/sim/combatstats.py`, `engine/sim/combat.py`, `en
 6. **Ranged attacks** (range > 1) use the same code: wind-up + `extra`, no projectile in the simulation; the visual arrow is a view matter (not drawn yet).
 7. **Stats are built lazily** (`combat_stats(world, unit)`, from `Unit.stats`, `World.item_table`, `Unit.skills`) and cached in `Unit.combat`; a skill-up or an
    equipment change must clear it (progression hook, later). A unit without a template fights with all-zero stats.
-8. **Units without HP get no Brain tick** (`_tick_unit` returns): death states are I2.
+8. **Units with HP <= 0 get no Brain tick**: `_tick_unit` runs the dying branch (`sim/death.py`, section 13).
 9. **Intake** creates the group (and moves the members into it) before the target lookup, as the exe does; a command for an unknown or structure target
    therefore leaves the orders untouched but changes the groups.
 
 ## 10. Not modelled (kept for later phases)
 
-Death, corpse, removal and XP (I2); AI reaction `FUN_0056e6b8` (defender alert message, `brain+0x54/+0x58/+0x94`), the guard scan and auto
+AI reaction `FUN_0056e6b8` (defender alert message, `brain+0x54/+0x58/+0x94`), the guard scan and auto
 target scan (`FUN_0056a1fb`, `FUN_0056ed4e`), special-attack rolls (`FUN_0056a981`), mage casting (`FUN_0056b059`); effects: Bless / Curse
 bits (the `take_hit` inputs exist, nothing sets them), Invisibility ending on attack (`FUN_00516b2f`: effect kind 12 flag `+0x42 := 1`),
 Haste/Slow; item modifier kinds other than those in section 6 (speed, scan range, mana, regeneration, castSpell on a weapon); equipment
-swapping in play; structure targets (`FUN_00516ea0`); client hit reaction animation (`vtable +0x74` of the view unit); sound.
+swapping in play; kill counters, bestiary byte, message `0x94`; the group-key population job (`+0x148`); structure targets (`FUN_00516ea0`); client hit reaction animation (`vtable +0x74` of the view unit); sound.
 
 ## 11. VERIFY IN GAME
 
@@ -352,14 +351,6 @@ swapping in play; structure targets (`FUN_00516ea0`); client hit reaction animat
 6. Ctrl+L toggles the floating damage numbers; the number equals the HP lost; colour = the victim's owner colour.
 7. A hit with damage 0 (high absorption) still shows nothing (message `0x73` carries the same HP: no number).
 8. Sure-hit monsters (bats, bees, spiders) never miss and ignore absorption.
-
-## Open questions
-
-1. Monster weapon bonuses: confirm in play that `damage = template + weapon` (11.1); the code order says yes.
-2. `FUN_005106d2(0x14/0x1c)` effect lookups and the `FUN_00516b2f` invisibility flag need the effect system (K).
-3. `FUN_0056ed4e` auto scan and `FUN_0056a1fb` guard scan (target choice, visibility) - AI phase.
-4. What the client does on `0x73` besides the number (`vtable +0x74` of the view unit: pain animation or flash).
-5. Whether the timer byte really wraps at 0 (a recovery of 0) - needs a data row or a spell effect that produces it.
 
 ## 12. Death, corpses, loot, XP and regeneration (I2 research)
 
@@ -484,6 +475,33 @@ Worked example (data.bin, 16 ticks per second): **Orc_Sword** maxHP 80, regen 10
 HP 0 -> 80 takes 50 applications = 3200 ticks (200 s); resting (`k = 3`, 80 ticks without a step): 4.80 HP per 64 ticks, about 17 applications (68 s). **Goblin_Pike** (40 / 50): also 1.60 HP. **Ogre** (200 / 150): `200*200/150 = 266` -> 2.66 HP per 64 ticks. The first
 application of a new unit happens on the first block with `b & 3 == id & 3` after tick 12. Dead units never regenerate; a unit with HP > 0 that is `state != 0x10` does, in any state (fighting included).
 
+### 12.5b Human regeneration
+
+Humans (class `0x254`, vtable `0x5d0f40`; heroes and human NPCs) use the same slot `FUN_0050fc5a` (vtable `+0x14`, CONFIRMED by the table at `0x5d0f40`), but data.bin group 6 has no regen columns, so the rates are **constants from the shared creature base constructor**:
+
+| Field | Value | Evidence |
+|---|---|---|
+| HP regen `+0x98` | **100** | written only by the base creature init `FUN_0050ec60` (`movw $0x64,+0x98` at `0x50ed18`), reached by the human ctor `0x512133` -> `FUN_0050dc2b` -> `FUN_0050e173` -> `FUN_0050ec60`. CONFIRMED |
+| mana regen `+0x9e` | **50** | same routine (`movw $0x32,+0x9e` at `0x50ed50`). CONFIRMED |
+| nobody overwrites them | | the human ctor `FUN_005121e1` (sets Body/Reaction/Mind/Spirit 30, maxHP/HP 50, speed 16, `+0x134=8`, `+0x135=4`), the loader `FUN_005145d1` / its stream routine `FUN_00514cf2` (reads `+0x84..+0x8a`, `+0x96`, `+0x9c`, `+0x8c`, skills; not `+0x98`/`+0x9e`) and the recompute `FUN_0051366b` (writes `+0x84..+0x8a`, `+0x8c`, `+0x90`, `+0x92`, `+0x96`, `+0x9c`, `+0xa0`, `+0xa4`, `+0xa6`; no `+0x98`/`+0x9e`) contain no write; a scan of every `mov ...,0x98/0x9e(%reg)` in the exe finds only the base init and the object copy (`0x50e8f7`, `0x50e933`). CONFIRMED (scan: INFERRED to the extent that an indexed write could be missed) |
+
+So regen is **independent of Body / Spirit / Mind** except through max HP / max mana (recompute, [progression §3](../data/progression.md#3-what-a-skill-up-changes)). With `bonus = +0xde` (effect kind 8, HP) / `+0xe2` (kind 11, mana), both 0 without effects, and `k` = 1 or 3 (resting) from 12.5:
+
+```
+HP   per application (every 64 ticks, own phase) :  floor( maxHP   * 2 * (100 + bonus) * k / 100 )  hundredths of a HP
+mana per application (every 16 ticks)            :  floor( maxMana * (100 + bonus2)   * k /  50 )  hundredths of a mana
+without effects:  HP +2 % of maxHP * k per 4 s ;  mana +2 % of maxMana * k per 1 s     (k = 3 after 80 ticks without a step)
+```
+
+A regen of 0 means "no regeneration" only for HP (explicit `+0x98 != 0` test in `FUN_0050fc5a`); the mana part has **no** zero test (division by `+0x9e`), not reachable for humans (always 50). Mana only moves when `+0x9a < +0x9c`; a fighter with `+0x9c == 0` never regenerates mana. Max HP / mana below are for total XP 0 (`G = 0`), no equipment bonus, attributes below their caps (INFERRED for the data values, the formulas are CONFIRMED in progression §3):
+
+| Unit | Body / Spirit | maxHP | HP gain (k=1) | maxMana | mana gain (k=1) |
+|---|---|--:|---|--:|---|
+| Fighter_Hero | 41 / 21 | 122 | 244 hundredths = 2.44 HP / 64 ticks (7.32 resting) | n/a (template mana -1: no mage, INFERRED) | - |
+| Mage_Hero | 14 / 44 | 14 | 28 hundredths = 0.28 HP / 64 ticks | 146 | 292 hundredths = 2.92 mana / 16 ticks (8.76 resting) |
+
+Dying time (vtable `+0x74` = `FUN_00512526`, CONFIRMED `0x5d0f40`/`0x5d0fb8` slot `+0x74`): template param 23 when the template exists, else -1; -1 becomes **8**. Fighter_Hero has `dying_time = -1` -> 8 (timer `+0x6c` = 7); Mage_Hero has 12 -> 12 (timer 11); removal per 12.1 / 12.3.
+
 ### 12.6 Corpse decay (`FUN_005110b8`, from the same job) and what the client draws
 
 The job also calls `FUN_005110b8` for every unit of the **corpse list** (and `FUN_00510a70` for the group-key marks below). Per job run (once per block): `if HP > -10001`: when `block` is even,
@@ -549,3 +567,34 @@ decay `-1` per 32 ticks on even blocks with the stage table of 12.6. Do not rele
 5. Writers of `+0x138` other than the move message (`0x5041ba`, `0x504292`, `0x504369`, `0x50446f`, `0x50ea4b`) and the exact meaning of the resting multiplier.
 6. Meaning of "template parameter 15 != 0" gating the weapon drop (`FUN_00510a70`, `0x510b50`).
 7. Client floating text / sound / effect at a kill and at a level-up (not found in the server routines).
+
+## 13. Engine (I2): death, corpses, XP, loot, regeneration
+
+Design and assumptions: [spec](../superpowers/specs/2026-10-18-death-design.md). Files: `engine/sim/death.py` (`dying_tick`, `remove_dead`, `drop_loot`, `decay_step`),
+`engine/sim/vitals.py` (`vitals_system`: the `tick & 15 == 12` job, first system of the step), `engine/sim/xp.py` (`award`, `damage_credit`, `kill_credit`, `level_up`),
+`engine/world.py` (`DEAD`, `World.corpses`, `find_unit`, `bury`, `death_stage`, events `Removed`, `LevelUp`, `Loot`; `Unit.death_seen/death_tick/step_end/hp_acc/mana_acc/carried/kill_list`),
+view `engine/view/drawlist.py` (`unit_frame` by death stage, corpses drawn, bodies not pickable, hover and mana bars), `engine/backend_pygame/interface.py` (`info_rows`).
+Tests: `tests/test_engine_death.py`.
+
+| Rule (C§12) | Engine |
+|---|---|
+| 12.1 HP <= 0 branch, `T0`, countdown, `HP < -9` removal | `death.dying_tick` from `movement._tick_unit`; `Unit.timer` is the exe's `+0x6c`; the unit stays in `world.units` (blocks) until `remove_dead` |
+| 12.2 attackers | `combat.refresh_attack` / `attack_mode` use `World.find_unit`; only a missing id or state `0x10` stops them; `resolve_attack` hits any target, HP unclamped, `Damage` logged by the `0x73` rule |
+| 12.3 removal | `World.bury` (spatial index, group, selections; ground units to `World.corpses`, flyers / ghosts dropped), loot, one decay step, `Removed`, kill credit |
+| 12.4 loot | `drop_loot`: world RNG in the exe's order; the pile is an `Item` on the unit's cell (merged); carried codes from the section 8 group; generated item code `GenItem.code & 0xFFFF` |
+| 12.5 regeneration | `vitals.regen`: HP on `block & 3 == id & 3`, drain on `block & 3 == 0`, mana every block; monsters p5 / p7, humans 100 / 50 (12.5b); `k = 3` after 80 ticks without a step (`Unit.step_end`) |
+| 12.6 corpses | `decay_step` on even blocks; stages and draw: `drawlist.unit_frame` (dying from `death_tick`, then bones 1-3, nothing at stage 5) |
+| 12.7 XP | `xp.damage_credit` (per hit), `xp.kill_credit` at the removal tick (last hitter, hero with HP >= 0), `xp.award` (Mind, repeat list, off-school, span cap, pool), `xp.level_up` (max HP / mana recompute, combat stats cleared, `LevelUp` event) |
+
+Decisions and assumptions (INFERRED unless marked): hero = human with a hero template name; effect / equipment bonuses of regeneration are 0; all `carried` items drop (no template-parameter-15 gate); the pile
+is always on the unit's own cell; a level-up keeps the current HP / mana; the death message `0xb4` for a hero of the human player is only the `Removed` event with HP set to -50; the selection drop at `T0`;
+corpses are drawn before living units; a body is not pickable (HP <= 0). HP stays a Python int (the exe's s16 never wraps within the HP range of play).
+
+## Open questions
+
+1. Monster weapon bonuses: confirm in play that `damage = template + weapon` (11.1); the code order says yes.
+2. `FUN_005106d2(0x14/0x1c)` effect lookups and the `FUN_00516b2f` invisibility flag need the effect system (K).
+3. `FUN_0056ed4e` auto scan and `FUN_0056a1fb` guard scan (target choice, visibility) - AI phase.
+4. What the client does on `0x73` besides the number (`vtable +0x74` of the view unit: pain animation or flash).
+5. Whether the timer byte really wraps at 0 (a recovery of 0) - needs a data row or a spell effect that produces it.
+6. I2 open questions are in 12.11; assumptions in section 13 (hero test, loot gate on template parameter 15, pile placement, selection drop timing).

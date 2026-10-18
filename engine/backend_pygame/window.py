@@ -11,7 +11,7 @@ from engine.ui import (CursorInput, DebugFlags, Layout, MainText, MessageLine, M
 from engine.ui.orders import FORMATION_MS, FORMATION_TEXT, minimap_move_cell
 from engine.view import DrawOptions, Projection, build_draw_list, build_terrain_items
 from engine.view.damage import FloatingDamage, unit_anchor
-from engine.world import Damage, Died
+from engine.world import Damage, Died, LevelUp, Loot, Removed
 from engine.view.pick import pick_at
 
 from .cursor import CursorSprites, draw_cursor, hide_os_cursor
@@ -91,20 +91,26 @@ def feed_fight_log(world, floats, assets, player_id, options, debug, now_ms):
             if debug.combat:
                 print("tick %d: %#x -> %#x %s roll %+d damage %d hp %d" % (e.tick, e.attacker, e.target, "hit " if e.hit else "miss",
                                                                           e.roll, e.amount, e.hp))
-            v = world.units.get(e.target)
+            v = world.find_unit(e.target)
             if e.amount > 0 and options.flying_damage and v is not None:
                 aset = assets.unit_set(v.type_id)
                 p = world.players.get(v.owner)
                 floats.add(v.id, e.amount, p.colour if p else 0, v.owner != player_id, aset.t.TileSize if aset else 1, now_ms, e.tick)
         elif isinstance(e, Died) and debug.combat:
             print("tick %d: %#x died (killed by %#x)" % (e.tick, e.unit, e.by))
+        elif debug.combat and isinstance(e, Removed):
+            print("tick %d: %#x removed" % (e.tick, e.unit))
+        elif debug.combat and isinstance(e, LevelUp):
+            print("tick %d: %#x skill %d -> %d" % (e.tick, e.unit, e.school, e.skill))
+        elif debug.combat and isinstance(e, Loot):
+            print("tick %d: %#x dropped gold %d, %d items at (%d, %d)" % (e.tick, e.unit, e.gold, len(e.codes), e.x, e.y))
 
 
 def floating_entries(world, floats, camera, assets, fs, now_ms):
     """[(text, ramp, x, y)] of the live numbers, in view pixels."""
     out = []
     for n in floats.visible(now_ms):
-        u = world.units.get(n.unit)
+        u = world.find_unit(n.unit)
         anchor = unit_anchor(world, camera, assets, u) if u is not None else None
         if anchor is not None:
             out.append((str(n.value), player_ramp(n.colour, fs), anchor[0] + n.x, anchor[1] + n.y))
@@ -260,11 +266,12 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
         floats.prune(now)
         drain_no_way(world, player_id, messages, now, texts)
         ordering.update()
-        items = build_draw_list(world, camera, world.tick, assets, options, debug, player.selection)
+        hover = pick_at(items.picks, *mouse) if mouse is not None and layout.viewport.contains(*mouse) else None
+        items = build_draw_list(world, camera, world.tick, assets, options, debug, player.selection, hover)
         text = messages.current(now)
         numbers = floating_entries(world, floats, camera, assets, fs, now) if options.flying_damage else ()
         ui.draw(screen, caches, build_terrain_items(terrain_view, camera, world.tick), items, camera,
-                world, player_id, minimap, panel, title_of, (text,) if text else None, numbers)
+                world, player_id, minimap, panel, title_of, (text,) if text else None, numbers, hover)
         if panel and mouse is not None and panel.contains(*mouse):
             state = choose_minimap_cursor(True, selection_state(world, player_id), ordering.pending)
         else:

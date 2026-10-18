@@ -216,7 +216,7 @@ def orders_system(world, commands):
                 move_group(world, g, *cmd.cell)
         elif isinstance(cmd, AttackUnit):
             g = intake(world, cmd.player_id, cmd.unit_ids)      # the group exists before the target is looked up (0x4f5283)
-            target = world.units.get(cmd.target_id)
+            target = world.find_unit(cmd.target_id)      # a corpse is a legal target (combat.md 12.2)
             if g is not None and target is not None:
                 attack_group(world, g, target)
         elif isinstance(cmd, Stop):

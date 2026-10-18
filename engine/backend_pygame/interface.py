@@ -60,7 +60,7 @@ class Interface:
             window.blit(img, (rect.x, rect.y))
 
     def draw(self, window, caches, terrain_items, items, camera, world, player_id, minimap=None, panel=None,
-             unit_title=None, message=None, numbers=()):
+             unit_title=None, message=None, numbers=(), hover=None):
         """Compose the whole window.  `minimap`: engine.view.Minimap (image drawn at `panel`'s
         position), `unit_title(unit) -> str` for the info panel."""
         lay = self.layout
@@ -85,7 +85,7 @@ class Interface:
         if minimap is not None and panel is not None:
             img = minimap.image(camera)
             window.blit(rgb_surface(img), (panel.left, panel.top))
-        self.draw_info(window, world, player_id, unit_title)
+        self.draw_info(window, world, player_id, unit_title, hover)
         if message:
             self.draw_message(window, *message)
 
@@ -93,23 +93,36 @@ class Interface:
         """The message line: top strip of the view (0, 0, W-160, 30), purpose INFERRED (ui-layout.md section 1)."""
         draw_text(window, text, MESSAGE_POS[0], MESSAGE_POS[1], colour)
 
-    def draw_info(self, window, world, player_id, unit_title=None):
-        """Info panel texts (ui-layout.md section 10; DECISIONs in the design spec)."""
+    def draw_info(self, window, world, player_id, unit_title=None, hover=None):
+        """Info panel texts (ui-layout.md section 10; DECISIONs in the design spec).  The hovered unit wins over the selection
+        (`FUN_004af3bf`); HP at (L+0x73, T+0x2c), mana at T+0x40; the skill and XP rows below are our placement (DECISION)."""
         sel = world.players[player_id].selection
         r = self.layout.info_panel.rect
-        if not sel:
-            return
-        if len(sel) > 1:
-            draw_text(window, "%d units" % len(sel), r.x + r.w - 88, r.y + 0x1c, INFO_TEXT, "center")
-            return
-        u = world.units[sel[0]]
+        u = world.units.get(hover) if hover is not None else None
+        if u is None:
+            if not sel:
+                return
+            if len(sel) > 1:
+                draw_text(window, "%d units" % len(sel), r.x + r.w - 88, r.y + 0x1c, INFO_TEXT, "center")
+                return
+            u = world.units[sel[0]]
         title = unit_title(u) if unit_title else "unit %d" % u.type_id
         draw_text(window, title, r.x + r.w - 88, r.y + 0x1c, INFO_TEXT, "center")
-        draw_text(window, "HP", r.x + 0x73, r.y + 0x2c, INFO_TEXT)
-        draw_text(window, "%d/%d" % (u.hp, u.hp_max), r.x + 0x73, r.y + 0x36, INFO_TEXT)
+        for text, dy in info_rows(u):
+            draw_text(window, text, r.x + 0x73, r.y + dy, INFO_TEXT)
         owner = world.players.get(u.owner)
         if owner is not None:
             draw_text(window, owner.name, r.x + 6, r.y + 0xe0, INFO_TEXT)
+
+
+def info_rows(u):
+    """(text, y offset) rows of the info panel for a unit: HP, mana (units with mana), and for a hero its highest skill and XP total."""
+    rows = [("HP", 0x2c), ("%d/%d" % (max(u.hp, 0), u.hp_max), 0x36)]
+    if u.mana_max > 0:
+        rows += [("Mana", 0x40), ("%d/%d" % (u.mana, u.mana_max), 0x4a)]
+    if u.skills:
+        rows += [("Level %d" % max(u.skills[1:]), 0x54), ("XP %d" % u.xp_total, 0x5e)]
+    return rows
 
 
 def unit_title_fn(assets):

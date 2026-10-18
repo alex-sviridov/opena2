@@ -2,7 +2,7 @@
 
 Code: `allods2/formats/progression.py` (`load(fs)`, `build(units, spells)`, `Progression.thresholds` / `.hero_templates`).
 Engine: `AssetCache.progression()`; `World._load_units` gives every human `Unit` its `skills`, `xp`, `xp_total`, `best_school`
-(no award logic yet). Export: `python -m allods2 data export progression out/data/progression.json` (gitignored `out/`;
+(award logic: `engine/sim/xp.py`, [combat §13](../engine/combat.md#13-engine-i2-death-corpses-xp-loot-regeneration)). Export: `python -m allods2 data export progression out/data/progression.json` (gitignored `out/`;
 the repo holds only the golden hash `tests/golden.json["progression"]`). Tests: `tests/test_progression.py`.
 GOG 1.01, addresses are VAs (sha256 in [formats/README](../formats/README.md)). Tags as in CLAUDE.md. Formulas are
 written as math. Related: [units](units.md), [spells](spells.md), [items](items.md), [unit-struct](../engine/unit-struct.md).

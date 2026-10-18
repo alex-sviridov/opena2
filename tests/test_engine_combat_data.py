@@ -97,6 +97,7 @@ def test_hero_with_a_two_handed_sword_against_a_goblin(assets, templates):
     hero, gob = spawn(w, templates, "Fighter_Hero", 1, 10, 10, 1), spawn(w, templates, "Goblin_Pike", 2, 11, 10, 2)
     st = combat_stats(w, hero)
     assert (st.record.skill, st.record.lo, st.record.sp, st.windup, st.recovery, st.weapon_weight) == (97, 20, 15, 10, 4, 57)
+    w.players[2].human = True       # the hit credit needs a computer-controlled victim: no skill-ups while the formulas are measured
     log, starts = fight(w, hero, gob, 6000)
     hits = [d for d in log if d.hit]
     assert len(log) > 250

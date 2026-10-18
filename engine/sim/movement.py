@@ -236,6 +236,7 @@ def _start_step(world, u):
     m.dx, m.dy = step_components(m.step_len, d)
     m.step_ticks = step_ticks(m.dx, m.dy)
     m.steps = 0
+    u.step_end = world.tick + m.step_ticks              # +0x138 (message 0x6b): the regeneration rest test
     _set_action(world, u, MOVE)
     _advance(world, u)
 
@@ -544,12 +545,14 @@ def set_move(world, u, x, y):
 
 def _tick_unit(world, u):
     """One creature tick (`FUN_0050f12c`): the Brain tick (`FUN_0056dca2`), then the failure event, then the state switch: state 3 runs the
-    swing phases (`sim/combat.py`).  A unit without HP gets no Brain tick (death is phase I2).
+    swing phases (`sim/combat.py`).  A unit with HP <= 0 is dying (`sim/death.py`): no Brain tick, no state switch.
 
     The failure event: `mover+0x98` ends an order 1 at once (`0x56e1b0` -> `FUN_0056dc24` = cancel + order `0xc`, `brain+0x50`
     stays 0), unlike arrival, which waits for the group pass.  Under any other order the event sets Brain mode 0 (`0x56e320`: the auto
     target scan `FUN_0056ed4e` finds no enemy; the scan and the computer players' mode 0xb are phase I, combat.md 9.3)."""
-    if u.hp <= 0:
+    if u.hp <= 0:                                       # the HP <= 0 branch replaces the Brain tick and the state switch (combat.md 12.1)
+        if death.dying_tick(world, u):
+            death.remove_dead(world, u)
         return
     _tick_inner(world, u)
     m = u.mover
@@ -667,4 +670,4 @@ def movement_system(world, commands):
         _tick_unit(world, u)
 
 
-from . import combat    # noqa: E402  the fight code imports this module: bound here, used at call time (circular on purpose)
+from . import combat, death    # noqa: E402  the fight code imports this module: bound here, used at call time (circular on purpose)

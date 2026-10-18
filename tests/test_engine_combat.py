@@ -151,19 +151,19 @@ def test_exact_period_follows_the_recovery_draw():
         assert hit == s + 5 and nxt == hit + rec + 2          # period = windup + recovery draw + 2
 
 
-def test_damage_accumulates_on_hp_and_death_is_logged_once_with_hp_clamped_at_zero():
+def test_damage_accumulates_on_hp_and_death_is_logged_once_hp_goes_below_zero():
     w = world()
     a, foe = fighter(w, 1, 10, 10, lo=4), fighter(w, 2, 11, 10, owner=2, hp=10)
     a.stats = UnitType(MONSTER, 1, "t", 1, 1, {"token_size": 1}, (), ())            # "has a template" (+0x3c != 0) for last_attacker
     sim = Simulation(w)
     sim.step([AttackUnit(1, ids(a), foe.id)])
-    run_until(sim, lambda: foe.hp == 0)
-    run(sim, 100)
+    run_until(sim, lambda: foe.hp <= 0)
+    run(sim, 200)
     ds = damages(w)
-    assert [d.amount for d in ds] == [4, 4, 4] and [d.hp for d in ds] == [6, 2, 0]
-    assert [e for e in w.fight_log if isinstance(e, Died)] == [Died(ds[-1].tick, foe.id, a.id)]
+    assert [d.amount for d in ds][:3] == [4, 4, 4] and [d.hp for d in ds][:3] == [6, 2, -2]       # HP is the exe's s16 (combat.md 12)
+    assert [e for e in w.fight_log if isinstance(e, Died)] == [Died(ds[2].tick, foe.id, a.id)]
     assert foe.last_attacker == a.id
-    assert a.order == 0xC and not a.mode_attack               # the order ended (C§9.1: the target has no HP)
+    assert a.order == 0xC and not a.mode_attack               # the order ended at the executor pass after the removal (C§12.2)
 
 
 def test_a_miss_logs_the_blow_with_zero_damage():

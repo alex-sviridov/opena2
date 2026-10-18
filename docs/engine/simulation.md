@@ -131,8 +131,8 @@ step in progress (step_ticks > 0)                              -> advance one ti
 order 1, at a cell centre, path empty (the tick after arrival) -> order 0, state 0, action "idle"
 ```
 
-Not implemented (phase I; the data and routines are in the pages cited above): attack and cast
-(states 3, 0xd, 0xe and their phases), pick up and use (2, 0xf), death and removal (0x10), stand/guard
+Not implemented (the melee attack, death and removal 0x10 are done in I1/I2, [combat](combat.md); the rest: phase I+; the data and routines are in the pages cited above): attack and cast
+(states 0xd, 0xe and their phases), pick up and use (2, 0xf), stand/guard
 scans (orders 0xb, 0xc), follow and patrol, the AI modes, and the effect list.
 
 ## 4. Movement

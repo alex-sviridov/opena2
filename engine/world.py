@@ -27,6 +27,8 @@ OBJECT_ID_BASE = 0x10000        # spec decision 2: section 3 cells (ours, the fi
 UNIT_ID_BASE = 0x6000           # unit id = 0x6000 + uid: the exe's client view +4, the id space of structures
                                 # (CONFIRMED map.md part 5; uids never collide with structure uids in the 46 maps)
 ITEM_ID_BASE = 0x30000          # ground piles: 0x30000 + index of the section 8 group (ours; the file has no id)
+PILE_ID_BASE = 0x38000          # piles created at run time (loot): ours, above any section 8 group index
+DEAD = 0x10                     # unit state / order 0x10: removed from the world after the dying countdown (combat.md section 12)
 UNIT_ANGLE_MIN, UNIT_ANGLE_SPAN = 0x40, 128     # creature ctor: angle = 0x40 + rand(128) (CONFIRMED map.md part 5)
 IDLE = "idle"                   # logical action of a unit that does nothing; the view picks idle or stand
 DEFAULT_HP = 1000               # healthMax 0 -> 1000 (map.md part 4)
@@ -103,10 +105,44 @@ class Damage:
 
 @dataclass(frozen=True)
 class Died:
-    """Fight log entry: a unit's HP reached 0 (death itself is phase I2)."""
+    """Fight log entry: a unit's HP fell to 0 or below (the dying countdown starts at its next creature tick, combat.md 12.1)."""
     tick: int
     unit: int
     by: int
+
+
+@dataclass(frozen=True)
+class Removed:
+    """Fight log entry: the unit reached state 0x10 (footprint released, loot dropped, kill credit paid)."""
+    tick: int
+    unit: int
+
+
+@dataclass(frozen=True)
+class LevelUp:
+    """Fight log entry: school `school` (1..5) of a hero rose to `skill` (`FUN_005128cb`)."""
+    tick: int
+    unit: int
+    school: int
+    skill: int
+
+
+@dataclass(frozen=True)
+class Loot:
+    """Fight log entry: a pile was dropped (or merged) on cell (x, y) by a dying unit."""
+    tick: int
+    unit: int
+    x: int
+    y: int
+    gold: int
+    codes: tuple
+
+
+def death_stage(hp):
+    """The client's death stage (animation.md 3.3, `obj+0x184`): 0 alive, 1 dying / corpse, 2..4 bones 1..3, 5 not drawn."""
+    if hp > 0:
+        return 0
+    return 1 if hp >= -10 else 2 if hp >= -20 else 3 if hp >= -40 else 4 if hp >= -600 else 5
 
 
 @dataclass(frozen=True)
@@ -221,6 +257,14 @@ class Unit:
     done: bool = True               # +0x136 the swing has finished (set when the recovery ends)
     swing_target: int = None        # +0x5c target of the swing in progress
     last_attacker: int = None       # +0x40 whoever hit this unit last
+    # death, regeneration and XP (docs/engine/combat.md section 12; sim/death.py, vitals.py, xp.py)
+    death_seen: bool = False        # +0x13c the HP <= 0 branch ran once (never reset: a revived unit skips it the next time)
+    death_tick: int = None          # world tick of that first run (`T0`); the dying animation starts there
+    step_end: int = 0               # +0x138 tick at which the last move step ends (the regeneration rest test)
+    hp_acc: int = 0                 # +0xa2 hundredths of an HP carried between regeneration steps
+    mana_acc: int = 0               # +0xa3 likewise for mana
+    carried: tuple = ()             # item codes of the section 8 group the unit carries (dropped at death)
+    kill_list: list = field(default_factory=list)       # +0x1a8 repeat-kill list of a hero: up to 5 [server_id, count]
 
     def __post_init__(self):
         if self.mover.target_facing < 0:
@@ -299,6 +343,8 @@ class World:
         self.objects = {}           # id -> MapObject
         self.units = {}             # id -> Unit, in map record order
         self.items = {}             # id -> Item (ground piles), in section 8 order
+        self.corpses = {}           # id -> Unit in state 0x10 (ground units after the dying countdown), in removal order
+        self._next_pile = PILE_ID_BASE
         self.players = {}           # id (1-based record) -> Player
         self.groups = {}            # id -> OrderGroup, in creation order (sim/orders.py)
         self.events = []            # NoWay ...: for the UI, not part of dump()/the hash
@@ -541,6 +587,24 @@ class World:
         self._index_add(self._ucells, u)
         return u.id
 
+    def find_unit(self, uid):
+        """A unit by id, living or dead (the exe's object lookup: a ground corpse keeps its id until its death stage 5)."""
+        u = self.units.get(uid)
+        return u if u is not None else self.corpses.get(uid)
+
+    def new_pile_id(self):
+        self._next_pile += 1
+        return self._next_pile
+
+    def bury(self, uid):
+        """The release at state 0x10 (`FUN_0051618e`, `FUN_00553891`): out of the spatial index, the group and every selection.  A ground
+        unit stays findable as a corpse (the object is never deleted); a flyer or ghost loses its id (combat.md 12.3)."""
+        u = self.units[uid]
+        self.remove_unit(uid)
+        if u.move_type <= 1:
+            self.corpses[uid] = u
+        return u
+
     def remove_unit(self, uid):
         u = self.units.pop(uid)
         self._index_del(self._ucells, u)
@@ -669,6 +733,8 @@ class World:
                 u.mana = u.mana_max = mana_max
                 u.xp, u.xp_total = prog.start_pools(u.skills)
                 u.best_school = prog.best_school(u.skills) if prog.is_hero_name(tpl.name) else 0
+            if 0 < rec.group <= len(m.item_groups):         # the carried pack (section 8): dropped at death
+                u.carried = tuple(mem.code & 0xFFFF for mem in m.item_groups[rec.group - 1].members)
             self.add_unit(u)
             if not known:
                 rep.unknown_units.append((rec.uid, rec.type, rec.server_id, u.x, u.y))
@@ -783,6 +849,8 @@ class World:
                 "block": [bytes(row).hex() for row in self._block],
                 **({"groups": [[g.id, g.owner, list(g.members), g.order, list(g.target), g.speed]
                                for g in self.groups.values()]} if self.groups else {}),
+                **({"corpses": [[u.id, u.x, u.y, u.sub_x, u.sub_y, u.facing, u.hp, u.type_id, u.owner, u.death_tick]
+                                for _, u in sorted(self.corpses.items())]} if self.corpses else {}),
                 **({"rng": self.rng.state} if self.rng.state != self.seed else {})}
 
     @staticmethod
@@ -800,7 +868,8 @@ class World:
         """Movement state, only for a unit that has any (idle units keep the short entry)."""
         m = u.mover
         fight = World._fight_state(u)
-        if fight is None and not (u.order or u.state or u.path or u.odometer or m.steps or m.turning or u.order_group
+        death = World._death_state(u)
+        if fight is None and death is None and not (u.order or u.state or u.path or u.odometer or m.steps or m.turning or u.order_group
                                   or u.stopped or m.waiting or m.parked or m.target_facing != u.facing):
             return []
         d = {"order": u.order, "state": u.state, "path": [list(c) for c in u.path],
@@ -820,7 +889,18 @@ class World:
             d["mode"] = 1
         if fight is not None:
             d["fight"] = fight
+        if death is not None:
+            d["death"] = death
         return [d]
+
+    @staticmethod
+    def _death_state(u):
+        """Death, regeneration and XP state as a list, None while all of it is at its start value (old goldens stay valid)."""
+        if not (u.death_seen or u.hp_acc or u.mana_acc or u.kill_list or u.mana != u.mana_max
+                or u.state == DEAD):
+            return None
+        return [int(u.death_seen), u.death_tick, u.step_end, u.hp_acc, u.mana_acc, u.mana, list(u.skills),
+                list(u.xp), u.xp_total, [list(k) for k in u.kill_list]]
 
     @staticmethod
     def _fight_state(u):

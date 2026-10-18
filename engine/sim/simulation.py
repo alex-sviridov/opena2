@@ -3,12 +3,13 @@
 from .movement import movement_system
 from .orders import orders_system
 from .selection import selection_system
+from .vitals import vitals_system
 
 
 class Simulation:
     """`step(commands)` advances the world one tick: systems run in list
     order, each as `system(world, commands)`; then the tick counter grows.  Every command
-    is appended to `log` as `(tick, command)`.  `systems=None` installs the order, selection and movement systems.
+    is appended to `log` as `(tick, command)`.  `systems=None` installs the vitals job (tick & 15 == 12), order, selection and movement systems.
 
     Timing (CONFIRMED, docs/engine/simulation.md 1.1): `world.tick` is the exe's server counter `server+4` *before* its
     increment in `FUN_004f8521`; it starts at 0 on a new game (`FUN_004eb715`, `0x4eba47`).  A command handed to `step`
@@ -17,7 +18,7 @@ class Simulation:
 
     def __init__(self, world, systems=None):
         self.world = world
-        self.systems = [orders_system, selection_system, movement_system] if systems is None else list(systems)
+        self.systems = [vitals_system, orders_system, selection_system, movement_system] if systems is None else list(systems)
         self.log = []
 
     @property

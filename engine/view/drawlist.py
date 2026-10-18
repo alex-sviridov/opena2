@@ -32,6 +32,7 @@ MAX_BACKPACK_FRAME = 5
 FLYER_ALTITUDE = 16             # U+0x10 set by the flyer constructor 0x46bfc1 (CONFIRMED)
 IDLE = "idle"                   # engine.world.IDLE (the view must not import it)
 WALKER = 1                      # mover for the passability overlay (mask 0x41)
+MANA_TIER = 3                   # `bar` tier of the mana bar (blue)
 FLAG_DESTROYED = 1              # engine.world.FLAG_DESTROYED (view must not import it)
 
 
@@ -295,9 +296,30 @@ def unit_position(u, size=1):
     return X, Y, X >> 8, Y >> 8
 
 
+def death_stage(hp):
+    """`engine.world.death_stage` (the view must not import it): 0 alive, 1 dying / corpse, 2..4 bones, 5 not drawn."""
+    if hp > 0:
+        return 0
+    return 1 if hp >= -10 else 2 if hp >= -20 else 3 if hp >= -40 else 4 if hp >= -600 else 5
+
+
 def unit_frame(aset, u, tick):
     """FrameRef of unit `u` at world tick `tick`: its action's frame at `tick - action_start_tick`
-    (animation time comes from the simulation, never from the render clock)."""
+    (animation time comes from the simulation, never from the render clock).  A unit with HP <= 0 is drawn by its death stage (combat.md 12.6):
+    1 the dying animation from `death_tick` (once, then it holds the corpse frame), 2-4 bones 1-3, 5 nothing (None)."""
+    if u.hp <= 0:
+        stage = death_stage(u.hp)
+        facing = (u.facing >> 4) & 15
+        if stage == 5:
+            return None
+        if stage == 1:
+            if u.death_tick is not None and "dying" in aset.actions:
+                return aset.frame_at("dying", facing, tick - u.death_tick)
+            if "corpse" in aset.actions:
+                return aset.frame_at("corpse", facing, 0)
+        elif "bones%d" % (stage - 1) in aset.actions:
+            return aset.frame_at("bones%d" % (stage - 1), facing, 0)
+        return None
     action = aset.idle_action if u.action == IDLE else u.action
     if action == "turn":                                # the stand frame of the stepping facing
         action = "stand"
@@ -325,6 +347,8 @@ def _unit(ctx, u):
         ctx.items.culled += 1
         return
     ref = unit_frame(aset, u, ctx.tick)
+    if ref is None:                                     # death stage 5 or no death frames
+        return
     wh = aset.size(ref.source, ref.index)
     if wh is None:
         ctx.items.missing += 1
@@ -354,8 +378,9 @@ def _unit(ctx, u):
                mirrored=ref.mirrored, remap=remap)
     t = aset.t
     ox, oy = px - t.CenterX - ctx.cx, py - t.CenterY - z - alt - ctx.cy
-    ctx.picks.append((dep, PickRect(u.id, t.SelectionX1 + ox, t.SelectionY1 + oy,
-                                    t.SelectionX2 + ox, t.SelectionY2 + oy)))
+    if u.hp > 0:                                        # a body is not pickable (the client marks stage <= 0 units, combat.md 12.2)
+        ctx.picks.append((dep, PickRect(u.id, t.SelectionX1 + ox, t.SelectionY1 + oy,
+                                        t.SelectionX2 + ox, t.SelectionY2 + oy)))
     if ov is not None:
         bx, by = aset.anchor(*ov)
         ctx.sprite(u, key, ref.source + "_b", ref.index, px - bx, py - by - z - alt, ov[0], ov[1],
@@ -467,10 +492,12 @@ def _path_items(ctx, selection):
     return out
 
 
-def _bars(ctx, selection):
-    """Selection bars (FUN_004653a5, ui-layout.md section 9): the HP bar on the top edge of each
-    selected unit's pick rect (every drawn unit with `DrawOptions.health_bars`)."""
+def _bars(ctx, selection, hover=None):
+    """Selection bars (FUN_004653a5, ui-layout.md section 9): the HP bar on the top edge of each selected or hovered unit's pick rect (every
+    drawn unit with `DrawOptions.health_bars`), and the mana bar 4 px lower for a unit with mana (`obj+0x14a > 0`)."""
     chosen = set(selection)
+    if hover is not None:
+        chosen.add(hover)
     out = []
     for n, r in enumerate(ctx.items.picks):
         u = ctx.world.units.get(r.entity)
@@ -482,16 +509,20 @@ def _bars(ctx, selection):
         tier = 2 if hp * 4 < u.hp_max else 1 if hp * 2 < u.hp_max else 0
         out.append(DrawItem("bar", r.entity, None, 0, r.x1, r.y1 - 2, r.x2 - r.x1, 4,
                             depth=(PASS_OVERLAY, n, 0, 0, 0), bar=(min(fill, track), track, tier)))
+        if u.mana_max > 0:
+            mfill = max(1, u.mana * track // u.mana_max) if u.mana > 0 else 0
+            out.append(DrawItem("bar", r.entity, None, 0, r.x1, r.y1 + 2, r.x2 - r.x1, 4,
+                                depth=(PASS_OVERLAY, n, 1, 0, 0), bar=(min(mfill, track), track, MANA_TIER)))
     return out
 
 
-def build_draw_list(world, camera, tick, assets, options=None, debug=None, selection=()):
+def build_draw_list(world, camera, tick, assets, options=None, debug=None, selection=(), hover=None):
     """Sprites (and requested debug overlays) of map objects and structures for
     `camera`, in drawing order: sorted by `DrawItem.depth` =
     (pass, row, -col, slot, seq, part, sub) (the exe's scan order, docs/engine/rendering.md).
     Reads the world only.  `assets`: an `AssetCache`; `options`: `DrawOptions`;
     `debug`: any object with boolean `passability`, `markers`, `depth`; `selection`: unit ids that
-    get a selection bar.  `DrawList.picks` holds the unit pick rects in draw order."""
+    get a selection bar, `hover`: the unit id under the pointer (it gets bars too).  `DrawList.picks` holds the unit pick rects in draw order."""
     opts = options or DrawOptions()
     ctx = _Ctx(world, camera, tick, assets, opts)
     if opts.objects:
@@ -503,11 +534,13 @@ def build_draw_list(world, camera, tick, assets, options=None, debug=None, selec
     if opts.units:
         for it in world.items.values():
             _item(ctx, it)
+        for u in world.corpses.values():
+            _unit(ctx, u)
         for u in world.units.values():
             _unit(ctx, u)
     ctx.items.sort(key=lambda i: i.depth)
     ctx.items.picks = [r for _, r in sorted(ctx.picks, key=lambda p: p[0] + (0, 2))]
-    ctx.items.extend(_bars(ctx, selection))
+    ctx.items.extend(_bars(ctx, selection, hover))
     if debug is not None:
         ctx.items.extend(sorted(_debug_items(ctx, debug, selection), key=lambda i: i.depth))
     return ctx.items

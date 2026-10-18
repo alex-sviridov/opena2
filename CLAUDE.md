@@ -231,6 +231,13 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   or roll >= 90, sure-hit flag, absorption, percent resistance by weapon type, elemental / second parts), monster stats = template + equipped weapon
   (byte merge), human stats = recompute + equipment (`engine/sim/combatstats.py`); the RNG is the MSVC CRT LCG owned by the world (`engine/rng.py`, seed per
   game, [simulation §10](docs/engine/simulation.md#10-rng)); damage numbers are the original's default-on "Flying damage" option (Ctrl+L), `--debug combat` logs
-  blows, `--seed`, `--debug-attack`. HP clamps at 0 (death is I2). Not modelled: AI reaction, scans, spells, XP, structures, Bless / Curse sources.
-- Status: E, F, G3b, G3c (fonts), H (H1-H3), I1 done. Next: I2 (death: dying and corpse states, removal at HP <= -10, kill XP, the exe keeps hitting corpses until
-  removal, retaliation of attacked monsters). Also (docs/open-questions.md): town-scene animations, text conventions.
+  blows, `--seed`, `--debug-attack`. Not modelled: AI reaction, scans, spells, structures, Bless / Curse sources.
+- Death, XP, loot, regeneration (I2) done, REA-checked ([combat §12-13](docs/engine/combat.md), design docs/superpowers/specs/2026-10-18-death-design.md): HP <= 0 starts the dying
+  countdown at the unit's own creature tick (`dying_time - 1`, orders cleared, defence halved, selection dropped); the unit keeps blocking until state `0x10` at `T0 + D`, **but a ground unit
+  is removed only at HP <= -10** (bodies at HP -9..0 wait for hits or the 64-tick HP drain, HP 0 forever), flyers / ghosts get HP -1000; attackers keep swinging at the body and stop at the
+  first executor pass (`tick & 15 == 6`) after the removal; corpses (`World.corpses`) decay 1 HP / 32 ticks (bones at -11 / -21 / -41, gone at -601), no fade; loot at removal (gold `base +
+  rnd(spread)` with chance `p/101`, one generated item, carried items, a pile on the unit's cell); XP per hit and `0.5 * victim.xp` kill credit to the last hitter only, level-ups
+  recompute max HP / mana (`engine/sim/{death,vitals,xp}.py`); regeneration at `tick & 15 == 12` (HP per unit every 64 ticks, mana every 16, x3 after 80 ticks without a step; humans
+  100 / 50); HP/mana bars for hovered units, mana bar, info panel mana / level / XP; `--debug combat` logs removal, loot and level-ups.
+- Status: E, F, G3b, G3c (fonts), H (H1-H3), I1, I2 done. Next: I3 (AI reaction: retaliation of attacked monsters `FUN_0056e6b8`, guard and auto-target scans `FUN_0056a1fb` / `FUN_0056ed4e`, then
+  spells and special attacks). Also (docs/open-questions.md): town-scene animations, text conventions.
