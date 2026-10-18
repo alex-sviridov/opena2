@@ -79,7 +79,7 @@ from both places when answered).
 - [Cell effects](engine/rendering.md#open-questions) (answered: spell-area sprites, registered by [spells §4](data/spells.md#4-effect-handlers); drawing needs the spell system), unit invisibility / stone curse / hover, message 0x74 (flag 0x80); start at `FUN_004632a1`.
 - [Engine object drawing](engine/rendering.md#open-questions): burnt ground, light-map lights on objects; start at `FUN_00404a2a`.
 - [Engine minimap](engine/rendering.md#open-questions): final channel pass `0x4ac030`, fog background surface `DAT_00626be0`, fog gate of the unit dots; start at `FUN_004ac414`.
-- Movement and orders (H1, H3) [simulation](engine/simulation.md#open-questions): the dynamic list's waypoint removal (`FUN_00555dc2`);
+- Movement and orders (H1, H3) [simulation](engine/simulation.md#open-questions): the empty-dynamic-list step at a centre after a failed hop (`FUN_00555c7e`) and whether a stale dynamic list (turn over 32 ticks) occurs with real turn rates;
   Haste/Slow vs the group speed byte (phase I); the regeneration job vs its `tick & 3` test (`FUN_0052bbb7`, `0x50fc5a`); group
   handlers for orders 1, 3, 5, 0x13 and the computer players' branch of the pass (`FUN_00570087`: `57275f`, `57309d`, `572e1e`, `57311c`),
   retreat post pass `FUN_00573713`; command loop-back latency and the pass phase (`FUN_004f84c6`, `FUN_004f08c0`).

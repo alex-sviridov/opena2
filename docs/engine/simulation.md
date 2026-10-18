@@ -335,7 +335,7 @@ Move order entry (wrapper `0x56e4b0` in the Brain function `FUN_0056dca2`): `mov
    **static re-plan** when `mover+0x74 != target` or `mover+9 > StaticRefreshRate`: `FUN_0054d72d(target, mode 1)`
    into the static list, `mover+0x90 = 0`, `+0x74 = target`, `+0x76` = last cell of the static list (own cell and
    `+0x98 = 1` when empty), `+9 = 0`, dynamic list cleared.
-3. `cell == mover+0x76` -> `mover+0x90 = 1` (arrived; the brain ends the order, [open question 1](#open-questions)).
+3. `cell == mover+0x76` -> `mover+0x90 = 1` (arrived; the brain ends the order, [§8.3](#83-cancel-timeline-group-pass-stop-r-34-44-5-7)).
 4. Otherwise, if the dynamic list is empty or `mover+0x78 > DynamicRefreshRate`: **hop re-plan**. `next` = the
    static list head if it is adjacent (`FUN_00558f64`). If `next` exists and its footprint is blocked in the live
    layer (`FUN_0055c5a0`, returns 1 when free), `FUN_0056fc69` decides whether to wait for the blocker (human-owned
@@ -357,6 +357,45 @@ static list to the current cell with `FUN_005516dd`) has no caller or vtable ref
 Units entering the next cell between two centres are therefore noticed at the next centre, not mid-step: a step
 is never aborted. `FUN_0055574d` is the same driver for a
 follow target (re-plan every `len/3 + 1` consumed waypoints, StaticIsntNeeded gate; open).
+
+#### List operations, every branch (CONFIRMED, asm read: `FUN_00555dc2`, `FUN_00555411`, `FUN_0054e886`, `FUN_0054d76e`)
+
+Both lists are MFC `CList`s (head `+4`, tail `+8`, count `+0xc`; node = next, prev, data). Ops: `FUN_0055f090` count,
+`0055f0b0` empty, `0055f0d0` peek head, `0055f0f0` peek tail, `0055f110` **RemoveHead**, `0055f170` AddHead,
+`0055f1d0` head position, `0055f1f0` get-next, `005421b0` RemoveAll. Config: Lookup `+0x58594` = 3, IsntNeeded
+`+0x58598` = 5. Every removal in the exe:
+
+| # | Where | Rule |
+|---|---|---|
+| 1 | `FUN_0054d76e` `0x54d7be`-`0x54d7c7` | mode != 0 (static plan): RemoveAll on the static list `+0x1c8` before anything else, also when start == target (returns at `0x54d817` with the list left empty). Mode 0 never clears the dynamic list. |
+| 2 | `FUN_0054e58c` / `FUN_0054e886` `0x54e8a0`-`0x54e8af`, `0x54eb27`-`0x54eb41` | the walk back **AddHeads** the end cell, then each predecessor, ending with the start cell; the list is not cleared first, so a non-empty list keeps its old cells behind the new ones. |
+| 3 | same, `0x54eb4b`-`0x54eb75` | after the walk: more than 1000 steps (`0x3e8`) -> RemoveAll of the whole list (stale cells too); else RemoveHead = the **start cell** (the plan never contains the own cell). Start == end at the first test: list = [start] -> popped, empty. |
+| 4 | `FUN_0054d76e` `0x54e2ce` | static fallback found no cell (`FUN_005585f4` = 0): RemoveAll static list. Dynamic fallback found no cell (`0x54e36a`): return, dynamic list untouched. |
+| 5 | `FUN_00555411` `0x5555b8` | static refresh (target changed or `+9 > 16`): after the static plan, `+0x76` := static tail (`0055f0f0`) or, when the plan is empty, the own cell and `+0x98 := 1` (`FUN_00556447` called twice is an empty function); `+9 := 0`; **dynamic list RemoveAll**. |
+| 6 | `FUN_00555b38` `0x555c14` | every step end: dynamic RemoveAll (7.2 above). |
+| 7 | `FUN_00555dc2` `0x555f51`-`0x555f7b` | **the only waypoint pop**: after the hop search, if the static count `n` (read before the search) is non-zero and `d <= Lookup`, RemoveHead of the static list. It does not depend on the goal branch. |
+
+`FUN_00555dc2` branches (`n` = static count, `d` = Chebyshev(own cell, static head), 0 when `n == 0`; `n` and `d` are read
+before the search):
+
+| branch | test | goal | flag |
+|---|---|---|---|
+| 1 | `n <= IsntNeeded` (incl. `n == 0`) | static tail `+0x76` | `1` |
+| 2 | else `d > Lookup` | static head | `2` |
+| 3 | else (`d <= Lookup`) | element index `Lookup` (3) of the static list (`Lookup + 1` get-next calls from the head position; `n > 5` so it exists) | `3` |
+
+Then `FUN_0054d72d(goal, mode 0)`; then, if the dynamic list **as a whole** (old cells included) is empty and the flag is 1:
+`+0x98 := 1` (failure; the brain ends the order at once). Then the pop of rule 7. So: `d <= 3` pops in branches 1 and 3
+(the plan shrinks by one per cell near the end and by one per cell when `n > 5`); `d > 3` (branch 2) never pops, and
+`d > 3` with `n <= 5` goes to the tail without popping; an empty hop plan fails only for a tail goal; a plan that is empty
+(`n == 0`) pops nothing. Arrival is not a removal: `cell == +0x76` sets `+0x90 := 1` and leaves both lists as they are
+(the static list still holds the tail). `mover+0x78` is a byte and wraps (`0x55549a`).
+
+Engine (`movement._hop_plan`, `_static_plan`, `_drive`) follows all seven rules. Fixed by this review: the hop result
+used to **replace** the dynamic list; it is now pushed in front of the existing cells (rule 2), and a "too long" search empties
+the list (rule 3). This only matters when the list is non-empty at a re-plan: a unit that is turning at a centre
+(`path` kept, no step started) for more than `DynamicRefreshRate` (32) ticks, i.e. turn rate below ~4. `since_hop` now wraps
+as a byte. Goldens unchanged.
 
 ### 7.3 Engine implementation (DECISIONS)
 
@@ -722,7 +761,7 @@ is not filtered by recipient.
 
 ## Open questions
 
-1. The dynamic list's waypoint removal: `FUN_00555dc2` (the end of the order after arrival is answered, §8.3).
+1. What a unit does at a centre with an empty dynamic list after a failed hop plan (`FUN_00555c7e` empty-list "turn step" path, `0x555c7e`) beyond the failure stop; and whether the stale-list case (turn > 32 ticks) is reachable with real data.bin turn rates.
 2. Haste/Slow vs the group speed byte: the byte is fixed (§8.2); the effect system is phase I.
 3. The regeneration job runs from `FUN_0052bbb7` at `tick & 15 == 12` while the slot itself tests
    `server tick & 3 == id & 3`: the interaction needs a check in phase I ([unit-struct §3](unit-struct.md)).

@@ -344,3 +344,126 @@ def test_human_unit_behind_a_walker_turns_to_it_and_is_restarted_by_the_group_pa
     assert not a.mover.parked                               # R 4.4: FUN_0056c8af, no new command needed
     run(sim, a)
     assert (a.x, a.y) == (20, 10)
+
+
+# --- list removal rules of FUN_00555dc2 / FUN_00555411 (simulation.md 7.2), one test per rule ---
+
+def _hop_state(static, here=(10, 10), path=()):
+    from engine.sim import movement as mv
+    w = world(n=64)
+    u = unit(w, 1, *here)
+    u.mover.static_path = list(static)
+    u.mover.tail = static[-1] if static else here
+    u.mover.goal = u.mover.dest = u.mover.tail
+    u.path = list(path)
+    return mv, w, u
+
+
+def test_hop_plan_pops_the_static_head_when_within_the_lookup_distance_even_for_a_tail_goal():
+    mv, w, u = _hop_state([(11, 10), (12, 10), (13, 10)])           # n <= 5: goal = tail; head at d = 1 <= 3
+    mv._hop_plan(w, u)
+    assert u.mover.static_path == [(12, 10), (13, 10)] and u.mover.last_hop_goal == (13, 10)
+    assert u.path[-1] == (13, 10)
+
+
+def test_hop_plan_keeps_the_static_head_when_it_is_far():
+    mv, w, u = _hop_state([(15, 10), (16, 10), (17, 10)])           # d = 5 > 3: no pop
+    mv._hop_plan(w, u)
+    assert u.mover.static_path == [(15, 10), (16, 10), (17, 10)]
+
+
+def test_hop_plan_long_plan_aims_at_the_head_when_far_and_at_element_3_when_near():
+    far = [(15 + i, 10) for i in range(8)]
+    mv, w, u = _hop_state(far)                                      # n = 8 > 5, d = 5 > 3: goal = head, no pop
+    mv._hop_plan(w, u)
+    assert u.mover.last_hop_goal == (15, 10) and len(u.mover.static_path) == 8
+    near = [(11 + i, 10) for i in range(8)]
+    mv, w, u = _hop_state(near)                                     # d = 1 <= 3: goal = element 3, then pop
+    mv._hop_plan(w, u)
+    assert u.mover.last_hop_goal == (14, 10) and u.mover.static_path == near[1:]
+
+
+def test_hop_plan_with_an_empty_static_plan_pops_nothing_and_fails_on_an_empty_hop():
+    mv, w, u = _hop_state([])
+    u.mover.tail = (10, 10)
+    mv._hop_plan(w, u)                                              # n = 0: tail goal = own cell, nothing planned
+    assert u.path == [] and u.mover.static_path == [] and u.mover.failed
+
+
+def test_empty_hop_fails_only_for_a_tail_goal():
+    mv, w, u = _hop_state([(11, 10), (12, 10)])
+    for c in ((11, 10), (11, 9), (11, 11), (10, 9), (10, 11), (9, 9), (9, 10), (9, 11)):
+        w._block[c[1], c[0]] = 5                                    # boxed in: every hop plan is empty
+    wall_rev = w.block_rev + 1
+    w.block_rev = wall_rev
+    mv._hop_plan(w, u)
+    assert not u.path and u.mover.failed                            # n <= 5: goal = tail, list empty -> +0x98
+    mv, w2, u2 = _hop_state([(15 + i, 10) for i in range(8)])       # n > 5: head goal, no failure flag
+    u2.mover.tail = (22, 10)
+    w2._block[10, 14] = 5
+    mv.path_grid(w2, 1)
+    import engine.sim.movement as m2
+    orig = m2.plan_dynamic
+    m2.plan_dynamic = lambda *a, **k: orig(*a, **k).__class__(cells=[], reason="fallback")
+    try:
+        m2._hop_plan(w2, u2)
+    finally:
+        m2.plan_dynamic = orig
+    assert not u2.path and not u2.mover.failed
+
+
+def test_hop_plan_keeps_the_stale_dynamic_list_behind_the_new_hop():
+    mv, w, u = _hop_state([(11, 10), (12, 10), (13, 10)], path=[(9, 9), (8, 8)])
+    mv._hop_plan(w, u)                                              # push-front without clearing (FUN_0054e886)
+    assert u.path[-2:] == [(9, 9), (8, 8)] and u.path[0] == (11, 10)
+
+
+def test_hop_plan_too_long_empties_the_whole_dynamic_list(monkeypatch):
+    from engine.sim import movement as mv
+    from engine.sim.pathfinding import PathResult
+    _, w, u = _hop_state([(11, 10), (12, 10)], path=[(9, 9)])
+    monkeypatch.setattr(mv, "plan_dynamic", lambda *a, **k: PathResult(cells=[], reason="too long"))
+    mv._hop_plan(w, u)
+    assert u.path == [] and u.mover.failed
+
+
+def test_static_replan_clears_the_dynamic_list_and_an_empty_plan_fails_at_the_own_cell():
+    from engine.sim import movement as mv
+    w = world(n=32)
+    u = unit(w, 1, 10, 10)
+    u.path = [(11, 10)]
+    u.mover.goal = (20, 10)
+    mv._static_plan(w, u)
+    assert u.path == [] and u.mover.consumed == 0 and u.mover.tail == (20, 10) and not u.mover.failed
+    for c in ((11, 10), (11, 9), (11, 11), (10, 9), (10, 11), (9, 9), (9, 10), (9, 11)):
+        w._block[c[1], c[0]] = 5
+    w.block_rev += 1
+    u.mover.goal = (30, 10)
+    u.mover.static_path = [(11, 10)]
+    mv._static_plan(w, u)
+    assert u.mover.static_path == [] and u.mover.failed and u.mover.tail == (10, 10)
+
+
+def test_arrival_is_the_own_cell_equal_to_the_tail_and_pops_nothing():
+    from engine.sim import movement as mv
+    w = world(n=32)
+    u = unit(w, 1, 14, 10)
+    u.mover.goal = u.mover.dest = (14, 10)
+    u.mover.goal = (20, 10)
+    u.mover.dest = (20, 10)
+    u.mover.tail = (14, 10)
+    u.mover.static_path = [(14, 10)]
+    assert mv._drive(w, u) is False and u.mover.arrived and u.mover.static_path == [(14, 10)]
+
+
+def test_since_hop_is_a_wrapping_byte():
+    from engine.sim import movement as mv
+    w = world(n=32)
+    u = unit(w, 1, 10, 10)
+    u.mover.goal = u.mover.dest = (20, 10)
+    u.mover.tail = (20, 10)
+    u.mover.static_path = [(11, 10)]
+    u.path = [(11, 10)]
+    u.mover.since_hop = 255
+    mv._drive(w, u)
+    assert u.mover.since_hop == 0

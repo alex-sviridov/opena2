@@ -359,7 +359,11 @@ def _hop_plan(world, u):
         goal, final = m.tail, True
     grid = path_grid(world, u.move_type).with_blocked(live_cells(world, u))
     res = plan_dynamic(grid, here, goal, size=unit_size(u), walker=u.move_type == 1)
-    u.path = list(res.cells)
+    # FUN_0054e886 push-fronts the new cells onto the list it is given and never clears it (only the static
+    # plan, mode != 0, clears its list first, FUN_0054d76e 0x54d7be): a non-empty dynamic list (a turn in
+    # progress at the centre re-planning after DynamicRefreshRate ticks) keeps its old cells behind the hop.
+    # A walk of more than 1000 steps empties the whole list (RemoveAll, 0x54eb5c); no end cell leaves it alone.
+    u.path = [] if res.reason == "too long" else list(res.cells) + u.path
     m.last_hop, m.last_hop_goal = res, goal
     if not u.path and final:
         m.failed = True
@@ -450,7 +454,7 @@ def _drive(world, u):
         m.consumed = STATIC_PLAN_FORCED
     if here == m.goal:
         return False                                    # nothing to do; the group pass ends the order
-    m.since_hop = min(255, m.since_hop + 1)
+    m.since_hop = (m.since_hop + 1) & 255              # byte at mover+0x78, wraps (0x55549a)
     if m.dest != m.goal or m.consumed > cfg.static_refresh_rate:
         _static_plan(world, u)
     if here == m.tail:
