@@ -9,8 +9,8 @@ import pytest
 from engine.sim import MoveUnits, SelectUnits, SetFormation, Simulation, Stop
 from engine.ui import (CursorInput, CursorState as S, MainText, MessageLine, MinimapPanel, OrderInput, choose_cursor,
                        choose_minimap_cursor, drain_no_way, target_cell)
-from engine.ui.orders import NO_WAY_MS, right_drag_cells
-from engine.view import MinimapGeometry
+from engine.ui.orders import NO_WAY_MS, minimap_move_cell, right_drag_cells
+from engine.view import MinimapGeometry, Projection
 from engine.world import NoWay, World
 
 from helpers import GFS, needs_graphics
@@ -213,6 +213,79 @@ def test_minimap_order_cell_is_the_image_cell():
     assert MinimapPanel(g3, 0, 0).order_cell(9, 4) == (10, 9)
 
 
+def ref_row(h, vx, vy, W, H, mx, my):
+    """Independent reference of FUN_00417f31 (asm 0x417f31): the exe's three flat tables built in full (FUN_004065b1),
+    indexed with the unchecked column; reads past a table are the 'skip' of the no-match rule."""
+    mw = h.shape[1]
+    flat = [int(v) for v in h.ravel()]
+    sv, sm = W + 7, W + 6
+    vt = [32 * r - flat[(vy + r) * mw + vx + c] for r in range(-3, H + 8) for c in range(-3, W + 4)]
+    b8 = [min(vt[(r + 3) * sv + c + 3], vt[(r + 3) * sv + c + 4]) for r in range(-3, H + 7) for c in range(-3, W + 3)]
+    bc = [max(vt[(r + 4) * sv + c + 3], vt[(r + 4) * sv + c + 4]) for r in range(-3, H + 7) for c in range(-3, W + 3)]
+    col, fx = (mx >> 5) + 3, mx & 31
+
+    def line(i):
+        d = (vt[i + 1] - vt[i]) * fx
+        return vt[i] + int(d / 32)
+
+    for r in range(-3, H + 7):
+        j = (r + 3) * sm + col
+        if j >= len(b8) or b8[j] > my or bc[j] < my:
+            continue
+        i = (r + 3) * sv + col
+        if line(i) <= my <= line(i + sv):
+            return r
+    return H + 4
+
+
+def test_exe_row_finder_flat_ground():
+    p = Projection(np.zeros((64, 64), np.int8))
+    # inside the view: the row whose lines bracket my (the first, ties go up), column offset irrelevant when flat
+    assert p.exe_row(10, 10, 15, 15, 100, 40) == 1 and p.exe_row(10, 10, 15, 15, 100, 32) == 0
+    # over the right panel (columns W .. W + 4 of the 640x480 layout): same rule, the vertex grid goes on past W
+    assert [p.exe_row(10, 10, 15, 15, 480 + 32 * k + 5, 70) for k in range(3)] == [2] * 3
+    # column W + 3 indexes the next row's first extreme-table entry (stride W + 6) while the vertex table (stride
+    # W + 7) still holds its own vertex: the prefilter does not bracket the cell's lines, nothing matches, H + 4;
+    # column W + 4 also wraps the vertex table (to the next row's column -3) and lands one row up
+    assert [p.exe_row(10, 10, 15, 15, 480 + 32 * k + 5, 70) for k in (3, 4)] == [19, 1]
+
+
+def test_exe_row_finder_matches_the_table_reference_beyond_the_view():
+    rng = np.random.default_rng(7)
+    h = rng.integers(-40, 90, (64, 64)).astype(np.int8)
+    p = Projection(h)
+    for W, H in ((15, 15), (20, 18)):
+        seen = set()
+        for _ in range(400):
+            mx, my = int(rng.integers(W * 32, W * 32 + 160)), int(rng.integers(0, 158))
+            got = p.exe_row(9, 11, W, H, mx, my)
+            assert got == ref_row(h, 9, 11, W, H, mx, my)
+            seen.add((mx >> 5) - W)
+        assert seen == {0, 1, 2, 3, 4}
+
+
+def test_exe_row_finder_no_match_is_past_the_last_row():
+    p = Projection(np.zeros((64, 64), np.int8))
+    assert p.exe_row(10, 10, 15, 15, 100, -500) == 19 and p.exe_row(10, 10, 15, 15, 500, -500) == 19   # H + 4
+
+
+def test_exe_row_finder_wrapped_column_reads_the_next_row():
+    """Column W + 3 of the 640x480 layout (mx >> 5 == 18): the extreme tables (stride W + 6) wrap, so the first
+    column of row r + 1 decides the prefilter of row r; a hill there changes the answer from the flat 'no match'."""
+    h = np.zeros((64, 64), np.int8)
+    h[11 + 1, 10 - 3] = 100                           # vertex (view column -3, row 1): lifts that cell's top edge
+    p = Projection(h)
+    flat = Projection(np.zeros((64, 64), np.int8))
+    mx = 18 * 32 + 3
+    assert p.exe_row(10, 10, 15, 15, mx, 40) == ref_row(h, 10, 10, 15, 15, mx, 40)
+    assert flat.exe_row(10, 10, 15, 15, mx, 40) == 19
+
+
+def test_minimap_move_target_row_comes_from_the_view_finder():
+    assert minimap_move_cell(77, 3, 40) == (77, 43)                  # column: minimap cell; row: finder + view+0x60
+    assert minimap_move_cell(77, -1, 8) == (77, 7)
+
+
 # --- "No way" message -----------------------------------------------------------------------------------------
 
 def text():
@@ -237,6 +310,13 @@ def test_no_way_drain():
     m2 = MessageLine()
     w.events.append(NoWay(2, 9))
     assert not drain_no_way(w, ME, m2, 0, text()) and m2.current(0) is None and w.events == ["other"]
+
+
+def test_no_way_broadcast_id_zero_is_shown():
+    w = World(np.zeros((16, 16), np.uint16), np.zeros((16, 16), np.int8), "syn")
+    w.events.append(NoWay(0, 1))                                      # +7 == 0: every connection (FUN_0050164f)
+    m = MessageLine()
+    assert drain_no_way(w, ME, m, 0, text()) and m.current(0) == "No way"
 
 
 def test_sim_no_way_reaches_the_ui():

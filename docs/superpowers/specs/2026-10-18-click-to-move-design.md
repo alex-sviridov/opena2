@@ -50,8 +50,9 @@ documented. Rule from the user: **reproduce the exe 1:1, even where it is not op
      `Ctrl+F` cycles the formation (-> `SetFormation`, message text lines `0x61`..`0x63`).
    - Right release without a right drag: cancel the pending mode if armed, else `SelectUnits(())`; right drag scrolls the camera
      `delta/8` cells per move (R§1.1).
-   - Minimap left click with own units selected = `MoveUnits` (R§1.6). DECISION: the exe sends the wrong row (it re-reads the
-     mouse over the right panel); the engine uses the minimap's own row until the in-game check; listed in VERIFY IN GAME.
+   - Minimap left click with own units selected = `MoveUnits` (R§1.6). CONFIRMED: the exe sends the minimap column and the
+     row of the main view's row finder at the mouse position over the right panel (+ camera top cell); the engine reproduces
+     it (`Projection.exe_row`, `minimap_move_cell`); the server clamp applies.
    - Target cell of a normal click: `(mx >> 5) + camera.x`, `Projection.hover_cell` row (R§1.7). No fog / passability test.
    - No marker. The F4 paths overlay stays behind its debug toggle.
 6. **Docs**: apply the corrections of R§10 to ui-layout, simulation, unit-struct, animation; link the research page from
@@ -80,7 +81,7 @@ documented. Rule from the user: **reproduce the exe 1:1, even where it is not op
 - Code: `engine/ui/orders.py` (`OrderInput`, `MessageLine`, `MainText`, `drain_no_way`), `engine/ui/cursor.py` (`choose_cursor`
   per REA-verified asm `0x40b2b8`, `choose_minimap_cursor`), `MinimapPanel.order_cell`, `backend_pygame/window.py`
   (`modifiers`, `click_target`, event wiring; `run` returns the `Simulation`), `interface.py` (message line).
-- Deviations: (1) a click whose row finder matches nothing orders nothing (exe: row past the last); (2) pending modes 3 and 7 give the
+- Deviations: (1) a click whose row finder matches nothing orders nothing (exe: row `H + 4`, unreachable inside the view); (2) pending modes 3 and 7 give the
   default cursor (exe: unchanged cursor); (3) the pending mode is also cleared when the selection becomes empty (the exe clears on
   object disappearance, `0x40be67`); (4) formation text lifetime 2000 ms and the message colour are INFERRED; (5) minimap right
   drag follows the pointer (camera jump per move, as the exe's right-press handler on every move); (6) `path_grid` maps move type
@@ -88,7 +89,7 @@ documented. Rule from the user: **reproduce the exe 1:1, even where it is not op
 - VERIFY IN GAME (additions): (a) hovering a friendly unit with Ctrl and Alt both held gives move (Alt first), over ground swarm
   (Ctrl first); (b) `M` then click on a hostile unit walks to it; (c) `T` mid-walk: the step finishes, the unit stops; (d) after
   `Ctrl+F` the text appears for about 2 s (lifetime INFERRED) and the colour matches the "No way" text; (e) a drag over the minimap
-  with the left button held streams orders; the first order resets the pending mode; (f) right click on the command bar / info
+  with the left button held streams orders (column from the minimap, row near the view's top, R§1.6); the first order resets the pending mode; (f) right click on the command bar / info
   panel deselects; (g) minimap in a map with z < 0 (>= 145 cells): the order zone equals the image.
 - Map 10 has no unit of the human player (record 1); the end-to-end test uses map 53.
 

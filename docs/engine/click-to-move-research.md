@@ -107,7 +107,7 @@ issues a plain move (cmd `0x16`); the swarm cursor targets the cell under the po
 
 Set in exactly one place, `FUN_00418a02(btn)` (CONFIRMED, asm `0x418a02`-`0x418ba8`); `btn` comes from the command bar
 (message `0x40c`, `btn = wParam + 1`, handler `0x40c295`), the hotkeys of `FUN_0040c8a0` (WM_KEYDOWN; only in state 1,
-`view+0x80 != 0`, no text-input focus `client+0xc0`, **no Ctrl**, `view+0x140 != 0`, `view+0x144 & 0x24 == 0`) and the
+`view+0x80 != 0` (the map object pointer: `FUN_00402fb8`/`FUN_004065b1` read the size and heights through it; CONFIRMED), no text-input focus `client+0xc0` (non-zero = a control owns the keyboard: the key is forwarded to the object `client+0x138` through its vtable slot `+0x6c` and the hotkey returns 0, asm `0x40c8d4`-`0x40c8f8`; meaning INFERRED), **no Ctrl**, `view+0x140 != 0`, `view+0x144 & 0x24 == 0`) and the
 F4-F12 spell shortcuts (`btn 9/10` -> 5):
 
 ```
@@ -167,11 +167,29 @@ Left press `0x4ad00e` (also called on every `WM_MOUSEMOVE` while the left button
 - Cell of a minimap click: `x = ((mx - off_x - panel.left) >> z) + 8` (z = minimap zoom shift `+0x68`, `z < 0` clamps to 0
   and doubles instead: `x = (mx - off_x - panel.left) * 2 + 8`), `off_x = 0x48 - (((imgW - 16) << z) >> 1)`, y alike with `0x52`
   (the image centre of ui-layout §4).
-- **Quirk (CONFIRMED code, INFERRED effect):** `FUN_00418bc3` ignores its second argument; it recomputes the target row
-  from the **mouse position** with the main view's row finder, `y = FUN_00417f31(0x604510, 0x604514) + view+0x60`
-  (`0x418c13`-`0x418c31`). From the main view this equals `9b0`; from the minimap the mouse is over the right panel, so the
-  row is read at `column = mx >> 5` outside the view's vertex grid and the move order goes to the wrong row. Swarm, attack,
-  patrol and defend use both arguments correctly. VERIFY IN GAME.
+- **Quirk (CONFIRMED asm `0x418bc3`-`0x418c35`, `0x417f31`-`0x4180c3`):** `FUN_00418bc3` ignores its second argument; the
+  packet (`0x6904b8`, type `0x16`) gets `x` = its first argument (the minimap cell column above) and
+  `y = FUN_00417f31(0x604510, 0x604514) + view+0x60` (mouse position in screen px, view origin cell `+0x5c/+0x60`). Swarm,
+  attack, patrol and defend use both arguments correctly.
+- **The row finder `FUN_00417f31(mx, my)` (CONFIRMED asm; ECX = view).** `W = view+0x64`, `H = view+0x68` (15x15, 20x18,
+  27x24 cells for the three layouts, ui-layout §3), `col = (mx >> 5) + 3`, `fx = mx & 31`; no bounds test on the column. Tables
+  (`FUN_00402fb8` sizes, `FUN_004065b1` fill, terrain.md): vertex table `+0xb4` (stride `W+7`, rows `-3 .. H+7`, `32*r - int8(height)`),
+  top-edge minimum `+0xb8` and bottom-edge maximum `+0xbc` (both stride `W+6`, `(W+6)(H+10)` entries, rows `-3 .. H+6`, filled for
+  every column `-3 .. W+2`). Loop `r = -3 .. H+6`: skip when `b8[(r+3)(W+6)+col] > my` or `bc[same] < my`; then
+  `top = v[(r+3)(W+7)+col]` interpolated to `v[..+1]` by `fx` (`a + trunc((b-a)*fx/32)`), `bottom` likewise from row `r+1`
+  (`+ (W+7)`); the first `r` with `top <= my <= bottom` is returned; **no match returns `H + 4`**.
+- **Minimap move order, answer (CONFIRMED code, INFERRED heap byte):** the minimap panel is always the 160 px right column
+  starting at `W*32` (480 / 640 / 864), so `mx >> 5` runs over columns `W .. W+4`, `my` over `0 .. 157`. Columns `W .. W+2` are
+  real cells of the table (the map east of the view) and give a normal relief-aware row of the *main view* at that screen
+  y: `y = view+0x60 + r` with `r` about `my / 32` (-1 .. 8), i.e. a row near the **top of the view**, unrelated to the minimap
+  click. Column `W+3` (`mx` in `W*32+96 .. +127`) and `W+4` read the extreme tables one entry per row off (stride `W+6` vs `W+7`:
+  the entry belongs to the next row's first cells) and the vertex table too from `W+4`; over flat ground column `W+3` matches
+  nothing (all rows skipped, the very last row reads `b8[(H+10)(W+6)]`, one entry past the table: the next heap block's header,
+  INFERRED large positive, skipped) so the result is `H + 4`, i.e. `y = view+0x60 + H + 4` (below the view's bottom, then the
+  server clamp). Measured over the 46 campaign maps (random cameras, panel positions): 9 % of panel positions give `H+4`, the
+  rest rows -1 .. 8. **The exe therefore sends a usable but wrong cell** (the column from the minimap, the row from the main view
+  at the panel mouse position); the server then wraps `& 0xff` and clamps to `[8, size-9]` as for any move (§3.3). Engine:
+  `Projection.exe_row` + `orders.minimap_move_cell`, `window.minimap_order_target`. VERIFY IN GAME stays (item 4).
 
 ### 1.7 Target cell of a normal click
 
@@ -473,6 +491,14 @@ more than 1 cell from the target (more than 2 when the target cell is a building
 every affected unit (also each unit of a formation, and AI units; the message is addressed to the owner id). Client handler `0x40e21d`,
 sub-code 1 (`0x40e266`): if `DAT_00622810 != 0` (**constant 1**, its only writer is `0x48128d`; so always) it shows `main.txt` line `0x81` =
 **"No way"** in the message line of the view (`FUN_004021fe`, colour `0x5f17f4`, **3000 ms**). It does not change the route and plays no sound.
+**Recipient (CONFIRMED asm):** `FUN_005052d2` is called on the **server** session object `0x6831a8` (host flag `+0x18b0 = 1`,
+built by `0x5019d0`; the client session `0x670e50` is built with flag 0 by `0x501a11`); `FUN_00505347` writes `+7` = word at
+`[owner player object + 4]` (0 when the pointer is null) and posts via `FUN_0050164f`: `+7 == 0` goes to every connection of the
+list `+0x18b8`; otherwise `FUN_0050155f(+7)` finds the connection whose player id (`client+0x108`, `FUN_0044f5b0`) equals `+7`,
+and **no match is dropped** (the fallback to the local connection `+0x18b4` only exists when the host flag is 0). The client
+handler `0x40e21d`/`0x40e266` has no player test of its own. So an AI player's "No way" is shown only if that player has a
+connection in the list; in single player only the human's has (INFERRED, sub-question in §9), hence the engine shows the local
+player's (and broadcast id 0) messages and drops the rest (`drain_no_way`).
 `main.txt` also holds `0x61`-`0x63` (formation) and `0x5e`-`0x60` (retreat mode) shown by `Ctrl+F` / `Ctrl+W`.
 
 ## 7. Other dynamic details
@@ -503,10 +529,10 @@ sub-code 1 (`0x40e266`): if `DAT_00622810 != 0` (**constant 1**, its only writer
 
 1. Group handlers for orders 5 (swarm `572e1e`), 1/3/0x13 (`57275f`, `57309d`, `57311c`) and the computer players' branch of the pass.
 2. `FUN_00556dcd` (detection level used by `FUN_00567a16` for hidden enemies) and the spell branches of the post step (`FUN_0056bb0d` kind `0x17`, `FUN_0056cb8c`, `FUN_0056969c`).
-3. `FUN_00417f31` for columns beyond the view width (minimap move order y): array overrun behaviour (§1.6).
-4. Voice-unit selection `FUN_0041da16` and the per-order voice slots (class lists, exact rule).
-5. Whether the AI-owned "No way" messages are dropped by the single local client (recipient filter `0x92`, `+7`).
-6. `view+0x80`, `client+0xc0` exact meaning (hotkey gating), and `FUN_0041f090`/`41f0e0` neighbours of `Ctrl+F`.
+3. Voice-unit selection `FUN_0041da16` and the per-order voice slots (class lists, exact rule).
+4. `FUN_0041f090`/`41f0e0`: neighbours of `Ctrl+F` (`FUN_0041f040`).
+5. `FUN_005018cd`/`FUN_00500f0e`, `0x50155f`: which connections the single-player server holds in `+0x18b8` (only the human's? makes the AI "No way" drop CONFIRMED).
+6. `FUN_00582a10` heap: the block after the `+0xb8` table (`(H+10)(W+6)` dwords); the last-row read of `FUN_00417f31` for panel column `W+3`/`W+4` (INFERRED skipped, result `H+4`).
 
 ## 10. Corrections to the existing docs (applied)
 
@@ -525,7 +551,7 @@ sub-code 1 (`0x40e266`): if `DAT_00622810 != 0` (**constant 1**, its only writer
 1. **Right button.** Select units, press `A`, right click: pending cursor returns to normal, selection stays. Right click again: selection clears. Right-drag the map: it scrolls (1 cell per 8 px, same direction as the mouse) and afterwards a right release does NOT deselect.
 2. **Attack cursor over ground.** Press `A`, click on empty ground: units walk there (plain move, no attack-move). `A` + click on an enemy unit: attack. `A` + click on an enemy structure: move.
 3. **Ctrl/Alt.** Ctrl+click ground: swarm cursor and swarm order; Alt+click on an enemy unit: walk, no attack; Ctrl+click on an own unit: attack your own unit.
-4. **Minimap.** With units selected and no key pressed, left click in the minimap: move order (cursor `smove`); drag with the left button held: a stream of orders. Check the target row against the click (expect a wrong row, §1.6). Without a selection: camera jump. Right click: always camera.
+4. **Minimap.** With units selected and no key pressed, left click in the minimap: move order (cursor `smove`); drag with the left button held: a stream of orders. Check the target row against the click (expect the column of the click and a row near the top of the view: `view top + about my/32`, or the view's bottom for panel columns `W+3`; §1.6). Without a selection: camera jump. Right click: always camera.
 5. **Formation.** Ten units in a line, `Ctrl+F` to Off/Auto/On, order a walk across open ground: Off = all aim at one cell (pile up), On = the shape is translated, Auto = shape only if all are within 2 cells of the centre. Group speed with a slow member in On/Auto-formed groups.
 6. **Arrival delay.** Order a walk of a few cells, then watch for the "arrived" state: the unit becomes a guard (order 0xc: it reacts to enemies in range) up to 16 ticks (about 1 s) after it stops.
 7. **Re-order mid-step.** Order, then re-order to the opposite side in the middle of a cell step: the unit finishes its current step (never reverses mid-cell), then turns and goes; same destination twice: no hitch.

@@ -8,7 +8,7 @@ from engine.sim import DEFAULT_SPEED, CommandQueue, Simulation, tick_period_ms
 from allods2.common import as_fs
 from engine.ui import (CursorInput, DebugFlags, Layout, MainText, MessageLine, MinimapPanel, OrderInput, ScrollInput,
                        SelectionInput, choose_cursor, choose_minimap_cursor, drain_no_way, target_cell)
-from engine.ui.orders import FORMATION_MS, FORMATION_TEXT
+from engine.ui.orders import FORMATION_MS, FORMATION_TEXT, minimap_move_cell
 from engine.view import DrawOptions, Projection, build_draw_list, build_terrain_items
 from engine.view.pick import pick_at
 
@@ -79,6 +79,15 @@ def click_target(world, camera, layout, picks, pos, projection):
     return cell, pick_at(picks, *pos) is not None
 
 
+def minimap_order_target(projection, camera, layout, panel, pos):
+    """Cell of a minimap move order (R 1.6, CONFIRMED `FUN_00418bc3`): the minimap column, but the row is the main
+    view's relief row finder applied to the mouse position over the right panel, plus the camera's top cell."""
+    cell_x = panel.order_cell(*pos)[0]
+    vp = layout.viewport
+    row = projection.exe_row(camera.ix >> 5, camera.iy >> 5, vp.w >> 5, vp.h >> 5, *pos)
+    return minimap_move_cell(cell_x, vp.h // 32 + 4 if row is None else row, camera.iy >> 5)
+
+
 def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Allods 2", max_frames=None,
         assets=None, options=None, debug=None, minimap=None, player_id=PLAYER_ID, commands=()):
     """Accumulator main loop: fixed-step sim, variable-rate drawing.  Returns the `Simulation` when the window
@@ -122,7 +131,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     def minimap_left(pos):
         """Left press or drag over the minimap (R 1.6): an order inside the image with own units selected."""
         if panel.contains(*pos):
-            what, cmd = ordering.minimap_left(panel.order_cell(*pos))
+            what, cmd = ordering.minimap_left(minimap_order_target(projection, camera, layout, panel, pos))
             if what == "order":
                 if cmd is not None:
                     queue.put(cmd)

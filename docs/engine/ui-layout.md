@@ -194,15 +194,15 @@ click, by a minimap order, and when the selection becomes empty. Hotkeys do not 
   selection above; dispatch (R 1.2): move -> `MoveUnits`; attack over a non-unit -> `MoveUnits`; attack over a unit,
   swarm, patrol, defend, pickup, town, cast -> nothing yet; select -> the selection. Target cell `(mx >> 5) + camera
   cell x`, row `Projection.hover_cell` (the exe's `FUN_00417f31`), no fog / passability test; no cell (no row matches) =
-  no order (DECISION; the exe reads one row past the last). 
+  no order (DECISION: unreachable inside the view; the exe returns `H + 4`, R 1.6 CONFIRMED).
 - **Right button, engine**: press sets nothing; mouse move with the button held scrolls the camera `delta/8` cells (`(d +
   ((d >> 31) & 7)) >> 3`, truncating, per MOUSEMOTION `rel`) and marks the drag; release without a drag cancels the
   pending mode, else `SelectUnits(())`; the command bar and info panel also take the release (`0x4adb09`, `0x4af0dc`).
 - **Minimap, engine**: left press and every left move: inside the image with own units selected = `MoveUnits` to the
   integer cell under the pointer (`floor` of the image formula, `MinimapPanel.order_cell`), pending mode reset; pending
-  attack/swarm/defend/patrol/cast issue nothing yet; otherwise the camera jump. DECISION: the order uses the minimap's own
-  row; the exe re-reads the mouse row over the main view's grid (R 1.6 quirk, VERIFY IN GAME). Right press / move: always
-  camera. For z < 0 the exe's hover test accepts a larger zone than the image (`>> 0` instead of `*2`); the engine uses the
+  attack/swarm/defend/patrol/cast issue nothing yet; otherwise the camera jump. The order's column is the minimap cell, its row
+  is the exe's: `FUN_00417f31` at the mouse position over the right panel, plus the camera's top cell (R 1.6 CONFIRMED;
+  `Projection.exe_row`, `orders.minimap_move_cell`); the server then wraps and clamps. Right press / move: always camera. For z < 0 the exe's hover test accepts a larger zone than the image (`>> 0` instead of `*2`); the engine uses the
   image rect.
 - Squads (control groups): `obj+0x88` is a 32-bit mask; digit n selects group n (Shift adds), Ctrl+digit assigns the
   selected own units exclusively, Ctrl+Shift+digit adds, Alt+digit selects and centres the view. No double-click
@@ -255,8 +255,6 @@ mode 1 when no tooltip is active, else the single selected object (`view+0x140 =
 - Structures: name `FUN_00474733(obj+0x24 - 1)` at (R-0x58, T+0x1c), HP as above.
 
 ## Open questions
-
-- Minimap move order: does the exe really send the wrong row (R 1.6 quirk)? Starting routine `FUN_00418bc3` / `FUN_00417f31`.
 
 - Which bottom bar is shown first; meaning of mouse-manager `+0x9c`; the purpose of the 30 px top strip.
 - `FUN_004b011e` (text vs human panel) and the command-bar contents (`FUN_004adcea`, `FUN_004aff34`, `FUN_004b0a10`).

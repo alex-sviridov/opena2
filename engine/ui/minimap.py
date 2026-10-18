@@ -31,7 +31,8 @@ class MinimapPanel:
 
     def order_cell(self, x, y):
         """Integer cell under window pixel (x, y) for a minimap order (R 1.6: `(px >> z) + 8`, `px * 2 + 8` for
-        z < 0), the floor of `cell_at`.  The row is the minimap's own (DECISION, see click-to-move-research 1.6)."""
+        z < 0), the floor of `cell_at`.  Only the column is sent: the exe replaces the row by the main view's row
+        finder at the mouse position (`orders.minimap_move_cell`, `Projection.exe_row`; R 1.6 CONFIRMED)."""
         col, row = self.cell_at(x, y)
         return math.floor(col), math.floor(row)
 

@@ -125,6 +125,14 @@ class OrderInput:
         return "order", cmd
 
 
+def minimap_move_cell(cell_x, row, view_y):
+    """Target of a minimap move order (R 1.6, CONFIRMED `FUN_00418bc3`): the column is the minimap cell `cell_x`; the
+    exe ignores its row argument and sends `FUN_00417f31(mouse) + view+0x60`, `row` being that finder's result for
+    the mouse over the right panel (`Projection.exe_row`) and `view_y` the camera's top cell.  The server clamp
+    [8, size - 9] (and the `& 0xff` wrap) applies afterwards, as for any move."""
+    return cell_x, row + view_y
+
+
 def target_cell(mx, camera_cell_x, row):
     """Normal click target (R 1.7): `(mx >> 5) + view+0x5c`, `row + view+0x60`; no fog, passability or range test."""
     return (mx >> 5) + camera_cell_x, row
@@ -163,12 +171,15 @@ class MainText:
 
 def drain_no_way(world, player_id, messages, now_ms, text):
     """Consume `NoWay` events of `world.events`: the local player's ones show the message, the others (computer
-    players; recipient filter INFERRED) are dropped.  Other event types stay."""
+    players) are dropped.  CONFIRMED routing: the server (`0x6831a8`, host flag +0x18b0 = 1) posts message 0x92 with
+    `+7` = owner player id (`FUN_00505347`); `FUN_0050164f` delivers it only to the connection whose player id is
+    `+7` (`FUN_0050155f`; none = dropped; `+7 == 0` = every connection); the client handler `0x40e266` has no
+    filter of its own.  Other event types stay."""
     from engine.world import NoWay
     keep, shown = [], False
     for ev in world.events:
         if isinstance(ev, NoWay):
-            shown = shown or ev.player_id == player_id
+            shown = shown or ev.player_id in (player_id, 0)
         else:
             keep.append(ev)
     world.events[:] = keep

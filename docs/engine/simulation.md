@@ -901,8 +901,8 @@ The guard scan of order 0xc (`FUN_0056a1fb`) is a no-op here; arrival and the bl
 
 **UI still stubbed:** hotkeys G, L, R, A/D/S act only on the cursor (pending modes 1/4/6 give no order), cursor rows
 attack-on-unit, swarm, patrol, defend, pickup, town, cast issue nothing (`OrderInput.release`), the minimap's pending modes,
-the voice (acknowledgement and selection voice `FUN_0041da16`; no sound engine), and the message-line "No way" for AI players
-is not filtered by recipient.
+and the voice (acknowledgement and selection voice `FUN_0041da16`; no sound engine). The message-line "No way" is
+filtered by recipient (`drain_no_way`, research 6.3 CONFIRMED routing).
 
 **Consolidated VERIFY IN GAME** (each: predicted result, so a play session can tick them off):
 1. Straight/diagonal walk times (150 and 220 ticks per 10 cells at speed 18), road 110 ticks (H1 §6 item 1).
