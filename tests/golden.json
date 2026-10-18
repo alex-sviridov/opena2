@@ -17,27 +17,27 @@
    "cells": {
     "1": [
      27,
-     18
+     20
     ],
     "2": [
      28,
      19
     ],
     "3": [
-     28,
-     18
+     27,
+     19
     ],
     "4": [
      27,
-     20
+     18
     ],
     "9": [
      20,
      19
     ]
    },
-   "ended": 232,
-   "hash": "23e41758ca59e2db5bd184e863adc39386cbc2c321a0c4c626e5efc852337f49",
+   "ended": 223,
+   "hash": "9a74dd819d328619a529cca2e0b950887096d1dbd300080044352b4fd1f800d8",
    "no_way": 0
   },
   "crossing_on": {
@@ -65,7 +65,7 @@
     ]
    },
    "ended": 199,
-   "hash": "d71aaf679b60aba48435dc65d1be4bd7b6652fa71a6997f0f27f5047bf17f045",
+   "hash": "544b94cadb7592958f3ca899994fb72597d693fdfd0ea3f003e5144a96e35a34",
    "no_way": 0
   },
   "gap_jam": {
@@ -80,7 +80,7 @@
     ],
     "3": [
      19,
-     19
+     18
     ],
     "4": [
      29,
@@ -88,7 +88,7 @@
     ]
    },
    "ended": 215,
-   "hash": "ab22093210a4ea7d586c5faaf944ab892d7c4bbe94f6c6c53352326e4bdc7f44",
+   "hash": "2d8076bafe7063285fce123b23aa99d5059da41fe67a230bd3beae8d6ae3eaf6",
    "no_way": 0
   },
   "unreachable": {

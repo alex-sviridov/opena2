@@ -292,25 +292,33 @@ def unit_stamp(u):
     return UNIT_STAMP_AIR if u.move_type == 3 else UNIT_STAMP_GROUND
 
 
+def _footprint(o, cell):
+    """The `size x size` cells of unit `o` anchored at `cell` (FUN_00550697 / FUN_0055020a loop order)."""
+    n = unit_size(o)
+    return [(cell[0] + i, cell[1] + j) for j in range(n) for i in range(n)]
+
+
 def live_cells(world, u):
-    """Cells the other living units stamp into the live layer as seen by mover `u` (CONFIRMED
-    docs/engine/simulation.md 7.3): every other unit holds its `size x size` footprint at its cell and,
-    while walking, the footprint at the cell being entered (`FUN_0055be86` modes 0/1).  The stamp is 0x40
-    (ground classes) or 0x80 (flyers), so only movers whose mask contains it (0x41/0x44 resp. 0x82) are
-    blocked.  Not modelled: the exe's first-come slot per cell (an overlapping later unit does not stamp)."""
+    """Cells the other units stamp into the live layer as seen by mover `u` (CONFIRMED
+    docs/engine/simulation.md 7.3, 7.4): every other unit holds its `size x size` footprint at its cell and, while
+    a step is in progress, at the other end of the step: the cell it is entering until it crosses the border,
+    the cell it left after (FUN_00554fd2 0x555173: `FUN_0055be86(unit, old cell, 0)` after the move, so the old
+    cell is held until the step end, FUN_00555b38).  The stamp is 0x40 (ground classes) or 0x80 (flyers), so only
+    movers whose mask contains it (0x41/0x44 resp. 0x82) are blocked.  A unit with HP <= 0 keeps its stamps until
+    it is removed (FUN_00510a70 -> FUN_00553891 is the only release, at state 0x10).  The exe's first-come slot
+    per cell does not change the set of blocked cells, only who owns the record (`_blocker`)."""
     seen = pas.MOVE_MASK.get(u.move_type, pas.MOVE_MASK[1])
     out = set()
     for o in world.units.values():
-        if o is u or o.hp <= 0 or not (unit_stamp(o) & seen):
+        if o is u or not (unit_stamp(o) & seen):
             continue
-        n = unit_size(o)
         origins = [(o.x, o.y)]
         if o.mover.step_target:
             origins.append(tuple(o.mover.step_target))
-        for ox, oy in origins:
-            for j in range(n):
-                for i in range(n):
-                    out.add((ox + i, oy + j))
+        if o.mover.step_from:
+            origins.append(tuple(o.mover.step_from))
+        for origin in origins:
+            out.update(_footprint(o, origin))
     return out
 
 
@@ -371,18 +379,23 @@ def _hop_plan(world, u):
         m.static_path.pop(0)
 
 
+def _occupants(world, cells, skip=None):
+    """Units whose cell-record occupant slot (rec+4, FUN_005503af / FUN_00551edb) covers one of `cells`: ground
+    classes (1, 2) only (class 3 uses rec+8, which FUN_00551edb never reads), at the current `size x size` footprint
+    only (the slot moves at the border crossing, not with the live stamps), dead units included.  Several units
+    on one cell: the one that entered it first keeps the slot (`Unit.cell_seq`)."""
+    want = set(cells)
+    found = [o for o in world.units.values()
+             if o is not skip and o.move_type != 3 and want.intersection(_footprint(o, (o.x, o.y)))]
+    found.sort(key=lambda o: o.cell_seq)
+    return found
+
+
 def _blocker(world, u, cell):
-    """The unit holding `cell` in the live layer as seen by `u` (FUN_00551edb: the unit of the cell's
-    record).  The exe keeps the first stamper; INFERRED here as the first in world order."""
-    seen = pas.MOVE_MASK.get(u.move_type, pas.MOVE_MASK[1])
-    for o in world.units.values():
-        if o is u or o.hp <= 0 or not (unit_stamp(o) & seen):
-            continue
-        n = unit_size(o)
-        for ox, oy in [(o.x, o.y)] + ([tuple(o.mover.step_target)] if o.mover.step_target else []):
-            if ox <= cell[0] < ox + n and oy <= cell[1] < oy + n:
-                return o
-    return None
+    """`FUN_00551edb(cell)`: the occupant of the cell record (the first-come unit whose current footprint holds
+    `cell`), or None.  A unit that only stamps the cell (entering it, or leaving it after the border) is not one."""
+    found = _occupants(world, [tuple(cell)], skip=u)
+    return found[0] if found else None
 
 
 def _at_centre(o):
@@ -390,8 +403,9 @@ def _at_centre(o):
 
 
 def _mode_move(o):
-    """Brain mode 1 or 4 (CONFIRMED consumers 0x56fdca/0x56fddd): a unit walking a move order.  Mode 4
-    (approach an object) needs attack orders and is not modelled."""
+    """Brain mode 1 or 4 (CONFIRMED consumers 0x56fdca/0x56fddd): a unit walking a move order.  Mode 4 (approach
+    an object, FUN_0056ea52 -> follow driver FUN_0055574d) gets the same verdict as mode 1 (CONFIRMED); it needs
+    attack orders and is not modelled."""
     return o.order == MOVE_ORDER and not o.mover.waiting and not o.mover.parked
 
 
@@ -402,10 +416,11 @@ def blocker_verdict(world, u, cell):
         return 0
     b = _blocker(world, u, cell)
     if b is None:
-        # no record: a unit that began its step on `cell` and is still leaving it (mover+0x70)
-        for o in world.units.values():
-            if (o is not u and o.mover.step_from and tuple(o.mover.step_from) == tuple(cell)
-                    and not _at_centre(o) and max(abs(o.x - cell[0]), abs(o.y - cell[1])) <= 1):
+        # no occupant: `FUN_0054ec6a(cell, 1)` lists the occupants of the 3x3 around the cell; one that began its
+        # step on `cell` (mover+0x70) and is still off-centre (it crossed the border and left `cell`) -> 2
+        ring = [(cell[0] + i, cell[1] + j) for j in (-1, 0, 1) for i in (-1, 0, 1)]
+        for o in _occupants(world, ring, skip=u):
+            if o.mover.step_from and tuple(o.mover.step_from) == tuple(cell) and not _at_centre(o):
                 return 2
         return 0
     if b.hp < 1:

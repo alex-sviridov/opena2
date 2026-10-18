@@ -163,6 +163,8 @@ class Unit:
     group: int = 0                  # section 8 group index (1-based, 0 none): the carried items
     known: bool = True              # units.reg set and data.bin template both exist
     seq: int = 0                    # insertion order, the depth tie-break
+    cell_seq: int = 0               # order in which the unit last entered its cell (first come, first served: the
+                                    # exe's cell-record occupant slot, simulation.md 7.4); not dumped
     stats: object = None            # allods2.formats.unitstats.UnitType template (None if unknown)
     skills: tuple = ()              # humans: +0xa8..+0xb2 (general, blade, axe, bludgeon, pike, shooting); () for monsters
     xp: tuple = ()                  # humans: XP pools of skills 1..5 (+0x23c+4k), pool = thr[skill] at start
@@ -265,6 +267,7 @@ class World:
         self._ucells = {}           # (x, y) -> set of unit ids   (never part of the block layer)
         self._icells = {}           # (x, y) -> set of item ids
         self._next_seq = 1
+        self._next_cell_seq = 1
         self.costs = pas.DEFAULT_COSTS      # map.reg [Terrain] Cost<name> (from_map loads the install's)
         self.speed_multiplier = 8           # map.reg [Path Finding] SpeedMultiplier (CONFIRMED 8)
         self._cost = None
@@ -489,6 +492,7 @@ class World:
             raise ValueError("duplicate entity id %#x" % u.id)
         self._check_cell(u)
         u.seq, self._next_seq = self._next_seq, self._next_seq + 1
+        u.cell_seq, self._next_cell_seq = self._next_cell_seq, self._next_cell_seq + 1
         self.units[u.id] = u
         self._index_add(self._ucells, u)
         return u.id
@@ -514,6 +518,8 @@ class World:
         if not (0 <= x < self.width and 0 <= y < self.height):
             raise ValueError("target (%d, %d) is outside the map" % (x, y))
         self._index_del(self._ucells, u)
+        if (u.x, u.y) != (x, y):
+            u.cell_seq, self._next_cell_seq = self._next_cell_seq, self._next_cell_seq + 1
         u.x, u.y, u.sub_x, u.sub_y = x, y, sub_x, sub_y
         self._index_add(self._ucells, u)
 

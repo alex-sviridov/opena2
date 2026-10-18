@@ -176,15 +176,15 @@ def key_of(u):
 
 
 def stamps_independent(w, u):
-    """The live layer as seen by `u`, recomputed from the rule (7.3): every other living unit of a class whose stamp
-    the mover's mask contains, footprint at its cell and at its step target."""
+    """The live layer as seen by `u`, recomputed from the rule (7.3): every other unit (dying ones too) of a class whose stamp
+    the mover's mask contains, footprint at its cell, its step target and its step origin."""
     mask = {1: 0x41, 2: 0x44, 3: 0x82}.get(u.move_type, 0x41)
     out = set()
     for o in w.units.values():
-        if o is u or o.hp <= 0 or not ((0x80 if o.move_type == 3 else 0x40) & mask):
+        if o is u or not ((0x80 if o.move_type == 3 else 0x40) & mask):
             continue
         n = max(1, int(getattr(o.stats, "token_size", 1) or 1)) if o.stats is not None else 1
-        cells = [(o.x, o.y)] + ([tuple(o.mover.step_target)] if o.mover.step_target else [])
+        cells = [(o.x, o.y)] + [tuple(c) for c in (o.mover.step_target, o.mover.step_from) if c]
         out.update((cx + i, cy + j) for cx, cy in cells for j in range(n) for i in range(n))
     return out
 

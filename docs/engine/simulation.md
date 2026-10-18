@@ -408,10 +408,12 @@ as a byte. Goldens unchanged.
   into `+0x10000` and `+0x20000` alike, so `World.block` (which includes structures) is the right static grid.
   Only the unit stamps (0x40 / 0x80) are live-only.
 - Live layer for hops = the static grid plus the unit stamps of every **other** living unit, **CONFIRMED** in
-  7.4: `size x size` footprint at its cell and, while it walks, at the cell it is entering; bit 0x40 (ground
+  7.4: `size x size` footprint at its cell and, while it walks, at both ends of the step (the cell it is entering
+  until the border crossing, the cell it left after it, until the step end); bit 0x40 (ground
   classes) is seen by walkers and ghosts, bit 0x80 (class 3) only by flyers (`engine/sim/movement.py
   live_cells`). The unit's own footprint is released before planning (`FUN_0054d76e` calls `FUN_0055be86`
-  mode 2). Death/removal of a stamp for hp <= 0 is INFERRED. The exe's first-come slot per cell is not modelled.
+  mode 2). A unit with hp <= 0 keeps its stamps until removal (CONFIRMED, 7.4 "Cell record"). The first-come
+  occupant of a cell is modelled by `Unit.cell_seq` (7.4), not the stamp slot quirks.
 - `MoveTo(unit_id, x, y)` is the engine-level move order (order 1); the click mapping is H3. It follows steps
   1-6 above with the unit's `Mover` carrying `dest (+0x74)`, `tail (+0x76)`, `consumed (+9)`, `since_hop (+0x78)`,
   `arrived (+0x90)`, `failed (+0x98)`, `static_path`; `Unit.path` is the dynamic list. H3 replaced the H2 rule
@@ -443,13 +445,20 @@ as a byte. Goldens unchanged.
   mover mask `mover+5`) says it is not. Verdict in AL (0 = re-plan round the blocker, 1 and 2 are treated alike):
   1. A not size 1 (vtable `+0x1c`) or its owner's `+0x2c != 0` (computer player): 0. `mover+0x80 == cell`
      (the cell A itself stamps, never true for an adjacent cell at a centre): 0.
-  2. `B` = the unit of the cell record (`FUN_00551edb`: needs bit `0x20` in `+0x10000`, record lookup
-     `FUN_0055f3e0`, unit pointer at rec `+4`; friend or foe, no relation test). No record: `FUN_0054ec6a(cell, 1)`
-     lists the units of the 3x3 around it; one whose `mover+0x70` (cell its step began on) is `cell` and that
-     is off-centre (`FUN_00551383`: sub-offset bytes both 0x80 = at centre) -> 2, else 0.
+  2. `B` = the **occupant** of the cell record (`FUN_00551edb`: needs bit `0x20` in `+0x10000`, record lookup
+     `FUN_0055f3e0`, returns rec `+4`, the occupant slot, see "Cell record" below; friend or foe, no relation test,
+     dead units too). No occupant: `FUN_0054ec6a(cell, 1)` lists the occupants (`FUN_00551edb`) of the 3x3 around
+     the cell; one whose `mover+0x70` (cell its step began on) is `cell` and that is off-centre (`FUN_00551383`:
+     sub-offset bytes both 0x80 = at centre) -> 2, else 0. CONFIRMED (asm `0x56fd02`-`0x56fd9d`, `0x54ec6a`).
   3. B with HP (`+0x94`) < 1: 0. B off-centre (mid-step): 0 if A's `mover+6` (last cell it entered) is `cell`,
      else 1. B at a centre: brain mode (`+0x1c4 -> +8`) 1 (go to cell) or 4 (approach object): 0 if A's own
      destination (`brain+0xa`) is `cell`, else 2; any other mode (idle 0, 10 turning, attacking...): 0.
+     **Mode 4 CONFIRMED** (`0x56fdca`-`0x56fe04`): modes 1 and 4 share one branch and the compare is always
+     against **A's** `brain+0xa`, never B's target. Mode 4 is dispatched by `FUN_0056dca2` case 3 -> `FUN_0056ea52`
+     (follow driver `FUN_0055574d`, then `unit+0x54 := 1`); only modes 1, 9 (`FUN_0056ec3f`, target `+0x3c`),
+     12 (`FUN_0056eb2d`) and 15 (`FUN_0056ecbc`) reach `FUN_00555411` through the wrapper `0x56e4b0`, so A is never
+     in mode 4 and a mode-4 B is judged exactly like a mode-1 B. The model has no mode 4 (needs attack orders;
+     `_mode_move` stands for 1 and 4).
   4. Non-zero verdict (`0x555692`-`0x5556eb`): `FUN_00556b2c` = facing to the cell (0, 32 ... 224, ratio rule,
      equals `facing_to` for adjacent cells). Already facing it: mode := 0. Else `FUN_00556da2` (=
      `FUN_00556454(unit, facing)`, starts the turn) and mode := **10**. `FUN_00555c7e` (the step) is skipped, the
@@ -498,8 +507,53 @@ as a byte. Goldens unchanged.
     (bits 1 and 4 not in 0x82). Walkers and ghosts see structure stamps (1 resp. 4).
   - Other writers: `FUN_005589ab(.., w, h, mask)` ORs 5 into both layers over a w x h box for set mask bits
     (structure footprint); `FUN_00559c28` / `FUN_00559ce5` set / clear bit `0x10` in both layers (bit in no
-    mover mask; meaning not decoded); `FUN_00558aab` adds a fixed 4 x 3 block at (0x3e..0x41, 0x18..0x1a)
+    mover mask; meaning: see "Bit 0x10" above); `FUN_00558aab` adds a fixed 4 x 3 block at (0x3e..0x41, 0x18..0x1a)
     (static += 5, live |= 5), a leftover test stamp.
+- **Cell record, occupant slot, first come, death** (CONFIRMED, asm read; ECX from the callers):
+  - The 60-byte record has **two pairs of unit slots**. (1) **Occupant** rec`+4` (ground classes 1, 2) / rec`+8`
+    (class 3), written by `FUN_005503af(unit, x, y)` (`0x5503af`), cleared by `FUN_0055073f` (`0x55073f`). Loops:
+    `FUN_0055020a(unit)` places the `size x size` footprint at the unit's **own current cell** (row by row, x inner)
+    and finishes with `FUN_0055be86(unit, own cell, 1)`; `FUN_00550697(unit)` lifts it. (2) **Stamp slots** rec`+0x2c` /
+    `+0x30` (`FUN_0055c2ce` / `FUN_0055c1fe`, above) that feed the live layer bits 0x40 / 0x80.
+  - **First come, first served, per slot**: `FUN_005503af` creates the record if missing (`FUN_005508a0`, copies cost
+    and static bytes, sets `0x20`), and if the slot is non-zero (any unit, also the caller itself) it neither
+    writes nor rebuilds and returns 0 (`FUN_00556447` is an empty function), so `FUN_0055020a` stops at that
+    cell (cells before it in the footprint stay placed). `FUN_0055c2ce` does the same for the stamp slots: a
+    non-empty slot held by another unit means no stamp, no rebuild (the unit's own re-stamp is fine). The
+    record keeps the unit that arrived first; list order does not enter.
+  - **Release quirks**: `FUN_0055073f` zeroes the occupant slot **whatever unit holds it** (no owner test) and
+    returns 0 for an empty slot, which stops `FUN_00550697`; `FUN_0055c1fe` clears a stamp slot only if this unit
+    holds it. The loser of a first-come race therefore never owns a record, and when the winner lifts, the
+    cell is free in the record although the loser stands on it, until the loser stamps again (its next
+    `FUN_0055be86` call). `FUN_00551edb` reads rec`+4` only: a flyer (rec`+8`) is never the verdict's `B`, and a
+    unit that merely stamps a cell (entering it, or leaving it after the border) is no occupant.
+  - **When the occupant moves** (`FUN_00554fd2`, asm `0x555127`-`0x555186`): only when the position crosses a cell
+    border mid-step: `FUN_0055be86(unit, 0, 2)` (release ring), `FUN_00550697` (lift at the old cell), move,
+    `FUN_0055020a` (place at the new cell, mode 1 stamp), then `FUN_0055be86(unit, old cell, 0)`: the **old cell is
+    stamped again** next to the new current cell and held until the step end (mode 2 + mode 1, `FUN_00555b38`).
+    Before the border the occupant is still the start cell and the stamps are start + target cell. Other callers of
+    place/lift: `FUN_0055a96c` (lift, set position `FUN_0054fbf7`, place: teleport), `FUN_0054d76e` (`0x54eee7`, lift
+    around the planner), `0x554bf8`, creation `0x510089`.
+  - **Engine**: occupant = among the ground-class units whose current footprint holds the cell, the one with the
+    smallest `Unit.cell_seq` (set when the unit enters its cell, `World.add_unit`/`move_unit`); live layer =
+    footprints at the cell, the step target and the step origin (`movement.live_cells`, `_blocker`, `_occupants`).
+    The release quirks above are not modelled (the occupant table is derived, not stored).
+  - **Death** (CONFIRMED): HP <= 0 (`FUN_0050f12c`) sets order 0, state 0, calls `FUN_00510745` (cancels a pending
+    spell, `unit+0x68`) and runs the dying countdown; it releases **nothing**. The only release is the removal
+    `FUN_00510a70` (state `0x10`, HP <= -10; for movementType > 1 HP := -1000 after the countdown): order/state :=
+    0x10, then `FUN_00553891` = `FUN_0055be86(unit, 0, 2)` + `FUN_00550697`, then `FUN_005551d6`. Other callers:
+    `0x5102a3`, `0x5162f6`, `FUN_0055a96c`. So a unit with HP <= 0 and state != 0x10 keeps its footprint stamps
+    and its occupant slot, blocks the live layer, and is found as `B` (verdict 0 because HP < 1 -> others
+    re-plan round it). Engine: `live_cells` no longer skips `hp <= 0`; `World.remove_unit` is the release.
+  - **Bit 0x10** (CONFIRMED): written only by `FUN_00559c28(x, y)` (OR 0x10 into `+0x10000` and `+0x20000`), called
+    from `FUN_005184bf(x, y, flag)` (`0x5184bf`, effect cell visitor; `flag != 0` after `FUN_005189b5`, the visual
+    scorch/dirt mark) and `FUN_00518833` (`0x518833`, area loop over a radius `effect+0x4d` for the effect
+    class `Effect_DirectDamage` when `effect+0x48 -> +0x5c != 0`, i.e. a damaging spell that scorches the ground).
+    The clear `FUN_00559ce5` has no caller and no vtable reference (dead code); `FUN_00550a96` preserves the bit; it
+    is in no mover mask (0x41, 0x44, 0x82), so it has **no effect on passability or path costs**: it is the
+    server-side "ground marked by a spell" flag (the load-time dirt flag 13 of the file is another bit, map.md).
+    A reader of the bit (e.g. for the client mark) was not found in the routines read.
+    The same visitor, for effect type `0x11`, does something only when `FUN_00551edb(cell) == 0` (no occupant).
 - **Unreachable feedback**: client message `0x92` (7.1): the event `NoWay`, §8.5.
 
 ### 7.5 Measured
@@ -767,8 +821,7 @@ is not filtered by recipient.
    `server tick & 3 == id & 3`: the interaction needs a check in phase I ([unit-struct §3](unit-struct.md)).
 4. Group orders 1, 3, 5, 0x13 (`57275f`, `57309d`, `572e1e`, `57311c`), the computer players' branch of the pass and the
    retreat post pass `FUN_00573713`: phase I ([research §9](click-to-move-research.md)).
-5. Mode 4 blockers (approach object) and the exe's first-come cell record (engine: first unit in list order). The
-   meaning of live/static bit `0x10` (`FUN_00559c28`, callers `0x518589`, `0x51899b`) and the death-time stamp release.
+5. The stored occupant/stamp slots with their release quirks (7.4 "Cell record"): `FUN_0055073f` clears a slot of any unit, so a first-come loser loses its record when the winner leaves; the engine derives the occupant instead. Starting routine `FUN_0055be86` callers `0x558b7c`, `0x56a5df` (how often a standing unit re-stamps, which decides how long such a cell stays unowned).
 6. Follow-target planning: the ring order of `FUN_00557f08` (float helpers `FUN_0050d884/8c0`, `FUN_00557cf1`) and the
    driver `FUN_0055574d` (7.4); phase I with attack orders.
 7. The class-0x12 / order-5 clause of the static fallback (`FUN_00556f56`, `FUN_0056ac5b`).

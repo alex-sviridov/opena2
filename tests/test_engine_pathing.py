@@ -226,7 +226,9 @@ def test_live_layer_holds_footprint_and_entered_cell_of_others_only():
     big.mover.step_target = (11, 10)
     assert live_cells(w, me) == {(x, y) for x in (10, 11, 12) for y in (10, 11)}
     assert (5, 5) not in live_cells(w, me)                              # own footprint released
-    big.hp = 0
+    big.hp = 0                                                          # a dying unit keeps its stamps (FUN_00510a70)
+    assert live_cells(w, me) == {(x, y) for x in (10, 11, 12) for y in (10, 11)}
+    w.remove_unit(big.id)                                               # ... until it is removed (FUN_00553891)
     assert live_cells(w, me) == set()
 
 
@@ -467,3 +469,95 @@ def test_since_hop_is_a_wrapping_byte():
     u.mover.since_hop = 255
     mv._drive(w, u)
     assert u.mover.since_hop == 0
+
+
+# --- cell record / occupant / bit 0x10 / death (docs/engine/simulation.md 7.4, Open question 5) ----------------
+
+def test_previous_cell_is_held_after_the_border_crossing_until_the_step_end():
+    """FUN_00554fd2 0x555173: after the move `FUN_0055be86(unit, old cell, 0)` stamps the old cell again; the step
+    end (FUN_00555b38) is mode 2 + mode 1 = current cell only."""
+    from engine.sim.movement import live_cells
+    w = world()
+    me = unit(w, 1, 5, 5)
+    b = unit(w, 2, 10, 10)
+    b.mover.step_from, b.mover.step_target = (10, 10), (11, 10)
+    assert live_cells(w, me) == {(10, 10), (11, 10)}                    # before the crossing
+    w.move_unit(b.id, 11, 10, 20, 128)                                  # crossed: the unit now stands on (11, 10)
+    assert live_cells(w, me) == {(10, 10), (11, 10)}                    # (10, 10) still held
+    b.mover.step_from = b.mover.step_target = None                      # step end
+    assert live_cells(w, me) == {(11, 10)}
+
+
+def test_occupant_is_the_unit_whose_current_footprint_holds_the_cell():
+    """FUN_00551edb returns rec+4, written by FUN_005503af for the footprint at the unit's own cell only."""
+    from engine.sim.movement import _blocker
+    w = corridor()
+    a = unit(w, 1, 10, 10)
+    b = unit(w, 2, 12, 10)
+    b.mover.step_from, b.mover.step_target = (12, 10), (11, 10)         # b is entering (11, 10): stamps it, no occupant
+    assert _blocker(w, a, (11, 10)) is None
+    assert _blocker(w, a, (12, 10)) is b
+    w.move_unit(b.id, 11, 10, 20, 128)                                  # crossed: the slot moves, (12, 10) is only stamped
+    assert _blocker(w, a, (11, 10)) is b and _blocker(w, a, (12, 10)) is None
+
+
+def test_occupant_is_the_first_unit_to_enter_the_cell():
+    """FUN_005503af: an occupied slot is not overwritten (first come, first served); list order does not matter."""
+    from engine.sim.movement import _blocker
+    w = world()
+    a = unit(w, 1, 5, 5)
+    late = unit(w, 2, 20, 20)
+    early = unit(w, 3, 21, 20)
+    w.move_unit(early.id, 10, 10)
+    w.move_unit(late.id, 10, 10)                                        # shares the cell, entered second
+    assert _blocker(w, a, (10, 10)) is early
+    w.move_unit(early.id, 11, 10)
+    assert _blocker(w, a, (10, 10)) is late
+
+
+def test_flyers_hold_no_occupant_slot_of_the_ground_kind():
+    """Class 3 uses rec+8; FUN_00551edb reads rec+4 only, so a flyer is never the verdict's blocker."""
+    from engine.sim.movement import _blocker
+    w = world()
+    a = unit(w, 1, 5, 5)
+    f = unit(w, 2, 10, 10)
+    f.move_type = 3
+    assert _blocker(w, a, (10, 10)) is None
+
+
+def test_blocker_without_occupant_is_found_among_the_ring_units_leaving_the_cell():
+    """FUN_0054ec6a(cell, 1): occupants of the 3x3 whose step began on the cell and who are off-centre -> 2."""
+    from engine.sim.movement import blocker_verdict
+    w = corridor()
+    a = unit(w, 1, 10, 10)
+    a.order, a.mover.goal = 1, (20, 10)
+    b = unit(w, 2, 12, 10)
+    w.move_unit(b.id, 12, 10, 20, 128)
+    b.mover.step_from, b.mover.step_target = (11, 10), (12, 10)         # left (11, 10): stamped, no occupant
+    assert blocker_verdict(w, a, (11, 10)) == 2
+    b.mover.step_from = (13, 10)                                        # began elsewhere: re-plan
+    assert blocker_verdict(w, a, (11, 10)) == 0
+
+
+def test_dead_occupant_still_blocks_but_the_verdict_is_replan():
+    """HP < 1 -> verdict 0 (0x56fda0), the stamp stays (no release before removal)."""
+    from engine.sim.movement import blocker_verdict, live_cells
+    w = corridor()
+    a = unit(w, 1, 10, 10)
+    b = unit(w, 2, 11, 10)
+    a.order = b.order = 1
+    a.mover.goal = (20, 10)
+    b.hp = 0
+    assert (11, 10) in live_cells(w, a) and blocker_verdict(w, a, (11, 10)) == 0
+    b.hp = -9                                                           # state 0x10 only at HP <= -10: still there
+    assert (11, 10) in live_cells(w, a)
+
+
+def test_mode_4_blocker_is_judged_like_mode_1():
+    """0x56fdd0/0x56fde3: brain mode 1 and 4 share one branch (4 = FUN_0056ea52, follow driver); the model has no
+    mode 4, so a move order stands for both (`_mode_move`) and the compare is against the asker's own target."""
+    from engine.sim.movement import _mode_move
+    w = corridor()
+    b = unit(w, 2, 11, 10)
+    b.order = 1
+    assert _mode_move(b)
