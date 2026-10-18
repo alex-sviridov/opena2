@@ -375,11 +375,26 @@ follow target (re-plan every `len/3 + 1` consumed waypoints, StaticIsntNeeded ga
   blocker (what the exe does for computer-controlled units and when the blocker cannot yield).
 - Performance and search statistics: see 7.5.
 
-### 7.4 Not decoded (open, see Open questions)
+### 7.4 Read but not implemented (needs orders/AI of phase I)
 
-`FUN_0056fc69` (yield / swap places, human units), the live-layer stamps (`FUN_0055c2ce`, `FUN_0055c1fe`,
-`FUN_00550a96`, `FUN_005589ab`, `FUN_00558aab`, `FUN_00559c28`), `FUN_00557f08` (follow-target fallback),
-the unreachable feedback `FUN_005052d2`, and (the dynamic-list pop question is answered in 7.2).
+- **Follow-target fallback** (`FUN_00557f08(unit, target unit)`, CONFIRMED read, INFERRED reading): when the dynamic
+  search toward a *unit* target (`FUN_0055574d`) leaves its cell unlabelled, the routine walks a box perimeter around
+  the target's footprint (`token_size`) as seen from the follower (start side from `FUN_00557cf1`, direction table
+  `+0x54156`, the box grows by one cell per attempt, at most 8 attempts) and returns the labelled cell with the
+  smallest label (strict `<`, first wins). Ring order uses float trig helpers (`FUN_0050d884/8c0`) not yet
+  decoded; `MoveTo` has no unit target, so the engine uses the cell fallback only.
+- **Blocker handling** (`FUN_0056fc69(unit, next cell)`, CONFIRMED read): only for a unit of the human player whose
+  size is 1 (`vtable +0x1c == 1`, owner `+0x2c == 0`; else returns 0 = re-plan around). Let `B` = the unit
+  occupying the cell: no `B` (`FUN_00551edb` = 0) and no unit standing still on that cell (`+0x70 == cell` and
+  at a centre) -> 0; `B` with `+0x94` (HP) < 1 -> 0; `B` mid-step: 1 if the follower's own next target
+  (`mover+6`) differs, else 0 -> wait; `B` at a centre with brain `+8` (its sub-state) 1 or 4 (idle/hold)
+  and `B`'s `+10` != the cell: 2 (ask it to move out of the way, the swap), else 0. A non-zero result makes the
+  driver face the cell (`FUN_00556b2c`, `FUN_00556da2`) and set the follower's brain `+8 = 10` (wait) instead of
+  re-planning; the brain states are phase I. Until then the engine always re-plans around blockers.
+- **Live layer** `+0x20000`: `FUN_00550a96` (structures, already in `World.block`), `FUN_0055c2ce` / `FUN_0055c1fe`
+  (unit footprint stamps from `FUN_0055be86`: interior value 2/3, border 1) register occupants in a cell table at
+  `+0x5402c` guarded by bit `0x20` of `+0x10000`; the engine's live layer is the INFERRED approximation of 7.3.
+- **Unreachable feedback**: client message `0x92` (7.1), a UI matter for H3.
 
 ### 7.5 Measured
 
@@ -423,9 +438,10 @@ or a per-tick plan budget if it shows). Golden routes: `tests/golden.json["paths
    `server tick & 3 == id & 3`: the interaction needs a check in phase I
    ([unit-struct §3](unit-struct.md)).
 4. The group-AI pass at `tick & 15 == 6` (`FUN_0056fe4d`): phase I and H3.
-5. Unit yield / swap of a blocking friendly unit (`FUN_0056fc69`, human-owned units only; waits with brain
-   `+8 = 10`) and the live-layer stamps: which bits `FUN_0055c2ce` / `FUN_0055c1fe` / `FUN_005589ab` /
-   `FUN_00559c28` write, and whether `+0x10000` really lacks the structure stamps (§7.3). H2 follow-up.
-6. Follow-target planning: `FUN_00557f08` (fallback with a follow target) and the driver `FUN_0055574d`.
+5. Unit yield / swap (`FUN_0056fc69` read in 7.4; the brain sub-states `+8`, 1/4/10, are phase I) and the live-layer
+   stamp bits (`FUN_0055c2ce` / `FUN_0055c1fe` / `FUN_005589ab` / `FUN_00559c28`), and whether `+0x10000` lacks the
+   structure stamps (§7.3).
+6. Follow-target planning: the ring order of `FUN_00557f08` (float helpers `FUN_0050d884/8c0`, `FUN_00557cf1`) and
+   the driver `FUN_0055574d` (7.4); phase I with attack orders.
 7. The class-0x12 / order-5 clause of the static fallback (`FUN_00556f56`, `FUN_0056ac5b`); the text of
    string `0x81` (message `0x92`, the unreachable feedback) and whether the engine should show it (H3 UI).
