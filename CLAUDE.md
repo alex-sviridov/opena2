@@ -215,7 +215,7 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   tie rule (`<=` orthogonal, `<` diagonal), unreachable -> cheapest labelled cell of the first ring around the target; two layers: a static
   plan (re-planned on target change or after 16 hops) and 3-4 cell dynamic hops over the live layer (every 32 ticks or when empty);
   `engine/sim/pathfinding.py` (pure), `MoveTo` order, overlay `--debug paths` (F4), `tools/bench_pathfinding.py`
-  (168 ms worst, 256x256; was 444), goldens `["paths"]`. Blocker wait (no swap: the first human size-1 unit turns to a walking friend and stops until re-ordered, 7.4) modelled; not decoded: follow-target. docs/engine/simulation.md §7
+  (168 ms worst, 256x256; was 444), goldens `["paths"]`. Blocker wait (no swap: the first human size-1 unit turns to a walking friend and stops until re-ordered, 7.4) modelled; follow-target decoded (7.4: `follow_fallback`, `follow_distance`; not wired, no follow order yet). docs/engine/simulation.md §7
 - Orders (H3) done: click to move, REA-checked (docs/engine/click-to-move-research.md): left release dispatches on the cursor chosen at release
   (move; attack over ground = move), right release = cancel pending mode / deselect, right drag scrolls, minimap left click = move; no Stop
   message (T = cmd 0x18, order 0xc), no click marker, "No way" text; every command makes a new group, formation Off/Auto/On = rigid translation

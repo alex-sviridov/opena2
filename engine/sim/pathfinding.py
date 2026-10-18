@@ -11,6 +11,7 @@ as in the exe's 256 x 256 grids; the 8-cell map border is blocked, so a plan nev
 
 from array import array
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 import numpy as np
 
@@ -316,7 +317,174 @@ def _xy_table():
     return _XY
 
 
-def _plan(grid, start, target, size, walker, human, static, cfg, radius):
+# ---------------------------------------------------------------------------------------------
+# Follow-target fallback (FUN_00557f08): spec docs/engine/simulation.md section 7.4 / 9.
+
+class Foot(NamedTuple):
+    """What the follow routines read of a unit: `FUN_0054ffb0/c0` cell (x, y), the token size (vtable
+    `+0x1c`), and the mover's sub-cell offsets (`mover+4/+5`, 0x80 = cell centre)."""
+    x: int
+    y: int
+    size: int = 1
+    sx: int = 128
+    sy: int = 128
+
+
+# Direction table at pathfinder +0x54156 (constructor 0x5543e7): (dx, dy) = E, S, W, N repeated 3 times.
+FOLLOW_DIRS = ((1, 0), (0, 1), (-1, 0), (0, -1)) * 3
+FOLLOW_ATTEMPTS = 8             # box growths tried (0x557f1d.. `cmp [ebp-0x44], 8`)
+FOLLOW_RING_CAP = 100           # walk iterations stop after step 0x64 (0x5584ee)
+
+
+def centre_x(u):
+    """FUN_0050d884: footprint centre x in 1/256 cells, 16-bit: cell * 256 + sub + (size - 1) * 128."""
+    return (((u.x << 8) + u.sx) + ((u.size - 1) << 7)) & 0xFFFF
+
+
+def centre_y(u):
+    """FUN_0050d8c0: the same for y."""
+    return (((u.y << 8) + u.sy) + ((u.size - 1) << 7)) & 0xFFFF
+
+
+def follow_distance(a, b):
+    """FUN_00556dcd(a, b): gap between the footprint centres less the half sizes, Chebyshev, in whole
+    cells, plus 1 (touching = 1).  Each axis: |dpos| - (size_a + size_b) * 128, floored at 0; the larger
+    axis is divided by 256 truncating toward zero and incremented.  Returns a byte."""
+    half = (a.size + b.size) << 7
+    dx = max(abs(centre_x(a) - centre_x(b)) - half, 0)
+    dy = max(abs(centre_y(a) - centre_y(b)) - half, 0)
+    v = max(dx, dy)
+    return ((v >> 8) + 1) & 0xFF
+
+
+def follow_compass(target, follower):
+    """FUN_00557cf1(target, follower): 16-way compass code of the follower as seen from the target, from
+    `d = centre(follower) - centre(target)`: 0 north (just east of north), 3/4 east, 7/8 south, 11/12
+    west, 15 north (just west).  Within a half-plane the axis ratio splits at 2:1 and 1:1.
+
+    Quadrants (a = |dx|, b = |dy|, as 16-bit values): dx > 0, dy > 0: a > b ? (a > 2b ? 4 : 5) :
+    (b > 2a ? 7 : 6); dx > 0, dy <= 0: a > b ? (a > 2b ? 3 : 2) : (b > 2a ? 0 : 1); dx <= 0, dy > 0:
+    a > b ? (a > 2b ? 11 : 10) : (b > 2a ? 8 : 9); dx <= 0, dy <= 0: a > b ? (a > 2b ? 12 : 13) :
+    (b > 2a ? 15 : 14)."""
+    dx = centre_x(follower) - centre_x(target)
+    dy = centre_y(follower) - centre_y(target)
+    a = (dx if dx > 0 else -dx) & 0xFFFF
+    b = (dy if dy > 0 else -dy) & 0xFFFF
+    if dx > 0:
+        if dy > 0:
+            return (4 if a > 2 * b else 5) if a > b else (7 if b > 2 * a else 6)
+        return (3 if a > 2 * b else 2) if a > b else (0 if b > 2 * a else 1)
+    if dy > 0:
+        return (11 if a > 2 * b else 10) if a > b else (8 if b > 2 * a else 9)
+    return (12 if a > 2 * b else 13) if a > b else (15 if b > 2 * a else 14)
+
+
+def _ftol(v):
+    """FUN_00582c0c: FISTP with truncation, low dword; NaN / inf give the 'integer indefinite' (low dword 0)."""
+    if v != v or v in (float("inf"), float("-inf")):
+        return 0
+    return int(v)
+
+
+def _f32(v):
+    return float(np.float32(v))
+
+
+def follow_fallback(fld, follower, target, dead=None, sidx=-1):
+    """FUN_00557f08(follower, target): the cell to walk to when the dynamic wave did not label the goal and
+    the plan has a unit target.  Returns `(x, y)` or None (the exe returns 0).
+
+    `fld`: label field (flat 65536 list, UNSEEN = unlabelled); `dead`/`sidx` as in `_nearest_reached` (cells
+    the working field holds as 0 but the exe leaves unlabelled).  Algorithm (all CONFIRMED, 0x557f08):
+
+    1. side = ((compass(target, follower) + 2) & 12) >> 2) + 4 : 4 north, 5 east, 6 south, 7 west.
+    2. line through the two centres, fx/fy = centre(target) - centre(follower) as float32:
+       side 5/7: fx += 1.0 if fx == 0; s = f32(fy / fx); b = trunc(Ty - Tx * s)  (line y = s x + b);
+       side 4/6: s = f32(fx / fy) (no zero guard); b = trunc(Tx - Ty * s)       (line x = s y + b).
+       T* = centre of the target.
+    3. box (cells, top-left of the follower's footprint): x0 = Tx - follower.size, y0 = Ty - follower.size,
+       x1 = Tx + target.size, y1 = Ty + target.size (cell coordinates).  Up to 8 attempts, growing the box
+       by one cell on every side after each attempt, until a labelled cell was seen.
+    4. entry point on the box edge of `side` (4: row y0, 5: column x1, 6: row y1, 7: column x0): the line is
+       evaluated at the edge's cell centre ((edge << 8) + 0x80), truncated, then arithmetic >> 8.
+    5. two walkers start there and walk `n = (x1 - x0) + (y1 - y0) + 1` steps; walker 1 forward with direction
+       index p (E, S, W, N pattern, p starts at side), walker 2 backwards (q starts at side, steps by
+       -dir[q]).  Each step: read the label of both walkers (walker 1 first); a label strictly below the best so
+       far replaces it (first wins ties).  Then the corner test, then the move:
+       walker 1: idx p%4 0: x == x1, 1: y == y1, 2: x == x0, 3: y == y0 -> p += 1; move by dir[p].
+       walker 2: idx q%4 0: x == x0, 1: y == y0, 2: x == x1, 3: y == y1 -> q -= 1; move by -dir[q].
+       (the walk stops after step 100.)  Coordinates are 16-bit; label lookups use the low bytes.
+    6. result `(y << 8) + x` of the best cell, 0 when nothing was labelled after 8 attempts.
+    """
+    code = follow_compass(target, follower)
+    side = (((code + 2) & 0xC) >> 2) + 4
+    tx, ty = centre_x(target), centre_y(target)
+    fx = _f32(tx - centre_x(follower))
+    fy = _f32(ty - centre_y(follower))
+    with np.errstate(all="ignore"):
+        if side in (5, 7):
+            if fx == 0.0:
+                fx = _f32(fx + 1.0)
+            s = float(np.float32(fy) / np.float32(fx))
+            b = _ftol(float(_f32(ty)) - tx * s)
+        else:
+            s = float(np.float32(fx) / np.float32(fy))
+            b = _ftol(float(_f32(tx)) - ty * s)
+    x0, y0 = target.x - follower.size, target.y - follower.size
+    x1, y1 = target.x + target.size, target.y + target.size
+
+    def label(x, y):
+        idx = ((y & 255) << 8) + (x & 255)
+        if dead is not None and dead[idx] and idx != sidx:
+            return UNSEEN
+        return fld[idx]
+
+    best, bx, by = UNSEEN, 0, 0
+    attempt = 0
+    while best == UNSEEN and attempt < FOLLOW_ATTEMPTS:
+        attempt += 1
+        with np.errstate(all="ignore"):
+            if side == 4:
+                py = y0; px = _ftol(((y0 << 8) + 0x80) * s + b) >> 8
+            elif side == 5:
+                px = x1; py = _ftol(((x1 << 8) + 0x80) * s + b) >> 8
+            elif side == 6:
+                py = y1; px = _ftol(((y1 << 8) + 0x80) * s + b) >> 8
+            else:
+                px = x0; py = _ftol(((x0 << 8) + 0x80) * s + b) >> 8
+        p = q = side
+        ax, ay = px & 0xFFFF, py & 0xFFFF
+        bx2, by2 = ax, ay
+        n = (x1 - x0) + (y1 - y0) + 1
+        for i in range(n):
+            v = label(ax, ay)
+            if v < best:
+                best, bx, by = v, ax, ay
+            v = label(bx2, by2)
+            if v < best:
+                best, bx, by = v, bx2, by2
+            if p <= 0xB:
+                m = p & 3
+                if (m == 0 and ax == x1) or (m == 1 and ay == y1) or (m == 2 and ax == x0) or (m == 3 and ay == y0):
+                    p += 1
+            ax = (ax + FOLLOW_DIRS[p][0]) & 0xFFFF
+            ay = (ay + FOLLOW_DIRS[p][1]) & 0xFFFF
+            if 0 <= q <= 0xB:
+                m = q & 3
+                if (m == 0 and bx2 == x0) or (m == 1 and by2 == y0) or (m == 2 and bx2 == x1) or (m == 3 and by2 == y1):
+                    q -= 1
+            bx2 = (bx2 - FOLLOW_DIRS[q][0]) & 0xFFFF
+            by2 = (by2 - FOLLOW_DIRS[q][1]) & 0xFFFF
+            if i > FOLLOW_RING_CAP:
+                break
+        x0 -= 1; y0 -= 1; x1 += 1; y1 += 1
+    if best == UNSEEN:
+        return None
+    res = ((by << 8) + bx) & 0xFFFF
+    return None if res == 0 else (res & 255, res >> 8)
+
+
+def _plan(grid, start, target, size, walker, human, static, cfg, radius, follow=None):
     res = PathResult()
     if start == target:
         res.reason = "at target"
@@ -339,8 +507,11 @@ def _plan(grid, start, target, size, walker, human, static, cfg, radius):
     end = target
     tidx, sidx = target[1] * GRID + target[0], start[1] * GRID + start[0]
     if fld[tidx] == UNSEEN or (dead is not None and dead[tidx] and tidx != sidx):
-        end = _nearest_reached(fld, target, radius if radius is not None else (quarter + 4 if static else 8),
-                               dead, sidx)
+        if follow is not None:                              # 0x54e30f: a unit target, FUN_00557f08
+            end = follow_fallback(fld, follow[0], follow[1], dead, sidx)
+        else:
+            end = _nearest_reached(fld, target, radius if radius is not None else (quarter + 4 if static else 8),
+                                   dead, sidx)
         if end is None:
             res.reason = "unreachable"
             return res
@@ -362,7 +533,9 @@ def plan_static(grid, start, target, *, size=1, walker=True, human=False, cfg=DE
     return _plan(grid, tuple(start), tuple(target), size, walker, human, True, cfg, None)
 
 
-def plan_dynamic(grid, start, target, *, size=1, walker=True, cfg=DEFAULT_CONFIG, radius=None):
+def plan_dynamic(grid, start, target, *, size=1, walker=True, cfg=DEFAULT_CONFIG, radius=None, follow=None):
     """The short hop plan (`FUN_0054d76e` with mode 0) over the live layer `grid` (units stamped as blocked,
-    the planner's own footprint not)."""
-    return _plan(grid, tuple(start), tuple(target), size, walker, False, False, cfg, radius)
+    the planner's own footprint not).  `follow=(follower Foot, target Foot)`: the hop plan of a follow driver
+    (`FUN_00555dc2(unit, target unit)`, 7.4): when the hop goal stays unlabelled the end cell is
+    `follow_fallback` around the target unit (not around `target`), instead of the ring scan."""
+    return _plan(grid, tuple(start), tuple(target), size, walker, False, False, cfg, radius, follow)

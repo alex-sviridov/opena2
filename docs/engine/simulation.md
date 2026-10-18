@@ -217,7 +217,7 @@ and actions (it is never reset, CONFIRMED). The unit is drawn from its server po
 | cell lists / reservation | `FUN_00550697`, `FUN_0055020a`, `FUN_0055be86` |
 | client message | `FUN_0050ff2d`, `FUN_005040c4` (`0x6d` turn, move per cell) |
 | search / wrapper | `FUN_0054d76e` / `FUN_0054d72d`; expanders `FUN_0055d010`/`0055d830` (static, size 1), `0055c6f0`/`0055c910` (static, sized), `0055e050`/`0055e870`, `0055cb30`/`0055cdf0` (dynamic) |
-| path walk / fallback | `FUN_0054e58c`, `FUN_0054e886` / `FUN_005585f4` (rings), `FUN_00557f08` (follow, open) |
+| path walk / fallback | `FUN_0054e58c`, `FUN_0054e886` / `FUN_005585f4` (rings), `FUN_00557f08` (follow, 7.4) |
 | drivers | `FUN_00555411` (move to cell), `FUN_0055574d` (follow), `FUN_00555dc2` (hop plan), `FUN_00558f64`, wrapper `0x56e4b0` in `FUN_0056dca2` |
 | lists | `FUN_0055f170` push front, `FUN_0055f110` pop head, `FUN_0055f0d0`/`0055f0f0` peek head/tail, `FUN_005421b0` clear |
 | layers / stamps | `FUN_0055fa70` (`+0x10000`), `FUN_0055fa20` (`+0x20000`), `FUN_0055be86`, `FUN_0055c2ce`, `FUN_0055c1fe`, `FUN_0055c440`, `FUN_0055c5a0`, `FUN_0056fc69` |
@@ -312,7 +312,7 @@ orthogonal neighbour in (dx, dy) order and the first-best diagonal.
 visited cell with the **smallest field value** (first one in scan order wins ties), stops at the first ring
 that has any, returns 0 when none. So the unit walks to the reached cell *cheapest from itself* within the
 first ring around the target that the wave touched, not the one nearest the target. Static: `radius = dist>>2 + 4`;
-dynamic without follow target: 8; dynamic with a follow target: `FUN_00557f08` (open). No cell: the list stays
+dynamic without follow target: 8; dynamic with a follow target object: `FUN_00557f08` (7.4). No cell: the list stays
 empty (the order sees `mover+0x98 = 1`). The static branch also calls `FUN_005052d2(1, 0, owner)` when the
 fallback cell is more than 1 cell from the target (more than 2 when `FUN_00559bc9(target)` is non-zero: a
 target cell with bit `0x20` of `+0x10000` and a record in the cell table, i.e. a building cell, returns the
@@ -356,7 +356,7 @@ is only a fallback for a non-empty list (never so at a centre). `FUN_0054f38a` (
 static list to the current cell with `FUN_005516dd`) has no caller or vtable reference in the exe (dead code).
 Units entering the next cell between two centres are therefore noticed at the next centre, not mid-step: a step
 is never aborted. `FUN_0055574d` is the same driver for a
-follow target (re-plan every `len/3 + 1` consumed waypoints, StaticIsntNeeded gate; open).
+follow target (re-plan every `len/3 + 1` consumed waypoints, StaticIsntNeeded gate; 7.4).
 
 #### List operations, every branch (CONFIRMED, asm read: `FUN_00555dc2`, `FUN_00555411`, `FUN_0054e886`, `FUN_0054d76e`)
 
@@ -433,12 +433,62 @@ as a byte. Goldens unchanged.
 
 ### 7.4 Read but not implemented (needs orders/AI of phase I)
 
-- **Follow-target fallback** (`FUN_00557f08(unit, target unit)`, CONFIRMED read, INFERRED reading): when the dynamic
-  search toward a *unit* target (`FUN_0055574d`) leaves its cell unlabelled, the routine walks a box perimeter around
-  the target's footprint (`token_size`) as seen from the follower (start side from `FUN_00557cf1`, direction table
-  `+0x54156`, the box grows by one cell per attempt, at most 8 attempts) and returns the labelled cell with the
-  smallest label (strict `<`, first wins). Ring order uses float trig helpers (`FUN_0050d884/8c0`) not yet
-  decoded; `MoveTo` has no unit target, so the engine uses the cell fallback only.
+- **Follow-target fallback** (`FUN_00557f08(follower, target)`, all CONFIRMED, asm 0x557f08-0x558571, table bytes read from the
+  exe; implemented as `follow_fallback` in `engine/sim/pathfinding.py`, not wired to any order yet). Reached from the planner
+  `FUN_0054d76e` at `0x54e30f` only when the **dynamic** plan (mode 0) leaves its goal cell unlabelled **and** the plan carries a
+  target object (`param_7 != 0`, passed by `FUN_00555dc2(unit, target)` -> `FUN_0054d72d(.., 0, target)`); without a target object
+  the ring scan `FUN_005585f4(unit, 0, goal, 8)` runs. The goal is the hop goal (a static waypoint), but the fallback ring is laid
+  round the *target unit*, not round the goal. The returned cell (`y << 8 | x`, 0 = none) goes to `FUN_0054e886` like the ring cell.
+  The "float trig helpers" are integer: `FUN_0050d884/8c0(unit)` = `((cell << 8) + sub) + (size - 1) * 128` (16-bit; cell = mover
+  `+0/+1`, sub = mover `+4/+5`, 0x80 = centre, size = vtable `+0x1c`), the unit's footprint centre in 1/256 cells; only the
+  slope below is float.
+  1. `FUN_00557cf1(target, follower)`: `d = centre(follower) - centre(target)`, `a = |dx|, b = |dy|` (16-bit, strict compares, `dx == 0`
+     or `dy == 0` count as non-positive): `dx > 0, dy > 0`: `a > b ? (a > 2b ? 4 : 5) : (b > 2a ? 7 : 6)`; `dx > 0, dy <= 0`:
+     `a > b ? (a > 2b ? 3 : 2) : (b > 2a ? 0 : 1)`; `dx <= 0, dy > 0`: `a > b ? (a > 2b ? 11 : 10) : (b > 2a ? 8 : 9)`; `dx <= 0, dy <= 0`:
+     `a > b ? (a > 2b ? 12 : 13) : (b > 2a ? 15 : 14)`. Codes run clockwise from north (0), 4 east, 8 south, 12 west.
+  2. `side = (((code + 2) & 12) >> 2) + 4`: 4 north (codes 14..1), 5 east (2..5), 6 south (6..9), 7 west (10..13).
+  3. Slope (float32 stores, x87 core): `fx = centre_x(T) - centre_x(F)`, `fy = centre_y(T) - centre_y(F)`. East/west: `fx += 1.0` if
+     `fx == 0`, `s = f32(fy / fx)`, `b = trunc(Ty - Tx * s)` (line `y = s x + b`); north/south: `s = f32(fx / fy)` (no zero guard),
+     `b = trunc(Tx - Ty * s)` (line `x = s y + b`), `trunc` = `FUN_00582c0c` (FISTP, round toward zero). Every product and sum
+     is exact in 53 and in 64 bits of mantissa, so the precision control does not matter; only the unguarded `fy == 0` case
+     (follower on the target's centre: code 14, `0/0`) depends on the FPU exception mask (INFERRED: masked, integer indefinite,
+     low dword 0).
+  4. Box in cells, from the target's cell `(Tx, Ty)`, sizes `Fs`, `Ts`: `x0 = Tx - Fs`, `y0 = Ty - Fs`, `x1 = Tx + Ts`, `y1 = Ty + Ts`
+     (the ring of top-left cells where the follower's footprint touches the target's). Attempt `k = 1..8`, while no cell is labelled;
+     after each attempt `x0--, y0--, x1++, y1++`.
+  5. Entry cell on the edge of `side` (4: row `y0`, 5: column `x1`, 6: row `y1`, 7: column `x0`): the line is evaluated at the edge's
+     cell centre `(edge << 8) + 0x80` (`ftol`, then arithmetic `>> 8`). It can lie outside the edge's span (shallow lines, off-centre
+     sub-offsets); it is not clamped.
+  6. Two walkers start on the entry cell and make `n = (x1 - x0) + (y1 - y0) + 1` steps (cap: stops after step 100). Direction
+     table at pathfinder `+0x54156` (constructor `0x5543e7`): `(dx, dy)` = E, S, W, N repeated three times (12 entries). Per step:
+     read the label of walker 1 then walker 2 (`FUN_0055f970` = `+0x30000 + 2 * (y << 8 | x)`, low bytes of the 16-bit
+     coordinates), keep it if **strictly** below the best (so the lowest label wins, ties go to the earlier read: walker 1 before
+     walker 2, earlier step first; label 0 = the follower's own cell wins over everything). Then the corner test and the move:
+     walker 1 (index `p`, starts at `side`): `p % 4` = 0: `x == x1`, 1: `y == y1`, 2: `x == x0`, 3: `y == y0` -> `p += 1`; move by
+     `dir[p]` (walks the ring clockwise). Walker 2 (`q`, starts at `side`): `q % 4` = 0: `x == x0`, 1: `y == y0`, 2: `x == x1`, 3:
+     `y == y1` -> `q -= 1`; move by `-dir[q]` (anticlockwise). Coordinates wrap at 16 bits and are compared unmasked to the box
+     (a box edge below 0 never matches).
+  7. Result: the best cell `(y << 8) + x`, or 0 after 8 attempts without any labelled cell. Consequence of 5 and 6: the two walkers
+     together cover the ring only when the entry cell is on it; otherwise some ring cells (e.g. the far side) are never read.
+  `MoveTo` has no unit target, so the engine's orders use the cell fallback only until the follow command exists
+  (`plan_dynamic(.., follow=(follower, target))` is the hook).
+- **Follow driver** (`FUN_0055574d(unit, target unit, range)`, CONFIRMED asm 0x55574d-0x555b35; callers: `FUN_0056ea52` from brain
+  mode 4 (`FUN_0056dca2` case 3), mode 5 (`56eab5`, attack) and mode 8 (`56ebc0`, cast at object), always with
+  `range = brain+0x14` (byte; `FUN_0056ac5b`, §9) and the pathfinder `world+0xa50`). Same two-layer driver as 7.2:
+  `tcell = cell of the target` (`FUN_0054ff9e`); `d = FUN_00556dcd(unit, target)` = `max over axes of max(|centre delta| - (Fs + Ts) * 128,
+  0)`, `>> 8` truncating, `+ 1` (touching = 1; implemented `follow_distance`). Not at a cell centre: `FUN_00555b38` (continue the
+  step). At a centre: `d <= range` (bytes): turn towards the target (`FUN_00556d78` = `FUN_00556454(unit, FUN_005568e4(unit,
+  target))`), no plan, no step. Otherwise `mover+0x78 += 1`; if `mover+0x7c` (followed object) != target: `mover+9 = 0xFF`, static
+  list cleared, `mover+0x8a = 0xFF`, `mover+0x76 = mover+0x8c = tcell`. If `mover+9 > len(static) / 3 + 1`: static re-plan: when
+  `mover+0x8a <= StaticIsntNeeded` the list is cleared and `FUN_00542300` is called with `mover+0x76`, else `FUN_0054d72d(unit, tcell, 1,
+  target)` (**static mode, with the target object**: the static fallback is the ordinary `FUN_005585f4` ring, the object matters only
+  in mode 0); then `mover+0x8a = len`, `mover+0x74 = tcell`; an empty result sets `mover+0x98 = 1` (no way), else `mover+0x76` = the
+  static head, `mover+0x8c = tcell`; `mover+0x7c = target`, `mover+9 = 0`, and with `mover+0x8a > StaticIsntNeeded` the dynamic
+  list is cleared. If the unit's cell == `mover+0x76` and `mover+0x8c == tcell`: `mover+9 += 1`, `mover+0x7c = 0`, return (arrived at
+  its hop goal; no step). Else when the dynamic list is empty or `mover+0x78 > DynamicRefreshRate`, and facing == target facing:
+  `FUN_00555dc2(unit, target)` (hop plan with the follow fallback above), `mover+0x94 = tcell`, `mover+0x96 = own cell`, `mover+9 += 1`,
+  `mover+0x78 = 0`; finally `FUN_00555c7e` (the step). After the call `FUN_0056ea52` sets `unit+0x54 = 1`, and when the unit is mid-step
+  (`FUN_00551383(mover) == 0`) brain order `+9 := 3` (step), `+0x15 := 0`.
 - **Blocker handling** (`FUN_0056fc69(this, unit A, next cell)`, CONFIRMED read of the whole routine and its
   caller `0x55567d`; there is **no swap**: nothing ever tells the blocker to move). Reached when the static
   head is adjacent and `FUN_0055c5a0` (1 = free, loop over the `size x size` footprint of the live layer with the
@@ -768,12 +818,11 @@ written by every order issuer through `FUN_0056ac5b` (spell range when the selec
 creature byte `+0x12c`; structures 1..3 by footprint). Blockers of the mover see modes 1 and 4 as walking
 (`blocker_verdict` here models mode 1 only).
 
-**Following a moving target** (`FUN_0055574d`, fallback `FUN_00557f08`): same two-layer driver as 7.2, but the plan target is a
-unit: re-plan every `len/3 + 1` consumed waypoints, gated by `StaticIsntNeeded`; when the dynamic search leaves the target cell
-unlabelled, `FUN_00557f08` walks a box perimeter around the target's footprint as seen from the follower (start side
-`FUN_00557cf1`, direction table `+0x54156`, one cell larger per try, at most 8 tries) and takes the labelled cell with the smallest
-label. OPEN: the ring order (float helpers `FUN_0050d884/8c0`), `FUN_00557cf1`, the follow flag of `FUN_0054d72d` (`param_5`, 7.1
-"dynamic with a follow target"). Not decoded in this phase (no cheap shortcut: the ring order is float trigonometry).
+**Following a moving target** (`FUN_0055574d`, fallback `FUN_00557f08`, CONFIRMED, full algorithm in 7.4; pure functions
+`follow_distance`, `follow_compass`, `follow_fallback` and `plan_dynamic(.., follow=)` in `engine/sim/pathfinding.py`, not wired):
+the driver is the 7.2 driver with the plan target a unit; range test `follow_distance <= brain+0x14` turns to the target instead of
+planning; static plans use the ordinary ring fallback, only the hop plan (`FUN_00555dc2(unit, target)`) uses the box-perimeter
+fallback round the target unit. Phase I still has to build the callers (brain modes 4/5/6/8 and the `0x19`/`0x1b` orders).
 
 **Attack and cast states** (H1 §3, [unit-struct §10](unit-struct.md)): state 3 (melee, `+0x58` phases 0 start, 5 wind-up, 7
 recovery, [animation §3.4](../formats/animation.md)), 0xd cast at object, 0xe cast at cell (`+0x15` counter, cast request at 3,
@@ -822,7 +871,6 @@ is not filtered by recipient.
 4. Group orders 1, 3, 5, 0x13 (`57275f`, `57309d`, `572e1e`, `57311c`), the computer players' branch of the pass and the
    retreat post pass `FUN_00573713`: phase I ([research §9](click-to-move-research.md)).
 5. The stored occupant/stamp slots with their release quirks (7.4 "Cell record"): `FUN_0055073f` clears a slot of any unit, so a first-come loser loses its record when the winner leaves; the engine derives the occupant instead. Starting routine `FUN_0055be86` callers `0x558b7c`, `0x56a5df` (how often a standing unit re-stamps, which decides how long such a cell stays unowned).
-6. Follow-target planning: the ring order of `FUN_00557f08` (float helpers `FUN_0050d884/8c0`, `FUN_00557cf1`) and the
-   driver `FUN_0055574d` (7.4); phase I with attack orders.
+6. The x87 control word at run time (precision / exception mask) for the slope in `FUN_00557f08`: only the follower-on-target-centre case (`0/0`) depends on it (7.4 step 3). Starting routine CRT start-up before `0x557f08`; DirectDraw init.
 7. The class-0x12 / order-5 clause of the static fallback (`FUN_00556f56`, `FUN_0056ac5b`).
 8. Loop-back latency of commands (research open question 1) and the phase of the group pass against the first tick.
