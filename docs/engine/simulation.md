@@ -227,8 +227,11 @@ and actions (it is never reset, CONFIRMED). The unit is drawn from its server po
    turn (4 ticks) vs a 45° turn (snaps, 1 tick).
 3. **No pause between cells** on a long straight walk (matches [animation §3.6 #2](../formats/animation.md)).
 4. **Hills.** A monster walking 10 cells up and down a 32-height slope: ±50 % step length (clamp).
-5. **Occupying the next cell.** Order two units to swap places on a one-cell-wide road: they should
-   collide at about the middle of a step (needs H2 blocking; record the observation then).
+5. **Occupying the next cell.** Order two of your units to swap places on a one-cell-wide road. Predicted
+   (7.4): there is no swap; the unit the exe handles first turns to face the other and stops for good (its
+   order is not restarted), the other finds no way round and stops too. Also: a hero walking directly behind
+   another walking hero should halt and face it when the cell ahead is the leader's; record what the original
+   does (this is the strangest consequence of the decode).
 6. **Diagonal vs straight cost**: diagonal cells take `ceil(256 / trunc(v·0.707))` ticks, 1.47× a
    straight cell at v = 18 although the cell distance is 1.41×.
 
@@ -328,8 +331,8 @@ Move order entry (wrapper `0x56e4b0` in the Brain function `FUN_0056dca2`): `mov
 3. `cell == mover+0x76` -> `mover+0x90 = 1` (arrived; the brain ends the order, [open question 1](#open-questions)).
 4. Otherwise, if the dynamic list is empty or `mover+0x78 > DynamicRefreshRate`: **hop re-plan**. `next` = the
    static list head if it is adjacent (`FUN_00558f64`). If `next` exists and its footprint is blocked in the live
-   layer (`FUN_0055c5a0`), `FUN_0056fc69` decides whether to wait for the blocker (human-owned units only, see
-   7.4). Otherwise `FUN_00555dc2`: with `n` = static list length and `d` = Chebyshev distance to its head,
+   layer (`FUN_0055c5a0`, returns 1 when free), `FUN_0056fc69` decides whether to wait for the blocker (human-owned
+   size-1 units only, see 7.4); a wait skips both the hop plan and step 5. Otherwise `FUN_00555dc2`: with `n` = static list length and `d` = Chebyshev distance to its head,
    goal = the static tail if `n <= StaticIsntNeeded`; else the head if `d > DynamicByStaticLookup`; else the element
    `DynamicByStaticLookup` places behind the head. `FUN_0054d72d(goal, mode 0)` fills the dynamic list; if that
    list is empty and the goal was the tail `+0x98 = 1`; if `n > 0` and `d <= DynamicByStaticLookup` the static head
@@ -373,8 +376,9 @@ follow target (re-plan every `len/3 + 1` consumed waypoints, StaticIsntNeeded ga
   MFC-style get-and-advance (INFERRED).
 - A finished order clears `dest`/`static_path` (DECISION; the exe keeps `+0x74`, so a repeated order to the
   same cell would skip the static plan there: open).
-- `FUN_0056fc69` (yield/swap of a blocking friendly unit) is **not modelled**: the unit re-plans around the
-  blocker (what the exe does for computer-controlled units and when the blocker cannot yield).
+- `FUN_0056fc69` is modelled for human-player size-1 units (`blocker_verdict`, `_begin_wait`, `_tick_wait`;
+  `Mover.waiting` = brain mode 10, `Mover.parked` = mode 0 under a move order, dumped only when set); every
+  other unit re-plans around the blocker. See 7.4.
 - Performance and search statistics: see 7.5.
 
 ### 7.4 Read but not implemented (needs orders/AI of phase I)
@@ -385,14 +389,34 @@ follow target (re-plan every `len/3 + 1` consumed waypoints, StaticIsntNeeded ga
   `+0x54156`, the box grows by one cell per attempt, at most 8 attempts) and returns the labelled cell with the
   smallest label (strict `<`, first wins). Ring order uses float trig helpers (`FUN_0050d884/8c0`) not yet
   decoded; `MoveTo` has no unit target, so the engine uses the cell fallback only.
-- **Blocker handling** (`FUN_0056fc69(unit, next cell)`, CONFIRMED read): only for a unit of the human player whose
-  size is 1 (`vtable +0x1c == 1`, owner `+0x2c == 0`; else returns 0 = re-plan around). Let `B` = the unit
-  occupying the cell: no `B` (`FUN_00551edb` = 0) and no unit standing still on that cell (`+0x70 == cell` and
-  at a centre) -> 0; `B` with `+0x94` (HP) < 1 -> 0; `B` mid-step: 1 if the follower's own next target
-  (`mover+6`) differs, else 0 -> wait; `B` at a centre with brain `+8` (its sub-state) 1 or 4 (idle/hold)
-  and `B`'s `+10` != the cell: 2 (ask it to move out of the way, the swap), else 0. A non-zero result makes the
-  driver face the cell (`FUN_00556b2c`, `FUN_00556da2`) and set the follower's brain `+8 = 10` (wait) instead of
-  re-planning; the brain states are phase I. Until then the engine always re-plans around blockers.
+- **Blocker handling** (`FUN_0056fc69(this, unit A, next cell)`, CONFIRMED read of the whole routine and its
+  caller `0x55567d`; there is **no swap**: nothing ever tells the blocker to move). Reached when the static
+  head is adjacent and `FUN_0055c5a0` (1 = free, loop over the `size x size` footprint of the live layer with the
+  mover mask `mover+5`) says it is not. Verdict in AL (0 = re-plan round the blocker, 1 and 2 are treated alike):
+  1. A not size 1 (vtable `+0x1c`) or its owner's `+0x2c != 0` (computer player): 0. `mover+0x80 == cell`
+     (the cell A itself stamps, never true for an adjacent cell at a centre): 0.
+  2. `B` = the unit of the cell record (`FUN_00551edb`: needs bit `0x20` in `+0x10000`, record lookup
+     `FUN_0055f3e0`, unit pointer at rec `+4`; friend or foe, no relation test). No record: `FUN_0054ec6a(cell, 1)`
+     lists the units of the 3x3 around it; one whose `mover+0x70` (cell its step began on) is `cell` and that
+     is off-centre (`FUN_00551383`: sub-offset bytes both 0x80 = at centre) -> 2, else 0.
+  3. B with HP (`+0x94`) < 1: 0. B off-centre (mid-step): 0 if A's `mover+6` (last cell it entered) is `cell`,
+     else 1. B at a centre: brain mode (`+0x1c4 -> +8`) 1 (go to cell) or 4 (approach object): 0 if A's own
+     destination (`brain+0xa`) is `cell`, else 2; any other mode (idle 0, 10 turning, attacking...): 0.
+  4. Non-zero verdict (`0x555692`-`0x5556eb`): `FUN_00556b2c` = facing to the cell (0, 32 ... 224, ratio rule,
+     equals `facing_to` for adjacent cells). Already facing it: mode := 0. Else `FUN_00556da2` (=
+     `FUN_00556454(unit, facing)`, starts the turn) and mode := **10**. `FUN_00555c7e` (the step) is skipped, the
+     counters `mover+9`/`+0x78` keep running, no other state is touched.
+  5. **Mode 10** has one reader, the brain dispatch `0x56e157` -> `FUN_0056e55d`: while `mover+0` (facing) !=
+     `mover+1` call `FUN_00556454` again and `unit+0x54 = 1` (turning), else mode := 0, state := 0.
+     Mode 10 is written only by `0x5556d8`. Mode 0 does nothing: the unit stands with order 1 and no driver.
+  6. Consequences (CONFIRMED code, INFERRED play): the first unit processed (creature order) that meets a
+     walking blocker waits for good; its partner then sees mode 0/10 and re-plans (a one-cell road: no way,
+     it stops). A mid-step leader directly ahead also halts a human follower. No code restarts mode 1: the
+     only mode-1 setter for order 1 is the order executor `FUN_00569321` (`0x569409` -> `FUN_0056c8af`),
+     which is reached only from the group-message handler (`FUN_00570087` type 0 -> `0x56fe34`, run at
+     `tick & 15 == 6`) and from two functions without callers (`0x56920c`, `0x56dc49`, not in any vtable).
+     So a parked unit resumes only on a new command (engine: `MoveTo`/`FollowPath` clear `parked`).
+     Contradicts unit-struct §9, which calls `FUN_00569321` a per-tick executor; the call graph does not.
 - **Live layer** `+0x20000` and the cell-record table (CONFIRMED, GOG exe):
   - The path-finder keeps a hash map of 60-byte **cell records** at `+0x54084` (lookup `FUN_0055f3e0` copies a
     record into the scratch record at `+0x5402c`, `FUN_0055f430` writes it back, `FUN_0055f460` deletes it) for
@@ -471,7 +495,9 @@ or a per-tick plan budget if it shows). Golden routes: `tests/golden.json["paths
    `server tick & 3 == id & 3`: the interaction needs a check in phase I
    ([unit-struct §3](unit-struct.md)).
 4. The group-AI pass at `tick & 15 == 6` (`FUN_0056fe4d`): phase I and H3.
-5. Unit yield / swap (`FUN_0056fc69` read in 7.4; the brain sub-states `+8`, 1/4/10, are phase I). The meaning of live/static
+5. Blocker wait (7.4): who feeds the type-0 group message that re-runs the order executor (`FUN_00570087` case 0,
+   `FUN_00569321`) and whether a parked unit is ever restarted; mode 4 blockers (approach object) and the exe's
+   first-come cell record (engine: first unit in list order). The meaning of live/static
    bit `0x10` (`FUN_00559c28`, callers `0x518589`, `0x51899b`) and the death-time stamp release.
 6. Follow-target planning: the ring order of `FUN_00557f08` (float helpers `FUN_0050d884/8c0`, `FUN_00557cf1`) and
    the driver `FUN_0055574d` (7.4); phase I with attack orders.

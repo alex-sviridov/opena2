@@ -227,3 +227,110 @@ def test_live_layer_holds_footprint_and_entered_cell_of_others_only():
     assert (5, 5) not in live_cells(w, me)                              # own footprint released
     big.hp = 0
     assert live_cells(w, me) == set()
+
+
+# --- blocker wait (FUN_0056fc69 via FUN_00555411; docs/engine/simulation.md 7.4) ---------------------------
+
+def corridor(human=True, n=32):
+    """A one-cell-wide east-west corridor along y = 10 (walls above and below)."""
+    w = world(n)
+    wall(w, [(x, y) for x in range(n) for y in (9, 11)])
+    if human:
+        w.players[1] = Player(1, 0, human=True)
+    return w
+
+
+def test_head_on_in_a_one_cell_corridor_nobody_swaps():
+    """The exe has no swap: the first unit in list order waits (turns to face the other, brain mode 10 -> 0),
+    the second sees an idle blocker, re-plans round it, finds no way and stops; both end on their cells."""
+    w = corridor()
+    a = unit(w, 1, 10, 10)
+    b = unit(w, 2, 11, 10)                                  # adjacent, facing each other
+    b.facing = 192
+    sim = Simulation(w)
+    sim.step([MoveTo(a.id, 20, 10), MoveTo(b.id, 5, 10)])
+    for _ in range(400):
+        sim.step()
+    assert (a.x, a.y) == (10, 10) and (b.x, b.y) == (11, 10)        # nobody passed
+    assert a.mover.parked and a.order == 1                          # the waiting unit idles, its order stays
+    assert not a.mover.waiting and a.facing == 64
+    assert not b.mover.parked and b.order == 0                     # b re-planned (no way) and its order ended
+
+
+def test_blocker_verdicts():
+    from engine.sim.movement import blocker_verdict
+    w = corridor()
+    a = unit(w, 1, 10, 10)
+    b = unit(w, 2, 11, 10)
+    a.order = b.order = 1
+    a.mover.goal = (20, 10)
+    assert blocker_verdict(w, a, (11, 10)) == 2             # blocker at a centre in a move mode: wait (the swap code)
+    a.mover.goal = (11, 10)
+    assert blocker_verdict(w, a, (11, 10)) == 0             # my own destination: never wait
+    a.mover.goal = (20, 10)
+    b.order = 0
+    assert blocker_verdict(w, a, (11, 10)) == 0             # idle blocker: go round
+    b.order = 1
+    b.mover.parked = True
+    assert blocker_verdict(w, a, (11, 10)) == 0             # a parked unit is mode 0
+    b.mover.parked, b.sub_x = False, 200
+    assert blocker_verdict(w, a, (11, 10)) == 1             # mid-step blocker
+    a.mover.step_target = (11, 10)
+    assert blocker_verdict(w, a, (11, 10)) == 0             # ... unless I last entered that cell
+    a.mover.step_target, b.sub_x, b.hp = None, 128, 0
+    assert blocker_verdict(w, a, (11, 10)) == 0             # dead blocker
+
+
+def test_only_size_one_units_of_the_human_player_wait():
+    from engine.sim.movement import blocker_verdict
+    w = corridor()
+    a = unit(w, 1, 10, 10)
+    b = unit(w, 2, 11, 10)
+    a.order = b.order = 1
+    a.mover.goal = (20, 10)
+    assert blocker_verdict(w, a, (11, 10)) == 2
+    a.stats = type("S", (), {"token_size": 2})()
+    assert blocker_verdict(w, a, (11, 10)) == 0             # size 2: re-plan
+    a.stats = None
+    w.players[1].human = False
+    assert blocker_verdict(w, a, (11, 10)) == 0             # computer player: re-plan
+
+
+def test_ai_unit_replans_round_a_friend_instead_of_waiting():
+    w = world()
+    w.players[1] = Player(1, 0, human=False)
+    a = unit(w, 1, 10, 10)
+    b = unit(w, 2, 11, 10)
+    b.order = 1
+    sim = Simulation(w)
+    sim.step([MoveTo(a.id, 20, 10)])
+    assert not a.mover.waiting and not a.mover.parked and a.path
+    assert (11, 10) not in a.path
+    run(sim, a)
+    assert (a.x, a.y) == (20, 10)
+
+
+def test_human_unit_behind_a_walker_turns_to_it_and_stays_parked_until_reordered():
+    w = corridor()
+    a = unit(w, 1, 10, 10)
+    b = unit(w, 2, 11, 10)
+    b.order = 1                                             # b is under a move order (mode 1)
+    b.mover.goal = (30, 10)
+    sim = Simulation(w)
+    a.facing = 128                                          # facing away: a real turn is needed
+    sim.step([MoveTo(a.id, 20, 10)])
+    assert a.mover.waiting and a.state == 1 and a.action == "turn"
+    for _ in range(40):
+        if a.mover.parked:
+            break
+        sim.step()
+    assert a.mover.parked and a.facing == 64 and a.action == "idle"
+    b.order, b.mover.goal = 0, None                         # b leaves the way
+    w.move_unit(b.id, 14, 12, 128, 128)
+    for _ in range(50):
+        sim.step()
+    assert (a.x, a.y) == (10, 10)                           # still parked: nothing restarts the order
+    sim.step([MoveTo(a.id, 20, 10)])                        # a new command does
+    assert not a.mover.parked
+    run(sim, a)
+    assert (a.x, a.y) == (20, 10)

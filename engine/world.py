@@ -100,6 +100,8 @@ class Mover:
     arrived: bool = False           # +0x90 the unit stands on `tail`
     failed: bool = False            # +0x98 a plan came out empty
     static_path: list = field(default_factory=list)     # the static list (+0x1c8); Unit.path is the dynamic one
+    waiting: bool = False           # brain mode 10 (`FUN_00556b2c`/`00555411`): turning to face the blocker
+    parked: bool = False            # brain mode 0 under a move order after a wait: no driver restarts it
     last_plan: object = None        # debug: PathResult of the last static plan (not dumped)
     last_hop: object = None         # debug: PathResult of the last hop plan (not dumped)
 
@@ -649,7 +651,7 @@ class World:
         """Movement state, only for a unit that has any (idle units keep the short entry)."""
         m = u.mover
         if not (u.order or u.state or u.path or u.odometer or m.steps or m.turning
-                or m.target_facing != u.facing):
+                or m.waiting or m.parked or m.target_facing != u.facing):
             return []
         d = {"order": u.order, "state": u.state, "path": [list(c) for c in u.path],
              "odometer": u.odometer, "target_facing": m.target_facing,
@@ -660,6 +662,8 @@ class World:
             d["plan"] = [list(m.goal) if m.goal else None, list(m.dest) if m.dest else None,
                          list(m.tail) if m.tail else None, m.consumed, m.since_hop, int(m.arrived),
                          int(m.failed), [list(c) for c in m.static_path]]
+        if m.waiting or m.parked:                                           # only after a blocker wait
+            d["wait"] = [int(m.waiting), int(m.parked)]
         return [d]
 
     def dump_json(self):

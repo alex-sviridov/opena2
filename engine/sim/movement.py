@@ -28,6 +28,7 @@ SNAP_TURN = 0x20                # a turn of at most 45 degrees snaps (FUN_005564
 IDLE_STATE, MOVE_STATE = 0, 1   # unit.state (+0x54)
 NO_ORDER, MOVE_ORDER = 0, 1     # unit.order (+0x50)
 STATIC_PLAN_FORCED = 0xFF       # mover.consumed value that forces a static re-plan (brain wrapper 0x56e4b0)
+WAIT = "wait"                    # _drive result: a blocker wait began (not an ended order)
 IDLE, MOVE, TURN = "idle", "move", "turn"       # unit.action (the client's actions 0, 1, 5)
 
 
@@ -245,6 +246,7 @@ def apply_follow_path(world, cmd):
     u.mover.goal = u.mover.dest = u.mover.tail = None
     u.mover.static_path = []
     u.order, u.state = MOVE_ORDER, MOVE_STATE
+    u.mover.waiting = u.mover.parked = False
     return True
 
 
@@ -307,6 +309,7 @@ def apply_move_to(world, cmd):
     if u is None or u.hp <= 0 or not _in_map(world, (cmd.x, cmd.y)):
         return False
     u.order, u.state = MOVE_ORDER, MOVE_STATE
+    u.mover.waiting = u.mover.parked = False
     u.mover.goal = (cmd.x, cmd.y)
     return True
 
@@ -347,6 +350,78 @@ def _hop_plan(world, u):
         m.static_path.pop(0)
 
 
+def _blocker(world, u, cell):
+    """The unit holding `cell` in the live layer as seen by `u` (FUN_00551edb: the unit of the cell's
+    record).  The exe keeps the first stamper; INFERRED here as the first in world order."""
+    seen = pas.MOVE_MASK.get(u.move_type, pas.MOVE_MASK[1])
+    for o in world.units.values():
+        if o is u or o.hp <= 0 or not (unit_stamp(o) & seen):
+            continue
+        n = unit_size(o)
+        for ox, oy in [(o.x, o.y)] + ([tuple(o.mover.step_target)] if o.mover.step_target else []):
+            if ox <= cell[0] < ox + n and oy <= cell[1] < oy + n:
+                return o
+    return None
+
+
+def _at_centre(o):
+    return (o.sub_x, o.sub_y) == (CENTRE, CENTRE)           # FUN_00551383
+
+
+def _mode_move(o):
+    """Brain mode 1 or 4 (CONFIRMED consumers 0x56fdca/0x56fddd): a unit walking a move order.  Mode 4
+    (approach an object) needs attack orders and is not modelled."""
+    return o.order == MOVE_ORDER and not o.mover.waiting and not o.mover.parked
+
+
+def blocker_verdict(world, u, cell):
+    """FUN_0056fc69: 0 = re-plan around the blocker, 1 or 2 = wait for it (the driver treats both alike).
+    Only a size-1 unit of the human player waits (vtable +0x1c == 1, owner +0x2c == 0)."""
+    if unit_size(u) != 1 or not _is_human(world, u):
+        return 0
+    b = _blocker(world, u, cell)
+    if b is None:
+        # no record: a unit that began its step on `cell` and is still leaving it (mover+0x70)
+        for o in world.units.values():
+            if (o is not u and o.mover.step_from and tuple(o.mover.step_from) == tuple(cell)
+                    and not _at_centre(o) and max(abs(o.x - cell[0]), abs(o.y - cell[1])) <= 1):
+                return 2
+        return 0
+    if b.hp < 1:
+        return 0
+    if not _at_centre(b):                                   # mid-step: wait unless I last entered `cell`
+        return 0 if u.mover.step_target == tuple(cell) else 1
+    if not _mode_move(b):                                   # idle, waiting, turning: go round
+        return 0
+    return 0 if u.mover.goal == tuple(cell) else 2          # never wait for the cell I am walking to
+
+
+def _begin_wait(world, u, cell):
+    """FUN_00555411 after a non-zero verdict: face the blocker (FUN_00556b2c/da2); already facing it ->
+    brain mode 0 at once, else mode 10 and the turn."""
+    m = u.mover
+    face = facing_to((u.x, u.y), cell)
+    m.target_facing = face
+    if u.facing == face:
+        m.parked = True
+        _set_action(world, u, IDLE)
+        return
+    m.waiting = True
+    _set_action(world, u, TURN)
+    _turn_toward(u, face)
+
+
+def _tick_wait(world, u):
+    """Brain mode 10 (FUN_0056e55d): keep turning to mover+1; once facing it, mode 0 (the move order stays but
+    nothing drives it any more, INFERRED: only a new command restarts it)."""
+    m = u.mover
+    if u.facing != m.target_facing:
+        _turn_toward(u, m.target_facing)
+        return
+    m.waiting, m.parked = False, True
+    _set_action(world, u, IDLE)
+
+
 def _drive(world, u):
     """The move driver at a cell centre (FUN_00555411 steps 2-4, wrapper 0x56e4b0).  Returns False when
     the order ended."""
@@ -362,6 +437,11 @@ def _drive(world, u):
         m.arrived = True
         return False
     if not u.path or m.since_hop > cfg.dynamic_refresh_rate:
+        head = m.static_path[0] if m.static_path else None
+        if (head is not None and chebyshev(here, head) == 1
+                and head in live_cells(world, u) and blocker_verdict(world, u, head)):
+            _begin_wait(world, u, head)
+            return WAIT                                     # no hop plan, no step; the order stays
         _hop_plan(world, u)
         m.consumed = (m.consumed + 1) & 255
         m.since_hop = 0
@@ -372,6 +452,7 @@ def _stop(world, u):
     m = u.mover
     u.order, u.state = NO_ORDER, IDLE_STATE
     m.target_facing = u.facing
+    m.waiting = m.parked = False
     m.goal = m.dest = None          # DECISION: a finished order forgets its plan (the exe keeps +0x74; open)
     m.static_path = []
     _set_action(world, u, IDLE)
@@ -386,11 +467,18 @@ def _tick_unit(world, u):
             if m.goal is not None:
                 u.path = []             # FUN_00555b38 clears the dynamic list (+0x1e4) at every step end
         return
-    if u.order != MOVE_ORDER:
+    if u.order != MOVE_ORDER or m.parked:
         return
-    if m.goal is not None and not _drive(world, u):
-        _stop(world, u)
+    if m.waiting:
+        _tick_wait(world, u)
         return
+    if m.goal is not None:
+        r = _drive(world, u)
+        if r is WAIT:
+            return
+        if not r:
+            _stop(world, u)
+            return
     if u.path:
         _start_step(world, u)
     else:                                               # arrived (mover+0x90) -> auto stop

@@ -82,5 +82,5 @@ from both places when answered).
 - Movement (H1) [simulation](engine/simulation.md#open-questions): waypoint removal and the tick an order ends after
   arrival (`FUN_00569321`, `FUN_00555dc2`); group speed and Haste/Slow in `unit_speed`; the regeneration job
   vs its `tick & 3` test (`FUN_0052bbb7`, `0x50fc5a`); the group-AI pass at `tick & 15 == 6` (`FUN_0056fe4d`).
-- Pathfinding (H2) [simulation §7](engine/simulation.md#open-questions): friendly-unit yield/swap `FUN_0056fc69`, bit `0x10` (`FUN_00559c28`), follow-target `FUN_00557f08`/`FUN_0055574d`, class-0x12 clause `FUN_00556f56`.
+- Pathfinding (H2) [simulation §7](engine/simulation.md#open-questions): blocker wait restart (type-0 group message, `FUN_00570087`/`FUN_00569321`; no swap exists, answered in 7.4), bit `0x10` (`FUN_00559c28`), follow-target `FUN_00557f08`/`FUN_0055574d`, class-0x12 clause `FUN_00556f56`.
 - Phantom units (9 on blocked cells, never created by the server) and HP-0 units: engine keeps and draws them; decide with the phase H sim. [architecture §9](engine/architecture.md#9-world-state)
