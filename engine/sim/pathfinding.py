@@ -336,6 +336,16 @@ FOLLOW_ATTEMPTS = 8             # box growths tried (0x557f1d.. `cmp [ebp-0x44],
 FOLLOW_RING_CAP = 100           # walk iterations stop after step 0x64 (0x5584ee)
 
 
+def unit_size(u):
+    """Footprint side in cells of an engine `Unit`: token size (+0x49, vtable +0x1c `0x542360`, CONFIRMED)."""
+    return max(1, int(getattr(u.stats, "token_size", 1) or 1)) if u.stats is not None else 1
+
+
+def foot(u):
+    """The `Foot` of an engine `Unit` (cell, token size, sub-cell offsets)."""
+    return Foot(u.x, u.y, unit_size(u), u.sub_x, u.sub_y)
+
+
 def centre_x(u):
     """FUN_0050d884: footprint centre x in 1/256 cells, 16-bit: cell * 256 + sub + (size - 1) * 128."""
     return (((u.x << 8) + u.sx) + ((u.size - 1) << 7)) & 0xFFFF

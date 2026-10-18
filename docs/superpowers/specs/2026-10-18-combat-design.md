@@ -23,7 +23,7 @@ attacks deferred except where the exe shares the code).
 
 ## 2. Units
 
-1. **`engine/sim/rng.py`** `Rng(seed)`: `srand`, `rand15`, `rand(n)` (`0` for `n == 0` without a draw), `state`; `World.rng`; `World(..., seed=1)`,
+1. **`engine/rng.py`** (re-exported by `engine/sim/rng.py`; layer 3 so `World` can own it) `Rng(seed)`: `srand`, `rand15`, `rand(n)` (`0` for `n == 0` without a draw), `state`; `World.rng`; `World(..., seed=1)`,
    `from_map(..., seed=)`; `dump()` gets `"rng"` only when the state differs from the initial seed state. `Simulation` exposes `seed`
    (kept in the log header). `engine run` seeds from the clock (`--seed N`). Test: every module under `engine/sim/` is parsed and may not import `random`
    or call `numpy.random`; the CRT sequence for seed 1 is pinned (41, 18467, 6334, 26500, 19169).

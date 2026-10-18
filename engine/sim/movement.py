@@ -16,7 +16,7 @@ from allods2.formats import progression as prog
 from engine.world import NoWay
 
 from .commands import Command
-from .pathfinding import DEFAULT_CONFIG, PathGrid, plan_dynamic, plan_static, chebyshev
+from .pathfinding import DEFAULT_CONFIG, PathGrid, chebyshev, plan_dynamic, plan_static, unit_size
 from allods2.formats import passability as pas
 
 # Direction tables (path-finder object, CONFIRMED 0x553e4e..0x553f2f): 0 N, 1 NE, 2 E ... 7 NW.
@@ -262,11 +262,6 @@ def apply_follow_path(world, cmd):
     u.mode_go = True
     u.mover.waiting = u.mover.parked = False
     return True
-
-
-def unit_size(u):
-    """Footprint side in cells: token size (+0x49, vtable +0x1c `0x542360`, CONFIRMED)."""
-    return max(1, int(getattr(u.stats, "token_size", 1) or 1)) if u.stats is not None else 1
 
 
 def path_grid(world, move_type):

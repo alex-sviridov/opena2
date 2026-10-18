@@ -170,8 +170,8 @@ At the end of the wind-up the target in `+0x5c` is dispatched by class: creature
 1. Nothing happens unless target and attacker exist, both have an owner, the attacker's HP `+0x94 > 0` and
    `attack_gap(attacker, target) <= range` (`+0x12c`). **No test of the target's HP, side or visibility.**
 2. `attack_gap` (`FUN_005169de`): centres as in 3.1 (16-bit), `D = max(|dx|, |dy|)` (Chebyshev, 1/256 cells),
-   `D' = D - (size_a + size_b - 2) * 128`; result `1` when `D' <= 384`, else `(D' + 64) >> 8`. Size 1 vs 1: 1 up to 1.5 cells apart
-   (so a target that stepped half a cell away is still hit), 2 from 384 on.
+   `D' = D - (size_a + size_b - 2) * 128`; result `1` when `D' <= 384`, else `(D' + 64) >> 8`, i.e. 1 up to `D' = 447`, 2 from 448
+   (1.75 cells), 3 from 704. Size 1 vs 1: a target that stepped three quarters of a cell away is still hit.
 3. `dmg = take_hit(target, record of the attacker, attacker)` (5.2); `target.HP -= dmg` (s16).
 4. The attacker's weapon spell (`+0x74` with a castSpell effect, mana/charges permitting) is cast at the target when
    `dmg > 0` and the target still has HP > 0 (or the spell is type 2): spells, phase K.
@@ -289,7 +289,7 @@ Unmodelled effect kinds are listed in section 10.
 
 | Piece | Place |
 |---|---|
-| `Rng` | `engine/sim/rng.py`, `World.rng` |
+| `Rng` | `engine/rng.py` (layer 3, so `World` can own it; re-exported by `engine/sim/rng.py`), `World.rng` |
 | record / block / `take_hit` / gaps / octant / timers: pure functions | `engine/sim/combat.py` |
 | stat builder (template + equipment strings + skills -> record, block, range, windup) | `engine/sim/combatstats.py` |
 | order 3 setup, executor, Brain mode 5, swing phases | `engine/sim/combat.py`, hooked from `orders.py` and `movement.py` |
@@ -339,7 +339,7 @@ swapping in play; structure targets (`FUN_00516ea0`); client hit reaction animat
    (predicted `W + R + 2` with `R = recovery + hero delay + 0..3`), the first hit `W` ticks after the swing animation starts.
 3. Order an attack while standing next to the target: the swing starts within 16 ticks (next `tick & 15 == 6`), not at once.
 4. Order a hero to attack a flyer (bat) with a sword: refused; with a bow: allowed.
-5. Target walks away mid-swing: the hit is lost when the gap exceeds 1.5 cells (size 1) at the hit tick; the attacker follows afterwards.
+5. Target walks away mid-swing: the hit is lost when the centres are 1.75 cells or more apart (size 1, Chebyshev) at the hit tick; the attacker follows afterwards.
 6. Ctrl+L toggles the floating damage numbers; the number equals the HP lost; colour = the victim's owner colour.
 7. A hit with damage 0 (high absorption) still shows nothing (message `0x73` carries the same HP: no number).
 8. Sure-hit monsters (bats, bees, spiders) never miss and ignore absorption.

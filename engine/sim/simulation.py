@@ -25,6 +25,11 @@ class Simulation:
         return self.world.tick
 
     @property
+    def seed(self):
+        """The game's RNG seed (`World.seed`): with the command log it reproduces a session exactly."""
+        return self.world.seed
+
+    @property
     def block(self):
         """The exe's 16-tick block counter `server+0` (`FUN_004f08c0` `0x4f0aa7`): +1 after the step whose counter after the
         increment is 15 mod 16, i.e. `(completed ticks + 1) // 16`."""

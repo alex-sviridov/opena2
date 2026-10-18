@@ -941,7 +941,7 @@ stream starts from the **wall clock**. Single player runs client and server on o
 idle-animation timers such as `FUN_004cae28`, text effects) are interleaved with the server's between ticks.
 
 **Consequence:** the original is not reproducible even with a known seed, and a recorded original session cannot be replayed against ours.
-**Engine (DECISION):** `engine/sim/rng.py` implements exactly this generator (`Rng(seed)`: `srand`, `rand15`, `rand(n)` with the `n == 0`
+**Engine (DECISION):** `engine/rng.py` (re-exported as `engine/sim/rng.py`) implements exactly this generator (`Rng(seed)`: `srand`, `rand15`, `rand(n)` with the `n == 0`
 rule), one instance owned by the `World` (`World.rng`), seeded per game (default 1 = an unseeded CRT; `engine run` picks the clock and prints
 it; the session log keeps it). Every system in `sim/` draws from it in update order and nowhere else (no Python `random`; a test scans the
 imports); the view and backend have their own generators. So **our sequence equals the original algorithm's for the same seed; it does not

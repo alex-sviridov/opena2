@@ -20,6 +20,8 @@ from allods2.formats import passability as pas
 from allods2.formats import progression as prog
 from allods2.formats.objects import MapObject as PlacedObject
 
+from .rng import DEFAULT_SEED, Rng
+
 STRUCTURE_ID_BASE = 0x6000      # spec decision 2: runtime object id = 0x6000 + uid (CONFIRMED map.md part 4)
 OBJECT_ID_BASE = 0x10000        # spec decision 2: section 3 cells (ours, the file has no ids)
 UNIT_ID_BASE = 0x6000           # unit id = 0x6000 + uid: the exe's client view +4, the id space of structures
@@ -245,7 +247,7 @@ class World:
     decision 8); other shapes are accepted here for the view tests (the exe's
     grid of a non-square map is 256 wide, FUN_00553b30, not modelled)."""
 
-    def __init__(self, cells, heights, name="", terrain=None):
+    def __init__(self, cells, heights, name="", terrain=None, seed=DEFAULT_SEED):
         self.cells = np.asarray(cells, np.uint16)
         self.heights = np.asarray(heights).astype(np.int8)
         if self.cells.shape != self.heights.shape:
@@ -256,6 +258,8 @@ class World:
             raise ValueError("terrain and cells differ in shape")
         self.name = name
         self.tick = 0
+        self.seed = seed & 0xFFFFFFFF   # the game's RNG seed (docs/engine/simulation.md section 10)
+        self.rng = Rng(seed)            # the one generator of the simulation, drawn in update order
         self.objects = {}           # id -> MapObject
         self.units = {}             # id -> Unit, in map record order
         self.items = {}             # id -> Item (ground piles), in section 8 order
@@ -540,14 +544,14 @@ class World:
     # --- loading -------------------------------------------------------------------
 
     @classmethod
-    def from_map(cls, m, assets, facing=None):
+    def from_map(cls, m, assets, facing=None, seed=DEFAULT_SEED):
         """From an `allods2.formats.Map` and an `AssetCache` (spec "World").
         Structures first in record order, then section 3 cells row-major;
         bulk-added, then one full block build; then players, units and ground piles in
         record order.  `facing`: None gives each unit the exe's start angle 0x40 + [0, 128)
         (the exe's rand, here a fixed hash of the uid so a map always loads the same);
         an int puts every unit at that angle byte (0x80 = front view, as `map render`)."""
-        w = cls(m.runtime_terrain(), m.heights_i8, m.name, terrain=m.terrain)
+        w = cls(m.runtime_terrain(), m.heights_i8, m.name, terrain=m.terrain, seed=seed)
         if hasattr(assets, "map_reg"):                  # test doubles keep the defaults
             costs, w.speed_multiplier = assets.map_reg()
             w.set_costs(costs)
@@ -738,7 +742,8 @@ class World:
                           for _, i in sorted(self.items.items())],
                 "block": [bytes(row).hex() for row in self._block],
                 **({"groups": [[g.id, g.owner, list(g.members), g.order, list(g.target), g.speed]
-                               for g in self.groups.values()]} if self.groups else {})}
+                               for g in self.groups.values()]} if self.groups else {}),
+                **({"rng": self.rng.state} if self.rng.state != self.seed else {})}
 
     @staticmethod
     def _player_extra(p):
