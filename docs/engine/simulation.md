@@ -25,6 +25,36 @@ Engine: `Simulation.step(commands)` is one server tick; the backend's accumulato
 completed ticks (the exe increments its counter at the start of a tick, `FUN_004f8521` `+4`; the engine
 after: DECISION, only an offset of one for display).
 
+### 1.1 Command path, latency and the counter at start (CONFIRMED, REA on the GOG exe)
+
+- **Two hubs, cross-linked** (single player): `0x670e50` (client, flag `+0x18b0` = 0, ctor `0x501a11`) and `0x6831a8` (server,
+  flag 1, ctor `0x5019d0`; ctor `FUN_0050077a`). The game start (`FUN_0040d480`, game mode `+0x5d8` 1 or 2, `0x40d4c8`-`0x40d4f0`)
+  calls `FUN_00500a72` on each with the other as peer (`hub+8`): it creates one *local* connection (`hub+0x18b4`, flag
+  `conn+0x29c := 1` via `FUN_00540030`). No socket, no thread.
+- **Send** (`FUN_0050164f`, e.g. the move command `FUN_00418bc3`): the message is serialised (vtable slot `+8`) into the connection's
+  `0xa8`-byte chunk buffer (`FUN_005000a1` appends and flushes by itself when a chunk is full); then, because the hub flag is 0 and
+  the command is not type 100, `FUN_00504bb7(1)` sends an end-of-tick message (type 100, value 1) and calls `FUN_005017e6`, which
+  runs the flush `FUN_0050036a` on every connection. The flush of a local connection (`conn+0x29c != 0`) moves the packet **at once**
+  into the peer connection's receive queue (`FUN_0053f270` = `hub+8 -> +0x18b4`, enqueue `FUN_0050023b`, under a critical
+  section). So when the send returns, the whole command is already in the server hub's queue.
+- **Drain** (`FUN_004f84c6`, called only from `FUN_004f8521`, right after the counter increment): `FUN_00501831` pops until the queue
+  is empty, so *every* command that arrived before the step starts is applied by that step, in arrival order.
+- **Latency = 0 extra ticks.** A command sent at any moment between server step N-1 and step N (the window message pump runs
+  outside `FUN_00488aa1`; the loop body is server step, `FUN_0040d9b2`, post `0x401`) is applied by the drain of step N. The engine
+  maps this to: the commands handed to `Simulation.step` are applied by that step and logged with its `world.tick`; the UI puts a
+  command into the next step after the click (`CommandQueue.drain`). No delay is added anywhere, nothing in the packet holds a tick.
+- **The client's tick view** is not part of the path: the move message has no tick field, and the client never waits (no lock-step
+  in single player). The server ends each step with `FUN_00504bb7(counter)` (`0x4f855c`, counter *after* the increment), delivered
+  by the same synchronous flush; the client drains its hub in the same pass (`FUN_0040d9b2`, loop at `0x40d9f2`) and stores the
+  value in `client+0x408` (type 100 handler `0x40da4b`). The client's own value-1 type-100 messages go to the server queue.
+- **Counter at start**: a new game runs `FUN_004eb715` (server start): when no save is being loaded (`this+0x1ac == 0`) it stores
+  `server+0 := 0` and `server+4 := 0` (`0x4eba47`/`0x4eba50`), then `server+0x94 := 1` (`0x4eba8d`, the running flag tested at the
+  top of `FUN_004f08c0`) and clears the profiling counters `+0x1b4..+0x1c4`. So the first step runs the group-pass test with the counter
+  at 0 and increments it to 1: the pass first runs in the 7th step (counter before increment 6), then every 16. Engine: `world.tick`
+  starts at 0 = the exe's value; `Simulation.block` = `(world.tick + 1) >> 4` is `server+0` (incremented at `0x4f0ab7` after the
+  step whose counter after the increment is 15 mod 16, together with the per-player pass `FUN_004f8967`). With a loaded save the
+  counters come from the save (path `FUN_004e9b95`, not decoded: Open questions).
+
 ## 2. Update order inside a server tick
 
 CONFIRMED, `FUN_004f08c0` → `FUN_004f8521` (`0x4f8521`), `FUN_004f04cf`:
@@ -58,8 +88,8 @@ blocking (H2) and combat (I).
 
 Engine order per tick (`Simulation.systems`): `orders_system` (group pass when `world.tick & 15 == 6`, then the
 order commands: §8), `selection_system`, `movement_system` (`FollowPath`, then every unit in list order).
-`world.tick` at the start of a step is the exe's counter before its increment (INFERRED: the server counter starts
-at 0). Commands are logged `(tick, command)`.
+`world.tick` at the start of a step is the exe's counter before its increment (CONFIRMED: the server counter starts
+at 0 on a new game, 1.1). Commands are logged `(tick, command)`.
 
 ## 3. Unit state machine
 
@@ -730,7 +760,7 @@ order 4, target (x, y) as sent, speed.
   layer, the member's `goal` is that target and it is within Chebyshev 1 -> parked again at once (the guard scan with
   no target sets mode 0 for a human player's non-ranged unit, `FUN_0056afd9` -> `FUN_0056b025`, CONFIRMED in the
   asm; DECISION: applied to every unit, ranged `56bc7b` and the computer-player mode 0xb are phase I). So an arrived
-  unit keeps order 1 for up to 16 ticks (the pass phase is INFERRED, spec 4). A hop plan that finds nothing in a
+  unit keeps order 1 for up to 16 ticks (the pass phase is CONFIRMED, 1.1). A hop plan that finds nothing in a
   blocked corridor leaves the unit spinning in order 1 (a re-plan per tick, `static_path` shrinking by one per plan
   until the final hop fails and the order ends, or forever when the unit's own cell is the best cell): see
   8.7 "Gridlock" (CONFIRMED code, INFERRED play).
@@ -739,7 +769,7 @@ order 4, target (x, y) as sent, speed.
 
 ### 8.4 DECISIONS and assumptions
 
-- Command latency 0: a command logged for tick T is applied in the drain of T (R open question 1).
+- Command latency 0: a command logged for tick T is applied in the drain of T (CONFIRMED, 1.1: the loop-back is synchronous, no extra tick). Tests `test_command_is_applied_by_the_next_step_without_extra_latency`.
 - `Unit.order_group` instead of `Unit.group`; `World.events` (a list of `NoWay`) is outside `dump()` and the hash.
 - `MoveTo` (debug) bypasses intake validation, wrap and clamp (the H2 tests use arbitrary cells); it still makes a
   group of one so the pass ends its order.
@@ -891,6 +921,7 @@ is not filtered by recipient.
    retreat post pass `FUN_00573713`: phase I ([research §9](click-to-move-research.md)).
 5. The stored occupant/stamp slots with their release quirks (7.4 "Cell record"): `FUN_0055073f` clears a slot of any unit, so a first-come loser loses its record when the winner leaves; the engine derives the occupant instead. Starting routine `FUN_0055be86` callers `0x558b7c`, `0x56a5df` (how often a standing unit re-stamps, which decides how long such a cell stays unowned).
 6. The x87 control word at run time (precision / exception mask) for the slope in `FUN_00557f08`: only the follower-on-target-centre case (`0/0`) depends on it (7.4 step 3). Starting routine CRT start-up before `0x557f08`; DirectDraw init.
-7. Loop-back latency of commands (research open question 1) and the phase of the group pass against the first tick.
+7. `FUN_004e9b95` (loading a saved game, the branch of `FUN_004eb715` that skips `server+0 := 0; server+4 := 0`): which tick counter and block counter a loaded game restarts with (phase of the group pass after a load).
 8. `FUN_005728fa` (group order 0x12 handler, reader of `brain+0x16`): the full per-tick behaviour of guarding computer-player groups and the home-cell restart (`FUN_0056c8af`, `brain+0x9c`).
-9. `FUN_0051c391` / spell record `+9`, `+0xc`: confirm that they are spell range and mana cost (used by `FUN_0056ac5b`).
+9. `FUN_004f515d` on a client type-100 message (value 1, sent after every client command by `FUN_00504bb7`): confirm that the server ignores it (nothing in the order path depends on it).
+10. `FUN_0051c391` / spell record `+9`, `+0xc`: confirm that they are spell range and mana cost (used by `FUN_0056ac5b`).

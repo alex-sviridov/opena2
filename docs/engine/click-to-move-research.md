@@ -212,7 +212,9 @@ Other senders (all CONFIRMED, out of scope except stop): `0x17` `FUN_00418e51`, 
 `+0xa = 2` formation, value in `+0xe` (`FUN_0041a617`).
 
 Transport: the hub serialises into a per-connection packet buffer (`0x5000a1`, 0xa8-byte chunks) even in single player; the
-server pops its queue (`0x6831a8`) in `FUN_004f84c6`. Whether the loop-back adds a tick of latency was not decoded (open).
+server pops its queue (`0x6831a8`) in `FUN_004f84c6`. **Latency (CONFIRMED, answered):** the hubs are cross-linked local connections; the
+send flushes at once into the server queue (`FUN_00504bb7` -> `FUN_005017e6` -> `FUN_0050036a`), so the command is applied by the next server
+step with no extra tick; details and addresses in [simulation §1.1](simulation.md#11-command-path-latency-and-the-counter-at-start-confirmed-rea-on-the-gog-exe).
 
 ## 3. Server: command intake and the order
 
@@ -459,13 +461,12 @@ sub-code 1 (`0x40e266`): if `DAT_00622810 != 0` (**constant 1**, its only writer
 
 ## 9. Open questions
 
-1. Loop-back transport latency: do commands reach `FUN_004f84c6` in the same frame (`0x5000a1` buffers, `0x50036a` flush, `0x5018cd` receive)? Affects only the click-to-first-step delay.
-2. Group handlers for orders 5 (swarm `572e1e`), 1/3/0x13 (`57275f`, `57309d`, `57311c`) and the post pass `573713`/retreat thresholds `brain+0x40/+0x44` (do they override a move group in play?).
-3. `brain+0x50` and `brain+0x6c`, `brain+0x38`: meaning beyond what the readers show (the "stopped" flag; the `brain+0x6c = 1` set only in formation).
-4. `FUN_00417f31` for columns beyond the view width (minimap move order y): array overrun behaviour (§1.6).
-5. Voice-unit selection `FUN_0041da16` and the per-order voice slots (class lists, exact rule).
-6. Whether the AI-owned "No way" messages are dropped by the single local client (recipient filter `0x92`, `+7`).
-7. `view+0x80`, `client+0xc0` exact meaning (hotkey gating), and `FUN_0041f090`/`41f0e0` neighbours of `Ctrl+F`.
+1. Group handlers for orders 5 (swarm `572e1e`), 1/3/0x13 (`57275f`, `57309d`, `57311c`) and the post pass `573713`/retreat thresholds `brain+0x40/+0x44` (do they override a move group in play?).
+2. `brain+0x50` and `brain+0x6c`, `brain+0x38`: meaning beyond what the readers show (the "stopped" flag; the `brain+0x6c = 1` set only in formation).
+3. `FUN_00417f31` for columns beyond the view width (minimap move order y): array overrun behaviour (§1.6).
+4. Voice-unit selection `FUN_0041da16` and the per-order voice slots (class lists, exact rule).
+5. Whether the AI-owned "No way" messages are dropped by the single local client (recipient filter `0x92`, `+7`).
+6. `view+0x80`, `client+0xc0` exact meaning (hotkey gating), and `FUN_0041f090`/`41f0e0` neighbours of `Ctrl+F`.
 
 ## 10. Corrections to the existing docs (applied)
 

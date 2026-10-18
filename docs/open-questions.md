@@ -82,7 +82,7 @@ from both places when answered).
 - Movement and orders (H1, H3) [simulation](engine/simulation.md#open-questions): the empty-dynamic-list step at a centre after a failed hop (`FUN_00555c7e`) and whether a stale dynamic list (turn over 32 ticks) occurs with real turn rates;
   Haste/Slow vs the group speed byte (phase I); the regeneration job vs its `tick & 3` test (`FUN_0052bbb7`, `0x50fc5a`); group
   handlers for orders 1, 3, 5, 0x13 and the computer players' branch of the pass (`FUN_00570087`: `57275f`, `57309d`, `572e1e`, `57311c`),
-  retreat post pass `FUN_00573713`; command loop-back latency and the pass phase (`FUN_004f84c6`, `FUN_004f08c0`).
+  retreat post pass `FUN_00573713`; tick counters after loading a save (`FUN_004e9b95`, branch of `FUN_004eb715`); the server's handling of the client's type-100 message (`FUN_004f515d`).
 - Handoff to combat (phase I) [simulation §9](engine/simulation.md#9-handoff-to-combat-phase-i): wiring the decoded follow driver (7.4: `follow_fallback`, `FUN_0055574d`) to brain modes 4/5/6/8 and orders `0x19`/`0x1b`, orders `0x17`/`0x19`..`0x1d` and their group handlers, voice, the consolidated VERIFY IN GAME list (§9 items 1-10).
 - Order planning spike (H3 bench) [simulation §8.7](engine/simulation.md#87-tests-end-states-measured): a 20-unit order on the 256 x 256 map costs ~0.46 s in one tick (pure-Python planner); worker-thread or faster planner, results must stay bit-identical.
 - x87 control word for the follow-fallback slope [simulation §7.4](engine/simulation.md#74-read-but-not-implemented-needs-ordersai-of-phase-i): only the follower-on-target-centre `0/0` case depends on it; starting routine CRT start-up before `FUN_00557f08`.

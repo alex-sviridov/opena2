@@ -511,3 +511,44 @@ def test_a_campaign_group_walks_and_replays_to_the_same_hash():
     replay(Simulation(b), sim.log, 301)
     assert a.dump_hash() == b.dump_hash()
     assert all(u.order in (1, 0xC) for u in mine)
+
+
+# --- timing of the command path and of the pass (simulation 1.1; FUN_0050164f, FUN_004f84c6, FUN_004eb715) ---
+
+def test_command_is_applied_by_the_next_step_without_extra_latency():
+    """Loop-back is synchronous (flush 0x50036a into the peer queue before the send returns), the drain is the first thing of
+    the next server step: a command given to step N is logged and applied in step N, not N+1."""
+    w = world()
+    u = unit(w, 1, 10, 10)
+    sim = Simulation(w)
+    sim.step()
+    sim.step([MoveUnits(1, ids(u), (20, 10))])
+    assert sim.log == [(1, MoveUnits(1, ids(u), (20, 10)))]
+    assert u.order == 1 and u.mover.step_ticks and u.mover.goal == (20, 10)     # order and first step in that same tick
+
+
+def test_new_game_tick_counter_starts_at_zero_and_first_pass_is_the_seventh_step():
+    """server+4 := 0 on a new game (0x4eba47); the pass tests the counter before the increment (& 15 == 6)."""
+    w = world()
+    assert w.tick == 0
+    sim = Simulation(w)
+    calls = []
+    import engine.sim.orders as orders
+    real = orders.group_pass
+    orders.group_pass = lambda world_: calls.append(world_.tick)
+    try:
+        for _ in range(40):
+            sim.step()
+    finally:
+        orders.group_pass = real
+    assert calls == [6, 22, 38]
+
+
+def test_block_counter_grows_after_every_sixteenth_step():
+    """server+0 += 1 after the step whose counter after the increment is 15 mod 16 (0x4f0aa7)."""
+    sim = Simulation(world())
+    seen = []
+    for _ in range(33):
+        sim.step()
+        seen.append(sim.block)
+    assert seen[:14] == [0] * 14 and seen[14] == 1 and seen[29] == 1 and seen[30] == 2 and seen[32] == 2

@@ -95,8 +95,9 @@ documented. Rule from the user: **reproduce the exe 1:1, even where it is not op
 ## 4. Assumptions and risks
 
 - Server tick counter starts at 0 so that the engine's `world.tick` at step start equals the exe's counter before the increment
-  (INFERRED); a different phase shifts only when arrival ends (<= 16 ticks).
-- Loop-back latency of the command (R open question 1) is taken as zero: the command is applied on the next tick, as the brief says.
+  (CONFIRMED later, `FUN_004eb715` `0x4eba47`; simulation §1.1).
+- Loop-back latency of the command: the design assumed zero; CONFIRMED zero extra ticks (synchronous local flush, simulation §1.1,
+  research §2): the command is applied by the first server step that starts after the click. No code change was needed.
 - Only the human player's units are ordered; AI orders (and the computer players' branch of the group pass) are phase I.
 - Open: group handlers for orders 1, 3, 5, `0x13`, the retreat post pass `FUN_00573713`, voice unit selection (R§9).
 
