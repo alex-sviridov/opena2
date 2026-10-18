@@ -957,8 +957,6 @@ The state is part of `World.dump()` once it differs from its initial value (old 
 
 1. What a unit does at a centre with an empty dynamic list after a failed hop plan (`FUN_00555c7e` empty-list "turn step" path, `0x555c7e`) beyond the failure stop; and whether the stale-list case (turn > 32 ticks) is reachable with real data.bin turn rates.
 2. Haste/Slow vs the group speed byte: the byte is fixed (§8.2); the effect system is phase I.
-3. The regeneration job runs from `FUN_0052bbb7` at `tick & 15 == 12` while the slot itself tests
-   `server tick & 3 == id & 3`: the interaction needs a check in phase I ([unit-struct §3](unit-struct.md)).
 4. Group orders 1, 3, 5, 0x13 (`57275f`, `57309d`, `572e1e`, `57311c`) and the computer players' branch of the pass: phase I
    ([research §9](click-to-move-research.md)). The retreat post step `FUN_00573713` is decoded (§9 hook); its spell branches and
    the hidden-enemy detection `FUN_00556dcd` remain.

@@ -108,7 +108,7 @@ Offsets from the constructors 0x50d493, 0x50dc2b, init 0x50e173, copy 0x50e48e (
 | +0x130 | 4 | dword | UNKNOWN |
 | +0x134 / +0x135 | 1 | attack wind-up / recovery ticks (monster 17/18, human 19/20; human default 8/4) | CONFIRMED 0x5122a4, 0x514f14 |
 | +0x136 | 1 | "attack done" flag (set 1 init, 0 when a swing starts) | CONFIRMED 0x50e309, 0x50f4bb |
-| +0x138 | 4 | dword | UNKNOWN |
+| +0x138 | 4 | dword | tick at which the last move step ends (`tick + step ticks`, move message 0x6b, `0x504122`); `FUN_0050fc3e` = tick - this; regen x3 above 80 (combat §12.5) | CONFIRMED 0x504122; other writers INFERRED |
 | +0x13c | 1 | death handled flag (set 1 first tick with HP<=0, calls FUN_00510745) | CONFIRMED 0x50f1f1 |
 | +0x140 | 4 | spellbook object (0x1c bytes, ctor 0x53a600; spells added by 0x51c29e) created if maxMana>0; also built for carriers | CONFIRMED 0x514abf-0x514b00 |
 | +0x144 | 4 | stat-dirty mask, one bit per stat class set by effect application (§11); AI order 4 waits while bit 0x40000 is set (0x56dd39) | CONFIRMED |
@@ -137,7 +137,7 @@ FUN_00558b3d turn step, FUN_0055be86). Move result is sent as message 0x6d (FUN_
 
 ## 3. Per-tick behaviour (CONFIRMED)
 - vtable +0x18 (0x50f12c, 5d0eb0 slot 0x18): skip if state 0x10; run effects list (+0x20); if HP<=0: order=0, state=0, first time calls 0x510745 + halves defence word, +0x6c = vtable+0x74()-1 (dying time), notify 0x4001; countdown, then HP=-1000 for movementType>1, at HP<=-10 state=0x10 and FUN_00510a70 (remove from world, notify 0x282000). Else dispatch state.
-- vtable +0x14 (0x50fc5a): every 4th tick (`[0x6044c4]&3 == id&3`): HP/mana regeneration `(HP*100+acc + maxHP*2*(100+bonus)*k/regen)/100`, k=3 if FUN_0050fc3e > 0x50 else 1; HP<0 loses 1 per 4 ticks. Notify 0x502019 kinds 1 (HP) / 2 (mana).
+- vtable +0x14 (0x50fc5a): called once per 16-tick block (job `tick&15==12`); `[0x6044c4]` is the BLOCK counter, so HP regeneration runs when `block&3 == id&3` (every 64 ticks per unit), mana every block; see [combat §12.5](combat.md#125-regeneration-vtable-14-fun_0050fc5a-and-the-open-question-3-of-simulationmd): HP/mana regeneration `(HP*100+acc + maxHP*2*(100+bonus)*k/regen)/100`, k=3 if FUN_0050fc3e > 0x50 else 1; HP<0 loses 1 per 4 blocks (64 ticks). Notify 0x502019 kinds 1 (HP) / 2 (mana).
 - Damage code and client deltas are sent via FUN_00502019(0x6831a8, creature, kind, 0xffb, ...).
 
 ## 4. Client mirror (view unit 0x1e4, built by FUN_004699d2 from the creature) - cross-check
