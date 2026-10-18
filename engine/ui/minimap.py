@@ -1,6 +1,8 @@
 """Minimap panel: click or drag centres the camera on that cell.  View state only, never a
 command (architecture rule 4)."""
 
+import math
+
 from allods2.graphics.terrain import TILE
 
 from .layout import MINIMAP_CENTER
@@ -11,6 +13,7 @@ class MinimapPanel:
         """`left`, `top`: window position of the image's top-left pixel."""
         self.geometry, self.left, self.top = geometry, left, top
         self.dragging = False
+        self.right_dragging = False
 
     @classmethod
     def from_layout(cls, geometry, layout):
@@ -25,6 +28,12 @@ class MinimapPanel:
     def cell_at(self, x, y):
         """Cell position (floats) under window pixel (x, y)."""
         return self.geometry.pixel_to_cell(x - self.left, y - self.top)
+
+    def order_cell(self, x, y):
+        """Integer cell under window pixel (x, y) for a minimap order (R 1.6: `(px >> z) + 8`, `px * 2 + 8` for
+        z < 0), the floor of `cell_at`.  The row is the minimap's own (DECISION, see click-to-move-research 1.6)."""
+        col, row = self.cell_at(x, y)
+        return math.floor(col), math.floor(row)
 
     def center_camera(self, camera, x, y):
         """Centre `camera` on the cell under (x, y); the camera clamps to the map."""

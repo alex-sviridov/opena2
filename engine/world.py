@@ -70,6 +70,28 @@ class Player:
     relations: tuple = ()           # 16 words, toward player j + 1 (1 war, 2 alliance, 0x10 vision)
     human: bool = False             # single player: record 1 only (map.md part 5)
     selection: tuple = ()           # selected unit ids, command order (sim/selection.py)
+    formation: int = 1              # client option [GameOptions] Formation: 0 off, 1 auto (default), 2 on (R 4.1)
+
+
+@dataclass
+class OrderGroup:
+    """The exe's command group (`FUN_0052b06f`, 0x50 bytes + record at +0x3c): every player command makes a
+    new one.  `order` = record+0x20 (0 cancelled, 3 stand ground, 4 group move), `target` = record+0xa (x, y),
+    unclamped, `speed` = record+0x44 (non-zero only when the formation was active), `members` in packet order."""
+    id: int
+    owner: int
+    members: list = field(default_factory=list)
+    order: int = 0
+    target: tuple = (0, 0)
+    speed: int = 0
+
+
+@dataclass(frozen=True)
+class NoWay:
+    """Event: the static planner of one of `player_id`'s units ended far from its target (message `0x92`,
+    text "No way").  Lives in `World.events`, never in the dump or the hash."""
+    player_id: int
+    tick: int
 
 
 @dataclass
@@ -104,6 +126,7 @@ class Mover:
     parked: bool = False            # brain mode 0 under a move order after a wait: no driver restarts it
     last_plan: object = None        # debug: PathResult of the last static plan (not dumped)
     last_hop: object = None         # debug: PathResult of the last hop plan (not dumped)
+    last_hop_goal: tuple = None     # debug: the cell that hop plan aimed at (not dumped)
 
 
 @dataclass
@@ -153,6 +176,9 @@ class Unit:
     path: list = field(default_factory=list)    # cells still to enter, front first (the exe's list at +0x1c8)
     mover: Mover = field(default_factory=Mover)
     odometer: int = 0               # client walk counter obj+0x9c: map units moved, 16 per walk frame
+    order_group: int = 0            # id of the OrderGroup the unit belongs to (unit+0x70), 0 none
+    stopped: bool = False           # brain+0x50: set by the stop routine FUN_0056dbc6, cleared by every cancel
+    anchor: tuple = None            # brain anchor cell of the stand orders 0xb/0xc
 
     def __post_init__(self):
         if self.mover.target_facing < 0:
@@ -230,6 +256,9 @@ class World:
         self.units = {}             # id -> Unit, in map record order
         self.items = {}             # id -> Item (ground piles), in section 8 order
         self.players = {}           # id (1-based record) -> Player
+        self.groups = {}            # id -> OrderGroup, in creation order (sim/orders.py)
+        self.events = []            # NoWay ...: for the UI, not part of dump()/the hash
+        self._next_group = 1
         self.report = BuildReport()
         self._cells = {}            # (x, y) -> set of ids over present footprint cells
         self._claim = {}            # (x, y) -> id of the structure registered there (first wins)
@@ -465,7 +494,11 @@ class World:
         return u.id
 
     def remove_unit(self, uid):
-        self._index_del(self._ucells, self.units.pop(uid))
+        u = self.units.pop(uid)
+        self._index_del(self._ucells, u)
+        g = self.groups.get(u.order_group)
+        if g is not None and uid in g.members:
+            g.members.remove(uid)
         for p in self.players.values():
             if uid in p.selection:
                 p.selection = tuple(i for i in p.selection if i != uid)
@@ -613,6 +646,57 @@ class World:
                             groups=(n,))
             self.add_item(at[cell])
 
+    # --- consistency ---------------------------------------------------------------
+
+    def check_consistency(self):
+        """Internal invariants of the indexes and of the movement state; returns a list of problem strings (empty =
+        consistent).  Checked: the per-cell unit/item index equals the entities' cells, every position is inside the
+        map with a sub-cell byte, a step in progress holds a reservation (`step_target`, adjacent to `step_from`,
+        the unit standing on one of the two: the live layer is derived from exactly these), groups and selections
+        refer to living entries, a unit is in at most the one group it names."""
+        bad = []
+        for name, table, index in (("unit", self.units, self._ucells), ("item", self.items, self._icells)):
+            want = {}
+            for e in table.values():
+                want.setdefault((e.x, e.y), set()).add(e.id)
+                if not (0 <= e.x < self.width and 0 <= e.y < self.height):
+                    bad.append("%s %#x outside the map at (%d, %d)" % (name, e.id, e.x, e.y))
+            if want != index:
+                bad.append("%s index differs from the entities' cells" % name)
+        for u in self.units.values():
+            m = u.mover
+            if not (0 <= u.sub_x < 256 and 0 <= u.sub_y < 256):
+                bad.append("unit %#x sub-cell (%d, %d)" % (u.id, u.sub_x, u.sub_y))
+            if bool(m.step_ticks) != (m.step_target is not None):
+                bad.append("unit %#x: step_ticks %d but step_target %s" % (u.id, m.step_ticks, m.step_target))
+            if m.step_target is not None:
+                t, f = tuple(m.step_target), tuple(m.step_from) if m.step_from else None
+                if f is None or max(abs(t[0] - f[0]), abs(t[1] - f[1])) != 1:
+                    bad.append("unit %#x: step %s -> %s is not one cell" % (u.id, f, t))
+                elif (u.x, u.y) not in (t, f):
+                    bad.append("unit %#x at (%d, %d) is on neither end of its step %s -> %s" % (u.id, u.x, u.y, f, t))
+                if not (0 <= t[0] < self.width and 0 <= t[1] < self.height):
+                    bad.append("unit %#x reserves %s outside the map" % (u.id, t))
+            if u.order_group:
+                g = self.groups.get(u.order_group)
+                if g is None or u.id not in g.members:
+                    bad.append("unit %#x names group %d which does not list it" % (u.id, u.order_group))
+        seen = {}
+        for g in self.groups.values():
+            for i in g.members:
+                if i not in self.units:
+                    bad.append("group %d lists missing unit %#x" % (g.id, i))
+                elif self.units[i].order_group != g.id:
+                    bad.append("group %d lists unit %#x which names group %d" % (g.id, i, self.units[i].order_group))
+                if i in seen:
+                    bad.append("unit %#x is in groups %d and %d" % (i, seen[i], g.id))
+                seen[i] = g.id
+        for p in self.players.values():
+            for i in p.selection:
+                if i not in self.units:
+                    bad.append("player %d selects missing unit %#x" % (p.id, i))
+        return bad
+
     # --- dump ----------------------------------------------------------------------
 
     def dump(self):
@@ -635,7 +719,7 @@ class World:
                            "counts": {"%s:%d" % k: v for k, v in sorted(r.counts.items())}},
                 "objects": objs,
                 "players": [[p.id, p.colour, p.name, p.flags, p.money, list(p.relations), int(p.human)]
-                            + ([{"selection": list(p.selection)}] if p.selection else [])
+                            + self._player_extra(p)
                             for _, p in sorted(self.players.items())],
                 "units": [[u.id, u.type_id, u.owner, u.x, u.y, u.sub_x, u.sub_y, u.facing, u.action,
                            u.action_start_tick, u.hp, u.hp_max, u.uid, u.server_id, int(u.human),
@@ -644,14 +728,26 @@ class World:
                           for _, u in sorted(self.units.items())],
                 "items": [[i.id, i.x, i.y, i.sub_x, i.sub_y, i.gold, list(i.codes), list(i.groups)]
                           for _, i in sorted(self.items.items())],
-                "block": [bytes(row).hex() for row in self._block]}
+                "block": [bytes(row).hex() for row in self._block],
+                **({"groups": [[g.id, g.owner, list(g.members), g.order, list(g.target), g.speed]
+                               for g in self.groups.values()]} if self.groups else {})}
+
+    @staticmethod
+    def _player_extra(p):
+        """Optional trailing dict of a player entry: only non-default state (old goldens stay valid)."""
+        d = {}
+        if p.selection:
+            d["selection"] = list(p.selection)
+        if p.formation != 1:
+            d["formation"] = p.formation
+        return [d] if d else []
 
     @staticmethod
     def _mover_dump(u):
         """Movement state, only for a unit that has any (idle units keep the short entry)."""
         m = u.mover
-        if not (u.order or u.state or u.path or u.odometer or m.steps or m.turning
-                or m.waiting or m.parked or m.target_facing != u.facing):
+        if not (u.order or u.state or u.path or u.odometer or m.steps or m.turning or u.order_group
+                or u.stopped or m.waiting or m.parked or m.target_facing != u.facing):
             return []
         d = {"order": u.order, "state": u.state, "path": [list(c) for c in u.path],
              "odometer": u.odometer, "target_facing": m.target_facing,
@@ -664,6 +760,8 @@ class World:
                          int(m.failed), [list(c) for c in m.static_path]]
         if m.waiting or m.parked:                                           # only after a blocker wait
             d["wait"] = [int(m.waiting), int(m.parked)]
+        if u.order_group or u.stopped or u.anchor:                          # only after a player command
+            d["cmd"] = [u.order_group, int(u.stopped), list(u.anchor) if u.anchor else None]
         return [d]
 
     def dump_json(self):

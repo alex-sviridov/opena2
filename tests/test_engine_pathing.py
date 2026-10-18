@@ -33,7 +33,7 @@ def run(sim, u, limit=3000, watch=None):
         sim.step()
         if watch:
             watch(sim.world, u)
-        if u.order == 0 and not u.mover.step_ticks:
+        if u.order != 1 and not u.mover.step_ticks:
             return n
     raise AssertionError("order never ended")
 
@@ -45,7 +45,8 @@ def test_move_to_straight_arrives_and_stops():
     sim.step([MoveTo(u.id, 18, 10)])
     run(sim, u)
     assert (u.x, u.y) == (18, 10) and (u.sub_x, u.sub_y) == (128, 128)
-    assert u.action == "idle" and u.state == 0 and not u.path and u.mover.goal is None
+    assert u.action == "idle" and u.state == 0 and not u.path
+    assert u.order == 0xC and u.stopped and u.anchor == (18, 10)      # the group pass ended the order (R 4.4)
 
 
 def test_move_to_walks_around_a_wall_and_never_enters_it():
@@ -133,7 +134,7 @@ def test_long_walk_replans_the_static_path_after_the_refresh_rate():
         if u.mover.consumed == 0 and u.mover.static_path and u.mover.static_path != last[1:]:
             plans += 1
         last = u.mover.static_path[:]
-        if u.order == 0:
+        if u.order != 1:
             break
     assert (u.x, u.y) == (50, 50)
     assert top <= 17                                        # > StaticRefreshRate (16) triggers a re-plan
@@ -192,7 +193,7 @@ def test_dynamic_list_lives_one_step_and_the_static_plan_is_renewed_every_17_cel
             plans, last = plans + 1, u.mover.last_plan
         if u.mover.step_ticks == 0:
             assert u.path == [] or u.order == 0             # cleared at every step end (FUN_00555b38)
-        if u.order == 0:
+        if u.order != 1:
             break
     assert (u.x, u.y) == (50, 10)
     assert plans == 1 + 40 // 17 + 1 or plans == 1 + 40 // 17    # first plan + a re-plan per 17 hop plans
@@ -242,19 +243,27 @@ def corridor(human=True, n=32):
 
 def test_head_on_in_a_one_cell_corridor_nobody_swaps():
     """The exe has no swap: the first unit in list order waits (turns to face the other, brain mode 10 -> 0),
-    the second sees an idle blocker, re-plans round it, finds no way and stops; both end on their cells."""
+    the second sees a walking blocker too?  No: `a` waits for the walking `b`; `b` re-plans round `a`, finds no way
+    and stops at once (failure = order 0xc).  The group pass at tick & 15 == 6 restarts the parked `a`, which now
+    sees an idle blocker, finds no way and stops too.  Both end on their cells."""
     w = corridor()
     a = unit(w, 1, 10, 10)
     b = unit(w, 2, 11, 10)                                  # adjacent, facing each other
     b.facing = 192
     sim = Simulation(w)
     sim.step([MoveTo(a.id, 20, 10), MoveTo(b.id, 5, 10)])
-    for _ in range(400):
+    for _ in range(4):
         sim.step()
     assert (a.x, a.y) == (10, 10) and (b.x, b.y) == (11, 10)        # nobody passed
-    assert a.mover.parked and a.order == 1                          # the waiting unit idles, its order stays
-    assert not a.mover.waiting and a.facing == 64
-    assert not b.mover.parked and b.order == 0                     # b re-planned (no way) and its order ended
+    assert a.mover.parked and a.order == 1 and not a.mover.waiting and a.facing == 64   # the waiting unit idles
+    assert b.order == 0xC and b.stopped                              # b: no way, stopped at once (failure)
+    while w.tick < 7:                                                # the pass at tick 6 restarts a
+        sim.step()
+    sim.step()
+    assert a.order == 1 and not a.mover.parked                       # restarted: it sees an idle blocker, re-plans
+    for _ in range(100):                                             # round it (no way in a corridor): it spins, the
+        sim.step()                                                   # order stays 1 and nobody passes
+    assert (a.x, a.y) == (10, 10) and (b.x, b.y) == (11, 10) and a.order == 1
 
 
 def test_blocker_verdicts():
@@ -310,7 +319,7 @@ def test_ai_unit_replans_round_a_friend_instead_of_waiting():
     assert (a.x, a.y) == (20, 10)
 
 
-def test_human_unit_behind_a_walker_turns_to_it_and_stays_parked_until_reordered():
+def test_human_unit_behind_a_walker_turns_to_it_and_is_restarted_by_the_group_pass():
     w = corridor()
     a = unit(w, 1, 10, 10)
     b = unit(w, 2, 11, 10)
@@ -327,10 +336,11 @@ def test_human_unit_behind_a_walker_turns_to_it_and_stays_parked_until_reordered
     assert a.mover.parked and a.facing == 64 and a.action == "idle"
     b.order, b.mover.goal = 0, None                         # b leaves the way
     w.move_unit(b.id, 14, 12, 128, 128)
-    for _ in range(50):
+    while (w.tick & 15) != 5:                               # parked until the pass (tick & 15 == 6) restarts it
         sim.step()
-    assert (a.x, a.y) == (10, 10)                           # still parked: nothing restarts the order
-    sim.step([MoveTo(a.id, 20, 10)])                        # a new command does
-    assert not a.mover.parked
+        assert a.mover.parked and (a.x, a.y) == (10, 10)
+    sim.step()
+    sim.step()
+    assert not a.mover.parked                               # R 4.4: FUN_0056c8af, no new command needed
     run(sim, a)
     assert (a.x, a.y) == (20, 10)

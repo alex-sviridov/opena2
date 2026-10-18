@@ -307,11 +307,11 @@ Pre-checks in 56dca2: (a) if world+0xbbe8==0 and group-record +0x45 (creature+0x
 If mover+0x98 != 0: clear it, then by creature order id: **1** -> `FUN_0056dc24` (stop: cancel + stand); **0xa** (patrol) -> brain+4=1, mode=0, when within 2 cells of waypoint brain+0x2 take next waypoint from list +0xb4 (`57b020`,`55f1f0`,`55f0d0`); **0x18** -> brain order=0xff; **others** -> mode=0 and **`FUN_0056ed4e` (auto target scan)**: nearest enemy in world lists (+0xa456c list, +0xa68 visible enemies) by `FUN_005568e4` direction/`FUN_0055aa21` cost; found -> brain+0xc=target, mode 6 + `56eff3`; none: mode 0, or mode 0xb (look-around, `56e5bc`) when owner flag +0x2c != 0.
 
 ## 9. Orders (`+0x50`)
-Order issuers (ECX = server order object; every one first calls `FUN_0056dbfb` = cancel (`56d969`: target facing := facing, release reservation if +0x80, brain+0x14=`56ac5b`, brain+0x60=0, mover+0x7c=0, state=0) then order:=0). Player command message type (byte at msg+9 in `FUN_004f515d`) -> issuer.
-| Value | Meaning (I name) | Issuer / message | Brain setup | Per-tick executor `FUN_00569321` |
+Order issuers (ECX = server order object; every one first calls `FUN_0056dbfb` = `56d969` (target facing := facing, release the reservation only if +0x80 is set, the unit is at a centre and the reserved cell is not the own one, brain+0x14=`56ac5b`, brain+0x60=0, mover+0x7c=0, state=0) and then **brain+0x50 := 0**, a "stopped" flag set to 1 only by `FUN_0056dbc6`; it does not write unit+0x50, the issuer sets that ([click-to-move-research](click-to-move-research.md) §3.4, CONFIRMED). Player command message type (byte at msg+9 in `FUN_004f515d`) -> issuer.
+| Value | Meaning (I name) | Issuer / message | Brain setup | Group-order-0 executor `FUN_00569321` (run every 16 ticks by the group pass, NOT per tick; a move group (order 4) is driven by `FUN_00573198`, research §4.4) |
 |---|---|---|---|---|
 | 0 | none / idle | 56dbfb | - | state:=0 |
-| 1 | move to cell | 56d032 (clamps x,y to world+0xa50 bounds +0x58eb8..bb) / 56d158; msg 0x16, 0x1c (5703c0), 0x1a (57063e) | dest brain+0xa, mover+0x90=0, mode 1 | `56c8af`: mode 1, dest; auto-stop when mover+0x90 and mover+0x76==my cell |
+| 1 | move to cell | 56d032 (`& 0xff`, then clamps x,y to [8, size-9] of the path finder +0x58eb8..bb) / 56d158; msg 0x16 and 0x1c (both 5703c0), 0x1a (57063e, group order 5) | dest brain+0xa, mover+0x90=0, mode 1 | `56c8af`: mode 1, dest; auto-stop when mover+0x90 and mover+0x76==my cell |
 | 2 | go and pick up item/sack at cell | 56da98; msg 0x21 | dest brain+0xa, mover+0x90=0, mode 0 | `56c8da` (go, mode 12 then state 2) |
 | 3 | attack target | 56d1be (self target -> stop `56dba1`); msg 0x19 | brain+0xc=target, brain+0x14=range, mode 0 | `56acc8`: special spell roll (3 slots), else mode 5; stops (`56dbc6`) when target state==0x10 |
 | 4 | AI-internal move to cell | 56d393 only caller 0x56f75a | dest, mode 0 | `569638` |
@@ -383,6 +383,6 @@ the 13 equipment slots (human `+0x208`). Id tables: units.reg, data.bin groups 3
 
 - Not traced: the occupancy stamps (`0x55c1fe`, `0x55c2ce`; the path finder is [simulation §7](simulation.md#7-pathfinding-phase-h2)), the group
   AI (`0x5691xx`–`0x56c9xx`: `0x56c840`, `0x56a981`, `0x56b059`, `0x56f0bb`), damage resolution
-  (`0x516ceb`, `0x516ea0`), the cast request consumer `0x57b210`, orders 0x16, 0x18, 0x19, 0x1a, the
+  (`0x516ceb`, `0x516ea0`), the cast request consumer `0x57b210`, orders 0x19, 0x1a (the move group, orders 1 and 0xc stop are done: [simulation §8](simulation.md#8-orders-h3)), the
   cell table portal case (`0x55f3e0`, type 0x17), the wire format of `FUN_005040c4`.
 - Meaning of the event classes of the three scenario booleans `+0x194`, `+0x198`, `+0x19c` (`FUN_005303ed`).

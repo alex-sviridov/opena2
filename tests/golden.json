@@ -11,6 +11,110 @@
   "20": "dca122fe8a63951581a254ce6d3f2809cae5043ab64ed67c44fa67aa3aef1063",
   "52": "ba1d06d4a4999d5b96e97a662c61cfb58cd46225e91c0d8944c09f454f593158"
  },
+ "orders": {
+  "crossing_off": {
+   "blocker_moved": false,
+   "cells": {
+    "1": [
+     27,
+     18
+    ],
+    "2": [
+     28,
+     19
+    ],
+    "3": [
+     28,
+     18
+    ],
+    "4": [
+     27,
+     20
+    ],
+    "9": [
+     20,
+     19
+    ]
+   },
+   "ended": 232,
+   "hash": "23e41758ca59e2db5bd184e863adc39386cbc2c321a0c4c626e5efc852337f49",
+   "no_way": 0
+  },
+  "crossing_on": {
+   "blocker_moved": false,
+   "cells": {
+    "1": [
+     27,
+     18
+    ],
+    "2": [
+     29,
+     18
+    ],
+    "3": [
+     27,
+     20
+    ],
+    "4": [
+     29,
+     20
+    ],
+    "9": [
+     20,
+     19
+    ]
+   },
+   "ended": 199,
+   "hash": "d71aaf679b60aba48435dc65d1be4bd7b6652fa71a6997f0f27f5047bf17f045",
+   "no_way": 0
+  },
+  "gap_jam": {
+   "cells": {
+    "1": [
+     19,
+     17
+    ],
+    "2": [
+     29,
+     19
+    ],
+    "3": [
+     19,
+     19
+    ],
+    "4": [
+     29,
+     21
+    ]
+   },
+   "ended": 215,
+   "hash": "ab22093210a4ea7d586c5faaf944ab892d7c4bbe94f6c6c53352326e4bdc7f44",
+   "no_way": 0
+  },
+  "unreachable": {
+   "cells": {
+    "1": [
+     18,
+     17
+    ]
+   },
+   "ended": 66,
+   "fallback_ring": 9,
+   "hash": "449e32c773a0190359ba0fbfba202eddfe78b3853335f2df6badbaaffd475669",
+   "no_way": 1
+  },
+  "walk_reorder": {
+   "cells": {
+    "1": [
+     12,
+     24
+    ]
+   },
+   "ended": 119,
+   "hash": "2751b9ab34d34ef6294260256c20982a504cca2ebe005d3cfb637c05b993059c",
+   "no_way": 0
+  }
+ },
  "paths": {
   "10:33,67>69,40": {
    "found": true,

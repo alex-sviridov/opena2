@@ -20,6 +20,36 @@ class SelectUnits(Command):
         object.__setattr__(self, "unit_ids", tuple(self.unit_ids))
 
 
+@dataclass(frozen=True)
+class MoveUnits(Command):
+    """Exe command 0x16: the player's units walk to `cell` = (x, y) in map cells (border included).
+    Intake: docs/engine/simulation.md "Orders (H3)"."""
+    player_id: int
+    unit_ids: tuple
+    cell: tuple
+
+    def __post_init__(self):
+        object.__setattr__(self, "unit_ids", tuple(self.unit_ids))
+        object.__setattr__(self, "cell", (int(self.cell[0]), int(self.cell[1])))
+
+
+@dataclass(frozen=True)
+class Stop(Command):
+    """Exe command 0x18 (key T, stand ground): cancel the walk, order 0xc."""
+    player_id: int
+    unit_ids: tuple
+
+    def __post_init__(self):
+        object.__setattr__(self, "unit_ids", tuple(self.unit_ids))
+
+
+@dataclass(frozen=True)
+class SetFormation(Command):
+    """Exe command 0x46 sub-code 2: the player's formation option, client mode 0 off, 1 auto, 2 on."""
+    player_id: int
+    mode: int
+
+
 class CommandQueue:
     def __init__(self):
         self._q = deque()

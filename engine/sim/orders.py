@@ -1,0 +1,202 @@
+"""Order system: the player's commands become unit orders, and the group pass.
+
+Spec: docs/engine/simulation.md "Orders (H3)", docs/engine/click-to-move-research.md (R section numbers in the
+comments; routine addresses there).  Layer 4: reads and writes `engine.world` only.  Runs first in
+`Simulation.systems`: at the start of a step the group pass (when `world.tick & 15 == 6`), then the command drain.
+"""
+
+from engine.world import OrderGroup
+
+from .commands import MoveUnits, SetFormation, Stop
+from .movement import (CENTRE, MOVE_ORDER, MoveTo, _in_map, _set_action, IDLE, cancel, live_cells, path_grid,
+                       set_move, set_stand, stop_unit, unit_size, unit_speed)
+from .pathfinding import chebyshev
+
+MAX_IDS = 253                       # FUN_0050bbb8 stops appending at 253 (R 2)
+FORMATION_LIMIT = 2                 # server+0xa724: Chebyshev distance an Auto group may be spread over (R 3.2)
+SERVER_FORMATION = (0, 2, 1)        # client mode 0 off, 1 auto, 2 on -> server 0 off, 2 auto, 1 on (0x4f688c..0x4f68f8)
+BORDER = 8                          # clamp margin of FUN_0056d032
+GROUP_MOVE, GROUP_STAND = 4, 3      # group order (record+0x20)
+PASS_PHASE = 6                      # group pass runs when the tick counter before its increment has & 15 == 6
+
+
+def _s16(v):
+    v &= 0xFFFF
+    return v - 0x10000 if v & 0x8000 else v
+
+
+def _lookup(world, player_id, uid):
+    """`FUN_004f3a19`: the unit in the claimed player's own set, living.  (A unit with HP <= 0 is refused here;
+    the exe accepts it and resets the order on its death tick, which is not implemented yet: DECISION.)"""
+    u = world.units.get(uid)
+    return u if u is not None and u.owner == player_id and u.hp > 0 else None
+
+
+def _new_group(world, owner):
+    """`FUN_0052b06f`: delete the owner's empty groups, allocate a fresh one."""
+    for gid in [gid for gid, g in world.groups.items() if g.owner == owner and not g.members]:
+        del world.groups[gid]
+    g = OrderGroup(world._next_group, owner)
+    world._next_group += 1
+    world.groups[g.id] = g
+    return g
+
+
+def _join(world, g, u):
+    """`FUN_0052af8c`: leave the old group, append at the tail of the new one."""
+    old = world.groups.get(u.order_group)
+    if old is not None and u.id in old.members:
+        old.members.remove(u.id)
+    g.members.append(u.id)
+    u.order_group = g.id
+
+
+def intake(world, player_id, unit_ids):
+    """`FUN_004f515d` up to the dispatch (R 3.1): the command needs a known player and >= 1 id whose FIRST id is a
+    living unit of that player; later invalid ids are skipped silently.  A new group per command.  Returns the
+    group or None."""
+    if player_id not in world.players:
+        return None
+    ids = list(unit_ids)[:MAX_IDS]
+    if not ids or _lookup(world, player_id, ids[0]) is None:
+        return None
+    g = _new_group(world, player_id)
+    for i in ids:
+        u = _lookup(world, player_id, i)
+        if u is not None:
+            _join(world, g, u)
+    return g
+
+
+def centroid(world, g):
+    """`FUN_0056f850`: truncating division of the sums of the 16-bit positions (cell * 256 + sub-cell, mid-step
+    offsets count); returns the centroid cell."""
+    us = [world.units[i] for i in g.members]
+    n = len(us)
+    if not n:
+        return None
+    sx = sum((u.x << 8) | u.sub_x for u in us)
+    sy = sum((u.y << 8) | u.sub_y for u in us)
+    return (sx // n) >> 8, (sy // n) >> 8
+
+
+def _clamp(world, x, y):
+    """`FUN_0056d032`: `& 0xff` first (a negative target wraps to the far edge), then per axis into [8, size - 9]."""
+    x, y = x & 0xFF, y & 0xFF
+    return (max(BORDER, min(world.width - 1 - BORDER, x)), max(BORDER, min(world.height - 1 - BORDER, y)))
+
+
+def _cancel_group(world, g):
+    """`FUN_00570e83`: cancel every member, group order := 0."""
+    for i in g.members:
+        cancel(world.units[i])
+    g.order = 0
+
+
+def move_group(world, g, x, y, raw=False):
+    """`FUN_005703c0` (R 3.2, 4.1, 4.3).  `raw` (debug `MoveTo`): the target is used as given, no wrap or clamp."""
+    x, y = x & 0xFF, y & 0xFF
+    formation, minspeed = True, 250
+    _cancel_group(world, g)
+    player = world.players.get(g.owner)                 # synthetic worlds may lack the player: default option
+    mode = SERVER_FORMATION[player.formation if player else 1]
+    c = None
+    if mode == 2:
+        c = centroid(world, g)
+        if any(chebyshev((world.units[i].x, world.units[i].y), c) > FORMATION_LIMIT for i in g.members):
+            formation = False
+    elif mode != 0:
+        c = centroid(world, g)
+    else:
+        formation = False
+    _cancel_group(world, g)
+    for i in g.members:
+        u = world.units[i]
+        if formation:
+            tx, ty = x + (u.x - c[0]), y + (u.y - c[1])
+            sp = _s16(unit_speed(u))
+            if sp < minspeed:
+                minspeed = sp & 0xFF
+        else:
+            tx, ty = x, y
+        set_move(world, u, *((tx, ty) if raw else _clamp(world, tx, ty)))
+    if formation:
+        g.speed = minspeed
+    g.order = GROUP_MOVE
+    g.target = (x, y)
+
+
+def stop_group(world, g):
+    """`FUN_00570b8b` (cmd 0x18, stand ground): every member order 0xc with the anchor on its own cell; group order 3."""
+    _cancel_group(world, g)
+    for i in g.members:
+        set_stand(world, world.units[i])
+    g.order = GROUP_STAND
+
+
+def _target_free(world, u, cell):
+    """`FUN_0055cd50`: the unit's footprint at `cell` is free in the live layer (static block plus the other units'
+    stamps, INFERRED to exclude the unit's own)."""
+    grid, live = path_grid(world, u.move_type), live_cells(world, u)
+    n = unit_size(u)
+    return all(not grid.is_blocked(cell[0] + i, cell[1] + j) and (cell[0] + i, cell[1] + j) not in live
+               for j in range(n) for i in range(n))
+
+
+def group_pass(world):
+    """`FUN_0056fe4d` (R 4.4): per player in id order, each group in creation order; only group order 4 (move) is
+    decoded.  Order 3 (stand ground, `57309d`) and the computer players' branch are phase I."""
+    for pid in sorted({g.owner for g in world.groups.values()}):
+        for g in [g for g in world.groups.values() if g.owner == pid]:
+            if g.members and g.order == GROUP_MOVE:
+                _pass_move(world, g)
+
+
+def _pass_move(world, g):
+    """`FUN_00573198`, per member in list order."""
+    for i in list(g.members):
+        u = world.units[i]
+        m = u.mover
+        cell = (u.x, u.y)
+        at_centre = (u.sub_x, u.sub_y) == (CENTRE, CENTRE)
+        if m.goal is not None and cell == m.goal and at_centre and not u.stopped:
+            stop_unit(world, u)                         # arrived (FUN_0056dbc6)
+            m.arrived = False
+        elif m.arrived and m.tail == cell:
+            stop_unit(world, u)                         # arrived at the end of its plan (a fallback cell)
+            m.arrived = False
+        if u.stopped:
+            continue                                    # guard scan (FUN_0056a1fb): no enemies exist yet
+        if u.order == MOVE_ORDER:
+            m.waiting = m.parked = False                # FUN_0056c8af: brain mode := 1 restarts a parked unit
+            if (not _target_free(world, u, g.target) and m.goal == g.target
+                    and chebyshev(cell, g.target) < 2):
+                # FUN_0056a1fb -> FUN_0056afd9 -> FUN_0056b025: no target in range, mode 0 (DECISION: also for
+                # ranged and computer-player units, whose branches 56bc7b / mode 0xb are phase I)
+                m.parked = True
+                if not m.step_ticks:
+                    _set_action(world, u, IDLE)
+
+
+def orders_system(world, commands):
+    """Group pass (before the drain), then the drain in log order."""
+    if (world.tick & 15) == PASS_PHASE:
+        group_pass(world)
+    for cmd in commands:
+        if isinstance(cmd, MoveUnits):
+            g = intake(world, cmd.player_id, cmd.unit_ids)
+            if g is not None:
+                move_group(world, g, *cmd.cell)
+        elif isinstance(cmd, Stop):
+            g = intake(world, cmd.player_id, cmd.unit_ids)
+            if g is not None:
+                stop_group(world, g)
+        elif isinstance(cmd, SetFormation):
+            if cmd.player_id in world.players and cmd.mode in (0, 1, 2):
+                world.players[cmd.player_id].formation = cmd.mode
+        elif isinstance(cmd, MoveTo):
+            u = world.units.get(cmd.unit_id)
+            if u is not None and u.hp > 0 and _in_map(world, (cmd.x, cmd.y)):
+                g = _new_group(world, u.owner)
+                _join(world, g, u)
+                move_group(world, g, cmd.x, cmd.y, raw=True)

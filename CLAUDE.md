@@ -216,4 +216,10 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   plan (re-planned on target change or after 16 hops) and 3-4 cell dynamic hops over the live layer (every 32 ticks or when empty);
   `engine/sim/pathfinding.py` (pure), `MoveTo` order, overlay `--debug paths` (F4), `tools/bench_pathfinding.py`
   (168 ms worst, 256x256; was 444), goldens `["paths"]`. Blocker wait (no swap: the first human size-1 unit turns to a walking friend and stops until re-ordered, 7.4) modelled; not decoded: follow-target. docs/engine/simulation.md §7
-- Status: E, F, H1 and H2 done. Next: H3 click-to-move. Also G3c (fonts). Also (docs/open-questions.md): town-scene animations, text conventions.
+- Orders (H3) done: click to move, REA-checked (docs/engine/click-to-move-research.md): left release dispatches on the cursor chosen at release
+  (move; attack over ground = move), right release = cancel pending mode / deselect, right drag scrolls, minimap left click = move; no Stop
+  message (T = cmd 0x18, order 0xc), no click marker, "No way" text; every command makes a new group, formation Off/Auto/On = rigid translation
+  around the truncated centroid (no free-cell search), group pass at `tick & 15 == 6` ends arrivals and restarts parked units; commands
+  `MoveUnits`/`Stop`/`SetFormation`, `engine/sim/orders.py`, `engine/ui/orders.py`; 46-map integration (`ALLODS2_ALL_MAPS=1`), 30/60/144 fps
+  replay hash, goldens `["orders"]`, `tools/bench_orders.py`. docs/engine/simulation.md §8-9, spec docs/superpowers/specs/2026-10-18-click-to-move-design.md
+- Status: E, F, G3b, H (H1-H3) done. Next: I1: melee attack. Also G3c (fonts). Also (docs/open-questions.md): town-scene animations, text conventions.

@@ -243,9 +243,14 @@ Code: `engine/ui/layout.py`, `cursor.py`, `selection.py`; `engine/view/pick.py`,
 - **Info panel** (text via `text.draw_text`, pygame's default font until G3c): the unit's `DescText` centred at
   `(panel.w - 88, 0x1c)`, `HP` label at 0x2c, `cur/max` at (0x73, 0x36), owner name at (6, 0xe0). No portrait.
   Positions CONFIRMED (§10); title source and owner line are DECISIONs.
-- **Cursor**: `choose_cursor` (pure) picks arrows / default / select / pickup; `CursorSprites` decodes the frame of
+- **Cursor**: `choose_cursor` (pure) picks arrows / default / select / pickup / move / attack / swarm / town / the pending-mode
+  cursors (H3 stage B, table in [ui-layout §6](ui-layout.md)); over the minimap image `choose_minimap_cursor` gives the `s*` cursors; `CursorSprites` decodes the frame of
   `load_cursor_set(name).frame_at` (wall-clock ms) and the window blits it last at `mouse - hotspot`; the OS cursor is hidden.
-- Tests: `tests/test_engine_{layout,cursor,pick,selection,selection_input,interface}.py`; golden `["interface"]` (map 10,
+- **Message line** (H3 stage B): `Interface.draw(..., message=(text,))` draws one text at (8, 8) of the view's top strip in grey
+  (192, 192, 192), pygame's default font (slot `0x5f17f4`, "grey 17i": RGB and position INFERRED). `engine.ui.MessageLine` holds
+  the current text and its end time (`"No way"` 3000 ms from `NoWay` events, formation text 2000 ms); events are drained in
+  `window.run` each frame. No click marker (CONFIRMED absent).
+- Tests: `tests/test_engine_{layout,cursor,pick,selection,selection_input,interface,orders_ui}.py`; golden `["interface"]` (map 10,
   640x480, the human unit selected) is tied to the pinned pygame-ce's bundled font.
 
 ## Open questions

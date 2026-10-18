@@ -79,8 +79,13 @@ from both places when answered).
 - [Cell effects](engine/rendering.md#open-questions) (answered: spell-area sprites, registered by [spells §4](data/spells.md#4-effect-handlers); drawing needs the spell system), unit invisibility / stone curse / hover, message 0x74 (flag 0x80); start at `FUN_004632a1`.
 - [Engine object drawing](engine/rendering.md#open-questions): burnt ground, light-map lights on objects; start at `FUN_00404a2a`.
 - [Engine minimap](engine/rendering.md#open-questions): final channel pass `0x4ac030`, fog background surface `DAT_00626be0`, fog gate of the unit dots; start at `FUN_004ac414`.
-- Movement (H1) [simulation](engine/simulation.md#open-questions): waypoint removal and the tick an order ends after
-  arrival (`FUN_00569321`, `FUN_00555dc2`); group speed and Haste/Slow in `unit_speed`; the regeneration job
-  vs its `tick & 3` test (`FUN_0052bbb7`, `0x50fc5a`); the group-AI pass at `tick & 15 == 6` (`FUN_0056fe4d`).
-- Pathfinding (H2) [simulation §7](engine/simulation.md#open-questions): blocker wait restart (type-0 group message, `FUN_00570087`/`FUN_00569321`; no swap exists, answered in 7.4), bit `0x10` (`FUN_00559c28`), follow-target `FUN_00557f08`/`FUN_0055574d`, class-0x12 clause `FUN_00556f56`.
+- Movement and orders (H1, H3) [simulation](engine/simulation.md#open-questions): the dynamic list's waypoint removal (`FUN_00555dc2`);
+  Haste/Slow vs the group speed byte (phase I); the regeneration job vs its `tick & 3` test (`FUN_0052bbb7`, `0x50fc5a`); group
+  handlers for orders 1, 3, 5, 0x13 and the computer players' branch of the pass (`FUN_00570087`: `57275f`, `57309d`, `572e1e`, `57311c`),
+  retreat post pass `FUN_00573713`; command loop-back latency and the pass phase (`FUN_004f84c6`, `FUN_004f08c0`).
+- Handoff to combat (phase I) [simulation §9](engine/simulation.md#9-handoff-to-combat-phase-i): follow-target planner ring order (`FUN_00557f08`, `FUN_00557cf1`, `FUN_0055574d`), brain modes 4/5/6 ranges (`brain+0x14`, `FUN_0056ac5b`), orders `0x17`/`0x19`..`0x1d` and their group handlers, voice, the consolidated VERIFY IN GAME list (§9 items 1-10).
+- Order planning spike (H3 bench) [simulation §8.7](engine/simulation.md#87-tests-end-states-measured): a 20-unit order on the 256 x 256 map costs ~0.46 s in one tick (pure-Python planner); worker-thread or faster planner, results must stay bit-identical.
+- Pathfinding (H2) [simulation §7](engine/simulation.md#open-questions): bit `0x10` (`FUN_00559c28`), mode 4 blockers, follow-target `FUN_00557f08`/`FUN_0055574d`, class-0x12 clause `FUN_00556f56`.
+- Click to move UI (H3 stage B): minimap move row (R 1.6 quirk, [ui-layout §8](engine/ui-layout.md)); message colour/position of the message line and the formation text lifetime ([rendering §14](engine/rendering.md)); cursor kept for pending modes 3/7.
+- Click to move (H3 research) [research §9](engine/click-to-move-research.md#9-open-questions): voice unit selection `FUN_0041da16`, `FUN_00417f31` beyond the view width (minimap move row), hotkey gating `view+0x80`/`client+0xc0`, `brain+0x50/+0x6c/+0x38` meaning, AI-owned "No way" messages (`0x92`, `+7`).
 - Phantom units (9 on blocked cells, never created by the server) and HP-0 units: engine keeps and draws them; decide with the phase H sim. [architecture §9](engine/architecture.md#9-world-state)

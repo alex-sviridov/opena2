@@ -1,17 +1,18 @@
 """Fixed-step simulation."""
 
 from .movement import movement_system
+from .orders import orders_system
 from .selection import selection_system
 
 
 class Simulation:
     """`step(commands)` advances the world one tick: systems run in list
     order, each as `system(world, commands)`; then the tick counter grows.  Every command
-    is appended to `log` as `(tick, command)`.  `systems=None` installs the selection and movement systems."""
+    is appended to `log` as `(tick, command)`.  `systems=None` installs the order, selection and movement systems."""
 
     def __init__(self, world, systems=None):
         self.world = world
-        self.systems = [selection_system, movement_system] if systems is None else list(systems)
+        self.systems = [orders_system, selection_system, movement_system] if systems is None else list(systems)
         self.log = []
 
     @property

@@ -7,7 +7,7 @@ Research notes for phase H3 (orders) and the order phases after it. Everything w
 [ui-layout](ui-layout.md) §6-§8; [unit-struct](unit-struct.md) §8, §9. "Out of scope now" = needed only by
 attack, follow, pickup, use, cast (phases I/K).
 
-Corrections to the older docs found on the way are collected in §10 (those files are not edited here).
+Corrections to the older docs found on the way are collected in §10 (applied in H3 stage A to simulation, ui-layout, unit-struct and animation).
 
 ## 1. The input path in the game view
 
@@ -467,7 +467,7 @@ sub-code 1 (`0x40e266`): if `DAT_00622810 != 0` (**constant 1**, its only writer
 6. Whether the AI-owned "No way" messages are dropped by the single local client (recipient filter `0x92`, `+7`).
 7. `view+0x80`, `client+0xc0` exact meaning (hotkey gating), and `FUN_0041f090`/`41f0e0` neighbours of `Ctrl+F`.
 
-## 10. Corrections to the existing docs (not edited here)
+## 10. Corrections to the existing docs (applied)
 
 - [ui-layout §8](ui-layout.md#8-selection): "message `0x40e` left, `0x40f` right: INFERRED" is wrong: the release messages are
   `WM_LBUTTONUP` (view slot `+0x58`, `0x40c5d1`) and `WM_RBUTTONUP` (`0x40c53a` -> `0x405`); `0x40e/0x40f` toggle the inventory/spellbook. The open
@@ -492,3 +492,4 @@ sub-code 1 (`0x40e266`): if `DAT_00622810 != 0` (**constant 1**, its only writer
 10. **Stop commands.** `G`, `T`, `L`, `R` during a walk: all finish the current step; afterwards `T`/`G` units fight enemies in range, `L` units do not.
 11. **No marker.** Order a walk and look for any ground sprite at the destination (none expected).
 12. **Edge wrap.** Select a wide group near the west edge, Formation On, click within 2 cells of the edge: members whose offset is larger than the click column should run to the far east edge (the `& 0xff` wrap).
+13. Stage B UI items: see [design spec, Stage B](../superpowers/specs/2026-10-18-click-to-move-design.md) (VERIFY IN GAME additions a-g).

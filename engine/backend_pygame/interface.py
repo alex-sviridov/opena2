@@ -10,6 +10,8 @@ from .render import draw_frame
 from .text import draw_text
 
 INFO_TEXT = (255, 255, 255)
+MESSAGE_COLOUR = (192, 192, 192)    # text slot 0x5f17f4 = table 0x61fa80 "grey 17i": INFERRED RGB
+MESSAGE_POS = (8, 8)
 BALL = "graphics/interface/Ball.bmp"
 
 
@@ -58,7 +60,7 @@ class Interface:
             window.blit(img, (rect.x, rect.y))
 
     def draw(self, window, caches, terrain_items, items, camera, world, player_id, minimap=None, panel=None,
-             unit_title=None):
+             unit_title=None, message=None):
         """Compose the whole window.  `minimap`: engine.view.Minimap (image drawn at `panel`'s
         position), `unit_title(unit) -> str` for the info panel."""
         lay = self.layout
@@ -82,6 +84,12 @@ class Interface:
             img = minimap.image(camera)
             window.blit(rgb_surface(img), (panel.left, panel.top))
         self.draw_info(window, world, player_id, unit_title)
+        if message:
+            self.draw_message(window, *message)
+
+    def draw_message(self, window, text, colour=MESSAGE_COLOUR):
+        """The message line: top strip of the view (0, 0, W-160, 30), purpose INFERRED (ui-layout.md section 1)."""
+        draw_text(window, text, MESSAGE_POS[0], MESSAGE_POS[1], colour)
 
     def draw_info(self, window, world, player_id, unit_title=None):
         """Info panel texts (ui-layout.md section 10; DECISIONs in the design spec)."""

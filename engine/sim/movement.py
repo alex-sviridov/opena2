@@ -13,6 +13,8 @@ from dataclasses import dataclass
 
 from allods2.formats import progression as prog
 
+from engine.world import NoWay
+
 from .commands import Command
 from .pathfinding import DEFAULT_CONFIG, PathGrid, plan_dynamic, plan_static, chebyshev
 from allods2.formats import passability as pas
@@ -26,7 +28,7 @@ MIN_STEP, MAX_STEP = 1, 63
 SNAP_TURN = 0x20                # a turn of at most 45 degrees snaps (FUN_00556454)
 
 IDLE_STATE, MOVE_STATE = 0, 1   # unit.state (+0x54)
-NO_ORDER, MOVE_ORDER = 0, 1     # unit.order (+0x50)
+NO_ORDER, MOVE_ORDER, STAND_ORDER = 0, 1, 0xC   # unit.order (+0x50): none, move to cell, stand/guard
 STATIC_PLAN_FORCED = 0xFF       # mover.consumed value that forces a static re-plan (brain wrapper 0x56e4b0)
 WAIT = "wait"                    # _drive result: a blocker wait began (not an ended order)
 IDLE, MOVE, TURN = "idle", "move", "turn"       # unit.action (the client's actions 0, 1, 5)
@@ -45,8 +47,9 @@ class FollowPath(Command):
 
 @dataclass(frozen=True)
 class MoveTo(Command):
-    """Order 1: walk `unit_id` to cell (x, y), planning the way as the exe does (docs/engine/simulation.md
-    section 7).  The click mapping (H3) issues these.  Rejected: unknown or dead unit, cell outside the map."""
+    """Debug order (not a player command; the player's is `MoveUnits`): a one-unit group move to cell (x, y),
+    raw: no intake validation, no `& 0xff` wrap, no clamp.  Executed by `orders.py`.  Rejected: unknown or dead
+    unit, cell outside the map."""
     unit_id: int
     x: int
     y: int
@@ -81,6 +84,13 @@ def unit_speed(u):
     return base + u.speed_mod
 
 
+def walk_speed(world, u):
+    """Base speed of a step (`FUN_0055915a`): the unit's group speed byte (`record+0x44`) when non-zero, else the
+    speed stat.  The group byte is set only by a formation move (docs/engine/simulation.md "Orders (H3)")."""
+    g = world.groups.get(u.order_group)
+    return g.speed if g is not None and g.speed else unit_speed(u)
+
+
 def turn_rate(u):
     """Facing units per tick (mover+0xa).  Humans: the recompute copies the low byte of the speed
     stat (`FUN_0051366b`, `0x513ffc`-`0x514005`), so a hero turns as fast as it walks; the
@@ -108,7 +118,7 @@ def step_length(world, u, frm, d):
     Ground units: speed * SpeedMultiplier, +- v*|dh|/64 for the height step (dh = from - to,
     clamped to +-32; downhill is faster), divided by the mean of the two cell costs (8 when 0);
     other movers keep the speed."""
-    base = unit_speed(u)
+    base = walk_speed(world, u)
     if u.move_type == 1:
         to = (frm[0] + DIR_DX[d], frm[1] + DIR_DY[d])
         dh = max(-32, min(32, int(world.heights[frm[1], frm[0]]) - int(world.heights[to[1], to[0]])))
@@ -199,6 +209,7 @@ def _advance(world, u):
 
 def _end_step(u):
     m = u.mover
+    u.state = IDLE_STATE            # the Brain tick clears the state at a centre (R 3.4); the next step sets it again
     m.step_len = m.step_ticks = m.steps = 0
     m.step_target = m.step_from = None
 
@@ -212,10 +223,12 @@ def _start_step(world, u):
     face = facing_to(here, target)
     m.target_facing = face
     if u.facing != face:
+        u.state = MOVE_STATE
         _set_action(world, u, TURN)
         _turn_toward(u, face)
         return
     u.path.pop(0)
+    u.state = MOVE_STATE
     d = dir8(u.facing)
     m.step_target, m.step_from, m.step_dir = target, here, d
     m.step_len = step_length(world, u, here, d)
@@ -259,6 +272,8 @@ def path_grid(world, move_type):
     """Static PathGrid for a mover class (block layer masked with the mover byte, terrain costs), cached
     per block revision."""
     cache = world.__dict__.setdefault("_path_grids", {})
+    if move_type not in pas.MOVE_MASK:
+        move_type = 1                   # humans carry movementType -1 in data.bin and take the walker mask (map.md part 3)
     key = (move_type, world.block_rev, id(world.cost))
     g = cache.get(key)
     if g is None:
@@ -304,16 +319,6 @@ def _is_human(world, u):
     return bool(p and p.human)
 
 
-def apply_move_to(world, cmd):
-    u = world.units.get(cmd.unit_id)
-    if u is None or u.hp <= 0 or not _in_map(world, (cmd.x, cmd.y)):
-        return False
-    u.order, u.state = MOVE_ORDER, MOVE_STATE
-    u.mover.waiting = u.mover.parked = False
-    u.mover.goal = (cmd.x, cmd.y)
-    return True
-
-
 def _static_plan(world, u):
     """FUN_00555411 step 2: plan the whole way, reset the hop state."""
     m, here = u.mover, (u.x, u.y)
@@ -327,6 +332,18 @@ def _static_plan(world, u):
     m.consumed = 0
     u.path = []                                         # the dynamic list is cleared
     m.last_plan = res
+    if res.reason in ("fallback", "unreachable"):
+        _maybe_no_way(world, u, res)
+
+
+def _maybe_no_way(world, u, res):
+    """`FUN_0054d76e` 0x54e1c7..0x54e240: after the cell fallback the planner posts message 0x92 ("No way") when
+    the end cell is more than 1 cell from the target (more than 2 when the target is a building cell:
+    `FUN_00559bc9` = the cell record holds a structure).  No fallback cell: the packed end is 0, cell (0, 0)."""
+    end = res.end if res.end is not None else (0, 0)
+    limit = 2 if world._claim.get(tuple(u.mover.goal)) is not None else 1
+    if chebyshev(end, u.mover.goal) > limit:
+        world.events.append(NoWay(u.owner, world.tick))
 
 
 def _hop_plan(world, u):
@@ -343,7 +360,7 @@ def _hop_plan(world, u):
     grid = path_grid(world, u.move_type).with_blocked(live_cells(world, u))
     res = plan_dynamic(grid, here, goal, size=unit_size(u), walker=u.move_type == 1)
     u.path = list(res.cells)
-    m.last_hop = res
+    m.last_hop, m.last_hop_goal = res, goal
     if not u.path and final:
         m.failed = True
     if n and d <= cfg.dynamic_by_static_lookup:
@@ -407,6 +424,7 @@ def _begin_wait(world, u, cell):
         _set_action(world, u, IDLE)
         return
     m.waiting = True
+    u.state = MOVE_STATE
     _set_action(world, u, TURN)
     _turn_toward(u, face)
 
@@ -416,8 +434,10 @@ def _tick_wait(world, u):
     nothing drives it any more, INFERRED: only a new command restarts it)."""
     m = u.mover
     if u.facing != m.target_facing:
+        u.state = MOVE_STATE
         _turn_toward(u, m.target_facing)
         return
+    u.state = IDLE_STATE
     m.waiting, m.parked = False, True
     _set_action(world, u, IDLE)
 
@@ -429,12 +449,12 @@ def _drive(world, u):
     if m.dest != m.goal:                                # wrapper: target changed -> force a static re-plan
         m.consumed = STATIC_PLAN_FORCED
     if here == m.goal:
-        return False
+        return False                                    # nothing to do; the group pass ends the order
     m.since_hop = min(255, m.since_hop + 1)
     if m.dest != m.goal or m.consumed > cfg.static_refresh_rate:
         _static_plan(world, u)
     if here == m.tail:
-        m.arrived = True
+        m.arrived = True                                # mover+0x90; the order ends at the group pass
         return False
     if not u.path or m.since_hop > cfg.dynamic_refresh_rate:
         head = m.static_path[0] if m.static_path else None
@@ -448,19 +468,61 @@ def _drive(world, u):
     return True
 
 
-def _stop(world, u):
+def cancel(u):
+    """`FUN_0056dbfb` = `FUN_0056d969` + `brain+0x50 := 0` (R 3.4): the target facing becomes the facing (a turn in
+    progress stops where it is), the state is 0.  A step in progress is NOT aborted (the Brain tick keeps running
+    it) and a reservation is kept mid-step; at a centre the engine has no reservation to release (the live layer is
+    derived from positions).  Plans, `dest`, `turning` and the dynamic list are untouched."""
+    u.mover.target_facing = u.facing
+    u.state = IDLE_STATE
+    u.stopped = False
+
+
+def stop_unit(world, u):
+    """`FUN_0056dbc6`: cancel, then order 0xc with the anchor on the own cell and Brain mode 0 (`FUN_0056dba1` ->
+    `FUN_0056d52b`), and `brain+0x50 := 1`.  Used by arrival, failure and the blocked-target rule."""
+    cancel(u)
+    set_stand(world, u)
+    u.stopped = True
+
+
+def set_stand(world, u):
+    """`FUN_0056d52b`: order 0xc (stand/guard), anchor = the own cell, mode 0."""
+    cancel(u)
+    u.order = STAND_ORDER
+    u.anchor = (u.x, u.y)
+    u.mover.waiting = u.mover.parked = False
+    if not u.mover.step_ticks:
+        _set_action(world, u, IDLE)
+
+
+def set_move(world, u, x, y):
+    """`FUN_0056d032` after the clamp: order 1, destination (x, y), `mover+0x90` (arrived) and the failure flag
+    cleared, Brain mode 1.  The cancel comes first."""
+    cancel(u)
     m = u.mover
-    u.order, u.state = NO_ORDER, IDLE_STATE
-    m.target_facing = u.facing
+    u.order = MOVE_ORDER
+    u.anchor = None
+    m.goal = (x, y)
+    m.arrived = m.failed = False
     m.waiting = m.parked = False
-    m.goal = m.dest = None          # DECISION: a finished order forgets its plan (the exe keeps +0x74; open)
-    m.static_path = []
-    _set_action(world, u, IDLE)
 
 
 def _tick_unit(world, u):
+    """One Brain tick (`FUN_0056dca2`), then the failure event: `mover+0x98` ends an order 1 at once
+    (`0x56e1b0` -> `FUN_0056dc24` = stop), unlike arrival, which waits for the group pass."""
+    _tick_inner(world, u)
+    m = u.mover
+    if m.failed:
+        m.failed = False
+        if u.order == MOVE_ORDER:
+            stop_unit(world, u)
+
+
+def _tick_inner(world, u):
     m = u.mover
     if m.step_ticks:                                    # a step is in progress (FUN_00555b38)
+        u.state = MOVE_STATE
         _advance(world, u)
         if (u.sub_x, u.sub_y) == (CENTRE, CENTRE):
             _end_step(u)
@@ -476,24 +538,27 @@ def _tick_unit(world, u):
         r = _drive(world, u)
         if r is WAIT:
             return
-        if not r:
-            _stop(world, u)
+        if not r:                                       # at the goal or at the end of the plan: stand, order stays
+            u.state = IDLE_STATE
+            _set_action(world, u, IDLE)
             return
     if u.path:
         _start_step(world, u)
-    else:                                               # arrived (mover+0x90) -> auto stop
+    elif m.goal is None:                                # FollowPath (debug): the path is done
         u.order, u.state = NO_ORDER, IDLE_STATE
         m.target_facing = u.facing
+        _set_action(world, u, IDLE)
+    else:                                               # no hop yet: wait for the next tick's driver
+        u.state = IDLE_STATE
         _set_action(world, u, IDLE)
 
 
 def movement_system(world, commands):
-    """Apply the tick's movement commands, then update every unit in list order (the exe:
-    FUN_004f84c6 drains the commands, FUN_004f04cf walks the creature list)."""
+    """Apply the tick's `FollowPath` commands, then update every unit in list order (the exe:
+    FUN_004f84c6 drains the commands, FUN_004f04cf walks the creature list).  The player's orders are
+    applied by `orders.orders_system`, which runs before."""
     for cmd in commands:
         if isinstance(cmd, FollowPath):
             apply_follow_path(world, cmd)
-        elif isinstance(cmd, MoveTo):
-            apply_move_to(world, cmd)
     for u in list(world.units.values()):
         _tick_unit(world, u)

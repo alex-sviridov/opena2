@@ -174,5 +174,6 @@ def test_main_loop_click_selects_unit_and_right_click_clears():
     assert w.players[1].selection == (u.id,)
     window.ensure_display(*lay.size)
     pygame.event.post(ev(pygame.MOUSEBUTTONDOWN, pos=(x, y), button=3))
+    pygame.event.post(ev(pygame.MOUSEBUTTONUP, pos=(x, y), button=3))
     window.run(w, tv, cam, lay, assets=assets, max_frames=8)
     assert w.players[1].selection == ()

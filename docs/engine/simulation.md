@@ -1,8 +1,9 @@
 # Simulation: tick, update order, unit states, movement
 
 Phase H1. The game tick, what a server tick runs and in what order, the unit state machine, and the
-rules by which a unit walks a given path, and (§7, H2) how it finds one. Code: `engine/sim/` (`clock.py`,
-`simulation.py`, `movement.py`), `engine.world.Unit` / `Mover`. Facts are marked **CONFIRMED** (GOG
+rules by which a unit walks a given path, (§7, H2) how it finds one, and (§8, H3) how the player's commands
+become orders. Code: `engine/sim/` (`clock.py`, `simulation.py`, `orders.py`, `movement.py`),
+`engine.world.Unit` / `Mover` / `OrderGroup`. The research behind §8: [click-to-move-research](click-to-move-research.md). Facts are marked **CONFIRMED** (GOG
 `allods2.exe`, sha256 in [formats/README](../formats/README.md), address given) or **INFERRED**;
 engine choices are **DECISION**. Unit struct and mover offsets: [unit-struct](unit-struct.md) §2, §7,
 §8; walk timing and animation: [animation §3](../formats/animation.md#3-timing).
@@ -39,7 +40,8 @@ CONFIRMED, `FUN_004f08c0` → `FUN_004f8521` (`0x4f8521`), `FUN_004f04cf`:
 | 6 | end-of-tick message (type 100, tick number) to the client | `FUN_00504bb7` | |
 
 Periodic extras by `tick & 15` (`FUN_004f08c0`): `== 6` `FUN_0056fe4d(DAT_0068d2c4)` = the group-AI pass
-(group orders `FUN_00570087`, path-finder refresh, it prints "Stats: last turn ... average" timings);
+(group orders `FUN_00570087`, path-finder refresh, it prints "Stats: last turn ... average" timings; it runs
+**before** the counter is incremented and before the command drain; the move-group part is §8.3);
 `== 12` `FUN_0052bbb7` = creature slot `0x14` (regeneration, [unit-struct §3](unit-struct.md)) for every
 creature, a loop over a second list (`FUN_005110b8`) and the delayed removal of dead objects
 (`FUN_00510a70`), plus `FUN_004f0548`, `FUN_005162f6`, `FUN_00505f83`, `FUN_0052e122` and a loop that sends
@@ -54,8 +56,10 @@ record order, so the engine's `world.units` order (record order) is the exe's. U
 later (summons) go to the end. Units do not interact in H1, so the order is observable only through
 blocking (H2) and combat (I).
 
-Engine order per tick (`Simulation.systems`): `selection_system` (commands), `movement_system` (movement
-commands, then every unit in list order). Commands are logged `(tick, command)`.
+Engine order per tick (`Simulation.systems`): `orders_system` (group pass when `world.tick & 15 == 6`, then the
+order commands: §8), `selection_system`, `movement_system` (`FollowPath`, then every unit in list order).
+`world.tick` at the start of a step is the exe's counter before its increment (INFERRED: the server counter starts
+at 0). Commands are logged `(tick, command)`.
 
 ## 3. Unit state machine
 
@@ -65,8 +69,9 @@ holds it:
 **Order** (`unit+0x50`; issued by player messages). 0 none, 1 move to cell, 2 go and pick up, 3 attack,
 4 AI-internal move, 8/0x11 follow, 0xa patrol, 0xb stand (next cell), 0xc stand/guard, 0xd cast at
 object, 0xe cast at cell, 0xf use structure, 0x10 removed/dead, 0x16..0x1a see unit-struct §9. An order
-issuer first cancels (`FUN_0056dbfb`: target facing := facing, release the reserved cell, state := 0) and
-then sets the order and the Brain mode.
+issuer first cancels (`FUN_0056dbfb` = `FUN_0056d969` + `brain+0x50 := 0`: target facing := facing, release the
+reserved cell only at a centre, state := 0; it does **not** write `unit+0x50`, the issuer overwrites that next,
+[research §3.4](click-to-move-research.md)) and then sets the order and the Brain mode.
 
 **Brain** (`creature+0x1c4`): mode `+8` (0 none, 1 go to cell, 2 melee swing, 4/5/6 approach and attack,
 7 pick up, 8/9 cast, 10 turn in place, 11 look around, 12 go and pick up, 15 go and use) and low-level
@@ -84,8 +89,9 @@ shoot, 8 cast ([animation §1.4](../formats/animation.md)). The server sends mes
 target facing changed and the position did not, and one move message per cell when a step starts
 (`FUN_0050ff2d`).
 
-Implemented in H1 (engine names): `Unit.order` (0 none, 1 move), `Unit.state` (0 idle, 1 move step),
-`Unit.action` (`idle`, `move`, `turn`) and `Unit.mover`. Transitions:
+Implemented (engine names): `Unit.order` (0 none, 1 move, 0xc stand/guard; H3), `Unit.state` (0 idle, 1 move
+step), `Unit.action` (`idle`, `move`, `turn`) and `Unit.mover`. H1 transitions of the debug order `FollowPath`
+(the player's orders end differently: §8.3):
 
 ```
 idle --FollowPath--> order 1, state 1
@@ -134,7 +140,7 @@ rule is integer division (`idiv` at `0x513aa5`): 30 of the 284 human templates c
 one higher (the authors rounded: `Fighter_Hero` 20, runtime 19; `NPC11_*` and `NPC15_*` say 12 with
 Reaction -1 = default 30, runtime 18). The template value is never used for humans, like `healthMax`
 ([progression §3](../data/progression.md)); `progression.derived_speed` is the runtime value. In
-formation the group order's byte `+0x44` replaces it (phase H3).
+formation the group's byte `+0x44` replaces it (`movement.walk_speed`, §8.2; the turn rate keeps the stat).
 
 ### 4.2 One step (CONFIRMED `FUN_00555c7e` start, `FUN_00554fd2` per tick, `FUN_00555b38` end)
 
@@ -228,8 +234,9 @@ and actions (it is never reset, CONFIRMED). The unit is drawn from its server po
 3. **No pause between cells** on a long straight walk (matches [animation §3.6 #2](../formats/animation.md)).
 4. **Hills.** A monster walking 10 cells up and down a 32-height slope: ±50 % step length (clamp).
 5. **Occupying the next cell.** Order two of your units to swap places on a one-cell-wide road. Predicted
-   (7.4): there is no swap; the unit the exe handles first turns to face the other and stops for good (its
-   order is not restarted), the other finds no way round and stops too. Also: a hero walking directly behind
+   (7.4): there is no swap; the unit the exe handles first turns to face the other and stops; the other finds no
+   way round and stops (order 0xc) at once; the first is restarted at the next group pass (within 16 ticks) and,
+   seeing an idle blocker, finds no way round either (it keeps order 1). Also: a hero walking directly behind
    another walking hero should halt and face it when the cell ahead is the leader's; record what the original
    does (this is the strangest consequence of the decode).
 6. **Diagonal vs straight cost**: diagonal cells take `ceil(256 / trunc(v·0.707))` ticks, 1.47× a
@@ -310,7 +317,7 @@ empty (the order sees `mover+0x98 = 1`). The static branch also calls `FUN_00505
 fallback cell is more than 1 cell from the target (more than 2 when `FUN_00559bc9(target)` is non-zero: a
 target cell with bit `0x20` of `+0x10000` and a record in the cell table, i.e. a building cell, returns the
 record's holder): CONFIRMED it posts client message `0x92` (`FUN_00505347`), whose handler (`0x40e21d`, sub-code
-1) shows text string `0x81` for 3000 ms ("can't get there" feedback, wording not looked up). It does not
+1) shows text string `0x81` for 3000 ms (main.txt line `0x81` = "No way", [research §6.3](click-to-move-research.md)). It does not
 change the route. A clause for unit class 0x12 on order 5 (`FUN_00556f56`, `FUN_0056ac5b`) rewrites a range
 field of the brain: range logic, not routing (open).
 
@@ -368,14 +375,16 @@ follow target (re-plan every `len/3 + 1` consumed waypoints, StaticIsntNeeded ga
   mode 2). Death/removal of a stamp for hp <= 0 is INFERRED. The exe's first-come slot per cell is not modelled.
 - `MoveTo(unit_id, x, y)` is the engine-level move order (order 1); the click mapping is H3. It follows steps
   1-6 above with the unit's `Mover` carrying `dest (+0x74)`, `tail (+0x76)`, `consumed (+9)`, `since_hop (+0x78)`,
-  `arrived (+0x90)`, `failed (+0x98)`, `static_path`; `Unit.path` is the dynamic list. An arrived or failed unit
-  returns to order 0 / state 0 on the next centre tick (as `FollowPath` does).
+  `arrived (+0x90)`, `failed (+0x98)`, `static_path`; `Unit.path` is the dynamic list. H3 replaced the H2 rule
+  "an arrived or failed unit returns to order 0": a failure ends the order at once (order 0xc), an arrival waits
+  for the group pass (§8.3). `MoveTo` is now a debug command executed by `orders.py` (a one-unit group move
+  without clamp).
 - Size = `token_size` (vtable `+0x1c` = `0x542360` reads `+0x49`, CONFIRMED); movement class = `movement_type`
   (vtable `+0x20` = `0x542380` reads `+0x4a`, CONFIRMED). The hop goal "`DynamicByStaticLookup` places behind the
   head" is the 4th element (index 3): the loop fetches `lookup + 1` elements with `FUN_0055f1f0`, taken as
   MFC-style get-and-advance (INFERRED).
-- A finished order clears `dest`/`static_path` (DECISION; the exe keeps `+0x74`, so a repeated order to the
-  same cell would skip the static plan there: open).
+- A finished order keeps `dest`/`static_path`/`goal`, as the exe keeps `+0x74` (H3 changed the H2 DECISION that
+  cleared them): a repeated order to the same cell reuses the remaining static plan (§8.4).
 - `FUN_0056fc69` is modelled for human-player size-1 units (`blocker_verdict`, `_begin_wait`, `_tick_wait`;
   `Mover.waiting` = brain mode 10, `Mover.parked` = mode 0 under a move order, dumped only when set); every
   other unit re-plans around the blocker. See 7.4.
@@ -415,8 +424,9 @@ follow target (re-plan every `len/3 + 1` consumed waypoints, StaticIsntNeeded ga
      only mode-1 setter for order 1 is the order executor `FUN_00569321` (`0x569409` -> `FUN_0056c8af`),
      which is reached only from the group-message handler (`FUN_00570087` type 0 -> `0x56fe34`, run at
      `tick & 15 == 6`) and from two functions without callers (`0x56920c`, `0x56dc49`, not in any vtable).
-     So a parked unit resumes only on a new command (engine: `MoveTo`/`FollowPath` clear `parked`).
-     Contradicts unit-struct §9, which calls `FUN_00569321` a per-tick executor; the call graph does not.
+     **Corrected in H3** ([research §4.4](click-to-move-research.md)): a move group is driven by `FUN_00573198`
+     at `tick & 15 == 6`, which restarts parked units every 16 ticks (§8.3). `FUN_00569321` is the
+     group-order-0 executor, not a per-tick one.
 - **Live layer** `+0x20000` and the cell-record table (CONFIRMED, GOG exe):
   - The path-finder keeps a hash map of 60-byte **cell records** at `+0x54084` (lookup `FUN_0055f3e0` copies a
     record into the scratch record at `+0x5402c`, `FUN_0055f430` writes it back, `FUN_0055f460` deletes it) for
@@ -451,7 +461,7 @@ follow target (re-plan every `len/3 + 1` consumed waypoints, StaticIsntNeeded ga
     (structure footprint); `FUN_00559c28` / `FUN_00559ce5` set / clear bit `0x10` in both layers (bit in no
     mover mask; meaning not decoded); `FUN_00558aab` adds a fixed 4 x 3 block at (0x3e..0x41, 0x18..0x1a)
     (static += 5, live |= 5), a leftover test stamp.
-- **Unreachable feedback**: client message `0x92` (7.1), a UI matter for H3.
+- **Unreachable feedback**: client message `0x92` (7.1): the event `NoWay`, §8.5.
 
 ### 7.5 Measured
 
@@ -489,23 +499,238 @@ hops; a per-tick plan budget stays a gameplay decision. Golden routes: `tests/go
 7. **Road preference.** Walker cost = terrain cost: a road (cost 6) beside grass (8) should attract the route
    when it adds at most a few cells.
 
+## 8. Orders (H3)
+
+Code: `engine/sim/commands.py` (`MoveUnits`, `Stop`, `SetFormation`), `engine/sim/orders.py`, `movement.py`
+(`cancel`, `set_move`, `set_stand`, `stop_unit`, `walk_speed`), `engine.world` (`OrderGroup`, `NoWay`,
+`Player.formation`). Facts and addresses: [click-to-move-research](click-to-move-research.md) ("R" below), all
+CONFIRMED there unless marked here. Design: `docs/superpowers/specs/2026-10-18-click-to-move-design.md`.
+
+### 8.1 Commands and intake (R 3.1, 3.2, 4.1)
+
+- `MoveUnits(player_id, unit_ids, cell)` = exe cmd `0x16`, `Stop(player_id, unit_ids)` = cmd `0x18` (stand ground,
+  the "stop" of the engine), `SetFormation(player_id, mode)` = cmd `0x46` sub-code 2 (client modes 0 off, 1 auto,
+  2 on; `Player.formation`, default 1; other values are ignored). Frozen dataclasses, logged and replayable.
+  `MoveTo` (H2) stays as a **debug** command, `FollowPath` as the H1 debug order.
+- **Intake** (`orders.intake`): the player must exist, the id list is cut at 253 (the packet limit, `FUN_0050bbb8`)
+  and must not be empty, and the **first** id must be a living unit of that player; any other id failing the same
+  test is skipped silently. No passability, range, fog or occupancy test. DECISION: units with HP <= 0 count as
+  invalid (the exe accepts them and the death tick resets the order, phase I; the observable result is the same).
+- **A new group per command** (`FUN_0052b06f`): `World.groups` (id -> `OrderGroup`: `owner`, `members` in packet
+  order, `order` 4 move / 3 stand, `target` = the unclamped (x, y) low bytes, `speed`), `Unit.order_group` (the
+  exe's `unit+0x70`; **not** `Unit.group`, which is the section 8 item pack). A unit joins the new group at its
+  tail (a repeated id moves to the tail) and leaves the old one, which keeps its order and remaining members. Empty
+  groups of the owner are deleted when that owner's next command allocates a group. `World.dump()` appends
+  `"groups"` only when any exists; a unit's dict gets `"cmd": [group, stopped, anchor]` when set; a player's entry
+  gets `{"formation": n}` only when not 1 (old goldens stay valid).
+
+### 8.2 Move and formation (R 3.2, 3.3, 4.1-4.3)
+
+`orders.move_group`: cancel all members, decide the formation, cancel again, per member `set_move`, then group
+order 4, target (x, y) as sent, speed.
+- Mode (client -> server mapping 0 -> 0 off, 1 -> 2 auto, 2 -> 1 on, `SERVER_FORMATION`): **off** never; **on**
+  always; **auto** only when every member's cell is within Chebyshev 2 of the centroid cell (`FORMATION_LIMIT`).
+- **Centroid** (`FUN_0056f850`): the sums of the members' 16-bit positions (`cell * 256 + sub-cell`; mid-step
+  offsets count) divided by the member count with truncating division, then `>> 8` per axis; not the mean of cells.
+- Member target = `(x + (cellX - cx), y + (cellY - cy))`: a rigid translation of the shape, no leader, no free-cell
+  search. **Per-member destination** (`FUN_0056d032`): `& 0xff` first (a negative result wraps to 255 and is pinned to
+  the far edge: the quirk), then each axis clamped to `[8, W - 9]` / `[8, H - 9]`. Without a formation everybody
+  gets the clicked cell (clamped); the pathfinder fallbacks spread them (§7.1).
+- `set_move`: cancel, order 1, `mover.goal` = destination (`brain+0xa`), `arrived` and `failed` cleared, Brain mode 1
+  (`waiting = parked = False`), anchor cleared. Plans, `dest`, the dynamic list, `turning` and a step in progress
+  are untouched.
+- **Group speed** (R 4.3): only when the formation is active, `speed` = min over the members of the low byte of the
+  signed 16-bit speed stat (start 250; compared signed, stored as a byte); fixed for the group's life (Haste after
+  the order changes nothing). `movement.walk_speed` (the exe's `FUN_0055915a`) = group speed if non-zero else the
+  stat; `step_length` uses it, `turn_rate` does not.
+
+### 8.3 Cancel, timeline, group pass, stop (R 3.4, 4.4, 5, 7)
+
+- **Cancel** (`movement.cancel`): target facing := facing, state := 0, `stopped` (`brain+0x50`) := 0. A step in
+  progress is never aborted; the live-layer reservation needs no release (the engine derives the layer from positions:
+  a reservation exists exactly while `step_target` is set). Timeline for a move order arriving in tick T: idle at a
+  centre -> static plan and first step in T; mid-step -> the old step finishes at its tick, **no new step on the snap
+  tick** (state 0), the new static plan is made from the new cell in the next tick (forced when `dest != goal`; the
+  same destination reuses the plan); turning -> the turn ends at the current facing, the step starts the same tick.
+- **Stop** (`orders.stop_group`): every member cancelled, order `0xc` (stand/guard), anchor = own cell, Brain mode 0,
+  group order 3. The step in progress finishes; plans are kept (`dest`, `static_path`). The guard scan of order 0xc
+  (`FUN_0056a1fb`) needs enemies: nothing happens yet. The other stand commands (`G` 0x17, `L` 0x12, `R` 0x14) are
+  phase I.
+- **Failure** (`mover.failed`, set by the planners) is consumed at the end of the Brain tick: order 1 -> `stop_unit`
+  (`FUN_0056dbc6`: cancel, order `0xc`, anchor, mode 0, `stopped := 1`) in the same tick.
+- **Arrival leaves order 1** (unit at the goal, or at the end of its static plan): nothing happens in the unit's tick
+  (state 0, action idle). The **group pass** (`orders.group_pass`, `world.tick & 15 == 6`, before the drain; per
+  owner in id order, groups in creation order; only group order 4, `FUN_00573198`, is decoded) then, per member in
+  list order: at its `goal`, at a centre and not `stopped` -> `stop_unit`, `arrived := False`; or `arrived` and
+  `tail == cell` -> the same. A `stopped` member is skipped (the guard scan has no enemies yet). Otherwise
+  (`order == 1`) **restart**: `waiting = parked = False` (`FUN_0056c8af`), so a unit parked by the blocker wait (§7.4)
+  moves again within 16 ticks if its blocker left; and if the footprint at the group target is not free in the live
+  layer, the member's `goal` is that target and it is within Chebyshev 1 -> parked again at once (the guard scan with
+  no target sets mode 0 for a human player's non-ranged unit, `FUN_0056afd9` -> `FUN_0056b025`, CONFIRMED in the
+  asm; DECISION: applied to every unit, ranged `56bc7b` and the computer-player mode 0xb are phase I). So an arrived
+  unit keeps order 1 for up to 16 ticks (the pass phase is INFERRED, spec 4). A hop plan that finds nothing in a
+  blocked corridor leaves the unit spinning in order 1 (a re-plan per tick, `static_path` shrinking by one per plan
+  until the final hop fails and the order ends, or forever when the unit's own cell is the best cell): see
+  8.7 "Gridlock" (CONFIRMED code, INFERRED play).
+- `Unit.state` follows the Brain tick: 1 while a step or turn runs, 0 at each step end and after cancel (H1/H2 kept
+  1 for the whole walk).
+
+### 8.4 DECISIONS and assumptions
+
+- Command latency 0: a command logged for tick T is applied in the drain of T (R open question 1).
+- `Unit.order_group` instead of `Unit.group`; `World.events` (a list of `NoWay`) is outside `dump()` and the hash.
+- `MoveTo` (debug) bypasses intake validation, wrap and clamp (the H2 tests use arbitrary cells); it still makes a
+  group of one so the pass ends its order.
+- The pass runs the move handler for every owner including computer players (their branch is phase I).
+- Not implemented: group handlers for orders 1, 3, 5, 0x13, the retreat post pass `FUN_00573713`, voices.
+- A finished or stopped order keeps `goal`/`dest`/`static_path` (the exe keeps `+0x74`): a later order to the same cell
+  reuses the old static plan (INFERRED reading of `FUN_00555411` step 2; stale-plan quirk).
+
+### 8.5 "No way" (R 6.3)
+
+`movement._maybe_no_way`, called by the static plan: when the target was unreachable (`reason` "fallback" or
+"unreachable") and the end cell is more than 1 cell from the target (more than 2 when a structure holds the target
+cell: `FUN_00559bc9` returns the cell record's structure `rec+0xc`, CONFIRMED asm `0x559bfd`; engine: the structure
+registration `World._claim`) -> `World.events.append(NoWay(owner, tick))`. With no fallback cell at all the packed
+end is 0, cell (0, 0) (CONFIRMED asm `0x54e1cc`). One event per static plan per unit, computer-player units
+included. The UI shows main.txt line `0x81` for 3000 ms (stage B).
+
+### 8.6 VERIFY IN GAME
+
+The [research list](click-to-move-research.md#verify-in-game) applies; in addition: **13.** a unit stopped by the
+blocked-target rule (group move onto an occupied cell) stays beside it with order 1 while a friend stands on the
+target; **14.** `T` (stand ground) while a unit turns leaves it facing where it was.
+
+### 8.7 Tests, end states, measured
+
+**Tests** (`.venv/bin/pytest`; the whole suite takes about 5 minutes):
+- `tests/test_engine_orders.py`, `test_engine_orders_ui.py` (synthetic, one test per rule above).
+- `tests/test_engine_orders_maps.py` (game files): per map, a seeded sample of the units (default: at most 30; every unit
+  with `ALLODS2_ALL_MAPS=1`) is ordered in groups of 1..5 (same owner and movement class; any player, the intake takes it)
+  to seeded random cells of the leader's flood-filled region, formation Off, run until settled, then a second batch with
+  formation On from the end state. Default run: maps 10, 32, 53 and 110 (the largest), about 40 s. **All 46 maps:**
+  `ALLODS2_ALL_MAPS=1 .venv/bin/pytest tests/test_engine_orders_maps.py -s` (targets up to 80 cells away, 3000 ticks per
+  batch; about 30 minutes in one process, all 46 pass, prints the end-state histogram per map). Checks: `World.check_consistency()` every 32
+  ticks (unit/item index = entity cells, sub-cell range, step reservation = `step_target` adjacent to `step_from` and the
+  unit on one end, groups and selections point at living entries), the live layer (`live_cells`) against an independent
+  recomputation, no active unit without progress over 64 ticks, and every ordered unit in a documented end state:
+  `goal`; `fallback` (stands on its static plan's end, the first ring; human size-1 units checked against an independent
+  flood: no flooded cell nearer the target); `limit` (no static plan: a computer player's search is cut at `dist +
+  min(5, dist/4)` levels, a sized unit's footprint may not fit; the unit stays on its cell); `blocked` / `boxed in` (the
+  failure rule: the final hop plan came out empty because the plan's end cell is occupied / every route is, checked at the
+  failure tick); `parked` (blocked-target rule or a blocker wait with a unit adjacent); `gridlock` (below); `queueing`
+  (a crowd still moving at the cap).
+- `tests/test_engine_orders_determinism.py`: a scripted session (selects, moves, mid-walk re-orders, Ctrl+F twice, T,
+  right-click deselect) fed through `OrderInput` is recorded at 30 fps; replays driven like `window.run` (frame times
+  against `tick_period_ms`, one `step(queue.drain())` per period, logged commands queued before the step of their tick)
+  at 30, 60 and 144 fps, and `replay()` in one batch, give the same tick count and `dump_hash`; a UI-driven session at 60 fps
+  replays to its own hash. Synthetic world and map 53 (player 4's walkers).
+- `tests/test_engine_orders_golden.py` + `tests/orders_scenarios.py`: five synthetic scenarios against
+  `tests/golden.json["orders"]` (hash, tick the walk ended, final cells, "No way" count): single walk with a mid-walk
+  re-order; a square of four passing an idle blocker with the formation Off and On; the same square through a one-cell wall gap
+  (`gap_jam`); an unreachable target inside a walled pocket (fallback ring 9, one `NoWay`).
+
+**Gridlock (the stage A "spin"), CONFIRMED code, INFERRED play.** A unit whose hop plan comes out empty and is not on its
+final hop keeps order 1, plans again every tick (dynamic list empty), and `FUN_00555dc2` pops the static head each time the
+head is within 3 cells (**CONFIRMED** by REA: the pop `FUN_0055f110` runs whenever the static list is non-empty and
+`d <= DynamicByStaticLookup`, whatever the plan returned; `mover+0x98 := 1` only for an empty plan toward the tail). So a
+blocked unit eats its static list in about `len - 5` ticks, then the final hop plan fails and the order ends (`blocked` in the
+tests); a unit whose own cell is the nearest labelled cell to the hop goal (a column of units in a one-wide road, or boxed in by
+8 neighbours) plans empty again and again: the dynamic fallback scan sees the start cell (label 0) in the first ring that
+has a labelled cell, so the result is "walk to the own cell" = nothing. The unit is not parked (mode 1) and not waiting
+(the wait is human size-1 only and needs a walking or idle blocker, §7.4), so nothing but the blocker moving, a new order, or
+the failure above resolves it; in a mutual jam of computer-player units (map 110, a column through one gap, order 4)
+several units stand like this for thousands of ticks. Reproduced as documented behaviour, not fixed.
+Cost note: such a unit makes a hop plan per tick.
+
+**Measured** (`tools/bench_orders.py`, AMD EPYC-Rome VM, one core, Python 3.13, pygame-ce 2.5.8, SDL dummy driver, interface on,
+20 units of player 2 on `110.alm` (256 x 256), formation Auto, a walk of about 60 cells, 600 ticks = 37 s of game time):
+- **Per tick (simulation only):** mean 6.0 ms, p95 13.8 ms, max 52 ms (static re-plans of several units in the same tick;
+  hop plans mean 2.4 ms, max 5.6 ms; static plans mean 17 ms, max 41 ms). Tick 0, the order itself, plans all 20 units:
+  **463 ms** in one tick (about 23 ms per unit, the worst-case territory of 7.5).
+- **Per frame with rendering** (`window.run`, the clock replaced by one that feeds the simulated frame time): 30 fps
+  equivalent: mean 21.4 ms, p95 31.4, max 68 (3 % of frames over the 33 ms budget); 60 fps equivalent: mean 19.2, p95 27.6, max
+  62 (70 % over the 16.7 ms budget). Frames that step the simulation cost about 24 ms, the others 17.5 ms (rendering). The first
+  second (surface and sprite caches filling) costs mean 37-58 ms, max 540-560 ms.
+- **Steady?** After the warm-up yes: no growth over 20 s, the frame time is dominated by drawing (17 ms), the orders add
+  about 6 ms to a stepping frame; the tail (p95 28-31 ms) comes from ticks with several static re-plans. **One real spike: the tick
+  that applies the order of a 20-unit group on the biggest map freezes the window for about half a second** (20 static plans
+  of 7.5). The plans cannot be moved or shared without changing the result (they read the live layer at that tick, each
+  starts from its own cell, and spreading them over ticks shifts the first step of the later units, which breaks 1:1), so no
+  fix was applied. Options when it matters: plan in a worker thread against a copy of the layer and apply the result at the
+  tick the exe would have (deterministic, but adds a frame of latency before the sim may continue), or speed up the planner
+  further (7.5). At 60 fps the renderer alone exceeds the frame budget on this machine; that is not an orders cost.
+
+## 9. Handoff to combat (phase I)
+
+What phase I builds on, and what is still open. Orders now: `0` none, `1` move, `0xc` stand/guard; groups 3 (stand) and 4
+(move); brain modes 0 (idle, parked), 1 (go to cell), 10 (turn to a blocker).
+
+**Moving into attack range, brain modes 4, 5, 6** (CONFIRMED rows in [unit-struct §8.2](unit-struct.md), not implemented):
+mode 4 (`56ea52`) approaches `brain+0x18` within `brain+0x14` with the follow driver `FUN_0055574d`, state 1; mode 5 (`56eab5`,
+order 3 attack) swings (mode 2) when `FUN_0055532d` says in range (facing == direction to the target and distance <= range)
+else approaches `brain+0xc`; mode 6 (`56eff3`) is mode 5 for AI/ranged units: a ranged unit (`53a5a0`) with range < 2 and owner
+flag `+0x2c == 0` gives up (mode 0), else swings in range or steps towards the target (`56f0bb`). The range is `brain+0x14`,
+written by every order issuer through `FUN_0056ac5b` (spell range when the selected special `brain+0x78` is usable, else the
+creature byte `+0x12c`; structures 1..3 by footprint). Blockers of the mover see modes 1 and 4 as walking
+(`blocker_verdict` here models mode 1 only).
+
+**Following a moving target** (`FUN_0055574d`, fallback `FUN_00557f08`): same two-layer driver as 7.2, but the plan target is a
+unit: re-plan every `len/3 + 1` consumed waypoints, gated by `StaticIsntNeeded`; when the dynamic search leaves the target cell
+unlabelled, `FUN_00557f08` walks a box perimeter around the target's footprint as seen from the follower (start side
+`FUN_00557cf1`, direction table `+0x54156`, one cell larger per try, at most 8 tries) and takes the labelled cell with the smallest
+label. OPEN: the ring order (float helpers `FUN_0050d884/8c0`), `FUN_00557cf1`, the follow flag of `FUN_0054d72d` (`param_5`, 7.1
+"dynamic with a follow target"). Not decoded in this phase (no cheap shortcut: the ring order is float trigonometry).
+
+**Attack and cast states** (H1 §3, [unit-struct §10](unit-struct.md)): state 3 (melee, `+0x58` phases 0 start, 5 wind-up, 7
+recovery, [animation §3.4](../formats/animation.md)), 0xd cast at object, 0xe cast at cell (`+0x15` counter, cast request at 3,
+ends when `+0x136 != 0`), 2 pick up, 0xf use, 0x10 dead, 0x1b AI wait; brain orders 1 swing / 2 cast / 3 step / 4 wait / 0xff hold.
+The tick pipeline and attack timer details are in [unit-struct §6](unit-struct.md). Death resets order and state (the intake's
+HP > 0 test stands in for it, 8.1).
+
+**Orders and group handlers still to build:** `0x17` guard (G), `0x12` (L), `0x14` (R) next to the `0x18` stand ground done here;
+`0x19` attack (`+0xe`, order 3), `0x1a` swarm (formation + group order 5, handler `572e1e`), `0x1b` follow (group `570c84`, orders 8/0x11),
+`0x1d` patrol (0xa); group handlers for orders 1, 3, 5, `0x13` (`57275f`, `57309d`, `572e1e`, `57311c`; only 4 is decoded, 8.3),
+the computer players' branch of the pass and the retreat post pass `FUN_00573713` (thresholds `brain+0x40/+0x44`).
+The guard scan of order 0xc (`FUN_0056a1fb`) is a no-op here; arrival and the blocked-target rule already call it.
+
+**UI still stubbed:** hotkeys G, L, R, A/D/S act only on the cursor (pending modes 1/4/6 give no order), cursor rows
+attack-on-unit, swarm, patrol, defend, pickup, town, cast issue nothing (`OrderInput.release`), the minimap's pending modes,
+the voice (acknowledgement and selection voice `FUN_0041da16`; no sound engine), and the message-line "No way" for AI players
+is not filtered by recipient.
+
+**Consolidated VERIFY IN GAME** (each: predicted result, so a play session can tick them off):
+1. Straight/diagonal walk times (150 and 220 ticks per 10 cells at speed 18), road 110 ticks (H1 §6 item 1).
+2. Turn time `ceil(128/speed)` (8 ticks for a 180 degree turn at 18), 45 degree snap (H1 §6 item 2).
+3. No pause between cells; hills +-50 % step length (H1 §6 items 3, 4); diagonal cells 1.47x a straight cell (item 6).
+4. Two units swapping on a one-wide road: no swap, the first handled turns and stops, the follower halts behind a walking leader
+   (H1 §6 item 5, §7.4); a parked unit resumes within 16 ticks when the blocker leaves (research item 8).
+5. Corner squeeze between diagonal trees; equal-cost route tie order; shore cell of an unreachable lake target (the
+   cheapest of the first ring, not the nearest); AI units give up beyond the level limit while the human's walk all the way;
+   re-plan at the next centre; repeated order to the same cell; road preference (H2 §7.6 items 1-7).
+6. Cursor and input: right button, attack cursor over ground/unit/structure, Ctrl/Alt rows, minimap order row (expect the
+   exe's wrong row), formation Off/On/Auto with a slow member's group speed, edge wrap, arrival delay of up to 16 ticks,
+   re-order mid-step, "No way" for 3 s, stop commands G/T/L/R, no click marker (research VERIFY items 1-12).
+7. Stage B: Ctrl+Alt hover (Alt first over a unit, Ctrl first over ground); `M` then click on a hostile walks to it; `T` mid-walk
+   finishes the step; formation text lifetime about 2 s and its colour; left drag on the minimap streams orders; right click
+   on the bar and info panel deselects; minimap order zone on maps >= 145 cells (design spec, Stage B items a-g).
+8. §8.6: a unit stopped by the blocked-target rule stays beside its occupied target with order 1; `T` while turning leaves it
+   facing where it was.
+9. Gridlock (8.7): send a column of computer-owned units through a one-cell gap: the units that cannot plan give up after
+   about `len - 5` ticks (human units wait first); a lone unit boxed in by friends keeps order 1.
+10. Order spike (8.7): ordering 20+ units over 60 cells in one click is instantaneous in the exe (native planner).
+
 ## Open questions
 
-1. Waypoint removal from the path list and the exact tick the order ends after arrival. Known: the
-   move driver `FUN_00555411` calls `FUN_00555c7e` on every tick at a centre until `mycell == +0x76`
-   (then `mover+0x90 = 1`, set on the tick after the last snap); the list is only peeked
-   (`FUN_0055f0d0`). The client idles after the move message's `N` ticks regardless (§4.2), so the
-   visible stop is exact. Start at `FUN_00569321` (order 1 auto-stop), `FUN_00555dc2`. H2.
-2. Group speed (`+0x44`, formation) and Haste/Slow in `unit_speed`: H3 and phase I.
+1. The dynamic list's waypoint removal: `FUN_00555dc2` (the end of the order after arrival is answered, §8.3).
+2. Haste/Slow vs the group speed byte: the byte is fixed (§8.2); the effect system is phase I.
 3. The regeneration job runs from `FUN_0052bbb7` at `tick & 15 == 12` while the slot itself tests
-   `server tick & 3 == id & 3`: the interaction needs a check in phase I
-   ([unit-struct §3](unit-struct.md)).
-4. The group-AI pass at `tick & 15 == 6` (`FUN_0056fe4d`): phase I and H3.
-5. Blocker wait (7.4): who feeds the type-0 group message that re-runs the order executor (`FUN_00570087` case 0,
-   `FUN_00569321`) and whether a parked unit is ever restarted; mode 4 blockers (approach object) and the exe's
-   first-come cell record (engine: first unit in list order). The meaning of live/static
-   bit `0x10` (`FUN_00559c28`, callers `0x518589`, `0x51899b`) and the death-time stamp release.
-6. Follow-target planning: the ring order of `FUN_00557f08` (float helpers `FUN_0050d884/8c0`, `FUN_00557cf1`) and
-   the driver `FUN_0055574d` (7.4); phase I with attack orders.
-7. The class-0x12 / order-5 clause of the static fallback (`FUN_00556f56`, `FUN_0056ac5b`); the text of
-   string `0x81` (message `0x92`, the unreachable feedback) and whether the engine should show it (H3 UI).
+   `server tick & 3 == id & 3`: the interaction needs a check in phase I ([unit-struct §3](unit-struct.md)).
+4. Group orders 1, 3, 5, 0x13 (`57275f`, `57309d`, `572e1e`, `57311c`), the computer players' branch of the pass and the
+   retreat post pass `FUN_00573713`: phase I ([research §9](click-to-move-research.md)).
+5. Mode 4 blockers (approach object) and the exe's first-come cell record (engine: first unit in list order). The
+   meaning of live/static bit `0x10` (`FUN_00559c28`, callers `0x518589`, `0x51899b`) and the death-time stamp release.
+6. Follow-target planning: the ring order of `FUN_00557f08` (float helpers `FUN_0050d884/8c0`, `FUN_00557cf1`) and the
+   driver `FUN_0055574d` (7.4); phase I with attack orders.
+7. The class-0x12 / order-5 clause of the static fallback (`FUN_00556f56`, `FUN_0056ac5b`).
+8. Loop-back latency of commands (research open question 1) and the phase of the group pass against the first tick.

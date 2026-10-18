@@ -75,6 +75,23 @@ documented. Rule from the user: **reproduce the exe 1:1, even where it is not op
   `FUN_0055574d`, R§9), the attack/cast states of H1 step 2, orders `0x17`..`0x1d`, `0x19` attack / `0x1b` follow / swarm group
   handlers, hotkeys, cursor rows still stubbed, voice, and the remaining VERIFY IN GAME items (H1 section 6, H2 7.6, R list).
 
+### Stage B (UI) as built, deviations and additions
+
+- Code: `engine/ui/orders.py` (`OrderInput`, `MessageLine`, `MainText`, `drain_no_way`), `engine/ui/cursor.py` (`choose_cursor`
+  per REA-verified asm `0x40b2b8`, `choose_minimap_cursor`), `MinimapPanel.order_cell`, `backend_pygame/window.py`
+  (`modifiers`, `click_target`, event wiring; `run` returns the `Simulation`), `interface.py` (message line).
+- Deviations: (1) a click whose row finder matches nothing orders nothing (exe: row past the last); (2) pending modes 3 and 7 give the
+  default cursor (exe: unchanged cursor); (3) the pending mode is also cleared when the selection becomes empty (the exe clears on
+  object disappearance, `0x40be67`); (4) formation text lifetime 2000 ms and the message colour are INFERRED; (5) minimap right
+  drag follows the pointer (camera jump per move, as the exe's right-press handler on every move); (6) `path_grid` maps move type
+  -1 (humans) to the walker mask (a crash otherwise: human units ordered to move); (7) the hotkeys G/R/L (stop family) are not bound yet.
+- VERIFY IN GAME (additions): (a) hovering a friendly unit with Ctrl and Alt both held gives move (Alt first), over ground swarm
+  (Ctrl first); (b) `M` then click on a hostile unit walks to it; (c) `T` mid-walk: the step finishes, the unit stops; (d) after
+  `Ctrl+F` the text appears for about 2 s (lifetime INFERRED) and the colour matches the "No way" text; (e) a drag over the minimap
+  with the left button held streams orders; the first order resets the pending mode; (f) right click on the command bar / info
+  panel deselects; (g) minimap in a map with z < 0 (>= 145 cells): the order zone equals the image.
+- Map 10 has no unit of the human player (record 1); the end-to-end test uses map 53.
+
 ## 4. Assumptions and risks
 
 - Server tick counter starts at 0 so that the engine's `world.tick` at step start equals the exe's counter before the increment

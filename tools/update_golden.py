@@ -163,6 +163,13 @@ def minimap_hashes(install=None):
     return {m: rgb_hash(minimap_rgb(open_map(m, install).runtime_terrain(), table)) for m in MAPS}
 
 
+def orders_summaries():
+    """{scenario: {hash, ended, cells, no_way, ...}} of tests/orders_scenarios.py (synthetic worlds; no install needed)."""
+    sys.path.insert(0, os.path.join(ROOT, "tests"))
+    import orders_scenarios
+    return orders_scenarios.all_summaries()
+
+
 def main(argv):
     install = argv[1] if len(argv) > 1 else None
     out = {m: golden_hash(m, install) for m in MAPS}
@@ -174,6 +181,7 @@ def main(argv):
     out["spells"] = spells_hash(install)
     out["progression"] = progression_hash(install)
     out["paths"] = path_hashes(install)
+    out["orders"] = orders_summaries()
     with open(GOLDEN, "w", encoding="ascii") as f:
         json.dump(out, f, indent=1, sort_keys=True)
         f.write("\n")

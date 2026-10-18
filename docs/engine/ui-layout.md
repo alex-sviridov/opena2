@@ -125,9 +125,36 @@ set only when the four cells around it are all fully visible (visibility word & 
 the view's item grid holds a non-zero entry for that cell. Engine: `Projection.hover_cell`; fog is not modelled yet, so
 the visibility test is vacuously true.
 
-G3b implements: the eight arrows, default, select (hover over a unit), pickup (own selection of one hero over a ground
-item, no click action yet). Later phases: move, attack, swarm, defend, patrol, cast, town, cantput, dice, wait,
-backpack, the small `s*` cursors over the minimap, and the pending-target modes.
+**Chooser, exact tests (H3 stage B, CONFIRMED asm `0x40b2b8`-`0x40bcb7`; engine `choose_cursor`).** Order of tests, own
+non-structure selection (`n != 0`, `144 & 0x24 == 0`), no pending mode. `pickup` = one unit selected, hero-type, and
+`h == 0x40` or (hovered == the selected unit and `h & 0x40`); `town` = one hero selected and `h & 0x800`:
+
+| hover | tests in this order |
+|---|---|
+| hostile (`h & 4`) | Alt -> move; not a structure: Ctrl -> swarm else **attack**; structure -> select |
+| other object (`h & 0x23`) | Alt -> move; Ctrl -> attack; pickup; town; else select |
+| ground | Ctrl -> swarm; Alt -> move; pickup; else **move** |
+
+Shift is not read here (only `FUN_00417986` reads it). Nothing / foreign / structure selection: `h & 0x23` ? select :
+default. **Pending mode** (before the table; hover and modifiers ignored): 1 attack, 2 move, 4 defend, 5 cast (move
+when fogged), 6 swarm, 8 patrol, other values leave the previous cursor (engine: default, DECISION). Minimap
+(`FUN_004accb4`): outside the map image, or no own non-structure selection: `sdefault`; else `smove`, pending 1/6
+`sattack`, 4 `sdefend`, 5 `scast`, 8 `spatrol` (2, 3, 7 `smove`). The `scast`/cast branch of the spellbook, the
+open-window and carried-item overrides are not modelled. Engine: the eight arrows, default, select, pickup, move, attack,
+swarm, town, the pending cursors and the `s*` minimap cursors; defend/patrol/cast/town/pickup issue no order yet.
+
+**Pending-mode table (R 1.4, CONFIRMED; engine `OrderInput.key`).** Hotkeys act only with an own non-structure
+selection and no Ctrl:
+
+| Key | Effect in the engine |
+|---|---|
+| `M` (2), `A` (1), `D` (4), `S` (6) | arm the mode (`mask 0xef`); the next click dispatches on the pending cursor |
+| `T` | `Stop` at once, mode cleared |
+| `Ctrl+F` | cycle formation 0 -> 1 -> 2 -> 0, `SetFormation`, message `main.txt` `0x61 + mode`, 2000 ms (INFERRED lifetime) |
+| `G`, `R`, `L`, `P`, `C`, F4-F12 | not implemented (phases I/K) |
+
+The mode is cleared after every left dispatch (also when nothing is ordered), by a click or drag selection, by a right
+click, by a minimap order, and when the selection becomes empty. Hotkeys do not clear it when blocked.
 
 ## 7. Picking
 
@@ -147,11 +174,15 @@ backpack, the small `s*` cursors over the minimap, and the pending-target modes.
 - **Selection is a flag on each client object** (`obj+0x80`, setter `FUN_0046dd20`), not a list; the server stores
   none. `FUN_004167c2` recomputes `view+0x138` (first selected), `+0x140` (count), `+0x144` (bits above) after every
   change. No size limit on the client; an order packet carries at most 253 ids (`FUN_0050bbb8`). CONFIRMED.
-- Mouse release (message `0x40e` left, `0x40f` right: INFERRED) always ends in `FUN_004175c7`: the rect between the press
+- Mouse release (**CORRECTED**, [research §1.1](click-to-move-research.md): the release messages are `WM_LBUTTONUP`, view
+  slot `+0x58` = `0x40c5d1`, and `WM_RBUTTONUP`, `0x40c53a`; `0x40e`/`0x40f` only toggle the inventory/spellbook) the left
+  release always ends in `FUN_004175c7`: the rect between the press
   point (`0x604500 + 0x6c`) and the release point; **drag when its width or height exceeds `screenW * 10 / 640`**
   (10 / 12 / 16 px), else click. CONFIRMED.
   - Nothing selected, or the cursor is *select*: `FUN_00417986` (select). With a selection the other cursors
-    issue orders instead (move 0x16, attack 0x19, 0x1a, 0x1b, 0x1d, 0x21, 0x24, spells 0x1e/0x1f): not in G3b.
+    issue orders instead (move 0x16, attack 0x19, 0x1a, 0x1b, 0x1d, 0x21, 0x24, spells 0x1e/0x1f): the dispatch
+    table, the cursor-at-release rule and the pending-mode reset are in [research §1.2-§1.4](click-to-move-research.md);
+    the minimap move order in §1.6 (H3).
 - **Click select** (`FUN_00417986`): the topmost rect hit; if the object is **not a structure it is selected whatever
   its owner** (own, ally, neutral, enemy), after clearing the old selection. A structure hit leaves the selection alone.
   Selecting a foreign object is info-only (`view+0x144` bit 4 blocks orders). A click on empty ground with a selection
@@ -159,14 +190,31 @@ backpack, the small `s*` cursors over the minimap, and the pending-target modes.
 - **Drag select**: every rect whose intersection with the drag rect has area > 10 px^2, **own** (`obj+0x14 == view+0x9cc`)
   non-structure objects only; if none qualifies the old selection is kept; otherwise it is replaced. CONFIRMED.
 - **Shift**: click or drag *toggles* each own object; only while the selection is not foreign. CONFIRMED.
+- **Left release, engine (H3 stage B)**: `OrderInput.is_order_click` (click, not a drag, non-empty selection) else the
+  selection above; dispatch (R 1.2): move -> `MoveUnits`; attack over a non-unit -> `MoveUnits`; attack over a unit,
+  swarm, patrol, defend, pickup, town, cast -> nothing yet; select -> the selection. Target cell `(mx >> 5) + camera
+  cell x`, row `Projection.hover_cell` (the exe's `FUN_00417f31`), no fog / passability test; no cell (no row matches) =
+  no order (DECISION; the exe reads one row past the last). 
+- **Right button, engine**: press sets nothing; mouse move with the button held scrolls the camera `delta/8` cells (`(d +
+  ((d >> 31) & 7)) >> 3`, truncating, per MOUSEMOTION `rel`) and marks the drag; release without a drag cancels the
+  pending mode, else `SelectUnits(())`; the command bar and info panel also take the release (`0x4adb09`, `0x4af0dc`).
+- **Minimap, engine**: left press and every left move: inside the image with own units selected = `MoveUnits` to the
+  integer cell under the pointer (`floor` of the image formula, `MinimapPanel.order_cell`), pending mode reset; pending
+  attack/swarm/defend/patrol/cast issue nothing yet; otherwise the camera jump. DECISION: the order uses the minimap's own
+  row; the exe re-reads the mouse row over the main view's grid (R 1.6 quirk, VERIFY IN GAME). Right press / move: always
+  camera. For z < 0 the exe's hover test accepts a larger zone than the image (`>> 0` instead of `*2`); the engine uses the
+  image rect.
 - Squads (control groups): `obj+0x88` is a 32-bit mask; digit n selects group n (Shift adds), Ctrl+digit assigns the
   selected own units exclusively, Ctrl+Shift+digit adds, Alt+digit selects and centres the view. No double-click
   select, no Ctrl+A found. Alt with a single selected unit that belongs to a squad selects the whole squad. CONFIRMED.
   Not in G3b.
 - **No rubber band is drawn** (no GDI rectangle call; the drag rect is only read by `FUN_0040b2b8` and
   `FUN_004175c7`): INFERRED.
-- Deselecting: a click on empty ground does not (it orders). The exe's way to clear the selection was not traced
-  (right button `0x40f` untraced). Open question.
+- Deselecting (**answered**, [research §1.5](click-to-move-research.md), CONFIRMED): a right *release* without a
+  right-drag since the press (`view+0xd8 == 0`) posts `0x405` -> `FUN_00416388`: with a pending target mode armed
+  (`view+0x9b4`) it only cancels the mode (selection kept), else it unselects every object. Right *drag* scrolls
+  the camera (`delta/8` cells per move) and neither cancels nor deselects. A click on empty ground with a selection
+  orders a move.
 - Orders carry the unit list: packet `0x6904b8` (`+5` u16 player id, `+9` command byte, `+0xa`/`+0xc` target cell or
   unit id, `+0x12` count n, `+0x13` n x u16 ids), sent by `FUN_0050164f`. Selecting sends nothing. CONFIRMED.
 
@@ -208,7 +256,8 @@ mode 1 when no tooltip is active, else the single selected object (`view+0x140 =
 
 ## Open questions
 
-- How the exe clears a selection (right button `0x40f`, Esc?); the engine uses right click (DECISION).
+- Minimap move order: does the exe really send the wrong row (R 1.6 quirk)? Starting routine `FUN_00418bc3` / `FUN_00417f31`.
+
 - Which bottom bar is shown first; meaning of mouse-manager `+0x9c`; the purpose of the 30 px top strip.
 - `FUN_004b011e` (text vs human panel) and the command-bar contents (`FUN_004adcea`, `FUN_004aff34`, `FUN_004b0a10`).
 - Hover brightness exact effect; structure picking rects (types and `+0x64` / `+0x8c` flags in data.bin).

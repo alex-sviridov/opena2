@@ -42,15 +42,15 @@ def test_select():
                             selected_count=2)) is S.SELECT
 
 
-def test_own_selection_over_hostile_is_default():
+def test_own_selection_over_hostile_is_attack():
     assert choose_cursor(ci(100, 100, in_viewport=True, hover_unit=True, hover_hostile=True,
-                            selection="own", selected_count=1)) is S.DEFAULT
+                            selection="own", selected_count=1)) is S.ATTACK
 
 
 def test_pickup():
     kw = dict(in_viewport=True, hover_item_cell=True, selection="own", selected_count=1, single_is_hero=True)
     assert choose_cursor(ci(100, 100, **kw)) is S.PICKUP
-    assert choose_cursor(ci(100, 100, **{**kw, "single_is_hero": False})) is S.DEFAULT
-    assert choose_cursor(ci(100, 100, **{**kw, "selected_count": 2})) is S.DEFAULT
+    assert choose_cursor(ci(100, 100, **{**kw, "single_is_hero": False})) is S.MOVE
+    assert choose_cursor(ci(100, 100, **{**kw, "selected_count": 2})) is S.MOVE
     assert choose_cursor(ci(100, 100, **{**kw, "selection": "foreign"})) is S.DEFAULT
     assert choose_cursor(ci(100, 100, **{**kw, "selection": "none"})) is S.DEFAULT

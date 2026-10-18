@@ -16,8 +16,8 @@ Dependencies point down only (a layer imports layers with a smaller number).
 |---|---|---|---|
 | 1-2 | `a2res/`, `allods2/` (incl. `allods2/assets.py`) | archives, formats, decoders, asset cache | stdlib, numpy, Pillow; never pygame, never `engine` |
 | 3 | `engine/world.py` | `World`: cells, heights, tick counter, entity tables, spatial index, block layer | layers 1-2 |
-| 4 | `engine/sim/` | `Simulation.step` (+ command log), systems list (selection, movement), `Command` / `SelectUnits` / `FollowPath`, `CommandQueue`, tick clock ([simulation](simulation.md)) | 1-3 |
-| 5 | `engine/ui/` | `Layout`, `choose_cursor`, `SelectionInput` (-> `SelectUnits`), `ScrollInput`, `MinimapPanel` | 1-4, `engine.view` (camera, `pick`) |
+| 4 | `engine/sim/` | `Simulation.step` (+ command log), systems list (orders, selection, movement), `Command` / `SelectUnits` / `MoveUnits` / `Stop` / `SetFormation` / `FollowPath` / `MoveTo` (debug), `CommandQueue`, tick clock ([simulation](simulation.md)) | 1-3 |
+| 5 | `engine/ui/` | `Layout`, `choose_cursor` / `choose_minimap_cursor`, `SelectionInput` (-> `SelectUnits`), `OrderInput` (-> `MoveUnits`, `Stop`, `SetFormation`; pending mode, right button, minimap orders), `MessageLine` / `drain_no_way`, `ScrollInput`, `MinimapPanel` | 1-4, `engine.view` (camera, `pick`) |
 | 6 | `engine/view/` | `Camera`, coordinates, visible range, per-cell compositing, draw list | 1-3 |
 | 7 | `engine/backend_pygame/` | window, surface cache, blitting, events, main loop, screenshot, `interface.py` (panels, info panel), `cursor.py`, `text.py` (`draw_text`) | everything; the only layer that imports pygame |
 
@@ -93,7 +93,8 @@ while running:
     acc += min(dt, MAX_FRAME_MS)
     events = backend.poll()               # window/keys/mouse -> abstract input
     ui.update(dt, input_state, camera)    # scroll -> camera (UI state); minimap press/drag
-    for cmd in ui.commands(): queue.put(cmd)   # SelectionInput.release -> SelectUnits (right click: empty)
+    for cmd in ui.commands(): queue.put(cmd)   # SelectionInput -> SelectUnits; OrderInput -> MoveUnits / Stop / SetFormation
+    drain_no_way(world, ...)              # World.events NoWay -> the message line "No way" (3000 ms)
     while acc >= period_ms:               # fixed-step simulation
         sim.step(queue.drain())           # world.tick += 1, systems run
         acc -= period_ms
@@ -104,12 +105,21 @@ while running:
 ```
 
 The camera moves in whole cells per tick period (section 8), the simulation with ticks.
-`Simulation(world)` installs the selection system by default; every command it receives is appended
+`Simulation(world)` installs the order, selection and movement systems by default (in that order: `orders_system` runs
+the group pass at `world.tick & 15 == 6` and then the order commands, [simulation §8](simulation.md#8-orders-h3)); every command it receives is appended
 to `Simulation.log` as `(tick, command)` (rejected ones too: the log is the input), and
 `replay(sim, log, ticks)` feeds it back (same `dump_hash` and selection, tested).
 
+**Orders from the UI (H3 stage B, [ui-layout §6, §8](ui-layout.md))**: a left click with a non-empty selection is
+dispatched by `OrderInput.release` on the cursor chosen at the release (`choose_cursor`, modifiers read from pygame
+by the backend: `window.modifiers`); the target cell is `window.click_target` (`(mx >> 5) + camera cell`,
+`Projection.hover_cell` row). `window.run` queues the commands, they apply on the next tick, and it returns the
+`Simulation` (its `log` shows what the UI sent). `World.events` is drained by the UI each frame (`NoWay` only).
+
 **Commands and selection (G3b, spec
 [interface and selection](../superpowers/specs/2026-10-17-interface-selection-design.md))**:
+Orders (H3): `MoveUnits(player_id, unit_ids, cell)` (exe cmd 0x16), `Stop(player_id, unit_ids)` (cmd 0x18) and
+`SetFormation(player_id, mode)` (cmd 0x46), intake rules and groups in [simulation §8](simulation.md#8-orders-h3).
 `SelectUnits(player_id, unit_ids, toggle)`. Set: accepted when every id is owned by the player or
 exactly one unit of another owner (info only), else rejected and the selection kept; empty clears.
 Toggle: own ids only, and only while the selection is not foreign. Unknown or removed ids are dropped.
@@ -163,8 +173,8 @@ world pixels. `run` defaults to the playable area corner `(8*32, 8*32)`
 (the outer 8 cells are the unplayable border, [map](../formats/map.md)).
 Controls: arrow keys, and the mouse on the screen border (x == 0, y == 0, x >= W-2, y >= H-2; panels do not
 matter), scroll **one whole cell per tick period** (62 ms at the default speed), clamped to the 8-cell border
-(CONFIRMED, [ui-layout §5](ui-layout.md)); left click / drag selects, Shift toggles, right click clears
-(DECISION), Ctrl+H health bars, F1-F3 debug, Esc quits. The camera is built from the layout's viewport.
+(CONFIRMED, [ui-layout §5](ui-layout.md)); left click / drag selects or orders, Shift toggles, right click cancels the pending mode or clears
+(CONFIRMED, ui-layout §8), right drag scrolls, M/A/D/S/T, Ctrl+F, Ctrl+H health bars, F1-F3 debug, Esc quits. The camera is built from the layout's viewport.
 
 ## 9. World state
 
@@ -217,7 +227,7 @@ code `engine/world.py`; map facts in [map.md parts 3-4](../formats/map.md).
   as inert phantoms (INFERRED). The engine keeps and draws them. Four units start at HP 0 (file `hp` 0, max default): a
   walker stays at HP 0 as a corpse for good, a flyer or ghost dies on tick 1 (CONFIRMED `0x50f1b9`-`0x50f24b`,
   `0x50fecb`); no behaviour yet, they idle.
-- **Simulation** (G3a, H1): `Simulation.step` runs the systems (selection, then [movement](simulation.md)) and
+- **Simulation** (G3a, H1, H3): `Simulation.step` runs the systems (orders, selection, then [movement](simulation.md)) and
   advances `world.tick`; units stay in `idle` with `action_start_tick = 0` until ordered, so animation time (`world.tick - action_start_tick`) comes from the simulation and
   never from the render clock (tested at 30 and 60 fps render rates).
 - **`World.from_map(map, assets, facing=None)`**: structures in record order, then section 3 cells of the loaded
