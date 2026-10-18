@@ -39,9 +39,11 @@ def game_font(n):
 
 
 def ramp(colour):
-    """(16,) RGB565 table: a TABLES name, or the 16-step ramp black -> colour."""
+    """(16,) RGB565 table: a TABLES name, a 16-entry table of RGB triples, or the 16-step ramp black -> colour."""
     if isinstance(colour, str):
         return gfx.pack16(gfx.code_ramps16()[TABLES[colour]])
+    if len(colour) == 16:                                   # a ready 16-entry table of RGB triples (player ramps)
+        return gfx.pack16(np.array(colour, np.uint8))
     i = np.arange(16, dtype=np.int32)[:, None]
     return gfx.pack16((i * np.array(colour[:3], np.int32)[None] // 15).astype(np.uint8))
 

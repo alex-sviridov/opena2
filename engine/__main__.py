@@ -9,7 +9,7 @@ MAP as for `python -m allods2 map` (10, scenario/10.alm, or a file).  X, Y =
 the viewport's top-left in world pixels (x = 32*col, y = 32*row - height).
 `run` starts at the playable-area corner (256, 256) by default.  Arrow keys
 or the mouse at the window edge scroll; F1/F2/F3 toggle the debug overlays
-passability / markers / depth, Ctrl+H the health bars of all units; Esc quits.  --debug takes a comma list of those
+passability / markers / depth, Ctrl+H the health bars of all units, Ctrl+L the floating damage numbers (on by default, as in the game); Esc quits.  --debug takes a comma list of those
 names (screenshot: drawn in the PNG).  Objects and structures are drawn with the
 game's default options; --no-* switch shadows, the BRIGHT2 light row, the b.256
 smoothing, or both layers off.  `screenshot` writes a PNG
@@ -25,12 +25,16 @@ through the given cells: each leg must be straight or diagonal from the previous
 cell first); no pathfinding, no blocking.  `run --debug-moveto UID X,Y` orders a `MoveTo` (the original's
 path finding); with `--debug paths` and the unit selected the overlay shows searched cells (blue), the static
 path (yellow) and the current hop (green).  docs/engine/simulation.md.
+`run --debug-attack UID UID` (developer tool) makes the first unit attack the second; `--debug combat` prints one console line per blow; `--seed N`
+fixes the RNG (default the clock, printed).  docs/engine/combat.md.
 """
 
 import argparse
 import os
 import sys
+import time
 
+from engine.rng import DEFAULT_SEED
 from engine.world import World
 
 
@@ -119,7 +123,10 @@ def _setup(a):
     from engine.view import Camera, DrawOptions, TerrainView
     from engine.ui import DebugFlags
     assets = AssetCache(a.install)
-    world = World.from_map(open_map(a.map, a.install), assets)
+    seed = getattr(a, "seed", None)
+    if seed is None:
+        seed = time.time_ns() & 0xFFFFFFFF if a.cmd == "run" else DEFAULT_SEED      # the exe seeds from the clock (simulation.md 10)
+    world = World.from_map(open_map(a.map, a.install), assets, seed=seed)
     tv = TerrainView(world, assets.tileset())
     w, h = a.size
     opts = DrawOptions(shadows=not a.no_shadows, lit=not a.no_light,
@@ -149,6 +156,21 @@ def debug_moveto_commands(world, args):
     if uid not in world.units:
         raise ValueError("--debug-moveto: no unit with uid %s" % args[0])
     return [MoveTo(uid, x, y)]
+
+
+def debug_attack_commands(world, args):
+    """`--debug-attack UID UID` -> [AttackUnit]: the first unit (its owner's command) attacks the second."""
+    if not args:
+        return []
+    from engine.sim import AttackUnit
+    from engine.world import UNIT_ID_BASE
+    try:
+        a, t = (UNIT_ID_BASE + int(v) for v in args)
+    except ValueError:
+        raise ValueError("--debug-attack: give two unit uids") from None
+    if a not in world.units or t not in world.units:
+        raise ValueError("--debug-attack: no such unit uid")
+    return [AttackUnit(world.units[a].owner, (a,), t)]
 
 
 def debug_move_commands(world, args):
@@ -215,6 +237,8 @@ def main(argv=None):
                    help="developer tool: UID X,Y [X,Y ...] walks the unit along straight legs")
     r.add_argument("--debug-moveto", nargs="+", metavar="UID_OR_CELL",
                    help="developer tool: UID X,Y orders a path-found move (use with --debug paths)")
+    r.add_argument("--debug-attack", nargs=2, metavar="UID", help="developer tool: the first unit attacks the second (use with --debug combat)")
+    r.add_argument("--seed", type=int, help="RNG seed (default: the clock, printed; the exe seeds from it too)")
     a = p.parse_args(argv)
     if a.cmd == "minimap":
         return minimap_cmd(a)
@@ -240,7 +264,9 @@ def main(argv=None):
         mm = None if a.no_minimap else Minimap(world, load_color_table(as_fs(a.install)),
                                                load_dot_colors(as_fs(a.install)))
         try:
-            commands = debug_move_commands(world, a.debug_move) + debug_moveto_commands(world, a.debug_moveto)
+            commands = (debug_move_commands(world, a.debug_move) + debug_moveto_commands(world, a.debug_moveto)
+                        + debug_attack_commands(world, a.debug_attack))
+            print("seed %d" % world.seed)
         except ValueError as e:
             p.error(str(e))
         window.run(world, tv, camera, a.layout, a.speed, "Allods 2 - " + world.name,

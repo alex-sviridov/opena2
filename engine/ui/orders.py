@@ -4,7 +4,7 @@ clicks, hotkeys and minimap clicks into commands.  The pending target mode is `v
 A left release with a click on a non-empty selection dispatches on the cursor chosen at the release (R 1.2);
 the pending mode is reset after every such dispatch, also when nothing was ordered."""
 
-from engine.sim import MoveUnits, SelectUnits, SetFormation, Stop
+from engine.sim import AttackUnit, MoveUnits, SelectUnits, SetFormation, Stop
 from allods2.text import decode_text
 
 from .cursor import CursorState as S
@@ -78,8 +78,9 @@ class OrderInput:
     def release(self, cursor, cell, hover_unit):
         """The dispatch on the cursor chosen at the release.  Returns ('select', None) when the cursor is `select`
         (the caller runs the selection), else ('order', command or None).  `cell`: target cell or None;
-        `hover_unit`: a unit is under the pointer.  Own non-structure selection only (the cursor guarantees it for
-        move/swarm/attack; checked again here).  Resets the pending mode."""
+        `hover_unit`: the object under the pointer, its entity id (an int) or just True / False; the attack cursor over an
+        id orders an attack (`AttackUnit`, cmd 0x19), over nothing a walk.  Own non-structure selection only (the
+        cursor guarantees it for move/swarm/attack; checked again here).  Resets the pending mode."""
         if cursor is S.SELECT:
             self.pending = 0
             return "select", None
@@ -89,7 +90,10 @@ class OrderInput:
         if cursor is S.MOVE or (cursor is S.ATTACK and not hover_unit):
             if movable:
                 cmd = MoveUnits(self.player_id, sel, cell)
-        # attack on a unit, swarm, patrol, defend, pickup, town, cast: phases I/J/K, no order yet
+        elif cursor is S.ATTACK and isinstance(hover_unit, int) and not isinstance(hover_unit, bool):
+            if self.state_fn() == "own" and sel:
+                cmd = AttackUnit(self.player_id, sel, hover_unit)
+        # swarm, patrol, defend, pickup, town, cast: phases J/K, no order yet
         self.pending = 0
         return "order", cmd
 

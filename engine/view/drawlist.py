@@ -67,6 +67,7 @@ class DrawOptions:
     objects: bool = True        # map objects and structures at all
     units: bool = True          # units and ground piles
     health_bars: bool = False   # Ctrl+H: the selection bar of every unit
+    flying_damage: bool = True  # "Flying damage" (view+0xabc, default on, Ctrl+L): floating damage numbers (combat.md section 8)
 
 
 @dataclass(frozen=True)

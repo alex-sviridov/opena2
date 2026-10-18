@@ -6,7 +6,7 @@ import pygame
 
 from allods2.graphics.bmp import load_bmp
 
-from .render import draw_frame
+from .render import draw_frame, draw_numbers
 from .text import draw_text
 
 INFO_TEXT = (255, 255, 255)
@@ -60,7 +60,7 @@ class Interface:
             window.blit(img, (rect.x, rect.y))
 
     def draw(self, window, caches, terrain_items, items, camera, world, player_id, minimap=None, panel=None,
-             unit_title=None, message=None):
+             unit_title=None, message=None, numbers=()):
         """Compose the whole window.  `minimap`: engine.view.Minimap (image drawn at `panel`'s
         position), `unit_title(unit) -> str` for the info panel."""
         lay = self.layout
@@ -68,6 +68,8 @@ class Interface:
             caches.ball = self.art.get(BALL)
         window.fill((0, 0, 0))
         draw_frame(self.view, caches, terrain_items, items, camera)
+        if numbers:
+            draw_numbers(self.view, numbers)                # floating damage: over the units, under the panels
         window.blit(self.view, (lay.viewport.x, lay.viewport.y))
         state = selection_state(world, player_id)
         for strip in lay.strips:

@@ -11,7 +11,7 @@ from allods2.graphics import write_png
 from engine.view import build_draw_list, build_terrain_items
 
 from .sprites import blend_half, blend_shadow
-from .text import render_text
+from .text import draw_text, render_text
 
 PASSABILITY_TINT = (255, 40, 40, 90)
 MARKER_COLOR = (255, 255, 0)
@@ -130,3 +130,24 @@ def screenshot(terrain_view, camera, tick, dest, cache=None, assets=None, option
         os.makedirs(os.path.dirname(os.path.abspath(dest)), exist_ok=True)
         write_png(dest, rgb)
     return rgb
+
+
+_player_ramps = {}
+
+
+def player_ramp(colour, fs):
+    """The 16-entry text ramp of player colour row `colour` (`FUN_0047e345`: `0x61fac8 + 32 * colour`), hashable for the text cache."""
+    if colour not in _player_ramps:
+        from allods2.graphics import load_human_palettes, player_text_ramp
+        from allods2.units import HUMAN_PAL
+        rows = load_human_palettes(HUMAN_PAL, fs)
+        table = player_text_ramp(rows[colour % len(rows)])
+        _player_ramps[colour] = tuple(tuple(int(c) for c in row) for row in table)
+    return _player_ramps[colour]
+
+
+def draw_numbers(surface, entries):
+    """Floating damage numbers: `entries` = [(text, colour, x, y)], x / y relative to the surface (the view).  Font 2 with the
+    1 px shadow, as `FUN_0045d536` is called with the small font."""
+    for text, colour, x, y in entries:
+        draw_text(surface, text, x, y, colour)

@@ -374,3 +374,25 @@ def test_scripted_click_orders_a_walk():
     pygame.event.post(ev(pygame.MOUSEBUTTONUP, pos=(tx, ty), button=3))
     window.run(w, tv, cam, lay, assets=assets, max_frames=8)
     assert w.players[1].selection == ()
+
+
+# --- attack click (I1) -----------------------------------------------------------------------------
+
+def test_attack_cursor_over_a_unit_id_orders_an_attack():
+    from engine.sim import AttackUnit
+    oi, _ = make()
+    oi.pending = 1
+    what, got = oi.release(S.ATTACK, (20, 30), 0x6007)
+    assert what == "order" and got == AttackUnit(ME, (10, 11), 0x6007) and oi.pending == 0
+    # a bare True (some object under the pointer, no id) and no object at all keep the old dispatch
+    assert oi.release(S.ATTACK, (20, 30), True) == ("order", None)
+    assert oi.release(S.ATTACK, (20, 30), None) == ("order", MoveUnits(ME, (10, 11), (20, 30)))
+
+
+def test_attack_needs_an_own_selection_and_other_cursors_never_attack():
+    oi, _ = make(state="foreign")
+    assert oi.release(S.ATTACK, (20, 30), 0x6007) == ("order", None)
+    oi, _ = make()
+    for cursor in (S.MOVE, S.SWARM, S.DEFEND, S.PICKUP, S.TOWN, S.DEFAULT):
+        what, got = oi.release(cursor, (20, 30), 0x6007)
+        assert not isinstance(got, __import__("engine.sim", fromlist=["AttackUnit"]).AttackUnit)

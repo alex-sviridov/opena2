@@ -10,16 +10,19 @@ from engine.ui import (CursorInput, DebugFlags, Layout, MainText, MessageLine, M
                        SelectionInput, choose_cursor, choose_minimap_cursor, drain_no_way, target_cell)
 from engine.ui.orders import FORMATION_MS, FORMATION_TEXT, minimap_move_cell
 from engine.view import DrawOptions, Projection, build_draw_list, build_terrain_items
+from engine.view.damage import FloatingDamage, unit_anchor
+from engine.world import Damage, Died
 from engine.view.pick import pick_at
 
 from .cursor import CursorSprites, draw_cursor, hide_os_cursor
 from .interface import Interface, InterfaceArt, selection_state, unit_title_fn
-from .render import Caches
+from .render import Caches, player_ramp
 from .sprites import SpriteCache
 from .surfaces import SurfaceCache
 
 MAX_FRAME_MS = 250
 DEBUG_KEYS = {pygame.K_F1: "passability", pygame.K_F2: "markers", pygame.K_F3: "depth", pygame.K_F4: "paths"}
+FLYING_TEXT = 0x66                                                   # main.txt 0x66 + state: "Flying damage is Off" / "On"
 ORDER_KEYS = {pygame.K_m: "m", pygame.K_a: "a", pygame.K_d: "d", pygame.K_s: "s", pygame.K_t: "t"}
 KEYS = {pygame.K_LEFT: "left", pygame.K_RIGHT: "right", pygame.K_UP: "up", pygame.K_DOWN: "down"}
 PLAYER_ID = 1       # single player: the human is record 1 (map.md part 5)
@@ -69,14 +72,43 @@ def cursor_input(world, camera, layout, picks, mouse, player_id=PLAYER_ID, proje
 
 
 def click_target(world, camera, layout, picks, pos, projection):
-    """(cell, hover_unit) for a click at `pos` (R 1.7): column `(mx >> 5) + camera cell`, relief-aware row of
+    """(cell, hover) for a click at `pos` (R 1.7): column `(mx >> 5) + camera cell`, relief-aware row of
     `Projection.hover_cell`; None when the pointer is outside the view or no row matches.  No fog or
-    passability test."""
+    passability test.  `hover` is the entity id under the pointer or None (an attack order needs the id)."""
     if not layout.viewport.contains(*pos):
-        return None, False
+        return None, None
     cell = projection.hover_cell(camera.ix + pos[0], camera.iy + pos[1])
     cell = None if cell is None else (target_cell(pos[0], camera.ix >> 5, cell[1]))
-    return cell, pick_at(picks, *pos) is not None
+    return cell, pick_at(picks, *pos)
+
+
+def feed_fight_log(world, floats, assets, player_id, options, debug, now_ms):
+    """Drain `world.fight_log`: floating numbers for blows that took HP (message 0x73 with the option on), console lines for
+    `--debug combat`."""
+    log, world.fight_log[:] = list(world.fight_log), []
+    for e in log:
+        if isinstance(e, Damage):
+            if debug.combat:
+                print("tick %d: %#x -> %#x %s roll %+d damage %d hp %d" % (e.tick, e.attacker, e.target, "hit " if e.hit else "miss",
+                                                                          e.roll, e.amount, e.hp))
+            v = world.units.get(e.target)
+            if e.amount > 0 and options.flying_damage and v is not None:
+                aset = assets.unit_set(v.type_id)
+                p = world.players.get(v.owner)
+                floats.add(v.id, e.amount, p.colour if p else 0, v.owner != player_id, aset.t.TileSize if aset else 1, now_ms, e.tick)
+        elif isinstance(e, Died) and debug.combat:
+            print("tick %d: %#x died (killed by %#x)" % (e.tick, e.unit, e.by))
+
+
+def floating_entries(world, floats, camera, assets, fs, now_ms):
+    """[(text, ramp, x, y)] of the live numbers, in view pixels."""
+    out = []
+    for n in floats.visible(now_ms):
+        u = world.units.get(n.unit)
+        anchor = unit_anchor(world, camera, assets, u) if u is not None else None
+        if anchor is not None:
+            out.append((str(n.value), player_ramp(n.colour, fs), anchor[0] + n.x, anchor[1] + n.y))
+    return out
 
 
 def minimap_order_target(projection, camera, layout, panel, pos):
@@ -127,6 +159,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     projection = Projection(world.heights)
     held, acc, frames = set(), 0, 0
     right_in_view = False
+    floats = FloatingDamage()
 
     def minimap_left(pos):
         """Left press or drag over the minimap (R 1.6): an order inside the image with own units selected."""
@@ -147,6 +180,9 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
                 running = False
             elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_h and ev.mod & pygame.KMOD_CTRL:
                 options = dataclasses.replace(options, health_bars=not options.health_bars)
+            elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_l and ev.mod & pygame.KMOD_CTRL:
+                options = dataclasses.replace(options, flying_damage=not options.flying_damage)     # FUN_0041f120 + text 0x66/0x67
+                messages.show(texts.line(FLYING_TEXT + int(options.flying_damage)), pygame.time.get_ticks(), FORMATION_MS)
             elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_f and ev.mod & pygame.KMOD_CTRL:
                 cmd, mode = ordering.key("f", ctrl=True)
                 queue.put(cmd)
@@ -213,16 +249,22 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
                         queue.put(cmd)
         mouse = pygame.mouse.get_pos() if pygame.mouse.get_focused() else None
         scroll.update(camera, dt, held, mouse, layout.size)
+        steps = 0
         while acc >= period:
             sim.step(queue.drain())
             acc -= period
+            steps += 1
         now = pygame.time.get_ticks()
+        feed_fight_log(world, floats, assets, player_id, options, debug, now)
+        floats.advance(steps)
+        floats.prune(now)
         drain_no_way(world, player_id, messages, now, texts)
         ordering.update()
         items = build_draw_list(world, camera, world.tick, assets, options, debug, player.selection)
         text = messages.current(now)
+        numbers = floating_entries(world, floats, camera, assets, fs, now) if options.flying_damage else ()
         ui.draw(screen, caches, build_terrain_items(terrain_view, camera, world.tick), items, camera,
-                world, player_id, minimap, panel, title_of, (text,) if text else None)
+                world, player_id, minimap, panel, title_of, (text,) if text else None, numbers)
         if panel and mouse is not None and panel.contains(*mouse):
             state = choose_minimap_cursor(True, selection_state(world, player_id), ordering.pending)
         else:
