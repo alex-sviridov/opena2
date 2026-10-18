@@ -303,10 +303,13 @@ visited cell with the **smallest field value** (first one in scan order wins tie
 that has any, returns 0 when none. So the unit walks to the reached cell *cheapest from itself* within the
 first ring around the target that the wave touched, not the one nearest the target. Static: `radius = dist>>2 + 4`;
 dynamic without follow target: 8; dynamic with a follow target: `FUN_00557f08` (open). No cell: the list stays
-empty (the order sees `mover+0x98 = 1`). The static branch also calls `FUN_005052d2(1, 0, owner)` (a
-notification, probably the "can't get there" feedback) when the fallback cell is more than 1 cell from the
-target (more than 2 when `FUN_00559bc9(target)` is non-zero), and a clause for unit class 0x12 on order 5
-(`FUN_00556f56`, `FUN_0056ac5b`) rewrites a range field of the brain: feedback and range logic, not routing (open).
+empty (the order sees `mover+0x98 = 1`). The static branch also calls `FUN_005052d2(1, 0, owner)` when the
+fallback cell is more than 1 cell from the target (more than 2 when `FUN_00559bc9(target)` is non-zero: a
+target cell with bit `0x20` of `+0x10000` and a record in the cell table, i.e. a building cell, returns the
+record's holder): CONFIRMED it posts client message `0x92` (`FUN_00505347`), whose handler (`0x40e21d`, sub-code
+1) shows text string `0x81` for 3000 ms ("can't get there" feedback, wording not looked up). It does not
+change the route. A clause for unit class 0x12 on order 5 (`FUN_00556f56`, `FUN_0056ac5b`) rewrites a range
+field of the brain: range logic, not routing (open).
 
 ### 7.2 Two layers: static plan, dynamic hops (CONFIRMED `FUN_00555411`, `FUN_00555dc2`)
 
@@ -424,4 +427,5 @@ or a per-tick plan budget if it shows). Golden routes: `tests/golden.json["paths
    `+8 = 10`) and the live-layer stamps: which bits `FUN_0055c2ce` / `FUN_0055c1fe` / `FUN_005589ab` /
    `FUN_00559c28` write, and whether `+0x10000` really lacks the structure stamps (§7.3). H2 follow-up.
 6. Follow-target planning: `FUN_00557f08` (fallback with a follow target) and the driver `FUN_0055574d`.
-7. The unreachable feedback `FUN_005052d2` / `FUN_00559bc9` and the class-0x12 clause (`FUN_00556f56`).
+7. The class-0x12 / order-5 clause of the static fallback (`FUN_00556f56`, `FUN_0056ac5b`); the text of
+   string `0x81` (message `0x92`, the unreachable feedback) and whether the engine should show it (H3 UI).

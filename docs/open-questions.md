@@ -83,5 +83,5 @@ from both places when answered).
   arrival (`FUN_00569321`, `FUN_00555dc2`); group speed and Haste/Slow in `unit_speed`; the regeneration job
   vs its `tick & 3` test (`FUN_0052bbb7`, `0x50fc5a`); the group-AI pass at `tick & 15 == 6` (`FUN_0056fe4d`).
 - Pathfinding (H2) [simulation §7](engine/simulation.md#open-questions): friendly-unit yield/swap `FUN_0056fc69`, live-layer stamps
-  (`FUN_0055c2ce`, `FUN_005589ab`), follow-target `FUN_00557f08`/`FUN_0055574d`, unreachable feedback `FUN_005052d2`.
+  (`FUN_0055c2ce`, `FUN_005589ab`), follow-target `FUN_00557f08`/`FUN_0055574d`, class-0x12 clause `FUN_00556f56`.
 - Phantom units (9 on blocked cells, never created by the server) and HP-0 units: engine keeps and draws them; decide with the phase H sim. [architecture §9](engine/architecture.md#9-world-state)
