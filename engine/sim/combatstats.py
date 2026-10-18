@@ -221,7 +221,9 @@ def monster_stats(t, items=None):
             item = items.resolve(*r) if r else None
             if item is not None and item.defn.kind == WEAPON:
                 _equip_weapon(bonus, item, rec.skill, human=False)      # `+0xe6 := +0xa8` = the template's to-hit
-            # armour and shields: the equip routine returns at once for a non-human carrier
+            elif item is not None and item.defn.kind == SHIELD:
+                _equip_armour(bonus, item)                              # `FUN_0052846b` has no human gate (no monster has a shield)
+            # armour: `FUN_00527a13` returns at once for a non-human carrier
     _merge(rec, block, bonus)
     rec.kind = bonus.kind
     st.range = 1 + bonus.range

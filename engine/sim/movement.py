@@ -549,7 +549,6 @@ def _tick_unit(world, u):
     The failure event: `mover+0x98` ends an order 1 at once (`0x56e1b0` -> `FUN_0056dc24` = cancel + order `0xc`, `brain+0x50`
     stays 0), unlike arrival, which waits for the group pass.  Under any other order the event sets Brain mode 0 (`0x56e320`: the auto
     target scan `FUN_0056ed4e` finds no enemy; the scan and the computer players' mode 0xb are phase I, combat.md 9.3)."""
-    from . import combat as fight          # combat imports this module: resolved at call time
     if u.hp <= 0:
         return
     _tick_inner(world, u)
@@ -562,14 +561,13 @@ def _tick_unit(world, u):
             u.mode_go = False
             u.mode_attack = False
     if u.state == ATTACK_STATE:
-        fight.swing_tick(world, u)
+        combat.swing_tick(world, u)
 
 
 def _tick_inner(world, u):
-    from . import combat as fight
     m = u.mover
-    if u.brain_order == fight.BRAIN_SWING:              # Brain order 1: the swing runs, no mode (FUN_0056dca2 order switch)
-        fight.brain_swing(u)
+    if u.brain_order == combat.BRAIN_SWING:              # Brain order 1: the swing runs, no mode (FUN_0056dca2 order switch)
+        combat.brain_swing(u)
         return
     if m.step_ticks:                                    # a step is in progress (FUN_00555b38)
         u.state = MOVE_STATE
@@ -580,7 +578,7 @@ def _tick_inner(world, u):
                 u.path = []             # FUN_00555b38 clears the dynamic list (+0x1e4) at every step end
         return
     if u.mode_attack:                                   # Brain mode 5 (FUN_0056eab5)
-        fight.attack_mode(world, u)
+        combat.attack_mode(world, u)
         return
     if not u.mode_go or m.parked:
         return
@@ -612,11 +610,10 @@ def follow_drive(world, u, t):
     at a centre and within range it turns to the target and nothing else; otherwise a static re-plan when the target changed or
     `consumed > len(static) / 3 + 1`, arrival at the hop goal, a hop plan with the follow fallback, and (by the caller) the step.
     The not-at-centre branch (`FUN_00555b38`) is the step branch of `_tick_inner`: the Brain never gets here mid-step."""
-    from .combat import octant
     m, cfg, here = u.mover, DEFAULT_CONFIG, (u.x, u.y)
     tcell = (t.x, t.y)
     if follow_distance(foot(u), foot(t)) <= u.range:
-        face = octant(foot(u), foot(t))                 # FUN_00556d78 = FUN_00556454(unit, FUN_005568e4(unit, target))
+        face = combat.octant(foot(u), foot(t))          # FUN_00556d78 = FUN_00556454(unit, FUN_005568e4(unit, target))
         if u.facing != face or m.turning:
             _set_action(world, u, TURN)
         _turn_toward(u, face)
@@ -668,3 +665,6 @@ def movement_system(world, commands):
             apply_follow_path(world, cmd)
     for u in list(world.units.values()):
         _tick_unit(world, u)
+
+
+from . import combat    # noqa: E402  the fight code imports this module: bound here, used at call time (circular on purpose)

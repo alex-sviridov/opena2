@@ -192,3 +192,33 @@ def test_distribution_with_resistance_has_the_exact_zero_share():
         sigma = math.sqrt(n * share * (1 - share))
         assert abs(c - n * share) < 4 * sigma, (v, c)
     assert max(got) == 4
+
+
+# --- extremes ---------------------------------------------------------------------------------------
+
+def test_school_skill_extremes_add_three_to_hit_and_a_fifth_of_a_point_of_damage_per_skill_point():
+    from allods2.formats import itemdefs
+    class Items:                                           # a one-sword item table: blade type, no bonuses
+        def parse_equipment(self, text, slot=None):
+            return ("code", ()) if slot == 0 else None
+
+        def resolve(self, code, effects=()):
+            from types import SimpleNamespace
+            d = SimpleNamespace(kind=itemdefs.WEAPON, fields={"attack_type": 1, "windup": -1, "recovery": -1, "two_handed": 0},
+                                can_use=lambda mage: True)
+            s = SimpleNamespace(damage_min=0, damage_spread=0, to_hit=0, defence=0, absorption=0, range=1, weight=10)
+            return SimpleNamespace(defn=d, stats=s, effects=())
+    t = human(equipment=("sword",) + ("",) * 9)
+    base = human_stats(t, Items(), skills=(0, 0, 0, 0, 0, 0)).record
+    top = human_stats(t, Items(), skills=(0, 100, 0, 0, 0, 0)).record
+    over = human_stats(t, Items(), skills=(0, 250, 0, 0, 0, 0)).record          # clamped to 100 like the recompute
+    assert top.skill - base.skill == 300 and top.lo - base.lo == 20 and top.sp == base.sp
+    assert over == top
+
+
+def test_attribute_extremes_stay_in_byte_and_word_range():
+    st = human_stats(human(body=250, reaction=250, spirit=250))
+    assert 0 <= st.record.lo == st.record.sp <= 255 and st.record.skill == int((1.1 ** 52 + 1.1 ** 50) / 5)
+    assert st.block.prot[1] == 46 // 2
+    tiny = human_stats(human(body=0, reaction=0, spirit=0))
+    assert (tiny.record.skill, tiny.record.lo, tiny.block.defence, tiny.block.prot[1]) == (0, 0, 0, 0)
