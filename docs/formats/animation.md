@@ -545,7 +545,7 @@ The client plays what the server sends.
 
 **Walk: ticks per cell** (CONFIRMED `FUN_00559195`; sender `FUN_0050ff2d`
 → `FUN_005040c4` writes `msg[+0xd] = mover+0xaa`; the server marks the
-unit busy until `tick + msg[+0xd]`, `unit+0x138`):
+unit's rest clock `unit+0x138 = tick + msg[+0xd]`, not a busy flag: combat §12.5):
 
 ```
 base  = group speed (unit+0x70 → +0x3c → byte +0x44) if non-zero,
@@ -701,8 +701,8 @@ Melee damage lands `+0x134` ticks after `0x71`; ranged later by
 `(dist·256 + 128)/200`, matching the client's arrow `dist / 200`; spell
 effects `+0x134` after the cast. One attack = `+0x134 + extra + +0x135 +
 rand(0..3) + hero_delay` + 1 tick for the phase-0 pass (INFERRED: one
-call per server tick). `0x71/0x72` also set `unit+0x138 = tick + +0x134 +
-+0x135` (`FUN_005040c4`/`FUN_00504155`); for melee that sum is also in
+call per server tick). `0x71/0x72` also set the rest clock `unit+0x138 = tick + +0x134 +
++0x135` (`FUN_005040c4`/`FUN_00504155`; combat §12.5); for melee that sum is also in
 `msg[+0xd]`, ignored by the client (it plays `AttackAnim`). Heroes'
 `+0x134/+0x135` come from the weapon (`FUN_005290cc`: item params 12 and
 13, kept when −1; defaults 8 and 4, `FUN_0050ec60`); monsters' from

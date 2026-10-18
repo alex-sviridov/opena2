@@ -337,7 +337,7 @@ AI reaction `FUN_0056e6b8` (defender alert message, `brain+0x54/+0x58/+0x94`), t
 target scan (`FUN_0056a1fb`, `FUN_0056ed4e`), special-attack rolls (`FUN_0056a981`), mage casting (`FUN_0056b059`); effects: Bless / Curse
 bits (the `take_hit` inputs exist, nothing sets them), Invisibility ending on attack (`FUN_00516b2f`: effect kind 12 flag `+0x42 := 1`),
 Haste/Slow; item modifier kinds other than those in section 6 (speed, scan range, mana, regeneration, castSpell on a weapon); equipment
-swapping in play; kill counters, bestiary byte, message `0x94`; the group-key population job (`+0x148`); structure targets (`FUN_00516ea0`); client hit reaction animation (`vtable +0x74` of the view unit); sound.
+swapping in play; kill counters, bestiary byte, message `0x94`; the summon-cap job (`+0x148`, 12.6; needs the Summon spell); structure targets (`FUN_00516ea0`); client hit reaction animation (`vtable +0x74` of the view unit); sound.
 
 ## 11. VERIFY IN GAME
 
@@ -407,20 +407,40 @@ the occupant slot, the owner's unit list. A **revived** unit (HP > 0 again, e.g.
 | the corpse object after removal | the object stays alive: it moves to a corpse list (`FUN_0052b22a(world+0x7c list)`) and keeps state 0x10, so lookups still succeed: attack commands on it are accepted ([2.1](#21-intake-fun_004f515d-confirmed)) and the executor then sees 0x10 and stops | C |
 | followers / casters / mode 4,6,8 | same: they hold the target pointer and only the state `0x10` check ends them (executor pass at 16-tick granularity); a caster with the corpse as target casts normally until then | I (same executor) |
 | owner's unit list / counts | `FUN_0051618e` at the removal tick: the unit leaves the owner's list; nothing at `T0` | C |
-| player's selection (client) | not found in the routines read. The client draws and counts by **death stage** (`obj+0x184`, recomputed from HP): `FUN_00416717` marks own units with stage <= 1 and flag `+0x1b8 & 0x80 == 0` (INFERRED: the selectable set), `FUN_00472460` draws the own-unit portraits / sidebar only at stage 0. So the unit leaves the selectable / portrait set at the **first HP message with HP <= 0 (stage 1)**, i.e. at `T0` + latency, not at removal | I |
+| player's selection (client) | CONFIRMED (`FUN_0040d9b2`, the client message handler, death-stage block `0x410495`-`0x4108f6`; the selected flag is `obj+0x80`). The stage is recomputed from the HP of **every** message that carries HP (`obj+0x184`, [animation §3.3](../formats/animation.md)). **Stage 1 (HP -10..0): the unit stays selected** (case 1 `0x4105e4` only starts the dying animation). **Stages 2-4 (HP <= -11): `if obj+0x80`: vtable `+0x14(0)` (deselect) and the selection summary refresh `FUN_004167c2`** (`0x4108dd`-`0x4108f6`); stage 5 (HP < -600): the same, then the object is removed from the view map (`FUN_0041fff0`) and deleted (vtable `+0x4(1)`, `0x4109ad`, ids < `0x6000`). So the unit leaves the selection at the first message with HP <= -11: the `T0` message (`0x4001`) for an overkill, otherwise the decay HP message after the removal (up to 32 ticks later, 12.6), **not** at `T0`/HP <= 0 and not at the removal. The hotkey `E` (`FUN_00416717`, select-all) selects the own units of stage <= 1 whose flag `+0x1b8 & 0x80` is clear, deselecting the rest | C |
+| the unit-removed event (`FUN_0052e07e(4, id, ...)`) | CONFIRMED: **not a client message.** `FUN_0052e07e` appends a 0x1c-byte node (type, a, b) to the list at `server+0x20` (object `0x68d360`); `FUN_0052e122` (from the job `FUN_004f08c0`) drains it (`FUN_0052e0c4`) and calls every registered listener's vtable `+0x14(type, a, b)` (`FUN_0052e198`). The listeners are the map script / trigger conditions (e.g. `FUN_0052eac8`: type 4 compares the dead unit id with the listener's unit). Event 4 args: unit id, killer's main-hero id (human owners) \| unit type `<< 16` \| `+0x4b << 24`; types 5 and 0xf are queued at the same removal under other conditions (a `+0x70` carrier field; the owner's `+0xa60`), meaning not read. `FUN_005052d2` is the client message `0x92` sender (level-up, skill message), unrelated to removal. The client gets **no removal message**: it only sees HP messages (12.6) | C |
+| picking / hover / click target (client) | CONFIRMED: the view draw registers a pick rect for an object only while `obj+0x184 < 2` (`0x4087c2`, `0x409de8` -> `FUN_00404d99`). So a **stage-1 body (HP -10..0, dying or fresh corpse) is hoverable and clickable** (hostile owner: attack cursor, INFERRED from ui-layout §6 hover flags; the hover flags test no HP); stage >= 2 bones are not hoverable (a ground click goes to the ground). Attack commands by id are accepted for any lookup hit (above) | C |
 
 ### 12.3 Removal (`FUN_00510a70`, called at state 0x10) and the world list
 
-In order (`FUN_00510a70`): (1) if `+0x148 != 0` (a group-key mark, 12.6): HP := -10000, `+0x148 := 0`; (2) **state := 0x10, order := 0x10**; (3) `FUN_00553891` =
+In order (`FUN_00510a70`): (1) if `+0x148 != 0` (a summoned minion picked by the cap job, 12.6): HP := -10000, `+0x148 := 0`; (2) **state := 0x10, order := 0x10**; (3) `FUN_00553891` =
 release the stamps (`FUN_0055be86(unit, 0, 2)`) + lift the occupant (`FUN_00550697`) and `FUN_005551d6`; (4) equipment into the loot bag (12.4); (5) the loot roll (12.4);
-(6) effects: every effect of `+0x20` for which `FUN_0051cc53` holds gets `+0x42 := 1` and is ticked once / dropped; (7) **main hero of the owner** (`owner+0x38 == unit`):
-`owner+0xa54 += 1` (hero deaths), mask `0x2400000`, `FUN_004e9e97` (a savegame writer guarded by `[0x6044c4+0x74] != 0`: **no-op in single player**), **HP := -50**;
-(8) single player (`[0x6044c4+0x74] == 0`), owner computer-flag `+0x2c == 0` (the human) and unit type `0x21..0x3f`: `owner+0x40 := server_id - 0x13`, client message `0xb4`
-(hero died; the game-over / death dialog trigger, INFERRED meaning); (9) `FUN_005110b8` (corpse decay step, 12.6).
+(6) effects: every effect of `+0x20` for which `FUN_0051cc53` holds gets `+0x42 := 1` and is ticked once / dropped; (7) **main hero of the owner** (`owner+0x38 == unit`, CONFIRMED test; step 8 does not need it):
+`owner+0xa54 += 1` (hero deaths), mask `0x2400000` (`FUN_00502019`, `0xffb`), `FUN_004e9e97` (a savegame writer guarded by `[0x6044c4+0x74] != 0`: **no-op in single player**), **HP := -50**;
+(8) single player (`[0x6044c4+0x74] == 0`), owner computer-flag `+0x2c == 0` (the human) and unit type `0x21..0x3f` (**any** hero of the human, not only the main hero):
+`owner+0x40 := (byte)(server_id - 0x13)`, server message `0xb4` via `FUN_00505347(0xb4, owner+0x40, 0, owner)` (CONFIRMED; effect in 12.3a); (9) `FUN_005110b8` (corpse decay step, 12.6).
 Then, still inside `FUN_0052b459` the same tick: (a) unit removed from owner list and group (`FUN_0051618e`) and from the creature list (`FUN_0053afb0`), added to the corpse list;
 (b) effects of `+0x20` get `+0x42 := 1`, `+0x44 := 0` and one more tick; (c) **kill credit** (12.7); (d) client events via the queue `0x68d360` (`FUN_0052e07e`): type 4 =
 "unit removed" (`id`, `unit_type << 16 | face << 24 | killer owner id`), type 5 for `+0x70`, type `0xf` for the local human owner when `owner+0xa60 != 0`;
 (e) movementType > 1: id slot freed (`FUN_004f8d3d(id)`, `+4 := 0`), so flyers / ghosts vanish for lookups; **ground units keep their id** until corpse stage 5.
+
+### 12.3a Hero death: message `0xb4`, the dialog and the game (CONFIRMED unless marked, allods2.exe sha256 in formats/README.md)
+
+- **Delivery.** `FUN_00505347` fills the message block `0x68f610` (type at `+9`, sender id `+7`, value byte `+0xa`) and hands it to `FUN_0050164f`. The client message dispatcher `FUN_0040d9b2` (case `0xb4` of its message switch) does only
+  `PostMessage(mainwnd, 0x433, 0xff, 0)` (`FUN_0041e3f0`); the value byte `owner+0x40` is **ignored** for `0xb4` (case `0xb6` forwards `msg+10` as the `0x433` wParam, case `0xb5` posts `0x430`).
+- **Window handler** (`FUN_004852d8`, the game window proc, `0x485377` entry). `0x433`: `[this+0x43c] := wParam`; `0xff` posts `0x431`. (`0xfe`, `0xfd`, `0xfa` and other values are the `0xb6` results: other dialogs / `event_%d` text; not read.)
+  `0x431`: only if `[this+0x3e8] == 0` (a one-shot latch, set here; no reset in this proc) **and** the game mode `[this+0x5d8] == 2` (in a game): builds the dialog `FUN_0044d1e2(1, 0x20, 100, 0x260, 0x17c)` (class vtable `0x5ccf78`, base text window `FUN_00444243`; text = table entry `0x8d`),
+  registers it as modal through `FUN_0048b33b` (`[this+0x404] |= 8`, window stored in `[this+0x124]`). Its init (`FUN_0044d237`) makes two buttons: command `0x445` (interface string `0x2c`) and `0x446` (string `0x23`); the second one is **disabled when no `\game*.sav` file exists** (`FUN_0043ff4a`, `FindFirstFile` in the saves directory).
+- **Buttons.** A click sets the dialog result (`FUN_004441c1`: window `+0x60 := id`) and posts window message `0x44c` -> `FUN_004891d8` (dialog-closed handler): the branch for `[this+0x124]` clears the modal bit `8`, then
+  `0x445` -> posts `0x41e` = `FUN_0048f2e5` (end the running game: stop the server / sim) + post `0x421` = `FUN_0048b569` (back to the **main menu**: closes the game windows, plays `music_menu.wav`);
+  `0x446` -> posts `0x418` = opens the **load-game window** (`FUN_0043deaf`, class `0x5cbdc8`, init `FUN_0043df48` lists the `.sav` files by header magic `0x26677342`, buttons `0x479` / `0x475` / `0x47a`; INFERRED as the load list from the file scan and the layout).
+  There is no "continue" button: the only ways on are load a save or leave to the menu. The dialog is deleted afterwards.
+- **The simulation stops.** The game tick (`FUN_00481ccb` -> `FUN_00488aa1` -> `FUN_004f08c0`) runs only if `[this+0x404] & 1` and, in mode 2, `[this+0x404] & 0x4008 == 0` (CONFIRMED condition): the modal bit `8` set by the dialog **freezes the sim** until it is closed.
+- **Defeat rule.** `FUN_00510a70` has no all-heroes-dead or main-hero-dead test of its own: **any** hero of the human reaching state 0x10 (not only the main hero) opens this dialog, so the death of one hero is the single-player defeat. Whether a map script can lose the
+  game otherwise (`0xb6` results) is not read. Computer-owned heroes and monsters never send `0xb4`.
+- **Counters.** `owner+0xa54` (hero deaths, main hero only) is a statistics value: listed with `+0xa48`, `+0xa4c`, `+0xa58` in the player statistics text (`FUN_004828d7`, format string `0x43`; also `FUN_004e9e97` / `FUN_0052d1c5` serialise it; INFERRED meaning of the neighbours). `owner+0x40` is the byte `server_id - 0x13` of the last hero that died; no reader found (only a write of another object's `+0x40` in `FUN_004891d8`).
+- **Revival.** Not possible: the unit is at state/order 0x10 (the executor stops it), it left the owner list and group (12.3 a), its stamps are released and the HP is -50 (main hero) and decays towards the stage-5 removal; no code path in `FUN_00510a70` / the corpse list restores a unit. The way back is a saved game (the dialog's load button). The main-hero pointer `owner+0x38` is not cleared by the death.
+- Engine: `Player.main_hero / hero_deaths / death_code / defeat_dialog`, `HeroDied` fight-log event (section 13). The dialog and the freeze belong to the UI layer (not built).
 
 **Release timing (answers 1):** footprint stamps, occupant slot and the creature-list entry are released at the removal tick (`T0 + D` or later, 12.1), **not** at HP <= 0.
 Until then the dying unit blocks its cell and is a path blocker (verdict 0: HP < 1, [simulation §7.4](simulation.md)). After it, the corpse never blocks (it is out of the
@@ -433,20 +453,29 @@ Order inside the function, with the exact `rand` calls (`rnd(n)` = `FUN_0051fa25
 | # | Step | Condition | Draws |
 |---|---|---|---|
 | 1 | slot `+0x78` item -> `vtable +0x48` (unequip) -> into the unit's loot bag `+0x7c` (`FUN_00529ac2`) | slot non-empty | - |
-| 2 | slot `+0x74` item (the weapon) likewise | slot non-empty and template parameter 15 != 0 (monster p15 = defence; INFERRED why) | - |
+| 2 | slot `+0x74` item (the weapon) likewise | slot non-empty and the **weapon item's class parameter 15 (`suitable_for`) != 0** (CONFIRMED `0x510b3f`-`0x510b58`, below) | - |
 | 3 | vtable `+0x4c`: humans (`FUN_00512697`) unequip slots 1..12 into the bag; monsters: no-op | - | - |
 | 4 | bag **cleared** (old bag destroyed, new empty one) | summoned (`+0x1a0 != 0`) **or** template name contains the text `NPC` (`FUN_0059e063(name + 4, "NPC")`) | - |
 | 5 | gold: `rnd(100) < p38` -> `gold = p39 + rnd(p40)` | `unit_type >= 0x40` (monsters; heroes 0x21..0x3f never roll) and not summoned | `rnd(100)`; then `rnd(p40)` only when it hit |
 | 6 | item: `rnd(100) < p41` -> build a generator (`FUN_005254e7`: min = p42, max = p43, count 100, stack 1, flags p44), run it (`FUN_00525f67`), pick `rnd(len - 1)`, set its quantity `+0x42 := 1`, add to the bag | same | `rnd(100)`; then the generator's own draws ([items §11](../data/items.md#11-random-generation)); then `rnd(len - 1)` (only when `len != 0`) |
 | 7 | **drop**: if the bag has `> 0` items or `gold != 0`: `FUN_005109f5` -> `FUN_0052acf6(cell +0x10, bag, gold, flag)`; a new empty bag is created | - | - |
 
+**What the bag holds and the weapon gate (CONFIRMED).** The `0x510b3f` code is `push 0xf; ECX = [weapon + 0x3c] + 8; call 0x41e7e0` (the same parameter-vector accessor `FUN_005290cc` uses for class parameters 5, 12-14), i.e. the gate reads the **item's class record parameter 15 (`suitable_for`, [items §2](../data/items.md))**, not a creature template column (the monster template p15 = defence is irrelevant). Class values: 1 fighters, 2 mages, 0 nobody; every natural weapon of the data is 0 (Flame Thrower, Sonic Beam, Boulder Thrower), every real weapon, bow, staff and pike is 1 or 2. So a natural weapon never lands in the pile; a real one always does. The shield (`+0x78`) has no gate.
+The bag `+0x7c` holds, in this order: (a) the **carried section 8 group** (`FUN_00564072`: for a group linked to a unit, each member slot 0 -> `FUN_00529ac2` into the pack; slot != 0 would equip through vtable `+0x44`, never in the data) - it does **not** contain the equipped weapon; (b) at death the shield, then the weapon, from `+0x78` / `+0x74`; (c) humans: slots 1..12 (`FUN_00512697`, index = the armour class `Slot` 4..12). The equipped objects are created **from the template equipment strings** in the unit constructor and never exist in the carried group: monsters `FUN_00511959` loop over the 2 strings, `Shield` in the text -> shield object (`FUN_00527e23`, 0x6c) else weapon object (`FUN_00528808`, 0x88), then vtable `+0x44` (equip; weapon `FUN_005290cc` sets `+0x74` and returns the old one to the pack); humans `FUN_005145d1` (callers `0x514377`, `0x5143e4`), strings 0 weapon, 1 shield, 2..9 armour (`FUN_005273f0`), skipped when its parameter `param_3 != 0` or the name test at `0x5146d2` matches (INFERRED: a hero restored from a save / campaign state). `FUN_00527a13` (armour equip) returns at once for a non-human carrier; the monster data has no armour or shield strings.
+Install results (`equipment_codes`, GOG data.bin): of 97 monster templates with an equipment string 79 drop their weapon and 18 do not (Bat_Sonic 1-5, Catapult, CatapultBase, MercenaryCatapult, Dragon 1-5, Succubus 1-5); Ogre, Troll, Ghost, Bee, Wolf, ... have no string. A killed Orc_Sword drops `0x1104` (Bronze Long Sword) always, plus its carried group, gold 79.2 % (`90 + rnd(270)`) and one generated item 29.7 %; Goblin_Pike drops `0x110f` (Bronze Pike) + gold 59.4 %; Ogre drops only gold (89 %, p38 = 90) and a generated item (p41 = 40); Dragon only gold and the item; Orc_Shaman a Shaman Staff (`0x810e`; the `castSpell` text is not in the code). Fighter_Hero drops the Two Handed Sword plus 5 armour pieces (`0x2126, 0x2730, 0x2833, 0x2936, 0x2a3a, 0x2c3e`).
 The gold is **not a coin item**: it is a number on the pile object (`pile+0x3c += gold`); `flag` = (unit is the owner's main hero) -> pile `+0x44`. `FUN_0052ab07`: the pile at the unit's
 own cell is looked up (`FUN_00553ab3(cell)`); if one exists the bag is merged into it, else a new pile object (`FUN_0052a71d(cell, bag)`) is created and registered with
-`FUN_0052ad3d` -> `FUN_005538c7`; **if registration fails the pile (items and gold) is deleted**. Whether `FUN_005538c7` searches a neighbouring free cell is not read (open question).
+`FUN_0052ad3d` -> `FUN_005538c7`; **if registration fails the pile (items and gold) is deleted**.
+**Pile placement (CONFIRMED, `FUN_005538c7`, `FUN_0052ad3d`, `FUN_00553ad1`): there is no search for a neighbouring cell.** Only the cell given is tried:
+(1) `FUN_00553ab3(cell)` -> `FUN_00553ad1`: a pile exists when bit `0x20` of the static layer (`+0x10000`) is set, the cell record is found and its pile slot (`+0x5403c`) is non-zero; then the bag is merged (items stacked, `pile+0x3c += gold`) **whatever the cell's blocking**.
+(2) Otherwise `FUN_005538c7(pile)` fails when bit 0 of the **live layer** (`+0x20000`) is set (`FUN_00550a96`: water / mountain / building ground, any structure stamp `|= 5`, the map border; tree cells set bit 2 only and unit stamps `0x40` / `0x80` do not count, so they hold piles).
+Else it makes the cell record if missing (`FUN_005508a0`) and stores the pile in the empty slot (`FUN_00550a53` rebuilds the cell); a record whose slot is already taken refuses (unreachable after step 1).
+(3) On refusal `FUN_0052ad3d` calls the pile's deleting destructor (vtable `+4`, arg 1: its bag goes with it) and `FUN_0052ab07` returns 0; the gold is dropped, `FUN_0052acf6` skips the client notice (`FUN_00503672`). The rolls were already drawn. A flyer or ghost dying over water / mountain loses its loot.
+The map loader uses the same routine: `FUN_00564072` calls `FUN_0052ab07(cell, pack, extra, 0)` for each ground group after all units and structures exist (and the random fill `FUN_00564b5a` too), so section 8 piles obey the same rule (no install map has a group on a blocked cell; checked against the engine's block layer).
 Probabilities (comparison `p38 > rnd(100)`; `rnd(100)` has 101 values, so chance = `p38 / 101`, not `p38 %`): e.g. Orc_Sword p38 = 80: 79.2 %; gold `90 + rnd(270)`; item p41 = 30: 29.7 %, window 180..540, flags `826802175` (`0x3147ffff`). Goblin_Pike: gold 60 -> 59.4 %, `30 + rnd(90)`, no item (p41 = 0: never, since `rnd(100) >= 0`).
 Heroes and human NPCs (types `0x21..0x3f`): no roll, but **all equipment (slots 0..12 as above) and the carried bag drop** unless the template name contains `NPC` or they are summoned.
-A hero (player unit) dying: bag + equipment drop at its cell, deaths counter, HP -50, message `0xb4`; there is no other game-over code in this routine (the end of the game is
-the client / script reaction to `0xb4`, not read; open question).
+A hero (player unit) dying: bag + equipment drop at its cell, then 12.3 steps 7-8 (main hero: deaths counter and HP -50; any hero of the human: message `0xb4`, which opens the modal load / quit dialog and freezes the sim, 12.3a).
+The items stay on the ground at the hero's cell (pile rules above) and survive in the world while the dialog is up.
 
 ### 12.5 Regeneration (vtable `+0x14`, `FUN_0050fc5a`) and the open question 3 of simulation.md
 
@@ -459,7 +488,25 @@ unit-struct §3 ("every 4th tick", `tick & 3`) was wrong (correction below).
 |---|---|
 | state 0x10 | nothing |
 | HP < 0 | if `b & 3 == 0`: HP -= 1, mask 1. HP == 0: nothing. No mana regen |
-| HP > 0 | `k = 3` if `FUN_0050fc3e > 80` (ticks since the last step ended: `+0x138 = tick + step_ticks` is written by the move message `0x6b`, `FUN_00504xxx` at `0x504122`; other writers of the same shape at `0x5041ba`, `0x504292`, `0x504369`, `0x50446f`, INFERRED turn / other messages; created as 0), else `k = 1`. There is **no "recently attacked" test**: only movement counts |
+| HP > 0 | `k = 3` if `FUN_0050fc3e > 80` else `k = 1` (CONFIRMED `0x50fc5a`-`0x50fc9e`, see "The rest clock" below). There is **no "recently attacked" test**: being hit never touches `+0x138` |
+
+**The rest clock `creature+0x138` (CONFIRMED, exe sha256 in formats/README.md; every store to `[reg+0x138]` of the byte image was enumerated).** `FUN_0050fc3e` (`0x50fc3e`) = `[0x6044c4 + 4]` (the tick) minus `+0x138`, a plain `SUB`
+(dword). Its three callers: the regeneration slot `FUN_0050fc5a` (`0x50fc8d`: `CMP EAX, 0x50; JLE` = **signed**, `k = 3` only when the difference is `> 80`; a `+0x138` in the future
+gives a negative difference, so `k = 1`; no unsigned or wrap handling), the move sender (`0x504107`, result discarded) and the creature tick `FUN_0050f12c` (`0x50f2e1`, HP > 0 branch: when the sim object `[0x6044c4]` and its `+0x74`
+are non-zero, the unit has an owner and `owner+0x38 == unit` (main hero), and the difference is **exactly** `0x50` it sends the client message mask `0x10` once, i.e. re-sends position/facing 80 ticks after the last action;
+`[0x6044c4+0x74]` is the same flag the kill counters test, 12.7, INFERRED net-game). Writers (all stores; the formal ctor/copy ones included):
+
+| Where | Value written | When |
+|---|---|---|
+| `0x504122` in `FUN_005040c4` (client message sender) | `tick + (u8)arg` | move step message `0x6b`: arg = `2 * mover+0xae` = the step ticks (call at `0x51007e`); turn message `0x6d`: arg = `(mover[1] + 8) >> 4` (**dir16 of the target facing, 0..16, not a duration**; call at `0x50ffcd` from `FUN_0050ff2d`, sent in a state-1 tick when the 16-bit position is unchanged and `mover+1` changed during the tick, `FUN_00558b3d`); melee swing start `0x71` (call at `0x504b12` in `FUN_00504ab8`: arg = `+0x134 + +0x135`, truncated to a byte) |
+| `0x5041ba` in `FUN_00504155` (message `0x72`) | `tick + +0x134 + +0x135` (dword) | swing start of a unit whose `+0x12c` (attack range) is `> 1` (`FUN_00504ab8`, sole caller `0x516c16`, `FUN_00516b2f`) |
+| `0x504292` `FUN_005041d6` (message `0x86`), `0x504369` `FUN_005042ba` (`0x86` / `0x8b`), `0x50446f` `FUN_00504391` (`0x8a` / `0x8c`) | `tick` (now) | cast start, guarded by vtable `+0x2c` of the caster, which is `1` in all three creature vtables (`0x542410` / `0x542720`): always written. Callers `0x519bd7`, `0x519bf3` (`FUN_00519998`, the cast start) and `0x519d23` (`FUN_00519c04`, chain spells) |
+| `0x50e3d8` `FUN_0050e173` | `0` | creature init |
+| `0x50ea4b` `FUN_0050e48e` | copy of the source's `+0x138` | the whole-object copy (vtable `+0x3c`) |
+
+Nothing else stores it (also checked: no `add`/`inc`/arith forms, other stores at the same offset belong to unrelated client classes). So **walking, turning (any tick that changes the target facing without moving), a melee / ranged swing start and a cast
+start reset the rest state; being hit, standing, or the later phases of a swing do not.** A swing's value is `tick + wind-up + recovery`, i.e. in the future for the whole swing (the difference is negative, so `k = 1`, until 80 ticks after that);
+a cast writes the current tick, a turn writes `tick + dir16` (so the turn value is a few ticks in the future). Quirks kept: the melee byte truncation (`windup + recovery > 255` wraps; unreachable in the data: the largest sum is 40), and the resend test is `== 0x50`, so it fires only if no other writer ran in between.
 
 HP part, when HP `< maxHP` (`+0x96`) and `regen` (`+0x98`) `!= 0` and `b & 3 == id & 3`: with `acc` = byte `+0xa2` (hundredths of a HP), `bonus` = s16 `+0xde`:
 
@@ -504,7 +551,7 @@ Dying time (vtable `+0x74` = `FUN_00512526`, CONFIRMED `0x5d0f40`/`0x5d0fb8` slo
 
 ### 12.6 Corpse decay (`FUN_005110b8`, from the same job) and what the client draws
 
-The job also calls `FUN_005110b8` for every unit of the **corpse list** (and `FUN_00510a70` for the group-key marks below). Per job run (once per block): `if HP > -10001`: when `block` is even,
+The job also calls `FUN_005110b8` for every unit of the **corpse list** (and `FUN_00510a70` for the summon-cap marks below). Per job run (once per block): `if HP > -10001`: when `block` is even,
 HP `-= 1` (every **32 ticks**); heroes of type `0x21..0x24` stop at HP -61 (`> -61` test), every other type continues. Server corpse stage `+0x13c`: HP `< -10` -> 2, `< -20` -> 3, `< -40` -> 4, `< -600` -> 5;
 at stage 5 HP := `-10001` (stops the decay) and, for movementType < 2, the id is freed (`FUN_004f8d3d`); a stage change sends mask 1 (HP) to the clients. The object itself is **never deleted** from the corpse list.
 The client's death stage is the same function of the HP ([animation §3.3](../formats/animation.md)), so the draw changes exactly at those HP values:
@@ -519,10 +566,15 @@ The client's death stage is the same function of the HP ([animation §3.3](../fo
 | flyers / ghosts (HP := -1000) | first job after removal (<= 16 ticks) | not drawn quickly; id freed |
 | heroes (`0x21..0x24`) | never past -61 | bones 3 forever |
 
-Nothing is time based on the client: only the HP messages. There is no fade; the corpse changes its **graphic** (corpse -> bones -> gone). A corpse stays in the corpse list, not in the spatial tables / creature list (minimap
-dots and the sidebar only count stage 0; INFERRED from `FUN_00472460`). Corpse is not selectable (stage > 1, INFERRED `FUN_00416717`) but is still a legal attack target by id for a ground unit (12.2).
-**Group-key marks** (`FUN_0052bbb7` tail, INFERRED purpose: a population cap per group key `+0x148`): each job counts the units per key and, for each key with count `n`, with probability `n %` (`rand(100) < n`)
-marks it; every unit of a marked key is removed via `FUN_00510a70` (HP := -10000). Whether campaign maps use `+0x148` is not known (open question).
+Nothing is time based on the client: only the HP messages. There is no fade; the corpse changes its **graphic** (corpse -> bones -> gone). CONFIRMED client side (`FUN_0040d9b2` `0x41040f`-`0x410495`): the client never receives a removal; its unit object lives on after the server removal
+(the server corpse list, 12.2) and is **deleted at death stage 5** (HP < -600; `FUN_0041fff0` + vtable `+0x4(1)`, ids < `0x6000`) - that is why ground corpses are still drawn until then. Counting rules, CONFIRMED: minimap dot
+(`FUN_00465f3f`) and pick rect need stage < 2 (a stage-1 body keeps its dot and stays hoverable; bones have neither); the sidebar portrait list (`FUN_00472460`: own CUnits with flag `+0x1b8 & 1` or `& 0x10`) needs stage == 0, so a dying hero leaves it at HP <= 0;
+the selection summary (`FUN_004167c2`) counts the objects with the selected flag, which stage 2 clears (12.2). Bones are not selectable by the select-all hotkey (stage <= 1 only, `FUN_00416717`) and the selection marker is drawn while stage < 5.
+**Master mark `+0x148`** (summon cap; the "group key" of earlier drafts is the **master's object id**). All CONFIRMED by REA (every `48 01 00 00` displacement in `0x4f0000..0x580000` was checked):
+- **Writers (the only four):** `FUN_0050e173` creature init `:= 0` (`0x50e3e5`; reached by the map loader's ctor chain `FUN_005143e4` -> `FUN_00512133` -> `FUN_0050dc2b`); `FUN_0050e48e` copy (vtable `+0x3c`, `0x50ea76`/`0x50ea7c`, copies the source's value); the spell effect `FUN_00519db8`: **Summon (25)** `:= caster+0x04` (the caster's object id, `0x51a839`, right after `+0x1a0 := 1`) and **Control Spirit (22)** `:= 0` (`0x51b0e1`); `FUN_00510a70` step 1 clears it (`0x510ab9`). Neither the map loader `FUN_00561bf9` / `FUN_00562745` (it only sets `+0x194..+0x1a0` from the map unit's behaviour bits, [unit-struct](unit-struct.md)) nor the spawner `FUN_005303ed` writes it.
+- **Readers:** (a) the job `FUN_0052bbb7` (below); (b) removal `FUN_00510a70` step 1 (`0x510a9b`); (c) creature loop `FUN_0052b459` at the removal tick: script event 4 ("unit removed", `FUN_0052e07e(4, id)`) is sent **only if `+0x148 == 0`**, so a removed minion raises no event 4 (`0x52bad1`); (d) `FUN_0052be6e` (count of live wandering-type monsters: types `0x40 < t < 99` minus a few, HP > -10, requires `+0x148 == 0`; script counter) and (e) the monster-group spawner `FUN_005303ed` (candidate monsters for an encounter must have `+0x148 == 0`, `0x5306f5`): minions are excluded from both.
+- **Job rules** (no tick test inside; called at `tick & 15 == 12`, [simulation](simulation.md)): pass 1 walks the creature list `0x672f64` in list order; each creature with key != 0 increments `count[key]` (MFC `CMap`, block size 10, `FUN_00545780` / `0x5459d0` operator[] / `FUN_005457e0` lookup). Pass 2 walks the map (`FUN_0053d920` / `FUN_0053d940`): for **each key** one world-RNG draw `r = FUN_0051fa4e(100)` (`rnd1`, 1..100); if `r < count` the key is marked (value := -1) - so the chance is `(count - 1) / 100` (1 minion: never; 2: 1 %; ... a draw is spent per key even for a single minion). Pass 3 walks the creature list again: the **first** creature of a marked key (value -1 -> -2) is removed with `FUN_00510a70` (HP := -10000, key cleared, state 0x10; no corpse), the other minions of that key are untouched. So one minion at most per master per job (every 16 ticks).
+- **Reachability:** the key is non-zero only for units made by the Summon spell during play (hero or any caster of spell 25); a map file cannot set it (the loader creates every unit through `FUN_0050e173`, key 0; saved games are out of scope). **No campaign map can produce a non-zero `+0x148`**; the job is a no-op on all 46 maps until the Summon spell exists in the engine. Spell level and flags: [spells §9b](../data/spells.md).
 
 ### 12.7 XP at a kill
 
@@ -533,13 +585,21 @@ attacker template, the last one wins, [5.2](#52-take_hit-fun_00516f6f-confirmed-
 victim type `0x21..0x3f` -> `owner+0xa4c += 1`, `[killer-owner + ...]` message `0x94` if `[0x6044c4+0x74] != 0` (net, ignore); else `owner+0xa48 += 1`; message `0x2000000` to the killer's owner; per-owner kill table byte
 `owner+0x44+server_id` (cap 14) incremented, a message `FUN_00505582` when the new value is even (bestiary-style counter, INFERRED). A non-hero killer (monster) gets nothing (a log line only when the victim is a human type).
 Level-up when a skill threshold is crossed: `FUN_005128cb`, effects in [progression §3](../data/progression.md#3-what-a-skill-up-changes) (client event `FUN_005052d2` event 2 only for the human owner, stat message with flag `0x100 << (k-1) | 0x3000c`); no
-extra effect object, sound or floating text was found in these routines (client reaction not read: open question).
+extra effect object, sound or floating text exists in these server routines. **Client side, CONFIRMED** (`FUN_0040d9b2` case `0x92`, sub-type `*(msg+0xa) == 2`, `0x40e2a3`-`0x40e68e`; allods2.exe sha256 in formats/README.md):
+- **Message line only.** `k = low16(msg+0xe)` (the school 1..5), unit id = `high16`. Text = `main.txt[0x81 + k]` ("Blade skill improved" ... "Shooting skill improved"), or `[0x86 + k]` ("Fire" ... "Astral skill improved") when the leveled unit has the flag `+0x1b8 & 2` (mage; INFERRED meaning, the two text ranges match weapon / spell schools). In a game (`[this+0x5d8] == 2`) the unit is looked up (`FUN_0041d95e`) and the line becomes `text + " (" + unit name (+0xec) + ")"`. Shown by `FUN_004021fe(text, [0x5f17f4], 0xbb8)`: the view's message line (`this+0xa28`), **3000 ms** - the same call as "No way" ([ui-layout](ui-layout.md)).
+- **Sound.** If the client option word `[this+0x404] & 1` is set: `FUN_0045aa2f` on the sound object `*FUN_00420eb0(0xf)` of the global table `0x627740` (entry 0xf), position base `[0x622698]`, volume 100, no pan: a non-positional UI sound shared by all the sub-type 3..8, 0x10.. lines (new player, player left, ...); "No way" (sub-type 1) plays none. Which file entry 0xf is: open question.
+- **No** floating text over the hero, **no** effect sprite, **no** info-panel flash in this handler (the stat-change message `FUN_00502019(0xffb)` was not traced to its client handler: INFERRED to be a plain value refresh like the HP message, no flash).
+- Kill: **no kill-count notification** is drawn. Message `0x94` (case `0x94`): player-vs-player kill line `"<killer> <text 0x50> <victim> <text 0x51>"`-style (`s_%s_%s_%s_%s_%s`, texts via `FUN_00474733(0x50/0x51)`) into the message line; `0x94` is only sent when `[0x6044c4+0x74] != 0` (net game), so single player never shows it. Single player shows nothing for a kill besides the victim's own death animation / sound (12.6).
+- **Unit sounds** (vtable `+0x74` of the view unit, `FUN_00467e42(k)`, CONFIRMED): `k = 0` blow that did not change HP (0x73 with equal HP), `k = 1` damaged, HP >= max/2, `k = 2` damaged, HP < max/2 (both `k = 1, 2` limited to once per 1500 ms per unit, `+0x1bc`), `k = 3` death (death stage 0 -> 1, `0x4106be`; the stage 1 -> HP update re-entry plays `k = 2`, `0x4107ad`). The sound is the unit type's sound set entry `k + 1` (monsters and humans with `flags & 0x11 == 0 && type > 0x17`), else for heroes the three voice samples at `FUN_00468094()+0x50/+0x54/+0x58`; played positional (`FUN_0041b1f8` screen position, volume `(10000 - FUN_00582c40(x)) / 100`, base `[0x6226a0]`). Which `units.reg` / data.bin field supplies the entries: open question.
+- **Loot drop (message `0x7a`, `0x40e...` case): CONFIRMED no sound.** The handler creates the item pile object (`FUN_004601cd`, position update `FUN_0046025d`) and sets its frame from byte `+0xd` (cap 5, the backpack-frame-by-gold picture); neither routine calls `FUN_0045aa2f`.
+- **Scenario hook.** At death stage >= 2 the client calls scenario.dll export 2 (`[0x627298]`, `0x41050f`) with `0x213 + obj+0x1dc` (type < 0x15): a script notification, no visual.
+- **Hero hint.** When the local main hero (`this+0x3f6c`, mode != 2 test as `FUN_0040d9b2` `0x4105xx`) of unit class 4 reaches death stage 2-4 from stage < 4, two message-line texts `main.txt[0x44]`, `[0x45]` (the shop-table captions) are printed through `FUN_004021fe` (INFERRED to be a leftover; not drawn).
 
 ### 12.8 Corrections made to older text
 
 1. unit-struct §3 (vtable `+0x14`): "every 4th tick (`[0x6044c4] & 3 == id & 3`)" and "HP<0 loses 1 per 4 ticks": the counter is the 16-tick **block**; real periods 64 ticks (HP regen per unit, HP<0 loss), 16 ticks (mana).
 2. simulation.md open question 3 resolved (above).
-3. unit-struct `+0x138`: was UNKNOWN: tick at which the last move step ends (`tick + step ticks`); `+0x13c`: also the server corpse stage 1..5.
+3. unit-struct `+0x138`: was UNKNOWN, then "tick at which the last move step ends": it is the rest clock written by the move, turn, swing and cast messages (12.5); `+0x13c`: also the server corpse stage 1..5.
 4. combat §9.1 stays valid for I1; I2 restores the exe behaviour (keep swinging at HP <= 0 until state `0x10`).
 
 ### 12.9 Engine plan facts (for I2)
@@ -556,24 +616,22 @@ decay `-1` per 32 ticks on even blocks with the stage table of 12.6. Do not rele
 5. Attackers keep hitting a corpse until it is removed, then walk away / stand at the next 16-tick pass; no XP for hits on a dying unit.
 6. Regeneration rate of an idle Orc_Sword: 1.6 HP per 4 s (x3 after 5 s of standing still); two same-id-class units regenerate in the same block; mana every second.
 7. XP: kill credit appears at the removal moment (after the death animation), once, for the unit of the last hit.
-8. The hero dying in single player: items on the ground at its cell, game-over reaction.
+8. The hero dying in single player: items on the ground at its cell; the dialog (12.3a) appears at the removal tick with the sim frozen; its buttons (quit to menu / load).
 
 ### 12.11 Open questions
 
-1. Client reaction to the remove event (queue `0x68d360` type 4 -> message `0x80`/others): does the client delete its unit object (ground corpses are still drawn) and when does it drop the unit from the selection list (start: `FUN_0052e07e`, `FUN_005052d2`, `FUN_00416717`)?
-2. `FUN_005538c7` (pile registration): does it pick a free neighbouring cell when the unit's cell cannot hold a pile (and what holds a pile: water, structures)?
-3. Message `0xb4` (hero died) handler and the single-player game-over condition (starting routine: client dispatcher of message `0xb4`).
-4. The group-key mark `+0x148` (population cap job at the end of `FUN_0052bbb7`): who writes it (map loader / spawner) and whether any campaign map uses it.
-5. Writers of `+0x138` other than the move message (`0x5041ba`, `0x504292`, `0x504369`, `0x50446f`, `0x50ea4b`) and the exact meaning of the resting multiplier.
-6. Meaning of "template parameter 15 != 0" gating the weapon drop (`FUN_00510a70`, `0x510b50`).
-7. Client floating text / sound / effect at a kill and at a level-up (not found in the server routines).
+1. Who writes the main-hero pointer `owner+0x38`, who resets the dialog latch `[this+0x3e8]`, who sends `0xb5` / `0xb6` (results `0xfe`, `0xfd`, `0xfa`: victory / defeat scripts?) and what `owner+0x40` is read for (start: callers of `FUN_00505347`: `0x4f0b71`, `0x4f0c67`, `0x4f3d68`, `0x4f515d`, `0x4f856a`, `0x505d02`, `0x516238`, `0x5162f6`).
+2. Summon-cap job (12.6): MFC `CMap` iteration order decides the order of the per-key RNG draws when two or more masters have minions: confirm the table size (default 17, lazy `InitHashTable`) and the hash (`0x545a60`, INFERRED `key >> 4`), new node at the head of its bucket chain (CONFIRMED `0x545a0f`-`0x545a46`); then implement it with the Summon spell (`FUN_00519db8` case 25).
+3. What the pile, pickup and the equip path keep of a dropped template item's effect text (`{castSpell=Fire_Arrow:5}` on shaman staves): the engine's pile code is 16 bits and loses it (start: `FUN_00529ac2`, `FUN_0052a71d`, item object `+0x50` effects).
+4. Sound tables (the engine has no audio): which `.res` / data.bin entries are the unit sound set entries `k + 1` (`FUN_00467e42`, template `+0x24` -> `FUN_00420e30` -> `FUN_00402880`), the hero voice samples (`FUN_00468094 +0x50..+0x58`) and the UI sound `0x627740[0xf]` of the skill-up line (start: `FUN_00420e30`, `FUN_00420eb0`, `0x481967` scenario.dll ordinal loader).
+5. Map-script listeners of the server event queue (`0x68d360 + 0x20`, `FUN_0052e198` vtable `+0x14`): which condition classes consume event 4 (unit removed), 5 and 0xf, and what the campaign scripts do with them (start: `FUN_0052eac8`, the listeners built by `FUN_0052e3eb`).
 
 ## 13. Engine (I2): death, corpses, XP, loot, regeneration
 
 Design and assumptions: [spec](../superpowers/specs/2026-10-18-death-design.md). Files: `engine/sim/death.py` (`dying_tick`, `remove_dead`, `drop_loot`, `decay_step`),
 `engine/sim/vitals.py` (`vitals_system`: the `tick & 15 == 12` job, first system of the step), `engine/sim/xp.py` (`award`, `damage_credit`, `kill_credit`, `level_up`),
 `engine/world.py` (`DEAD`, `World.corpses`, `find_unit`, `bury`, `death_stage`, events `Removed`, `LevelUp`, `Loot`; `Unit.death_seen/death_tick/step_end/hp_acc/mana_acc/carried/kill_list`),
-view `engine/view/drawlist.py` (`unit_frame` by death stage, corpses drawn, bodies not pickable, hover and mana bars), `engine/backend_pygame/interface.py` (`info_rows`).
+view `engine/view/drawlist.py` (`unit_frame` by death stage, corpses drawn, bodies pickable while stage < 2, hover and mana bars), `engine/backend_pygame/interface.py` (`info_rows`).
 Tests: `tests/test_engine_death.py`.
 
 | Rule (C§12) | Engine |
@@ -581,14 +639,15 @@ Tests: `tests/test_engine_death.py`.
 | 12.1 HP <= 0 branch, `T0`, countdown, `HP < -9` removal | `death.dying_tick` from `movement._tick_unit`; `Unit.timer` is the exe's `+0x6c`; the unit stays in `world.units` (blocks) until `remove_dead` |
 | 12.2 attackers | `combat.refresh_attack` / `attack_mode` use `World.find_unit`; only a missing id or state `0x10` stops them; `resolve_attack` hits any target, HP unclamped, `Damage` logged by the `0x73` rule |
 | 12.3 removal | `World.bury` (spatial index, group, selections; ground units to `World.corpses`, flyers / ghosts dropped), loot, one decay step, `Removed`, kill credit |
-| 12.4 loot | `drop_loot`: world RNG in the exe's order; the pile is an `Item` on the unit's cell (merged); carried codes from the section 8 group; generated item code `GenItem.code & 0xFFFF` |
-| 12.5 regeneration | `vitals.regen`: HP on `block & 3 == id & 3`, drain on `block & 3 == 0`, mana every block; monsters p5 / p7, humans 100 / 50 (12.5b); `k = 3` after 80 ticks without a step (`Unit.step_end`) |
+| 12.3a hero death | `death.remove_dead`: step 7 for `Player.main_hero` (`hero_deaths += 1`, HP -50), step 8 for any hero of the human (`death_code = (server_id - 0x13) & 0xff`, `defeat_dialog`, `HeroDied` after `Removed`) |
+| 12.4 loot | `drop_loot`: world RNG in the exe's order; the pile is an `Item` on the unit's cell, merged into an existing one, else created unless `World.pile_blocked` (then deleted, no neighbour search; `World.place_pile`); carried codes from the section 8 group, then the template equipment codes (`combatstats.equipment_codes`); generated item code `GenItem.code & 0xFFFF` |
+| 12.5 regeneration | `vitals.regen`: HP on `block & 3 == id & 3`, drain on `block & 3 == 0`, mana every block; monsters p5 / p7, humans 100 / 50 (12.5b); `k = 3` when `tick - Unit.step_end > 80` (signed; writers: `movement._start_step` step, `movement._tick_unit` turn `tick + dir16`, `combat.swing_tick` swing `tick + windup + recovery`; casts: with the spell system) |
 | 12.6 corpses | `decay_step` on even blocks; stages and draw: `drawlist.unit_frame` (dying from `death_tick`, then bones 1-3, nothing at stage 5) |
 | 12.7 XP | `xp.damage_credit` (per hit), `xp.kill_credit` at the removal tick (last hitter, hero with HP >= 0), `xp.award` (Mind, repeat list, off-school, span cap, pool), `xp.level_up` (max HP / mana recompute, combat stats cleared, `LevelUp` event) |
 
-Decisions and assumptions (INFERRED unless marked): hero = human with a hero template name; effect / equipment bonuses of regeneration are 0; all `carried` items drop (no template-parameter-15 gate); the pile
-is always on the unit's own cell; a level-up keeps the current HP / mana; the death message `0xb4` for a hero of the human player is only the `Removed` event with HP set to -50; the selection drop at `T0`;
-corpses are drawn before living units; a body is not pickable (HP <= 0). HP stays a Python int (the exe's s16 never wraps within the HP range of play).
+Decisions and assumptions (INFERRED unless marked): `Unit.step_end` is written by the move step, the turn (when the target facing changes in a tick without movement), the swing start (`windup + recovery`, byte-truncated for range <= 1) exactly as the exe's stores (CONFIRMED, 12.5); the cast writers (`tick`) are added with the spell system; the main-hero resend at difference `0x50` is a client notification and is not modelled; the client skill-up line (12.7) is drawn by `engine/ui/orders.level_up_messages` (message line, 3000 ms, view layer only); the skill-up sound, unit hit / death sounds (12.7) and the scenario hook are **not drawn / played yet** (no audio in the engine); no floating text, effect or kill notification exists in single player (CONFIRMED 12.7); the summon-cap job (`+0x148`, 12.6) is not modelled: no campaign map can set the key and the Summon spell does not exist yet; hero = human with a hero template name; effect / equipment bonuses of regeneration are 0; the loot bag is the `carried` group plus the template equipment (`combatstats.equipment_codes`: shield, weapon only when its class parameter 15 != 0, human armour slots ascending; CONFIRMED 12.4), item effect texts are not kept in the pile code; the pile
+is always on the unit's own cell (CONFIRMED, no search; refused on a blocked cell); a level-up keeps the current HP / mana; a hero of the human player that reaches state 0x10 logs `HeroDied` (message `0xb4`, 12.3a) and sets `Player.defeat_dialog` / `death_code`, the main hero (`Player.main_hero`, INFERRED = first hero of the human at load) also counts `hero_deaths` and gets HP -50; the modal dialog and the sim freeze are UI work, not engine; the selection drop (CONFIRMED stage >= 2, plus a DECISION to drop at removal, <= 32 ticks early);
+corpses are drawn before living units; a body is pickable and has a minimap dot while its death stage is < 2 (CONFIRMED). HP stays a Python int (the exe's s16 never wraps within the HP range of play).
 
 ## Open questions
 
@@ -597,4 +656,4 @@ corpses are drawn before living units; a body is not pickable (HP <= 0). HP stay
 3. `FUN_0056ed4e` auto scan and `FUN_0056a1fb` guard scan (target choice, visibility) - AI phase.
 4. What the client does on `0x73` besides the number (`vtable +0x74` of the view unit: pain animation or flash).
 5. Whether the timer byte really wraps at 0 (a recovery of 0) - needs a data row or a spell effect that produces it.
-6. I2 open questions are in 12.11; assumptions in section 13 (hero test, loot gate on template parameter 15, pile placement, selection drop timing).
+6. I2 open questions are in 12.11; assumptions in section 13 (hero test).

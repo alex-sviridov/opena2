@@ -16,6 +16,9 @@ HOTKEYS = {"a": ATTACK, "m": MOVE, "d": DEFEND, "s": SWARM}       # arm a mode (
 FORMATION_TEXT = 0x61                                              # main.txt 0x61 + mode (R 4.1)
 NO_WAY_TEXT = 0x81                                                 # main.txt (R 6.3)
 NO_WAY_MS = 3000
+LEVEL_UP_TEXT = 0x81                                              # main.txt 0x81 + school (fighters), 0x86 + school (mages)
+LEVEL_UP_MAGE_TEXT = 0x86                                         # (R combat.md 12.7, `FUN_0040d9b2` case 0x92 sub 2)
+LEVEL_UP_MS = 3000
 FORMATION_MS = 2000                                                # INFERRED: palettes.md "option toggles (2000 ms)"
 RIGHT_SCROLL_DIV = 8
 
@@ -190,4 +193,27 @@ def drain_no_way(world, player_id, messages, now_ms, text):
     world.events[:] = keep
     if shown:
         messages.show(text.line(NO_WAY_TEXT), now_ms, NO_WAY_MS)
+    return shown
+
+
+def level_up_messages(world, player_id, messages, now_ms, text, name_fn=None):
+    """Show the skill-up line for the `LevelUp` entries of `world.fight_log` (read, not consumed) whose hero belongs to the
+    local player.  CONFIRMED (`FUN_0040d9b2` case 0x92 sub 2, `0x40e2a3`-`0x40e65c`): the line is `main.txt[0x81 + school]`
+    ("<School> skill improved"), `[0x86 + school]` when the hero is a mage (`+0x1b8 & 2`, INFERRED = template mana_max > 0),
+    followed by " (<hero name>)" in a game; 3000 ms in the message line.  The exe's skill-up sound is not played."""
+    from engine.world import LevelUp
+    shown = False
+    for ev in world.fight_log:
+        if not isinstance(ev, LevelUp):
+            continue
+        hero = world.find_unit(ev.unit)
+        if hero is None or hero.owner != player_id:
+            continue
+        mage = hero.stats is not None and hero.stats.get("mana_max", -1) > 0
+        line = text.line((LEVEL_UP_MAGE_TEXT if mage else LEVEL_UP_TEXT) + ev.school)
+        if line and name_fn is not None:
+            line += " (%s)" % name_fn(hero)
+        if line:
+            messages.show(line, now_ms, LEVEL_UP_MS)
+            shown = True
     return shown

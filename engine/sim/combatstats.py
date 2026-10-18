@@ -288,3 +288,50 @@ def unit_combat_stats(t, items=None, skills=None):
     if t is None:
         return None
     return human_stats(t, items, skills) if t.kind == prog.unitstats.HUMAN else monster_stats(t, items)
+
+
+def item_code(item):
+    """The 16-bit item code of a resolved item (`material << 12 | class << 8 | quality << 5 | index`, the same as `GenItem.code`)."""
+    d = item.defn
+    return item.material << 12 | d.cls << 8 | item.quality << 5 | d.index
+
+
+def equipment_codes(t, items):
+    """The item codes the template's equipment strings leave in a unit's loot bag at death (`FUN_00510a70` steps 1-3, C§12.4), in the
+    exe's bag order: the second item (`+0x78`, a shield), the weapon (`+0x74`; **only when the weapon class's parameter 15 `suitable_for`
+    is non-zero**, natural weapons have 0), then for humans the armour slots 1..12 ascending (`FUN_00512697`).
+    Monsters (`FUN_00511959`): 2 strings, a string containing `Shield` is a shield, else a weapon.  Humans (`FUN_005145d1`): 10 strings, 0
+    weapon, 1 shield, 2..9 armour (the slot is the class record's `Slot`; a later string for the same slot replaces the earlier one, which
+    is lost); items the unit cannot use are not equipped (as in `human_stats`); a two-handed weapon next to a shield is not kept as the weapon."""
+    if t is None or items is None:
+        return []
+    human = t.kind == prog.unitstats.HUMAN
+    mage = t.get("mana_max", -1) > 0
+    weapon = shield = None
+    armour = {}
+    for i, text in enumerate(t.equipment):
+        if not text.strip():
+            continue
+        if human:
+            r = items.parse_equipment(text, i)
+        else:
+            r = items.parse_equipment(text, 1 if "Shield" in text else 0)
+        item = items.resolve(*r) if r else None
+        if item is None or (human and not item.defn.can_use(mage)):
+            continue
+        if item.defn.kind == WEAPON:
+            weapon = item
+        elif item.defn.kind == SHIELD:
+            shield = item
+        else:
+            armour[item.defn.cls] = item           # armour class = the record's Slot
+    if weapon is not None and shield is not None and weapon.defn.fields.get("two_handed") == 2:
+        weapon = None           # equipping the shield moved the weapon to the pack (the pack is dropped too)
+    out = []
+    if shield is not None:
+        out.append(item_code(shield))
+    if weapon is not None and weapon.defn.fields.get("suitable_for", 0) != 0:
+        out.append(item_code(weapon))
+    if human:
+        out += [item_code(armour[s]) for s in sorted(armour)]
+    return out

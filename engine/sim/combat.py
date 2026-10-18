@@ -246,6 +246,8 @@ def swing_tick(world, u):
         if t is not None and u.hp > 0:              # FUN_00516b2f: the start message needs both units and the attacker's HP
             extra = attack_extra(attack_gap(foot(u), foot(t)))
             u.action, u.action_start_tick = mv.ATTACK, world.tick       # message 0x71: the client restarts the attack animation
+            rest = st.windup + st.recovery                              # FUN_00504ab8: +0x138 = tick + +0x134 + +0x135 (the rest test, combat.md 12.5)
+            u.step_end = world.tick + (rest if st.range > 1 else rest & 0xFF)   # +0x12c > 1: message 0x72 (dword); else 0x71 (byte argument)
         u.done = False
         u.phase = PHASE_WINDUP
         u.timer = (st.windup + extra) & 0xFF

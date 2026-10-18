@@ -396,3 +396,24 @@ def test_attack_needs_an_own_selection_and_other_cursors_never_attack():
     for cursor in (S.MOVE, S.SWARM, S.DEFEND, S.PICKUP, S.TOWN, S.DEFAULT):
         what, got = oi.release(cursor, (20, 30), 0x6007)
         assert not isinstance(got, __import__("engine.sim", fromlist=["AttackUnit"]).AttackUnit)
+
+
+def test_level_up_line():
+    from types import SimpleNamespace as NS
+    from engine.ui import level_up_messages
+    from engine.world import LevelUp
+    lines = ["x"] * 0x90
+    lines[0x82], lines[0x87] = "Blade skill improved", "Fire skill improved"
+    t = MainText(lines)
+    fighter = NS(owner=ME, stats={"mana_max": 0})
+    mage = NS(owner=ME, stats={"mana_max": 30})
+    foreign = NS(owner=ME + 1, stats={})
+    w = NS(fight_log=[LevelUp(1, 5, 1, 7)], find_unit=lambda i: {5: fighter, 6: mage, 7: foreign}.get(i))
+    m = MessageLine()
+    assert level_up_messages(w, ME, m, 100, t, lambda u: "Hero")
+    assert m.current(100) == "Blade skill improved (Hero)" and m.current(3099) and m.current(3100) is None
+    w.fight_log = [LevelUp(2, 6, 1, 7)]                                 # mage: 0x86 + school
+    assert level_up_messages(w, ME, m, 0, t) and m.current(0) == "Fire skill improved"
+    w.fight_log = [LevelUp(3, 7, 1, 2)]                                 # another player's hero: nothing
+    m2 = MessageLine()
+    assert not level_up_messages(w, ME, m2, 0, t) and m2.current(0) is None

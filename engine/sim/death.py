@@ -8,10 +8,11 @@ from dataclasses import replace
 
 from allods2.formats import progression as prog
 from allods2.formats.itemgen import loot_item
-from engine.world import DEAD, Item, Loot, Removed
+from engine.world import DEAD, HeroDied, Item, Loot, Removed, death_stage
 
 from . import xp
 from .combat import combat_stats, log
+from .combatstats import equipment_codes
 
 HUMAN_DYING_DEFAULT = 8         # `FUN_00512526`: a human without dying time (-1) uses 8
 HERO_DEATH_HP = -50             # `FUN_00510a70` step 7: the main hero's HP after its items dropped
@@ -33,9 +34,17 @@ def _signed8(v):
     return v - 256 if v & 0x80 else v
 
 
+def _deselect_if_bones(world, u):
+    """The client drops a unit from the selection when its death stage reaches 2 (HP <= -11, `0x4108dd`, C§12.2); stage 1 (HP -10..0) stays selected."""
+    if death_stage(u.hp) >= 2:
+        for p in world.players.values():
+            if u.id in p.selection:
+                p.selection = tuple(i for i in p.selection if i != u.id)
+
+
 def dying_tick(world, u):
     """The HP <= 0 branch of the creature tick (C§12.1).  Orders and state are cleared every tick; the first time (`T0`) the pending spell is
-    cancelled (none exist yet), the defence is halved, the timer takes `dying_time - 1` and the unit leaves the selections; afterwards the
+    cancelled (none exist yet), the defence is halved, the timer takes `dying_time - 1`; the unit leaves the selections only at death stage >= 2 (HP <= -11; `_deselect_if_bones`); afterwards the
     timer counts down and the unit is removed once it ran out **and** HP < -9 (a flyer or ghost gets HP -1000 first; a ground unit at
     HP -9..0 waits for more hits or the HP drain).  Returns True when the state became 0x10 this tick (the caller removes the unit)."""
     u.order = 0
@@ -48,10 +57,9 @@ def dying_tick(world, u):
         u.combat.block.defence = int(u.combat.block.defence / 2)        # signed truncating halving
         u.timer = (dying_time(u) - 1) & 0xFF
         u.action, u.action_start_tick = "dying", world.tick
-        for p in world.players.values():
-            if u.id in p.selection:
-                p.selection = tuple(i for i in p.selection if i != u.id)
+        _deselect_if_bones(world, u)
         return False
+    _deselect_if_bones(world, u)
     if _signed8(u.timer) < 1:
         if u.move_type > 1:
             u.hp = -1000
@@ -66,22 +74,35 @@ def dying_tick(world, u):
 def remove_dead(world, u):
     """State 0x10 reached (C§12.3): loot and hero rules, one corpse decay step, the release (`World.bury`), the kill credit (C§12.7)."""
     drop_loot(world, u)
-    if u.human and prog.is_hero_name(u.stats.name) and world.players[u.owner].human:
-        u.hp = HERO_DEATH_HP                    # step 7 (the main hero); the death dialog message 0xb4 is the Removed event
+    hero_event = None
+    pl = world.players.get(u.owner)
+    if pl is not None:
+        main = pl.main_hero == u.id
+        if main:                                # step 7: owner+0x38 == the unit: deaths counter, HP := -50
+            pl.hero_deaths += 1
+            u.hp = HERO_DEATH_HP
+        if pl.human and u.human and u.stats is not None and prog.is_hero_name(u.stats.name):     # step 8: hero types 0x21..0x3f, the human owner
+            pl.death_code = (u.server_id - 0x13) & 0xFF
+            pl.defeat_dialog = True             # client message 0xb4 -> window message 0x433/0xff -> 0x431 (C§12.4)
+            hero_event = HeroDied(world.tick, u.id, pl.death_code, main)
     decay_step(world, u)
     world.bury(u.id)
     if u.hp <= STAGE5_HP:                       # the decay step above already took it to stage 5: the id is freed
         world.corpses.pop(u.id, None)
     log(world, Removed(world.tick, u.id))
+    if hero_event is not None:
+        log(world, hero_event)
     xp.kill_credit(world, u)
 
 
 def drop_loot(world, u):
-    """`FUN_00510a70` steps 4-5 and the drop (C§12.4): a summoned unit or a template named `NPC` empties its bag; monsters roll gold, then one item.
+    """`FUN_00510a70` steps 1-5 and the drop (C§12.4): the bag is the carried group (section 8, loaded into the pack) plus the template equipment
+    (`combatstats.equipment_codes`: shield, the weapon when its class parameter 15 is non-zero, a human's armour slots); a summoned unit or a
+    template named `NPC` empties it; monsters roll gold, then one item.
     Draws in the exe's order: `rnd(100)`, `rnd(spread)` (on a hit), `rnd(100)`, the generator, `rnd(len - 1)`."""
     st = u.stats
     summoned = bool(u.behaviour & 8)
-    codes = [] if summoned or (st is not None and "NPC" in st.name) else list(u.carried)
+    codes = [] if summoned or (st is not None and "NPC" in st.name) else list(u.carried) + equipment_codes(st, world.item_table)
     gold = 0
     if not u.human and not summoned and st is not None:
         rng = world.rng
@@ -93,12 +114,8 @@ def drop_loot(world, u):
                 codes.append(it.code & 0xFFFF)
     if not codes and not gold:
         return
-    pile = next((world.items[i] for i in sorted(world.items_at(u.x, u.y))), None)
-    if pile is not None:                        # `FUN_0052ab07`: merge into the pile on the cell
-        pile.gold += gold
-        pile.codes += tuple(codes)
-    else:
-        world.add_item(Item(world.new_pile_id(), u.x, u.y, 128, 128, gold, tuple(codes)))
+    if world.place_pile(u.x, u.y, gold, codes) is None:     # `FUN_005538c7` failed: the pile with its gold and items is deleted (rolls are spent)
+        return
     log(world, Loot(world.tick, u.id, u.x, u.y, gold, tuple(codes)))
 
 

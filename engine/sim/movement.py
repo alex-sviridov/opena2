@@ -554,8 +554,11 @@ def _tick_unit(world, u):
         if death.dying_tick(world, u):
             death.remove_dead(world, u)
         return
-    _tick_inner(world, u)
     m = u.mover
+    old_pos, old_face = (u.x, u.y, u.sub_x, u.sub_y), m.target_facing
+    _tick_inner(world, u)
+    if u.state == MOVE_STATE and m.target_facing != old_face and (u.x, u.y, u.sub_x, u.sub_y) == old_pos:
+        u.step_end = world.tick + ((m.target_facing + 8) >> 4)  # FUN_0050ff2d message 0x6d (a turn): +0x138 = tick + dir16 (not a duration: combat.md 12.5)
     if m.failed:
         m.failed = False
         if u.order == MOVE_ORDER:

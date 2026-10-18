@@ -194,3 +194,18 @@ def test_unit_dots_use_the_owner_colour_row():
     draw_unit_dots(img, MinimapGeometry(80, 80), w, colors)
     assert (img[4:6, 4:6] == colors[0]).all() and (img[24:26, 24:26] == colors[5]).all()
     assert (img != 0).any(axis=2).sum() == 8
+
+
+def test_unit_dots_skip_bones_but_keep_stage_1_bodies_and_corpses():
+    """Minimap dots need death stage < 2 (0x465f3f, combat.md 12.6): HP -10..0 keeps its dot, also as a removed corpse."""
+    w = World(np.zeros((80, 80), np.uint16), np.zeros((80, 80), np.int8))
+    w.players[1] = Player(1, 0, "a")
+    dying, bones, corpse = (unit(i, 10 * i, 10, owner=1) for i in (1, 2, 3))
+    dying.hp, bones.hp, corpse.hp = 0, -11, -10
+    w.add_unit(dying)
+    w.add_unit(bones)
+    w.corpses[corpse.id] = corpse
+    colors = np.arange(48, dtype=np.uint8).reshape(16, 3) + 1
+    img = np.zeros((128, 128, 3), np.uint8)
+    draw_unit_dots(img, MinimapGeometry(80, 80), w, colors)
+    assert (img != 0).any(axis=2).sum() == 8                # two 2x2 dots: the dying body and the corpse

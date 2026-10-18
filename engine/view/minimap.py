@@ -58,8 +58,11 @@ def dot_box(geometry, col, row):
 def draw_unit_dots(image, geometry, world, colors):
     """Copy-free: write one dot per unit (colour = `colors[owner's human.pal row]`) into `image`.
     The exe draws a dot for the viewer's own units and any unit in sight; the engine has no fog
-    yet, so every unit gets one (DECISION until fog)."""
-    for u in world.units.values():
+    yet, so every unit gets one (DECISION until fog).  Bodies of death stage >= 2 (HP <= -11) get none (`0x465f3f`); dying bodies and
+    the corpses of stage 1 keep theirs (combat.md 12.6)."""
+    for u in (*world.units.values(), *world.corpses.values()):
+        if u.hp <= -11:
+            continue
         box = dot_box(geometry, u.x, u.y)
         p = world.players.get(u.owner)
         if box is not None and p is not None:

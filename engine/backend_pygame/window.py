@@ -7,7 +7,7 @@ import pygame
 from engine.sim import DEFAULT_SPEED, CommandQueue, Simulation, tick_period_ms
 from allods2.common import as_fs
 from engine.ui import (CursorInput, DebugFlags, Layout, MainText, MessageLine, MinimapPanel, OrderInput, ScrollInput,
-                       SelectionInput, choose_cursor, choose_minimap_cursor, drain_no_way, target_cell)
+                       SelectionInput, choose_cursor, choose_minimap_cursor, drain_no_way, level_up_messages, target_cell)
 from engine.ui.orders import FORMATION_MS, FORMATION_TEXT, minimap_move_cell
 from engine.view import DrawOptions, Projection, build_draw_list, build_terrain_items
 from engine.view.damage import FloatingDamage, unit_anchor
@@ -261,6 +261,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
             acc -= period
             steps += 1
         now = pygame.time.get_ticks()
+        level_up_messages(world, player_id, messages, now, texts, title_of)
         feed_fight_log(world, floats, assets, player_id, options, debug, now)
         floats.advance(steps)
         floats.prune(now)

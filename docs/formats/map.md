@@ -649,7 +649,7 @@ uid); a group no unit links to keeps 0 and is a **sack on the ground** at (x, y)
 (`Map.ground_groups`: 19). CONFIRMED (`FUN_00564072`, the loop at `0x5645d8`–`0x564b14` is inside it): a ground
 group builds a 0x24-byte pack (`FUN_005299b3`), adds each item (`FUN_00529ac2`, identical items
 stack) and places it with `FUN_0052ab07(cell, pack, extra, 0)`; **`extra` is the gold lying in that pile**
-(`pile +0x3c += extra`; merged with an existing pile on the cell). A carried group adds its items to the
+(`pile +0x3c += extra`; merged with an existing pile on the cell); a cell with bit 0 of the live layer set - water, mountain, structure, border - refuses a new pile and it is deleted, [combat §12.4](../engine/combat.md#124-loot-and-drops-fun_00510a70-steps-4-5); no install map has such a group). A carried group adds its items to the
 unit's pack (creature `+0x7c`) and ignores `extra` (`92.alm` group 1); `slot != 0` would equip (vtable
 `+0x44`, never in the data). The 8 non-zero `extra` groups are pure gold piles of the ground
 (100 in `63.alm`, 5000 in `41.alm`, 10,000 in `42.alm` and `93.alm`).

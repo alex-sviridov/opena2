@@ -378,7 +378,7 @@ def _unit(ctx, u):
                mirrored=ref.mirrored, remap=remap)
     t = aset.t
     ox, oy = px - t.CenterX - ctx.cx, py - t.CenterY - z - alt - ctx.cy
-    if u.hp > 0:                                        # a body is not pickable (the client marks stage <= 0 units, combat.md 12.2)
+    if death_stage(u.hp) < 2:                           # the pick rect is registered while the death stage is < 2 (0x4087c2, combat.md 12.2)
         ctx.picks.append((dep, PickRect(u.id, t.SelectionX1 + ox, t.SelectionY1 + oy,
                                         t.SelectionX2 + ox, t.SelectionY2 + oy)))
     if ov is not None:

@@ -11,11 +11,11 @@ from allods2.formats.itemgen import MsvcRng, loot_item, rnd
 from allods2.formats.unitstats import HUMAN, MONSTER, UnitType
 from engine.sim import AttackUnit, SelectUnits, Simulation, replay
 from engine.sim import death, vitals, xp
-from engine.sim.combatstats import ArmourBlock, AttackRecord, CombatStats
+from engine.sim.combatstats import ArmourBlock, AttackRecord, CombatStats, equipment_codes
 from engine.sim.movement import live_cells
 from engine.view.drawlist import death_stage as view_stage
 from engine.view.drawlist import unit_frame
-from engine.world import DEAD, UNIT_ID_BASE, Damage, Died, Item, LevelUp, Loot, Player, Removed, Unit, World, death_stage
+from engine.world import DEAD, UNIT_ID_BASE, Damage, Died, HeroDied, Item, LevelUp, Loot, Player, Removed, Unit, World, death_stage
 
 from helpers import GFS
 
@@ -127,13 +127,28 @@ def test_a_flyer_gets_hp_minus_1000_and_leaves_without_a_corpse():
     assert f.id not in w.units and f.id not in w.corpses and f.hp == death.STAGE5_HP      # -1000, then the removal's decay step takes stage 5
 
 
-def test_selection_is_dropped_at_the_first_dying_tick():
+def test_selection_is_kept_at_stage_1_and_dropped_at_stage_2():
+    """Client rule (C§12.2, 0x4107c0): the selection flag is cleared when the death stage reaches 2 (HP <= -11), not at HP <= 0."""
     w = world()
     v = unit(w, 1, 10, 10, owner=1, hp=40, stats=mon(dying_time=9))
     sim = Simulation(w)
     sim.step([SelectUnits(1, (v.id,))])
     assert w.players[1].selection == (v.id,)
     v.hp = 0
+    sim.step()
+    sim.step()
+    assert w.players[1].selection == (v.id,)            # stage 1: dying body still selected
+    v.hp = -11
+    sim.step()
+    assert w.players[1].selection == ()
+
+
+def test_overkill_drops_the_selection_at_the_first_dying_tick():
+    w = world()
+    v = unit(w, 1, 10, 10, owner=1, hp=40, stats=mon(dying_time=9))
+    sim = Simulation(w)
+    sim.step([SelectUnits(1, (v.id,))])
+    v.hp = -30
     sim.step()
     assert w.players[1].selection == ()
 
@@ -413,6 +428,48 @@ def test_loot_merges_into_the_pile_on_the_cell():
     assert pile.gold == 40 + 15 and pile.codes == (9,)
 
 
+def _drop(w, x, y, rolls=(0, 5, 99)):
+    w.rng = Scripted(list(rolls))
+    unit(w, 1, x, y, hp=-20, stats=mon(dying_time=0, gold_chance=50, gold_base=10, gold_spread=9))
+    run(Simulation(w), 2)
+
+
+def test_pile_cell_rule_is_bit0_of_the_live_layer_and_there_is_no_neighbour_search():
+    """C§12.4 `FUN_005538c7`: bit 0 of the block layer (water / mountain / structure / border) refuses the pile, trees do not;
+    the free neighbours are never tried."""
+    w = world()
+    assert not w.pile_blocked(10, 10) and w.pile_blocked(-1, 5) and w.pile_blocked(5, 40)
+    w._block[10, 10] |= 4                                                # object cell (trees): bit 2 only
+    assert not w.pile_blocked(10, 10)
+    w._block[10, 10] |= 1                                                # water / mountain / structure stamp
+    assert w.pile_blocked(10, 10) and w.blocked(10, 10)
+    _drop(w, 10, 10)
+    assert not w.items and not [e for e in w.fight_log if isinstance(e, Loot)]       # failure: pile, gold and items deleted, no event
+    assert w.rng.calls == [100, 9, 100]                                     # the rolls were spent before the registration failed
+
+
+def test_a_free_cell_holds_the_pile_on_the_own_cell_even_when_neighbours_are_blocked():
+    w = world()
+    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        w._block[10 + dy, 10 + dx] |= 1
+    _drop(w, 10, 10)
+    (pile,) = w.items.values()
+    assert (pile.x, pile.y, pile.gold) == (10, 10, 15)
+
+
+def test_a_blocked_cell_refuses_a_new_pile_but_an_existing_pile_still_merges():
+    w = world()
+    w.add_item(Item(0x30001, 10, 10, gold=40, codes=(9,)))
+    w._block[10, 10] |= 1                                                # the merge test (`FUN_00553ab3`) runs before the registration
+    _drop(w, 10, 10)
+    (pile,) = w.items.values()
+    assert pile.gold == 55 and pile.codes == (9,)
+    w2 = world()
+    w2._block[11, 11] |= 1
+    assert w2.place_pile(11, 11, 15, ()) is None and not w2.items
+    assert w2.place_pile(12, 11, 15, ()).gold == 15
+
+
 def test_the_item_roll_uses_the_generator_with_the_unit_window_and_flags():
     from allods2.assets import AssetCache
     if GFS is None:
@@ -433,7 +490,9 @@ def test_the_item_roll_uses_the_generator_with_the_unit_window_and_flags():
     run(Simulation(w), 20)
     if gold or item:
         (pile,) = w.items.values()
-        assert pile.gold == amount and pile.codes == ((item.code & 0xFFFF,) if item else ())
+        weapon = equipment_codes(t, table)                                # the template weapon drops first (parameter 15 != 0)
+        assert weapon == [0x1104]
+        assert pile.gold == amount and pile.codes == tuple(weapon) + ((item.code & 0xFFFF,) if item else ())
     else:
         assert not w.items
     assert w.rng.state == ref.state                                      # the same draws, in the same order
@@ -576,7 +635,7 @@ def test_bars_for_hovered_and_selected_units_and_a_mana_bar_for_casters():
 
 
 
-def test_dying_bodies_and_corpses_are_drawn_but_never_picked_and_stage_5_vanishes():
+def test_dying_bodies_are_picked_until_stage_2_bones_are_not_and_stage_5_vanishes():
     from test_engine_unit_draw import uassets, world_with
     from test_engine_unit_draw import unit as draw_unit
     from engine.view import DrawOptions, build_draw_list
@@ -591,7 +650,7 @@ def test_dying_bodies_and_corpses_are_drawn_but_never_picked_and_stage_5_vanishe
     items = build_draw_list(w, cam(), 5, uassets(), DrawOptions(shadows=False))
     drawn = {i.entity for i in items if i.kind == "sprite"}
     assert alive.id in drawn and dying.id in drawn and bones.id in drawn and gone.id not in drawn
-    assert [p.entity for p in items.picks] == [alive.id]
+    assert sorted(p.entity for p in items.picks) == sorted([alive.id, dying.id])      # stage 1 (HP 0) is hoverable, bones (stage 2) are not
 
 
 def test_info_rows_show_hp_mana_level_and_xp():
@@ -627,3 +686,172 @@ def test_install_templates_give_the_documented_death_and_regeneration_numbers():
     assert w.tick - 1 == t0 + 14 and u.id in w.corpses
     for kind in (types["Fighter_Hero"], types["Mage_Hero"]):
         assert death.dying_time(Unit(1, 1, 1, 0, 0, human=True, stats=kind)) == (8 if kind.name == "Fighter_Hero" else 12)
+
+
+# --- hero death (C§12.3 steps 7-8, C§12.4) ---------------------------------------------------------
+
+def _kill_hero(w, h):
+    sim = Simulation(w)
+    run(sim, 40)
+    return sim
+
+
+def test_main_hero_death_counts_sets_hp_minus_50_and_raises_hero_died():
+    w = world()
+    h = hero(w, 1, 10, 10)
+    h.server_id = 0x30
+    w.players[1].main_hero = h.id
+    h.stats = UnitType(HUMAN, 1, "Fighter_Hero", 1, 1, {"token_size": 1, "dying_time": 2, "mana_max": -1}, (), ())
+    h.hp = -20                                                           # already past the removal threshold
+    _kill_hero(w, h)
+    p = w.players[1]
+    assert (p.hero_deaths, p.death_code, p.defeat_dialog) == (1, 0x30 - 0x13, True)
+    ev = [e for e in w.fight_log if isinstance(e, HeroDied)]
+    assert len(ev) == 1 and ev[0].unit == h.id and ev[0].code == 0x1d and ev[0].main
+    assert w.fight_log.index(ev[0]) > next(i for i, e in enumerate(w.fight_log) if isinstance(e, Removed))
+    assert h.id in w.corpses and -52 <= h.hp <= -50                      # HP -50, at most the decay step below it
+
+
+def test_a_second_hero_dies_without_the_counter_or_the_hp_rule_but_still_raises_the_message():
+    w = world()
+    main, other = hero(w, 1, 10, 10), hero(w, 2, 12, 10)
+    other.server_id = 0x25
+    w.players[1].main_hero = main.id
+    other.stats = UnitType(HUMAN, 1, "Mage_Hero", 1, 1, {"token_size": 1, "dying_time": 2, "mana_max": -1}, (), ())
+    other.hp = -30
+    _kill_hero(w, other)
+    p = w.players[1]
+    assert p.hero_deaths == 0 and p.death_code == 0x25 - 0x13 and p.defeat_dialog
+    assert [e.main for e in w.fight_log if isinstance(e, HeroDied)] == [False]
+    assert other.hp < -30 + 1 and other.hp != -50                        # decays from -30, no -50 rule
+
+
+def test_no_hero_died_for_computer_heroes_and_monsters():
+    w = world()
+    ai = hero(w, 1, 10, 10, owner=2)
+    ai.hp = -20
+    ai.stats = UnitType(HUMAN, 1, "Fighter_Hero", 1, 1, {"token_size": 1, "dying_time": 1, "mana_max": -1}, (), ())
+    m = unit(w, 3, 14, 10, hp=-20, stats=mon(dying_time=1))
+    _kill_hero(w, ai)
+    assert not [e for e in w.fight_log if isinstance(e, HeroDied)] and not w.players[1].defeat_dialog
+    assert any(isinstance(e, Removed) and e.unit == m.id for e in w.fight_log)
+
+
+def test_hero_death_state_is_in_the_dump():
+    w = world()
+    h = hero(w, 1, 10, 10)
+    before = w.dump_json()
+    w.players[1].hero_deaths = 1
+    assert w.dump_json() != before
+
+
+# --- the writers of +0x138 (C§12.5: move 0x6b, turn 0x6d, swing 0x71 / 0x72; casts do not exist yet) ----------
+
+def _first_write(sim, u, limit=200):
+    """(tick before the step, step_end) of the first change of `step_end`."""
+    for _ in range(limit):
+        t, before = sim.world.tick, u.step_end
+        sim.step()
+        if u.step_end != before:
+            return t, u.step_end
+    raise AssertionError("step_end never written")
+
+
+def test_a_turn_in_place_writes_tick_plus_dir16_of_the_target_facing_not_a_duration():
+    from engine.sim import MoveUnits
+    w = world()
+    u = unit(w, 1, 10, 10, owner=1, stats=mon(speed=16))                 # facing 64; the goal is to the west (facing 192)
+    sim = Simulation(w)
+    t = w.tick
+    sim.step([MoveUnits(1, (u.id,), (2, 10))])                           # the turn starts in the command's tick
+    assert u.mover.target_facing == 192 and (u.x, u.y, u.sub_x, u.sub_y) == (10, 10, 0x80, 0x80)
+    assert u.step_end == t + ((192 + 8) >> 4)                            # 12: dir16, written once (the 4-tick turn does not rewrite it)
+    run(sim, 3)
+    assert u.step_end == t + 12 and u.facing == 192
+
+
+def test_a_move_step_writes_tick_plus_the_step_ticks():
+    from engine.sim import MoveUnits
+    w = world()
+    u = unit(w, 1, 10, 10, owner=1, stats=mon(speed=16))
+    u.facing = 64
+    sim = Simulation(w)
+    sim.step([MoveUnits(1, (u.id,), (30, 10))])
+    t, end = _first_write(sim, u)
+    assert end == t + u.mover.step_ticks and u.mover.step_ticks > 0
+
+
+@pytest.mark.parametrize("rng_cells,masked", [(1, True), (3, False)])
+def test_a_swing_start_writes_tick_plus_windup_plus_recovery(rng_cells, masked):
+    w = world()
+    a = unit(w, 1, 10, 10, owner=1)
+    foe = unit(w, 2, 11, 10, owner=2, hp=10_000)
+    a.combat.windup, a.combat.recovery, a.combat.range = 200, 100, rng_cells    # 300 does not fit the byte of message 0x71
+    a.facing = 64
+    sim = Simulation(w)
+    sim.step([AttackUnit(1, (a.id,), foe.id)])
+    t, end = _first_write(sim, a, limit=100)
+    assert end == t + (300 & 0xFF if masked else 300)
+
+
+def test_a_step_end_in_the_future_never_counts_as_rest():
+    w = world()
+    u = unit(w, 1, 10, 10, hp=1, stats=mon(hp_regen=100))
+    u.hp_max = 800
+    u.step_end = 10_000                                                  # tick - step_end < 0 (signed compare, `JLE` at 0x50fc95): k = 1
+    sim = Simulation(w)
+    run(sim, 700)
+    assert u.step_end == 10_000                                          # nothing but a step, a turn or a swing writes it
+    assert (u.hp, u.hp_acc) == expected_hp(u.id, 1, 800, 100, 700, step_end=10_000)
+
+
+# --- template equipment in the loot bag (C§12.4 steps 1-3) -----------------------------------------
+
+def _install():
+    from allods2.assets import AssetCache
+    if GFS is None:
+        pytest.skip("no install")
+    a = AssetCache(GFS)
+    return a.items(), {t.name: t for t in a.unit_stats().types}
+
+
+def test_monster_weapon_drops_only_when_the_class_parameter_15_is_non_zero():
+    table, types = _install()
+    assert equipment_codes(types["Orc_Sword"], table) == [0x1104]               # Bronze Long Sword
+    assert equipment_codes(types["Goblin_Pike"], table) == [0x110f]             # Bronze Pike
+    assert equipment_codes(types["Ogre"], table) == []                          # no equipment strings
+    for natural in ("Dragon", "Bat_Sonic", "Succubus", "Catapult"):             # Flame Thrower, Sonic Beam, Boulder Thrower: suitable_for 0
+        assert equipment_codes(types[natural], table) == [], natural
+    assert equipment_codes(types["Orc_Shaman.1"], table) == [0x810e]            # staff (suitable_for 2); the castSpell text is not in the code
+    withw = [t.name for t in types.values() if t.kind == MONSTER and equipment_codes(t, table)]
+    assert len(withw) == 79
+
+
+def test_a_killed_monster_drops_carried_group_and_template_weapon_and_a_human_its_armour():
+    table, types = _install()
+    w = world()
+    w.item_table = table
+    w.rng = Scripted([100, 100])                                                # both rolls fail
+    u = unit(w, 1, 10, 10, hp=-20, stats=types["Goblin_Pike"])
+    u.carried = (0x0105,)
+    run(Simulation(w), 20)
+    (pile,) = w.items.values()
+    assert tuple(pile.codes) == (0x0105, 0x110f) and pile.gold == 0
+    w = world()
+    w.item_table = table
+    h = unit(w, 1, 10, 10, hp=-20, stats=types["Fighter_Hero"], human=True)
+    h.dying_time = 0
+    h.carried = (0x0105,)
+    run(Simulation(w), 40)
+    (pile,) = w.items.values()
+    assert tuple(pile.codes) == (0x0105,) + tuple(equipment_codes(types["Fighter_Hero"], table))
+    assert tuple(equipment_codes(types["Fighter_Hero"], table)) == (0x2126, 0x2730, 0x2833, 0x2936, 0x2a3a, 0x2c3e)
+
+
+def test_synthetic_equipment_without_an_item_table_adds_nothing():
+    w = world()
+    w.rng = Scripted([100, 100])
+    t = mon(dying_time=0, gold_chance=0, item_chance=0)
+    unit(w, 1, 10, 10, hp=-20, stats=t)
+    run(Simulation(w), 2)
+    assert not w.items and equipment_codes(t, None) == []

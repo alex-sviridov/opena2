@@ -108,11 +108,11 @@ Offsets from the constructors 0x50d493, 0x50dc2b, init 0x50e173, copy 0x50e48e (
 | +0x130 | 4 | dword | UNKNOWN |
 | +0x134 / +0x135 | 1 | attack wind-up / recovery ticks (monster 17/18, human 19/20; human default 8/4) | CONFIRMED 0x5122a4, 0x514f14 |
 | +0x136 | 1 | "attack done" flag (set 1 init, 0 when a swing starts) | CONFIRMED 0x50e309, 0x50f4bb |
-| +0x138 | 4 | dword | tick at which the last move step ends (`tick + step ticks`, move message 0x6b, `0x504122`); `FUN_0050fc3e` = tick - this; regen x3 above 80 (combat §12.5) | CONFIRMED 0x504122; other writers INFERRED |
+| +0x138 | 4 | dword | **rest clock**: `tick + n` written by the move step (0x6b, step ticks), the turn (0x6d, `(target facing+8)>>4`), melee/ranged swing start (0x71 byte / 0x72: `+0x134 + +0x135`) and `tick` by cast starts (0x86/0x8a/0x8b/0x8c); init 0 (`0x50e3d8`), copied by `0x50ea4b`; `FUN_0050fc3e` = tick - this (signed); regen x3 above 80, main-hero resend at exactly 80 (combat §12.5) | CONFIRMED 0x504122, 0x5041ba, 0x504292, 0x504369, 0x50446f, 0x50e3d8, 0x50ea4b |
 | +0x13c | 1 | death handled flag (set 1 first tick with HP<=0, calls FUN_00510745) | CONFIRMED 0x50f1f1 |
 | +0x140 | 4 | spellbook object (0x1c bytes, ctor 0x53a600; spells added by 0x51c29e) created if maxMana>0; also built for carriers | CONFIRMED 0x514abf-0x514b00 |
 | +0x144 | 4 | stat-dirty mask, one bit per stat class set by effect application (§11); AI order 4 waits while bit 0x40000 is set (0x56dd39) | CONFIRMED |
-| +0x148 | 4 | dword (view +0x148 = 16 bit) | UNKNOWN |
+| +0x148 | 4 | **master id** of a summoned minion = the caster's `+0x04` (Summon, `0x51a839`); 0 for everything else (init `0x50e3e5`, Control Spirit `0x51b0e1`); drives the minion cap job and is excluded from event 4 / spawner counts ([combat 12.6](combat.md)) (view +0x148 = 16 bit, unrelated) | CONFIRMED |
 | +0x14c | 2 | **server/type id** (data param "serverID": human 24, monster 55; humans only: values >10000 reduced by (v/10)%1000, monsters stored raw) | CONFIRMED 0x4a4b8f, 0x4a4bb2, 0x4f3420 |
 | +0x150 | 4 | dword 0 | UNKNOWN |
 | +0x154 | 0x40 | zeroed buffer | UNKNOWN |

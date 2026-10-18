@@ -75,6 +75,10 @@ class Player:
     human: bool = False             # single player: record 1 only (map.md part 5)
     selection: tuple = ()           # selected unit ids, command order (sim/selection.py)
     formation: int = 1              # client option [GameOptions] Formation: 0 off, 1 auto (default), 2 on (R 4.1)
+    main_hero: int = 0              # unit id of the owner's main hero (exe owner+0x38; 0 = none); INFERRED: the first hero of the human at load
+    hero_deaths: int = 0            # exe owner+0xa54: +1 when the main hero reaches state 0x10 (a statistics counter, in the saves)
+    death_code: int = 0             # exe owner+0x40 (byte): `server_id - 0x13` of the last hero of the human that died (message 0xb4)
+    defeat_dialog: bool = False     # the client opens the hero-died dialog (combat.md 12.3a); the UI clears it
 
 
 @dataclass
@@ -116,6 +120,16 @@ class Removed:
     """Fight log entry: the unit reached state 0x10 (footprint released, loot dropped, kill credit paid)."""
     tick: int
     unit: int
+
+
+@dataclass(frozen=True)
+class HeroDied:
+    """Fight log entry: message `0xb4` (`FUN_00510a70` step 8): a hero unit of the human player reached state 0x10.  `code` = `server_id - 0x13`
+    (owner+0x40); `main` = it was the owner's main hero (HP := -50, `hero_deaths` + 1).  The client opens the modal "load / quit" dialog (combat.md 12.4)."""
+    tick: int
+    unit: int
+    code: int
+    main: bool
 
 
 @dataclass(frozen=True)
@@ -592,6 +606,28 @@ class World:
         u = self.units.get(uid)
         return u if u is not None else self.corpses.get(uid)
 
+    def pile_blocked(self, x, y):
+        """`FUN_005538c7`: a cell cannot hold a pile when it is outside the map or bit 0 of the live layer is set (water, mountain, building
+        ground, structure stamps, the map border; trees (bit 2 only) and unit stamps do not count).  C§12.4."""
+        if not (0 <= x < self.width and 0 <= y < self.height):
+            return True
+        return bool(self._block[y, x] & 1)
+
+    def place_pile(self, x, y, gold, codes, pile_id=None, sub=(128, 128), **kw):
+        """`FUN_0052ab07(cell, bag, gold)`: merge into the pile on the cell (even on a blocked cell), else register a new pile when the cell
+        can hold one (`pile_blocked`); there is no search for a neighbouring cell.  Returns the pile, or None when the pile (gold and items) is
+        deleted.  C§12.4."""
+        for i in sorted(self.items_at(x, y)):
+            pile = self.items[i]
+            pile.gold += gold
+            pile.codes = tuple(pile.codes) + tuple(codes)
+            return pile
+        if self.pile_blocked(x, y):
+            return None
+        it = Item(self.new_pile_id() if pile_id is None else pile_id, x, y, sub[0], sub[1], gold, tuple(codes), **kw)
+        self.add_item(it)
+        return it
+
     def new_pile_id(self):
         self._next_pile += 1
         return self._next_pile
@@ -733,6 +769,9 @@ class World:
                 u.mana = u.mana_max = mana_max
                 u.xp, u.xp_total = prog.start_pools(u.skills)
                 u.best_school = prog.best_school(u.skills) if prog.is_hero_name(tpl.name) else 0
+                pl = self.players.get(rec.owner)
+                if pl is not None and pl.human and pl.main_hero == 0 and prog.is_hero_name(tpl.name):
+                    pl.main_hero = u.id                 # INFERRED: the exe's owner+0x38 writer is not traced
             if 0 < rec.group <= len(m.item_groups):         # the carried pack (section 8): dropped at death
                 u.carried = tuple(mem.code & 0xFFFF for mem in m.item_groups[rec.group - 1].members)
             self.add_unit(u)
@@ -746,7 +785,7 @@ class World:
         """Ground piles: the section 8 groups no unit's `group` points at (`Map.ground_groups`).
         Groups on one cell merge into one pile, gold added and items stacked (`FUN_0052ab07`,
         CONFIRMED map.md part 5); the pile takes the id of its first group,
-        `ITEM_ID_BASE + group index` (0-based, file order)."""
+        `ITEM_ID_BASE + group index` (0-based, file order); a blocked cell (`pile_blocked`) loses the pile, as in the exe (no install map has one)."""
         used = {u.group for u in m.units if u.group}
         at = {}
         for n, g in enumerate(m.item_groups):
@@ -759,6 +798,8 @@ class World:
                 it.gold += g.extra
                 it.codes += codes
                 it.groups += (n,)
+                continue
+            if self.pile_blocked(*cell):        # same routine as the death drop (`FUN_0052ab07`): a cell that cannot hold a pile deletes it
                 continue
             at[cell] = Item(ITEM_ID_BASE + n, cell[0], cell[1], g.x & 255, g.y & 255, g.extra, codes,
                             groups=(n,))
@@ -861,6 +902,8 @@ class World:
             d["selection"] = list(p.selection)
         if p.formation != 1:
             d["formation"] = p.formation
+        if p.hero_deaths or p.death_code or p.defeat_dialog:        # main_hero is derived at load, not dumped
+            d["hero"] = [p.hero_deaths, p.death_code, int(p.defeat_dialog)]
         return [d] if d else []
 
     @staticmethod
