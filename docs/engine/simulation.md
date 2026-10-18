@@ -318,8 +318,27 @@ fallback cell is more than 1 cell from the target (more than 2 when `FUN_00559bc
 target cell with bit `0x20` of `+0x10000` and a record in the cell table, i.e. a building cell, returns the
 record's holder): CONFIRMED it posts client message `0x92` (`FUN_00505347`), whose handler (`0x40e21d`, sub-code
 1) shows text string `0x81` for 3000 ms (main.txt line `0x81` = "No way", [research §6.3](click-to-move-research.md)). It does not
-change the route. A clause for unit class 0x12 on order 5 (`FUN_00556f56`, `FUN_0056ac5b`) rewrites a range
-field of the brain: range logic, not routing (open).
+change the route.
+
+**The range clause (CONFIRMED, `0x54e245..0x54e2c1`, same unreachable-static branch, after the "No way" test and
+before the empty-list test).** It is not "unit class 0x12": the byte is the *group order* `((unit+0x70)+0x3c)+0x20`
+(the GroupAI record, [click-to-move §4.4](click-to-move-research.md)) `== 0x12`, and the brain mode `brain+8 == 5`
+(attack approach, order 3, `FUN_0056eab5`; the issue says "order 5"). Then
+`gap = FUN_00556f56(fallback, target, size)` (`size` = vtable `+0x1c`; per axis `h < t ? max(0, t-h-size+1) : h-t`,
+larger axis; fallback packed 0 = cell (0, 0)) and, if `gap > FUN_0056ac5b(unit)` (unsigned bytes), the unit stamps
+`brain+0x16 := low word of the server tick` (`[0x6044c4]`). Nothing else changes: no route, no cell, no target.
+`FUN_0056ac5b` (ECX unused): `spell = spellbook(+0x140).find(brain+0x78)` when `brain+0x78 != 0`; if found and signed
+`unit+0x9a (mana) >= spell+0xc` the result is byte `spell+9` (spell range), else byte `unit+0x12c`. Group order `0x12` is
+`FUN_00570aba` (default of the computer players' groups: after the map load pass `FUN_00562745` every group whose
+owner `player+4 != 1` gets it, the human's groups get order 3 = stand ground; also summons `520c3e`, unit creation
+`5611f8`, message `577d49`). The only reader of `brain+0x16` is the group-order-`0x12` handler `FUN_005728fa`
+(`0x572a1a`, `0x572a66`; INFERRED meaning): for a damaged member (`+0x94 != +0x96`) a stamp within 30 ticks
+(`abs(stamp - tick16) < 30`; 10 for an undamaged one) restarts the unit's mode with its home cell `brain+0x9c`
+(`FUN_0056c8af`), i.e. a guarding monster that cannot reach its attack target goes home. Reachability: every monster
+of the 46 maps starts in a group of order `0x12`, but the clause needs brain mode 5, which only attack orders create; the
+engine issues none (phase I), so it is **unreachable today**. Implemented as the pure functions `footprint_gap`,
+`default_range`, `fallback_stamp` in `engine/sim/pathfinding.py` (tests `tests/test_pathfinding_range_clause.py`),
+not wired.
 
 ### 7.2 Two layers: static plan, dynamic hops (CONFIRMED `FUN_00555411`, `FUN_00555dc2`)
 
@@ -872,5 +891,6 @@ is not filtered by recipient.
    retreat post pass `FUN_00573713`: phase I ([research §9](click-to-move-research.md)).
 5. The stored occupant/stamp slots with their release quirks (7.4 "Cell record"): `FUN_0055073f` clears a slot of any unit, so a first-come loser loses its record when the winner leaves; the engine derives the occupant instead. Starting routine `FUN_0055be86` callers `0x558b7c`, `0x56a5df` (how often a standing unit re-stamps, which decides how long such a cell stays unowned).
 6. The x87 control word at run time (precision / exception mask) for the slope in `FUN_00557f08`: only the follower-on-target-centre case (`0/0`) depends on it (7.4 step 3). Starting routine CRT start-up before `0x557f08`; DirectDraw init.
-7. The class-0x12 / order-5 clause of the static fallback (`FUN_00556f56`, `FUN_0056ac5b`).
-8. Loop-back latency of commands (research open question 1) and the phase of the group pass against the first tick.
+7. Loop-back latency of commands (research open question 1) and the phase of the group pass against the first tick.
+8. `FUN_005728fa` (group order 0x12 handler, reader of `brain+0x16`): the full per-tick behaviour of guarding computer-player groups and the home-cell restart (`FUN_0056c8af`, `brain+0x9c`).
+9. `FUN_0051c391` / spell record `+9`, `+0xc`: confirm that they are spell range and mana cost (used by `FUN_0056ac5b`).

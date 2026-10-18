@@ -526,6 +526,40 @@ def _plan(grid, start, target, size, walker, human, static, cfg, radius, follow=
     return res
 
 
+# --- Range clause of the static fallback (FUN_0054d76e 0x54e245..0x54e2c1), spec simulation.md 7.1 ------------
+GROUP_ORDER_GUARD = 0x12        # group record +0x20 set by FUN_00570aba (computer players' groups after load)
+BRAIN_MODE_ATTACK = 5           # brain +8 = 5: order 3 attack, approach/swing (FUN_0056eab5)
+
+
+def footprint_gap(here, target, size):
+    """`FUN_00556f56` (CONFIRMED): cells between a `size` x `size` footprint anchored at `here` and the cell
+    `target`: per axis, `max(0, t - h - size + 1)` when the target is after the anchor, else `h - t`; the larger
+    axis (a Chebyshev gap, asymmetric: only the far side counts the footprint)."""
+    def axis(h, t):
+        return max(0, t - h - size + 1) if h < t else h - t
+    return max(axis(here[0], target[0]), axis(here[1], target[1]))
+
+
+def default_range(creature_range, spell_range=None, mana=0, spell_cost=0):
+    """`FUN_0056ac5b` (CONFIRMED): the selected special's range (spell record +9) when the brain's special slot
+    (+0x78) names a spell that is in the spellbook and `mana >= cost` (signed words, `JL`), else the creature's
+    byte +0x12c.  `spell_range=None`: no special selected / not found.  Structures are not special-cased here."""
+    if spell_range is not None and mana >= spell_cost:
+        return spell_range & 0xFF
+    return creature_range & 0xFF
+
+
+def fallback_stamp(group_order, brain_mode, here, target, size, range_, tick):
+    """The class-0x12 / order-5 clause: after an unreachable static plan took a fallback cell `here` (packed 0 =
+    cell (0, 0) when none), a unit whose group order is 0x12 and whose brain mode is 5 stamps `brain+0x16 :=
+    tick & 0xFFFF` when the footprint gap exceeds its default range; otherwise None (nothing written).  Reads
+    only; it changes no route.  Not wired: the engine has no group orders or attack modes (phase I)."""
+    if group_order == GROUP_ORDER_GUARD and brain_mode == BRAIN_MODE_ATTACK \
+            and footprint_gap(here, target, size) > range_ & 0xFF:
+        return tick & 0xFFFF
+    return None
+
+
 def plan_static(grid, start, target, *, size=1, walker=True, human=False, cfg=DEFAULT_CONFIG):
     """The long plan (`FUN_0054d76e` with mode != 0): ignores units.  `human`: the unit's owner is the human
     player (owner `+0x2c` == 0), whose search is unbounded when the target cell is free.  Returns a PathResult
