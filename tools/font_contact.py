@@ -2,8 +2,8 @@
 
     python tools/font_contact.py [INSTALL_DIR] [-o out/contact/fonts.png]
 
-Rows per font: the 224 (or 64) glyph cells, 32 per row, then sample text
-laid out with the game's rules (`.dat` advances, spacing 2, '~' underline).
+Rows per font: the 224 (or 64) glyph cells, 32 per row, then English and
+Russian sample text (Cyrillic remap on, fonts.md) laid out with the game's rules (`.dat` advances, spacing 2, '~' underline).
 .16 fonts use the 17i grey ramp
 and the gold code ramp 0x620d90; font4 uses its embedded palette.
 Transparent areas show a checkerboard. Output contains game data: out/ only.
@@ -17,10 +17,12 @@ from PIL import Image, ImageDraw, ImageFont
 
 from allods2 import graphics as gfx
 from allods2.common import OUT, as_fs
+from allods2.text import font_bytes
 
-SAMPLES = [b"The quick brown fox jumps over the lazy dog 0123456789",
-           b"~Load game  ~~tilde~~  ~hotkey",
-           b"Gold: 12,345  HP 100/100  [x] {y} (z) !?"]
+SAMPLES = ["The quick brown fox jumps over the lazy dog 0123456789",
+           "~Load game  ~~tilde~~  ~hotkey",
+           "Gold: 12,345  HP 100/100  [x] {y} (z) !?",
+           "Съешь же ещё этих мягких французских булок, да выпей чаю"]   # no Cyrillic in font3
 SCALE = 2
 
 
@@ -59,7 +61,10 @@ def main(argv=None):
         name = dat.rpartition("/")[2][:-4]
         parts = [(name + " glyphs (red line = .dat width)", glyph_grid(font, gold))]
         for i, s in enumerate(SAMPLES):
-            text = s.upper() if len(font.sprites) <= 64 else s
+            small = len(font.sprites) <= 64
+            if small and i == 3:
+                continue
+            text = font_bytes(s.upper() if small else s)
             parts.append(("%s sample %d" % (name, i + 1),
                           font.render(text, colours=grey if i != 1 else gold)))
         blocks += parts

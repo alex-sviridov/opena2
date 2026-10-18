@@ -11,6 +11,7 @@ from allods2.graphics import write_png
 from engine.view import build_draw_list, build_terrain_items
 
 from .sprites import blend_half, blend_shadow
+from .text import render_text
 
 PASSABILITY_TINT = (255, 40, 40, 90)
 MARKER_COLOR = (255, 255, 0)
@@ -22,15 +23,7 @@ DEPTH_COLOR = (255, 255, 255)
 class Caches:
     terrain: object             # SurfaceCache
     sprites: object = None      # SpriteCache (None = terrain only)
-    font: object = None
     ball: object = None         # Ball.bmp 4x4 bar cap (surface) or None
-
-    def get_font(self):
-        if self.font is None:
-            if not pygame.font.get_init():
-                pygame.font.init()
-            self.font = pygame.font.Font(None, 14)
-        return self.font
 
 
 # FUN_00460db1 (ui-layout.md section 9): empty track rows, then fill rows (dark, bright, mid, dark)
@@ -77,7 +70,7 @@ def _overlay(surface, caches, it):
     elif it.kind == "marker":
         pygame.draw.rect(surface, MARKER_COLOR, r, 1)
     elif it.kind == "depth":
-        surface.blit(caches.get_font().render(it.text, False, DEPTH_COLOR, (0, 0, 0)), r.topleft)
+        surface.blit(render_text(it.text, DEPTH_COLOR, font=3, shadow=False, background=(0, 0, 0)), r.topleft)
 
 
 def draw_frame(surface, caches, terrain_items, items, camera):

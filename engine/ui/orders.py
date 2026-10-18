@@ -5,6 +5,7 @@ A left release with a click on a non-empty selection dispatches on the cursor ch
 the pending mode is reset after every such dispatch, also when nothing was ordered."""
 
 from engine.sim import MoveUnits, SelectUnits, SetFormation, Stop
+from allods2.text import decode_text
 
 from .cursor import CursorState as S
 from .selection import drag_threshold
@@ -161,7 +162,7 @@ class MainText:
     @classmethod
     def load(cls, fs):
         try:
-            return cls(bytes(fs.read("main/text/main.txt")).decode("cp1251").split("\r\n"))
+            return cls(decode_text(fs.read("main/text/main.txt")).split("\r\n"))
         except (OSError, KeyError, FileNotFoundError):
             return cls()
 

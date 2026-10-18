@@ -1,7 +1,9 @@
 # Fonts: `fontN.dat` metrics + `fontN.16` / `fontN.16a` glyphs
 
-Code: `allods2/graphics/font.py`. Tools: `tools/validate_fonts.py`;
-`tools/font_contact.py` → `out/contact/fonts.png`.
+Code: `allods2/graphics/font.py`, text encoding `allods2/text.py`, pygame
+blitter `engine/backend_pygame/text.py`. Tools: `tools/validate_fonts.py`;
+`tools/font_contact.py` → `out/contact/fonts.png`;
+`python -m allods2 font sample FONT DEST "text" [--width N]`.
 
 A font = a sprite file with one glyph per character ([sprites](sprites.md),
 `.16` or `.16a`) + a `.dat` with one width per glyph, same stem.
@@ -110,6 +112,49 @@ measure(s):
         if g == 0: total += height(glyph 0) >> 1   # space
     return total
 ```
+
+### DECISION: the remap is always on
+
+The exe leaves the remap off on the English install, so a cp866 Cyrillic
+byte would draw a Latin cp437 glyph. The reimplementation supports Russian
+by default: `Font.load(cyrillic=None)` = True. English is unaffected:
+the remap only touches 0x80–0xAF and 0xE0–0xEF, and every text file of the
+install is ASCII there (the few bytes ≥ 0x80 are stray cp1251 Cyrillic in
+comments and typos, no accented Latin). Cost: the cp437 Latin glyphs
+(é, ñ, …) are no longer reachable; no shipped text uses them.
+`Font.load(cyrillic=False)` and `locale_flag` give the exe's behaviour.
+
+## Text encoding: `allods2/text.py`
+
+One module for all text: `decode_text(bytes) -> str` (cp1251: text files, map
+and data strings), `font_bytes(str | cp1251 bytes) -> bytes` (cp866 as
+`CharToOemA` makes it, then drawn through the remapped font table),
+`ansi_to_oem` (the byte-exact conversion). INFERRED glyph coverage: the fonts
+have no ё/Ё (0xF1/0xF0 would draw с/р), so `font_bytes` draws е/Е (DECISION);
+characters cp866 lacks become `?`; typographic quotes/dashes are
+best-fitted. font3 has no Cyrillic or lower case (0x20–0x5F only).
+Glyph coverage per byte: control bytes < 0x20 (and, in font3, everything
+outside 0x20–0x5F) read past the table in the exe, nothing is drawn
+(`tests/test_fonts.py`).
+
+## Wrapping (our own, the exe has none)
+
+`Font.wrap(text, width) -> [line]`: break at spaces by `measure`, `\n`
+forces a break, spaces at a break are dropped, a word wider than `width`
+is split between characters (`~x` and `~~` stay together), a single
+character wider than `width` gets its own line. `Font.layout_block` stacks
+lines `line_height() = cell height + 1` apart (one row for the `~`
+underline). `engine.backend_pygame.text.draw_text(..., width=, wrap=True)`.
+
+## Engine drawing
+
+`draw_text(surface, text, x, y, colour, align, font=2, shadow=True)`:
+`colour` is an RGB tuple (16-step ramp black → colour, like the code
+tables) or a `TABLES` name (palettes §6: normal, highlight, label,
+value, header, tooltip, red, yellow, green); the 1 px shadow is the
+(8, 8, 8) table at offset 1; font4 (`.16a`) uses its own palette.
+Surfaces are cached (512). Without an install pygame's bundled font is the
+stand-in.
 
 ## Drawing a `.16` font: `FUN_0045e531`
 

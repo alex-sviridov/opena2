@@ -297,6 +297,22 @@ def data_export(a):
     return 0
 
 
+def font_sample(a):
+    from .text import font_bytes
+    font = gfx.Font.load(a.font if "/" in a.font else "graphics/%s/%s" % (a.font, a.font), as_fs(a.install))
+    colours = gfx.pack16(gfx.code_ramps16()[0x61fa80])
+    lines = font.wrap(a.text, a.width) if a.width else [font_bytes(a.text)]
+    w = max(font.measure(ln) for ln in lines) + 2
+    img = np.zeros(((len(lines) - 1) * font.line_height() + font.cell_height() + 1, w, 4), np.uint8)
+    for i, ln in enumerate(lines):
+        gfx.blend(img, font.render(ln, colours=colours), 0, i * font.line_height())
+    img = img.repeat(a.scale, 0).repeat(a.scale, 1)
+    os.makedirs(os.path.dirname(os.path.abspath(a.dest)), exist_ok=True)
+    gfx.write_png(a.dest, gfx.over_checker(img))
+    print("%d line(s), %dx%d -> %s" % (len(lines), img.shape[1], img.shape[0], a.dest))
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python -m allods2", description="Allods 2 data tools.")
     groups = ap.add_subparsers(dest="group", required=True)
@@ -311,6 +327,15 @@ def main(argv=None):
     ex.add_argument("--cols", type=int, default=16, help="grid columns for --sheet")
     ex.add_argument("--install", default=INSTALL)
     ex.set_defaults(func=gfx_export)
+    g = groups.add_parser("font", help="bitmap fonts").add_subparsers(dest="cmd", required=True)
+    fo = g.add_parser("sample", help="render a test string (str; Russian and English) with a game font")
+    fo.add_argument("font", help="font1..font4, or a game path without extension")
+    fo.add_argument("dest", help="PNG to write")
+    fo.add_argument("text")
+    fo.add_argument("--width", type=int, default=0, help="wrap to this many pixels")
+    fo.add_argument("--scale", type=int, default=3)
+    fo.add_argument("--install", default=None)
+    fo.set_defaults(func=font_sample)
     g = groups.add_parser("anim", help="unit animation").add_subparsers(dest="cmd", required=True)
     pv = g.add_parser("preview", help="animated GIFs per action and facing, plus a still grid")
     pv.add_argument("sprite")

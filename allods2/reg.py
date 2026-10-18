@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from a2res import basename
 
 from .common import read
+from .text import decode_text
 
 SIGNATURE = 0x31415926
 HEADER = 0x18
@@ -54,7 +55,7 @@ class Registry:
         if e.type == T_FLOAT:
             return struct.unpack("<d", e.raw)[0]
         if e.type == T_STRING:
-            return self.blob[e.a:e.a + e.b].split(b"\0")[0].decode("cp1251")
+            return decode_text(self.blob[e.a:e.a + e.b].split(b"\0")[0])
         if e.type == T_INTS:
             data = self.blob[e.a:e.a + e.b]
             return list(struct.unpack("<%di" % (len(data) // 4), data))
@@ -150,7 +151,7 @@ def parse_reg(data, name=""):
     for i in range(count):
         o = HEADER + ENTRY * i
         _, a, b, typ = struct.unpack_from("<4I", data, o)
-        nm = data[o + 16:o + 32].split(b"\0")[0].decode("cp1251")
+        nm = decode_text(data[o + 16:o + 32].split(b"\0")[0])
         entries.append(Entry(nm, typ, a, b, data[o + 4:o + 12]))
     size, = struct.unpack_from("<I", data, end)
     blob = data[end + 4:end + 4 + size]

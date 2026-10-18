@@ -103,7 +103,9 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   `DAT_00622800`; all 46 campaign maps load every set; the file's dirt bit
   13 is cleared on load (`FUN_004a449c`), dirt arrives from the server. terrain.md
 - Fonts: CONFIRMED (widths, `~` underline, shadow, char map off: main\id
-  `english 0`; text loaders + CharToOemA). fonts.md
+  `english 0`; text loaders + CharToOemA). G3c done: Cyrillic remap always on (DECISION, English is ASCII), `allods2/text.py`
+  (`decode_text`, `font_bytes`: cp1251 -> cp866, no ё glyph), `Font.wrap/layout_block` (our rule), `engine/backend_pygame/text.py`
+  draws with font1-4 + game colour tables + shadow (replaces pygame's font), `python -m allods2 font sample`, `tools/font_contact.py`. fonts.md
 - Paper doll: CONFIRMED `.256` layers `FUN_004688f7`, layer order. paperdoll.md
 - Animation: CONFIRMED sources, layout, client/server timing (VERIFY IN GAME
   list §3.6), `allods2/anim` API for every animated class, whole-install
@@ -222,4 +224,4 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   around the truncated centroid (no free-cell search), group pass at `tick & 15 == 6` ends arrivals and restarts parked and failed units (a failure leaves brain+0x50 at 0); commands
   `MoveUnits`/`Stop`/`SetFormation`, `engine/sim/orders.py`, `engine/ui/orders.py`; 46-map integration (`ALLODS2_ALL_MAPS=1`), 30/60/144 fps
   replay hash, goldens `["orders"]`, `tools/bench_orders.py`. docs/engine/simulation.md §8-9, spec docs/superpowers/specs/2026-10-18-click-to-move-design.md
-- Status: E, F, G3b, H (H1-H3) done. Next: I1: melee attack. Also G3c (fonts). Also (docs/open-questions.md): town-scene animations, text conventions.
+- Status: E, F, G3b, G3c (fonts), H (H1-H3) done. Next: G4 close-out, then I1: melee attack. Also (docs/open-questions.md): town-scene animations, text conventions.

@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from a2res import OS
 
+from ..text import ansi_to_oem, font_bytes  # noqa: F401  (ansi_to_oem re-exported)
 from .palette import pack16, unpack16
 from .sprites import SpriteFile, to_rgba
 
@@ -55,27 +56,6 @@ def map_char(c, cyrillic=False):
     return c
 
 
-# INFERRED: Windows best-fit for characters cp866 lacks (only ’ occurs, en/town.txt)
-_OEM_BEST_FIT = {"‘": "'", "’": "'", "“": '"', "”": '"',
-                 "–": "-", "—": "-", "«": '"', "»": '"'}
-
-
-def ansi_to_oem(data):
-    """Locale .txt bytes -> font text: CharToOemA, which the loaders
-    FUN_00474585 / FUN_004741ad apply in place.  Win32 converts system ANSI
-    to OEM; on the Russian locale the game expects that is cp1251 -> cp866
-    (А 0xC0 -> 0x80, Ё 0xA8 -> 0xF0, ё 0xB8 -> 0xF1).  Unmappable -> '?'."""
-    out = bytearray()
-    for b in data:
-        if b < 0x80:
-            out.append(b)
-            continue
-        ch = bytes([b]).decode("cp1251", errors="replace")
-        ch = _OEM_BEST_FIT.get(ch, ch)
-        out += ch.encode("cp866", errors="replace")
-    return bytes(out)
-
-
 @dataclass
 class Glyph:
     x: int
@@ -112,11 +92,12 @@ class Font:
     @classmethod
     def load(cls, stem, fs=None, cyrillic=None):
         """stem: path without extension in `fs` (None = OS path), e.g.
-        graphics/font1/font1.  cyrillic None: locale_flag(fs) == 1 when fs
-        has main/id, else False."""
+        graphics/font1/font1.  cyrillic None = True: DECISION, the remap
+        is always on (docs/formats/fonts.md); the exe turns it on only when
+        main/id ends in '1' (locale_flag), which the GOG install never does."""
         fs = fs or OS
         if cyrillic is None:
-            cyrillic = fs is not OS and fs.isfile(LOCALE_ID) and locale_flag(fs) == 1
+            cyrillic = True
         for ext in (".16", ".16a"):
             if fs.isfile(stem + ext):
                 sprites = SpriteFile.load(stem + ext, fs)
@@ -162,6 +143,53 @@ class Font:
                     total += self.cell_height() >> 1
             i += 1
         return total
+
+    LINE_GAP = 1            # DECISION: rows between lines (room for the '~' underline)
+
+    def line_height(self):
+        return self.cell_height() + self.LINE_GAP
+
+    def wrap(self, text, width):
+        """Break `text` (str, or bytes that are already font codes) into lines no wider than `width`
+        (our own rule, the exe has none): at spaces by `measure`, '\\n'
+        forces a break, a word wider than the line is split between
+        characters (never inside '~x'); spaces at a break are dropped.  A
+        single character wider than `width` gets a line of its own."""
+        if isinstance(text, str):
+            text = font_bytes(text)
+        lines = []
+        for para in text.split(b"\n"):
+            cur = b""
+            for word in para.split(b" "):
+                cand = cur + b" " + word if cur else word
+                if self.measure(cand) <= width:
+                    cur = cand
+                    continue
+                if cur:
+                    lines.append(cur)
+                    cur = b""
+                if self.measure(word) <= width:
+                    cur = word
+                    continue
+                for unit in _units(word):          # the word alone is too wide
+                    if cur and self.measure(cur + unit) > width:
+                        lines.append(cur)
+                        cur = b""
+                    cur += unit
+            lines.append(cur)
+        return lines
+
+    def layout_block(self, lines, x=0, y=0, flags=0, colours=None):
+        """Stack `lines` (from `wrap`) `line_height()` apart; `flags` align each
+        line horizontally (ALIGN_RIGHT / ALIGN_CENTER), vertical flags apply
+        to the first line only."""
+        out = Layout()
+        for i, line in enumerate(lines):
+            lay = self.layout(line, x, y + i * self.line_height(), flags if i == 0 else flags & 3, colours)
+            out.glyphs += lay.glyphs
+            out.lines += lay.lines
+            out.end_x = max(out.end_x, lay.end_x)
+        return out
 
     def _align(self, text, x, y, flags):
         if flags & ALIGN_RIGHT:
@@ -242,7 +270,7 @@ class Font:
                 pal = np.zeros((256, 3), np.uint8)
                 pal[:16] = unpack16(gl.colours)
             rgba = to_rgba(self.sprites.decode(gl.index), self.sprites.kind, pal)
-            _blend(img, rgba, gl.x, gl.y)
+            blend(img, rgba, gl.x, gl.y)
         for ln in lay.lines:
             x0, x1 = max(ln.x0, 0), min(ln.x1 + 1, img.shape[1])
             if 0 <= ln.y < h and x0 < x1:
@@ -251,7 +279,17 @@ class Font:
         return img
 
 
-def _blend(dst, src, x, y):
+def _units(word):
+    """Splittable pieces of a byte string: '~~' and '~x' stay together."""
+    i, out = 0, []
+    while i < len(word):
+        n = 2 if word[i] == 0x7E and i + 1 < len(word) else 1
+        out.append(word[i:i + n])
+        i += n
+    return out
+
+
+def blend(dst, src, x, y):
     """Alpha-composite src over dst at (x, y), clipped."""
     h, w = src.shape[:2]
     x0, y0 = max(x, 0), max(y, 0)

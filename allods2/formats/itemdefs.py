@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass
 
 from ..common import as_fs
 from ..databin import databin
+from ..text import decode_text
 from .entities import ItemCode, decode_item
 
 WEAPON, SHIELD, ARMOUR, SPECIAL = "weapon", "shield", "armour", "special"
@@ -491,7 +492,7 @@ def load_names(fs):
     per line, the same order; FUN_00474268 pairs them), {} when a file is missing."""
     try:
         bin_ = bytes(fs.read("world/data/itemname.bin"))
-        txt = bytes(fs.read("main/text/itemname.txt")).decode("cp1251").split("\r\n")
+        txt = decode_text(fs.read("main/text/itemname.txt")).split("\r\n")
     except (OSError, KeyError, FileNotFoundError):
         return {}
     codes = struct.unpack("<%dH" % (len(bin_) // 2), bin_)
@@ -503,8 +504,8 @@ def load_ui_texts(fs=None):
     (text list at 0x622600, FUN_00481186) and `main/text/spell.txt` (list 0x6226e0); ("of", "", []) defaults."""
     fs = as_fs(fs)
     try:
-        main = bytes(fs.read("main/text/main.txt")).decode("cp1251").split("\r\n")
-        spell = bytes(fs.read("main/text/spell.txt")).decode("cp1251").split("\r\n")
+        main = decode_text(fs.read("main/text/main.txt")).split("\r\n")
+        spell = decode_text(fs.read("main/text/spell.txt")).split("\r\n")
     except (OSError, KeyError, FileNotFoundError):
         return "of", "", []
     return main[0x5A], main[0x5B], spell

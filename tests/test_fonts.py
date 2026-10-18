@@ -64,10 +64,11 @@ def test_font_remap_off_by_default():
 
 
 @pytest.mark.skipif(GFS is None, reason="game files not available")
-def test_gog_locale_flag_is_off():
+def test_gog_locale_flag_is_off_but_remap_is_default():
     assert GFS.read_bytes("main/id") == b"english 0"
-    assert gfx.locale_flag(GFS) == 0
-    assert gfx.Font.load("graphics/font1/font1", GFS).cyrillic is False
+    assert gfx.locale_flag(GFS) == 0                    # the exe would leave the remap off ...
+    assert gfx.Font.load("graphics/font1/font1", GFS).cyrillic is True   # ... DECISION: always on
+    assert gfx.Font.load("graphics/font1/font1", GFS, cyrillic=False).cyrillic is False
 
 
 # --- advance, space, spacing -------------------------------------------------
@@ -161,3 +162,86 @@ def test_game_font_byte_accounting(dat):
         assert gfx.check_sprite(s, font.sprites.kind)[0] == len(s.data)
     ink = gfx.last_ink_columns(font.sprites)
     assert sum(a != b for a, b in zip(font.widths, ink)) <= 2
+
+
+# --- text encoding ------------------------------------------------------------
+
+def test_decode_text_and_font_bytes():
+    from allods2 import text
+    assert text.decode_text("Атака".encode("cp1251")) == "Атака"
+    assert text.font_bytes("Атака ёЁ ~Ok’") == b"\x80\xe2\xa0\xaa\xa0 \xa5\x85 ~Ok'"     # ё/Ё -> е/Е
+    assert text.font_bytes("Hello, World 0123") == b"Hello, World 0123"       # ASCII is untouched
+    assert text.font_bytes("日") == b"?"                                       # unmappable
+    assert text.font_bytes("Ок".encode("cp1251")) == text.ansi_to_oem("Ок".encode("cp1251"))
+
+
+def test_remap_leaves_ascii_alone():
+    """English text is ASCII, so the always-on remap cannot change it."""
+    assert all(gfx.map_char(c, cyrillic=True) == c for c in range(0x20, 0x80))
+
+
+# --- wrapping (our own rule, docs/formats/fonts.md) ---------------------------
+
+def wrap_font():
+    f = font16([4] * 224)                    # every glyph advances 4 + 2 = 6; space 6 + 3 (h 6 >> 1)
+    return f
+
+
+def test_wrap_at_spaces():
+    f = wrap_font()
+    assert [f.measure(w) for w in (b"ab", b"ab ab", b"abc")] == [12, 33, 18]
+    assert f.wrap("ab ab", 33) == [b"ab ab"]
+    assert f.wrap("ab ab", 32) == [b"ab", b"ab"]
+    assert f.wrap("ab cd ef", 33) == [b"ab cd", b"ef"]
+
+
+def test_wrap_forced_break_and_long_word():
+    f = wrap_font()
+    assert f.wrap("ab\ncd", 100) == [b"ab", b"cd"]
+    assert f.wrap("abcdef", 18) == [b"abc", b"def"]        # split between characters
+    assert f.wrap("a", 1) == [b"a"]                         # wider than the line: own line
+    assert f.wrap("", 10) == [b""]
+
+
+def test_wrap_never_splits_tilde_pair():
+    f = wrap_font()                                         # lone '~' counts 0, so ~a is 6 wide
+    assert f.wrap("~a~b~c", 12) == [b"~a~b", b"~c"]
+    assert f.wrap("~~~~~~", 12) == [b"~~~~", b"~~"]         # '~~' draws one '~' (6 wide)
+
+
+def test_layout_block_line_height():
+    f = wrap_font()
+    lay = f.layout_block([b"a", b"b"], 10, 20, colours=GREY)
+    assert placed(lay) == [(10, 20, 0x61 - 0x20), (10, 20 + f.line_height(), 0x62 - 0x20)]
+    assert f.line_height() == 7
+
+
+@pytest.mark.skipif(GFS is None, reason="game files not available")
+@pytest.mark.parametrize("n", [1, 2, 3, 4])
+def test_every_byte_maps_to_a_glyph_or_a_documented_gap(n):
+    f = gfx.Font.load("graphics/font%d/font%d" % (n, n), GFS)
+    gap = {b for b in range(256) if f.glyph(b) >= len(f.sprites)}
+    if n == 3:                      # 64 glyphs: 0x20-0x5F only (fonts.md)
+        assert gap == set(range(256)) - set(range(0x20, 0x60))
+    else:                           # 224 glyphs: only the control bytes < 0x20 read past the table
+        assert gap == set(range(0x20))
+
+
+@pytest.mark.skipif(GFS is None, reason="game files not available")
+@pytest.mark.parametrize("n", [1, 2, 4])
+def test_every_russian_letter_has_ink(n):
+    from allods2 import text
+    f = gfx.Font.load("graphics/font%d/font%d" % (n, n), GFS)
+    letters = [chr(c) for c in range(0x410, 0x450)] + ["Ё", "ё"]
+    for ch in letters:
+        code = text.font_bytes(ch)[0]
+        assert f.sprites.decode(f.glyph(code)).mask.any(), ch
+    assert f.glyph(text.font_bytes("ё")[0]) == f.glyph(text.font_bytes("е")[0])      # no ё glyph
+
+
+@pytest.mark.skipif(GFS is None, reason="game files not available")
+def test_english_text_files_are_untouched_by_the_remap():
+    """Every byte of the shipped English text below 0x80 maps to itself."""
+    from allods2 import text
+    data = bytes(GFS.read("main/text/stats.txt"))
+    assert text.font_bytes(data.decode("ascii", "ignore")) == data.decode("ascii", "ignore").encode("ascii")

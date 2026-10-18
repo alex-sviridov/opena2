@@ -18,8 +18,8 @@ from ..common import read
 from . import entities as ent
 from . import objects as obj
 from . import passability as pas
+from ..text import decode_text as _decode
 
-TEXT_ENCODING = "cp1251"
 NAME_SIZE = 0x40           # name buffer
 TEXT_SIZE = 0x200          # description buffer (runs 16 bytes past the section's size)
 MIN_VERSION = 1300         # earlier files lack fields; the game still reads them (see _fields)
@@ -31,7 +31,7 @@ FOG_BITS = 0xC000          # run-time fog of war
 def decode_text(buf):
     """A fixed text buffer: bytes up to the first NUL, decoded as cp1251.
     Whatever follows the NUL is uninitialised editor memory."""
-    return bytes(buf).split(b"\0", 1)[0].decode(TEXT_ENCODING, errors="replace")
+    return _decode(bytes(buf).split(b"\0", 1)[0])
 
 
 @dataclass

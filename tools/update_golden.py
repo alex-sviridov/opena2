@@ -139,8 +139,8 @@ def shot_hashes(install=None):
 
 def interface_hash(install=None):
     """sha256 of the full 640x480 interface window (spec 2026-10-17-interface-selection-design.md test 7):
-    map 10, camera centred on the human unit (data.bin humans), that unit selected.  The text uses
-    pygame's bundled font, so the hash is tied to the pinned pygame-ce version."""
+    map 10, camera centred on the human unit (data.bin humans), that unit selected.  The text is drawn
+    with the game's fonts (G3c), so the hash no longer depends on pygame's bundled font."""
     os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
     from engine.backend_pygame.interface import screenshot_window
     from engine.ui import Layout

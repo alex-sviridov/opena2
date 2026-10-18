@@ -11,6 +11,7 @@ import struct
 from dataclasses import dataclass, field
 
 from .common import as_fs, read
+from .text import decode_text
 
 PATH = "world/data/data.bin"
 
@@ -139,7 +140,7 @@ class _Reader:
             n = self.u16()
             if n == 0xFFFF:
                 n = self.u32()
-        return self.take(n).decode("cp1251")
+        return decode_text(self.take(n))
 
     def strings(self):
         return [self.string() for _ in range(self.count())]

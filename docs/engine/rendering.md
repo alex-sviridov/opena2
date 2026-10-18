@@ -240,7 +240,7 @@ Code: `engine/ui/layout.py`, `cursor.py`, `selection.py`; `engine/view/pick.py`,
   Ctrl+H): 4 rows, track `x1+4..x2-4`, grey `0x40/0x80/0x60/0x40` empty, fill dark/bright/mid/dark in green, yellow
   (< max/2) or red (< max/4), fill >= 1 px while hp > 0, 4x4 `Ball.bmp` caps at `x1` and `x2-4` (CONFIRMED geometry and
   colours, ui-layout §9). No mana bar, name or squad number yet; no circle.
-- **Info panel** (text via `text.draw_text`, pygame's default font until G3c): the unit's `DescText` centred at
+- **Info panel** (text via `text.draw_text`, the game font (fonts.md)): the unit's `DescText` centred at
   `(panel.w - 88, 0x1c)`, `HP` label at 0x2c, `cur/max` at (0x73, 0x36), owner name at (6, 0xe0). No portrait.
   Positions CONFIRMED (§10); title source and owner line are DECISIONs.
 - **Cursor**: `choose_cursor` (pure) picks arrows / default / select / pickup / move / attack / swarm / town / the pending-mode

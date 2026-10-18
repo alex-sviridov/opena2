@@ -1,7 +1,7 @@
 """Interface frame, bars, cursor drawing, full-window screenshot (G3b test 7).
 
 Headless (SDL dummy driver).  The golden is tied to the pinned pygame-ce version: the info panel
-text uses pygame's bundled font until G3c.
+text uses the game's fonts (engine/backend_pygame/text.py).
 """
 
 import importlib.util
@@ -105,6 +105,21 @@ def test_draw_text_alignment():
     w = draw_text(s, "HP 10/10", 50, 5, (255, 255, 255), "center")
     cols = np.nonzero(pygame.surfarray.array3d(s).sum(axis=(1, 2)))[0]
     assert cols.min() >= 50 - w // 2 and cols.max() < 50 + w - w // 2
+
+
+@needs_graphics
+def test_draw_text_uses_game_fonts_for_both_languages_and_wraps():
+    from allods2.text import font_bytes
+    from engine.backend_pygame.text import draw_text, game_font, render_text
+    assert game_font(2) is not None
+    for text in ("Attack the orcs", "Атака на орков"):
+        s = pygame.Surface((200, 30))
+        w = draw_text(s, text, 4, 4, "label")
+        assert w == game_font(2).measure(font_bytes(text)) + 3
+        assert pygame.surfarray.array3d(s).any()
+    one = render_text("one two three four", font=2, width=60, wrap=True)
+    assert one.get_height() > render_text("one", font=2).get_height()      # wrapped to several lines
+    assert one.get_width() == 60 + 3                                         # block width + padding + shadow
 
 
 @needs_graphics

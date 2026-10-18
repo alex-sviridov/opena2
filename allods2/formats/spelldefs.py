@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass, field
 
 from ..databin import databin, parse_modifier
+from ..text import decode_text
 from ..spells import SPELL_NAMES, effect_id
 
 # data.bin params by index (docs/data/spells.md section 2); P is the index into `raw`.
@@ -245,7 +246,7 @@ def load_texts(fs):
     out = []
     for p in TEXT_FILES:
         try:
-            out.append(bytes(fs.read(p)).decode("cp1251").split("\r\n"))
+            out.append(decode_text(fs.read(p)).split("\r\n"))
         except (OSError, KeyError, FileNotFoundError):
             out.append([])
     return tuple(out)
