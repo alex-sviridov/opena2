@@ -74,9 +74,26 @@ else:                                         # the +0x9e wander branch at 0x572
 go(m, c) = FUN_0056c8af: brain mode := 1, brain+0xa := c   (order, group and target untouched)
 ```
 
-`B+0x16` starts at `0xffdc` (ctor `0x569003`; a never-stamped unit has `dB` ~65 500). It is the **path-failure stamp** written by the follow planner ([simulation §7.4](simulation.md): `block` counter when a mode-5 unit
-cannot get within range of its target); `B.hitcell`/`hit_tick` come from the hit reaction (§8). `hitcell` is 0 until the first hit, so a
-failure stamp on a never-hit unit sends it to cell (0, 0) (clamped by the mode-1 mover): **INFERRED quirk, VERIFY IN GAME**.
+**Brain constructor `FUN_00569003` (CONFIRMED, 0xb8 bytes):** `memset(brain, 0, 0xb8)`, then only `+0x8 = 0`, `+0x9 = 0`, `+0x4c = 0`,
+`+0x71 = 1`, `+0x16 = 0xffdc`, and `+0xb4` := a new 0x1c-byte object (`FUN_005420f0(10)`). So `+0x20` (target), `+0x54`, `+0x58`, `+0x5a`,
+`+0x94`, `+0x98`, `+0x9c` (hit cell), `+0x9e`, `+0xa0` all start at **0**; only `+0x16` is non-zero (a never-stamped unit has `dB` ~65 500,
+never below 10 or 30).
+
+**Writers of `+0x16` (CONFIRMED, whole-exe scan of stores to `[reg+0x16]`): only the ctor and `0x54e2bd`**, the class-0x12 clause of
+`FUN_0054d76e` ([simulation §7.4](simulation.md)): static request (`param_6 != 0`) whose destination was not reached, **group order
+`0x12` and brain mode 5** (attack approach), and `FUN_00556f56(fallback, dest, size) > FUN_0056ac5b(unit)` -> `+0x16 := [DAT_006044c4]` (block
+counter). Nothing in that clause looks at hits. **Writer of `+0x9c`: only `0x56e8b4` in the hit reaction `FUN_0056e6b8` (§8).** Spell casts,
+missile launch and `FUN_0056c72b` write neither. Hence **yes: a never-hit unit that attacks an unreachable target (mode 5, e.g. across water)
+stamps `+0x16`, and at the next pass (dB < 10, undamaged) branch 1/2 runs `go(m, 0)`: brain mode 1 to cell word 0 = cell (0, 0)**.
+
+What the exe does with cell word 0 (CONFIRMED): `FUN_0056e4ac` -> `FUN_00555411` has no special case for 0; dest (0, 0) is a normal Chebyshev
+distance, then `FUN_0054d72d`/`FUN_0054d76e` floods from the unit, (0, 0) stays unlabelled, so the fallback `FUN_005585f4(dest, radius = gap/4 + 4)`
+scans rings 1..radius-1 round (0, 0) in 16-bit packed cell arithmetic (negative offsets wrap to the far side of the 256x256 label grid, which is
+unlabelled) and takes the labelled cell of the first non-empty ring with the smallest label; the unit **walks to the reachable cell nearest the
+map corner it can find**. If no ring cell is labelled the plan is empty (`FUN_005421b0`), the executor sets `mover+0x98 = 1` (failure) and
+the unit stays; "No way" (message 0x92) is posted when the end cell is > 1 from (0, 0). No crash, no clamp. The stamp lasts 10 blocks (16 ticks each),
+so the walk is re-ordered by each pass in that window, then the unit returns to its post (branch 5). The engine now passes the raw cell (no clamp).
+
 After the handler, the post step `FUN_00573713` runs for every member of every group (§9).
 
 ## 4. The pool `FUN_00571c4d` and the sight map (CONFIRMED)
@@ -216,7 +233,7 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
 * Opt-in: `Simulation(world, ai=True)`; `engine run` enables it (`--no-ai` disables, F5 / `--debug ai` draws the overlay: sight = the aggro area, the ring at
   the pool radius, the post, the target, a label with mode / order / target uid / radius / stamp). Tests that use monsters as dummies keep the old behaviour.
 * Deviations (all invisible in the 46 maps' normal play, none changes the rules above): an event-raised mode (§6.2) runs its body one tick later than the
-  exe's direct call; a go cell is clamped to [8, size-9] (the exe feeds its planner the raw cell, e.g. cell (0, 0) for a never-hit unit); a target that
+  exe's direct call; (a go cell is passed raw, as the exe does: cell (0, 0) for a never-hit unit, §3); a target that
   disappears ends mode 5 without stopping the unit (INFERRED, the exe's pointer); casters (units with spells) and the effect bits `0x1000` / `0x40000`
   are not modelled; the difficulty tweak of `brain+0x44` is not applied; the target flag `+0x4c & 8` test of `FUN_0056acc8` is not modelled (meaning unknown).
 * Optimisation allowed by "1:1, but faster": the sight flood is memoised per pass per (cell, scan, height field) and written with numpy-free integer
@@ -247,12 +264,11 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
 5. Return: lure a monster 20+ cells away and out of sight; it walks back to its own start cell (anchor), not the squad's centroid.
 6. Run-away after a hit with no target: hit a monster from out of its sight (bow) and note it runs 10 cells away from the shooter for about 10 ticks.
 7. Flee: `Goblin_Pike` at HP <= 10 of 40 with the hero within 10 cells steps away 3 cells every 16 ticks (wimpy); an `Orc_Bow` backs off from anything within 2 cells.
-8. Never-hit unit whose target is unreachable (across water) stamps `+0x16` and walks to cell (0, 0)-ish: does it?
+8. Never-hit unit whose target is unreachable (across water) stamps `+0x16` and walks to the reachable cell nearest the map corner (0, 0) for up to ~10 blocks (CONFIRMED statically, §3): does it look like that?
 9. A melee monster never targets a flyer; a hero on a ridge higher than the monster is noticed later.
 10. Idle monsters turn on the spot about every 3 seconds, and a monster hit from behind turns at once.
 
 ## Open questions
 
 * Is the event list `server+0xbbec` read anywhere (indirect list walkers)? No direct reader found; INFERRED unused.
-* Meaning of the stale stamp `+0x16` when a unit is never hit (`hitcell` = 0) - quirk 3 above.
 * Group orders `0x11`, `0x13` handlers (`FUN_00572ec4`, `FUN_0057311c`) and the sacks/pickup order of computer players.

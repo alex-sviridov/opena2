@@ -217,6 +217,20 @@ def test_a_hit_unit_without_a_target_runs_ten_cells_away_from_its_attacker():
     assert m.ai.target is None and m.mode_go and m.mover.goal == (50, 24)    # damaged, hit just now, no target: it goes there
 
 
+def test_a_never_hit_unit_with_a_fresh_failure_stamp_goes_to_the_raw_cell_zero_without_clamp():
+    """ai.md 3 (CONFIRMED): the ctor leaves +0x9c = 0, so a stamp on a never-hit unit sends it to cell (0, 0); the exe feeds the raw cell to the
+    planner (the static plan takes the nearest reached ring cell), nothing clamps it."""
+    w = world(64)
+    m = unit(w, 1, 30, 30, 2, 1, scan=0)
+    sim = Simulation(w, ai=True)
+    assert m.ai.hit_cell == 0 and m.ai.stamp == 0xFFDC
+    m.ai.stamp = (w.tick >> 4) & 0xFFFF
+    run(sim, 7)
+    assert m.mode_go and m.mover.goal == (0, 0)
+    run(sim, 20)
+    assert m.x < 30 and m.y < 30                                 # walks towards the corner as far as the plan goes
+
+
 def test_the_attacker_cell_is_revealed_to_the_squad_for_twenty_one_passes():
     w = world()
     a = unit(w, 1, 24, 24, 2, 1, scan=0)

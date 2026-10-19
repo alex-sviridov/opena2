@@ -478,10 +478,6 @@ def post_step(world, g, m):
 
 # --- brain-level executors of the AI commands ------------------------------------------------------------------------------
 
-def _clamp_cell(world, cell):
-    return min(max(cell[0], 8), world.width - 9), min(max(cell[1], 8), world.height - 9)
-
-
 def apply(world, cmd):
     """Execute an `ai=True` command: the Brain mode changes of `FUN_0056c8af` (1), `FUN_0056acc8` (5), `FUN_0056afd9` (0xb).  The unit's
     order, anchor, stopped flag and squad are untouched (the exe writes the Brain, not the order)."""
@@ -491,7 +487,7 @@ def apply(world, cmd):
             continue
         m = u.mover
         if isinstance(cmd, MoveUnits):
-            cell = _clamp_cell(world, cmd.cell)                 # DECISION: the exe feeds the raw cell to its planner (unreachable border)
+            cell = cmd.cell                                     # CONFIRMED: the exe feeds the raw cell to its planner (ai.md 3)
             u.mode_go, u.mode_attack, u.mode_look = True, False, False
             if m.goal != cell:
                 m.goal = cell
