@@ -10,7 +10,7 @@ from allods2.graphics import write_png
 
 from engine.view import build_draw_list, build_terrain_items
 
-from .sprites import blend_half, blend_shadow
+from .sprites import blend_alpha, blend_half, blend_shadow
 from .text import draw_text, render_text
 
 PASSABILITY_TINT = (255, 40, 40, 90)
@@ -99,6 +99,8 @@ def draw_frame(surface, caches, terrain_items, items, camera):
                 blend_shadow(surface, it.sx, it.sy, val, it.shadow_level)
             elif it.blend == "half":
                 blend_half(surface, it.sx, it.sy, val)
+            elif it.blend == "alpha":
+                blend_alpha(surface, it.sx, it.sy, val)
             else:
                 blit(val, (it.sx, it.sy))
         elif kind == "bar":

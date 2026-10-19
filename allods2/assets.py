@@ -24,6 +24,7 @@ class AssetCache:
         self._structures_reg = None
         self._object_sets, self._structure_sets = {}, {}
         self._unit_sets, self._unit_types = {}, None
+        self._projectile_sets, self._projectile_recs = {}, None
 
     def tileset(self):
         """The terrain strips and dirt.bmp (`TerrainSet`)."""
@@ -120,6 +121,15 @@ class AssetCache:
                 aset = StructureSet(rec, paths=structure_paths(rec, self.fs), fs=self.fs)
             self._structure_sets[key] = aset
         return self._structure_sets[key]
+
+    def projectile_set(self, pid):
+        """The `ProjectileSet` of projectiles.reg ID `pid`, loaded once; None for an unknown ID (animation.md 4.4)."""
+        if pid not in self._projectile_sets:
+            from .anim.projectiles import load_projectile_records, load_projectile_set
+            if self._projectile_recs is None:
+                self._projectile_recs = load_projectile_records(self.fs)
+            self._projectile_sets[pid] = load_projectile_set(pid, self.fs, self._projectile_recs) if pid in self._projectile_recs else None
+        return self._projectile_sets[pid]
 
     def unit_types(self):
         """units.reg records by ID (`allods2.units`), loaded once."""

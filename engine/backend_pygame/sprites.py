@@ -36,7 +36,8 @@ class SpriteCache:
             from engine.view.drawlist import BACKPACK
             return self.assets.sprite(BACKPACK + ("b" if source.endswith("_b") else "") + ".256")
         aset = (self.assets.object_set(tid) if kind == "object" else
-                self.assets.unit_set(tid) if kind == "unit" else self.assets.structure_set(tid, None))
+                self.assets.unit_set(tid) if kind == "unit" else
+                self.assets.projectile_set(tid) if kind == "projectile" else self.assets.structure_set(tid, None))
         return None if aset is None else aset.sprites(source)
 
     def palette(self, sprite, light_row, remap=None):
@@ -49,6 +50,9 @@ class SpriteCache:
         if kind == "unit":
             aset = self.assets.unit_set(tid)
             pal = np.asarray(aset.palette(_main(source), *(remap or (0, 0))), np.uint8)
+        elif kind == "projectile":          # a file palette (A16, Palette != 0), else projectiles.pal (animation.md 4.4)
+            own = None if sf is None else sf.palette
+            pal = np.asarray(own if own is not None else self.assets.projectile_set(tid).shade_palette, np.uint8)
         else:
             pal = grayscale_palette() if sf is None or sf.palette is None else np.asarray(sf.palette, np.uint8)
         if light_row is None:
@@ -100,6 +104,10 @@ class SpriteCache:
         if item.blend == "half":
             src = (pal[idx].astype(np.uint16) >> 1)
             return np.ascontiguousarray(mask.T), np.ascontiguousarray(src.transpose(1, 0, 2))
+        if item.blend == "alpha":           # `.16a`: src * (a + 1) / 16 + dst * (15 - a) / 16 (Canvas.draw_16a)
+            alpha = dec.alpha[:, ::-1] if item.mirrored else dec.alpha
+            return (np.ascontiguousarray(mask.T), np.ascontiguousarray(pal[idx].astype(np.uint16).transpose(1, 0, 2)),
+                    np.ascontiguousarray(alpha.astype(np.uint16).T))
         h, w = mask.shape
         rgba = np.zeros((h, w, 4), np.uint8)
         rgba[..., :3][mask] = pal[idx[mask]]
@@ -135,6 +143,21 @@ def blend_half(surface, x, y, entry):
     mask_t, src_t = entry
     blend_masked(surface, x, y, mask_t,
                  lambda dst, win, m: src_t[win[0]:win[1], win[2]:win[3]][m] + (dst >> 1))
+
+
+def alpha_mix(src, dst, a):
+    """`.16a` blend of one channel (0x45889b): `min(src * (a + 1) / 16 + dst * (15 - a) / 16, 255)`, both terms truncated."""
+    return np.minimum(((src * (a + 1)) >> 4) + ((dst * (15 - a)) >> 4), 255)
+
+
+def blend_alpha(surface, x, y, entry):
+    """Alpha sprite on the framebuffer: `entry` = (mask_t, src_t (w, h, 3), alpha_t (w, h)) of `SpriteCache.get`."""
+    mask_t, src_t, alpha_t = entry
+
+    def fn(dst, win, m):
+        sl = (slice(win[0], win[1]), slice(win[2], win[3]))
+        return alpha_mix(src_t[sl][m], dst, alpha_t[sl][m][:, None])
+    blend_masked(surface, x, y, mask_t, fn)
 
 
 def blend_shadow(surface, x, y, entry, level):
