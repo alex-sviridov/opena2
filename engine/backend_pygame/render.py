@@ -10,7 +10,7 @@ from allods2.graphics import write_png
 
 from engine.view import build_draw_list, build_terrain_items
 
-from .sprites import blend_alpha, blend_half, blend_shadow
+from .sprites import Frame, blend_half, blend_shadow, frame_alpha, frame_half, frame_shadow  # noqa: F401 (the surface variants are the tests' API)
 from .text import draw_text, render_text
 
 PASSABILITY_TINT = (255, 40, 40, 90)
@@ -78,8 +78,12 @@ def _overlay(surface, caches, it):
 
 
 def draw_frame(surface, caches, terrain_items, items, camera):
-    """Black background, the terrain items in list order, then the draw list's items
-    in list order: sprites blit, smoothing and shadows blend per pixel (numpy)."""
+    """Black background, the terrain items in list order, then the draw list's items in list order: sprites blit,
+    smoothing and shadows blend per pixel (numpy).  Everything is drawn into a `Frame` (a lock-free numpy-writable
+    surface) that is copied to `surface` at the end."""
+    frame = Frame.get(*surface.get_size())
+    target = surface
+    surface = frame.surf
     surface.fill((0, 0, 0))
     cy = camera.iy
     blit = surface.blit
@@ -96,17 +100,18 @@ def draw_frame(surface, caches, terrain_items, items, camera):
             if val is None:
                 continue
             if kind == "shadow":
-                blend_shadow(surface, it.sx, it.sy, val, it.shadow_level)
+                frame_shadow(frame, it.sx, it.sy, val, it.shadow_level)
             elif it.blend == "half":
-                blend_half(surface, it.sx, it.sy, val)
+                frame_half(frame, it.sx, it.sy, val)
             elif it.blend == "alpha":
-                blend_alpha(surface, it.sx, it.sy, val)
+                frame_alpha(frame, it.sx, it.sy, val)
             else:
                 blit(val, (it.sx, it.sy))
         elif kind == "bar":
             draw_bar(surface, it, caches.ball)
         else:
             _overlay(surface, caches, it)
+    target.blit(surface, (0, 0))
 
 
 def surface_rgb(surface):

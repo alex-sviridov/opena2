@@ -64,9 +64,9 @@ class SpriteCache:
         return t[min(light_row, LIGHT_LEVELS - 1)]
 
     def get(self, item):
-        """Cache entry of a "sprite" or "shadow" item: a Surface (opaque), (mask_t, src_t)
-        for blend "half", or (mask_t, dx) for a shadow; None when the frame is missing.
-        mask_t is (w, h) bool (x first, as `pixels3d`)."""
+        """Cache entry of a "sprite" or "shadow" item: a Surface (opaque), a `SparseMask` for blend "half" and for
+        a shadow (the sheared box starts `dx` left of the sprite), (mask_t, src_t, alpha_t) for "alpha" (arrays (w, h),
+        x first, as `pixels3d`); None when the frame is missing."""
         shadow = item.kind == "shadow"
         key = (item.sprite, item.frame, item.mirrored, "shadow" if shadow else item.blend,
                None if shadow else item.light_row, item.shear if shadow else 0,
@@ -99,11 +99,10 @@ class SpriteCache:
             out = np.zeros((h, w + hi - lo), bool)
             for i, o in enumerate(off):
                 out[i, o - lo:o - lo + w] = mask[i]
-            return np.ascontiguousarray(out.T), lo
+            return SparseMask(out, lo)
         pal = self.palette(item.sprite, item.light_row, item.remap)
         if item.blend == "half":
-            src = (pal[idx].astype(np.uint16) >> 1)
-            return np.ascontiguousarray(mask.T), np.ascontiguousarray(src.transpose(1, 0, 2))
+            return SparseMask(mask, 0, pack_rgb(pal[idx] >> 1))
         if item.blend == "alpha":           # `.16a`: src * (a + 1) / 16 + dst * (15 - a) / 16 (Canvas.draw_16a)
             alpha = dec.alpha[:, ::-1] if item.mirrored else dec.alpha
             return (np.ascontiguousarray(mask.T), np.ascontiguousarray(pal[idx].astype(np.uint16).transpose(1, 0, 2)),
@@ -113,36 +112,95 @@ class SpriteCache:
         rgba[..., :3][mask] = pal[idx[mask]]
         rgba[..., 3][mask] = 255
         surf = pygame.image.frombuffer(rgba.tobytes(), (w, h), "RGBA")
-        if pygame.display.get_surface() is not None:
-            surf = surf.convert_alpha()
         return surf
 
 
-def blend_masked(surface, x, y, mask_t, fn):
-    """dst = fn(dst) on the surface pixels covered by mask_t (w, h) placed at (x, y),
-    clipped to the surface.  `fn(covered (n, 3) uint16, (x0, x1, y0, y1) window into mask_t,
-    window mask)` returns the new values."""
-    sw, sh = surface.get_size()
-    w, h = mask_t.shape
-    x0, y0, x1, y1 = max(x, 0), max(y, 0), min(x + w, sw), min(y + h, sh)
-    if x0 >= x1 or y0 >= y1:
+class Frame:
+    """A software framebuffer the numpy blends write without locking: `arr` (h, w) uint32 words whose bytes are R, G, B, X
+    (pygame "RGBX") and `surf`, a surface sharing that memory, so `Surface.blit` and the blends compose in list order."""
+
+    _all = {}
+
+    def __init__(self, w, h):
+        self.w, self.h = w, h
+        self.arr = np.zeros((h, w), np.uint32)
+        self.flat = self.arr.reshape(-1)
+        self.bytes = self.arr.view(np.uint8).reshape(h, w, 4)       # [..., :3] = R, G, B
+        self.surf = pygame.image.frombuffer(self.arr, (w, h), "RGBX")
+
+    @classmethod
+    def get(cls, w, h):
+        f = cls._all.get((w, h))
+        if f is None:
+            if len(cls._all) > 4:
+                cls._all.clear()
+            f = cls._all[(w, h)] = cls(w, h)
+        return f
+
+
+def _word(*b):
+    return int(np.array(b, np.uint8).view(np.uint32)[0])
+
+
+RB, GG, LOW7 = (np.uint32(_word(*b)) for b in ((255, 0, 255, 0), (0, 255, 0, 0), (127, 127, 127, 0)))   # channel fields of a word
+
+
+def pack_rgb(rgb):
+    """(..., 3) uint8 colours -> uint32 words as the Frame stores them."""
+    out = np.zeros(rgb.shape[:-1] + (4,), np.uint8)
+    out[..., :3] = rgb
+    return out.view(np.uint32)[..., 0]
+
+
+class SparseMask:
+    """The covered pixels of a shadow or half-overlay entry: rows `ys`, columns `xs` inside a w x h box that starts `dx`
+    left of the sprite, with their packed source words `vals` (half) or None (shadow).  Most of the box is empty, so the
+    blends gather / scatter only these; the flat framebuffer indices are cached per frame width."""
+
+    __slots__ = ("ys", "xs", "vals", "dx", "w", "h", "fw", "base")
+
+    def __init__(self, mask, dx=0, vals=None):
+        self.ys, self.xs = np.nonzero(mask)
+        self.vals = None if vals is None else vals[self.ys, self.xs]
+        self.dx, (self.h, self.w), self.fw, self.base = dx, mask.shape, -1, None
+
+    def indices(self, frame, x, y):
+        """(flat indices, keep or None) of the covered pixels inside the frame for the sprite at (x, y), or None."""
+        x += self.dx
+        fw, fh, w, h = frame.w, frame.h, self.w, self.h
+        if x >= fw or y >= fh or x + w <= 0 or y + h <= 0:
+            return None
+        if self.fw != fw:
+            self.fw, self.base = fw, self.ys * fw + self.xs
+        if x >= 0 and y >= 0 and x + w <= fw and y + h <= fh:
+            return self.base + (y * fw + x), None
+        X, Y = self.xs + x, self.ys + y
+        keep = (X >= 0) & (X < fw) & (Y >= 0) & (Y < fh)
+        return Y[keep] * fw + X[keep], keep
+
+
+def frame_half(frame, x, y, entry):
+    """50 % smoothing overlay: (src >> 1) + (dst >> 1) per channel; src is already halved (<= 0x7F), so the fields add
+    without carries."""
+    r = entry.indices(frame, x, y)
+    if r is None:
         return
-    win = (x0 - x, x1 - x, y0 - y, y1 - y)
-    m = mask_t[win[0]:win[1], win[2]:win[3]]
-    pix = pygame.surfarray.pixels3d(surface)
-    region = None
-    try:
-        region = pix[x0:x1, y0:y1]
-        region[m] = fn(region[m].astype(np.uint16), win, m).astype(np.uint8)
-    finally:
-        region = pix = None
+    idx, keep = r
+    flat = frame.flat
+    flat[idx] = (entry.vals if keep is None else entry.vals[keep]) + ((flat.take(idx) >> 1) & LOW7)
 
 
-def blend_half(surface, x, y, entry):
-    """50 % smoothing overlay: (src >> 1) + (dst >> 1) per channel."""
-    mask_t, src_t = entry
-    blend_masked(surface, x, y, mask_t,
-                 lambda dst, win, m: src_t[win[0]:win[1], win[2]:win[3]][m] + (dst >> 1))
+def frame_shadow(frame, x, y, entry, level):
+    """Shadow: dst * (16 - level) / 16 per channel on the covered pixels.  Red and blue scale in one multiply, green in
+    another (fields 8 bits apart, products < 2**12, so no carries across fields)."""
+    r = entry.indices(frame, x, y)
+    if r is None:
+        return
+    idx = r[0]
+    flat = frame.flat
+    v = flat.take(idx)
+    k = np.uint32(16 - level)
+    flat[idx] = (((v & RB) * k >> 4) & RB) | (((v & GG) * k >> 4) & GG)
 
 
 def alpha_mix(src, dst, a):
@@ -150,17 +208,28 @@ def alpha_mix(src, dst, a):
     return np.minimum(((src * (a + 1)) >> 4) + ((dst * (15 - a)) >> 4), 255)
 
 
-def blend_alpha(surface, x, y, entry):
-    """Alpha sprite on the framebuffer: `entry` = (mask_t, src_t (w, h, 3), alpha_t (w, h)) of `SpriteCache.get`."""
+def frame_alpha(frame, x, y, entry):
+    """Alpha sprite: `entry` = (mask_t, src_t (w, h, 3), alpha_t (w, h)) of `SpriteCache.get` (x first)."""
     mask_t, src_t, alpha_t = entry
+    w, h = mask_t.shape
+    x0, y0, x1, y1 = max(x, 0), max(y, 0), min(x + w, frame.w), min(y + h, frame.h)
+    if x0 >= x1 or y0 >= y1:
+        return
+    sl = (slice(x0 - x, x1 - x), slice(y0 - y, y1 - y))
+    region = frame.bytes[y0:y1, x0:x1, :3]
+    new = alpha_mix(src_t[sl].transpose(1, 0, 2), region.astype(np.uint16), alpha_t[sl].T[..., None])
+    np.copyto(region, new, where=mask_t[sl].T[..., None], casting="unsafe")
 
-    def fn(dst, win, m):
-        sl = (slice(win[0], win[1]), slice(win[2], win[3]))
-        return alpha_mix(src_t[sl][m], dst, alpha_t[sl][m][:, None])
-    blend_masked(surface, x, y, mask_t, fn)
+
+def _on_surface(fn):
+    """The same blend on any surface: copy it into a Frame, blend, copy back (tests, one-off use)."""
+    def blend(surface, *args):
+        f = Frame.get(*surface.get_size())
+        f.surf.blit(surface, (0, 0))
+        fn(f, *args)
+        surface.blit(f.surf, (0, 0))
+    blend.__doc__ = fn.__doc__
+    return blend
 
 
-def blend_shadow(surface, x, y, entry, level):
-    """Shadow: dst * (16 - level) / 16 per channel on the covered pixels."""
-    mask_t, lo = entry
-    blend_masked(surface, x + lo, y, mask_t, lambda dst, win, m: (dst * (16 - level)) >> 4)
+blend_half, blend_shadow, blend_alpha = _on_surface(frame_half), _on_surface(frame_shadow), _on_surface(frame_alpha)

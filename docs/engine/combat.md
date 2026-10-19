@@ -693,8 +693,9 @@ casting Fire Arrow and the staff's Ice Missile, melee from the others, AI on; th
 hash when the same script is driven at 30 and at 60 fps with the draw list built every frame, keeps `World.check_consistency` clean and has no unit hanging mid-step over 1500 ticks);
 `tests/test_engine_spell_draw.py` (15 missiles with trails add nothing measurable to the draw list, the carrier pass costs far below a millisecond). The H integration tests (`test_engine_orders_maps.py`)
 pass unchanged with the carrier system in the default list. Benchmark `tools/bench_fight.py` (88 units on screen, 5 casters, up to 5 missiles in flight, AI on): the simulation takes 0.9 ms per tick on average
-(p95 3.8 ms, max 40 ms: AI plans); a frame (draw list + terrain + sprites, caches warm) takes 66 ms at 640x480 and 120 ms at 1024x768 **with or without** the missiles (the difference is below the noise:
-11 more draw items): the cost is the existing renderer (numpy blends of every smoothing overlay and shadow), not phase I; it must be optimised before the prototype is playable at 30 fps (J).
+(p95 3.8 ms, max 40 ms: AI plans); a frame (draw list + terrain + sprites, mean over the run including the frames that still fill the caches) took 66 ms at 640x480 and 120 ms at 1024x768 **with or without** the missiles (11 more draw items: below the noise): the cost was the renderer, not phase I.
+After the renderer speed-up (below) it takes 31.6 ms at 640x480 (about 10 ms draw list, 16 ms draw, rest cache misses) and 46 ms at 1024x768, pixel-identical (goldens, E5 parity unchanged). What changed in `backend_pygame`: `draw_frame` draws into a `Frame` (an RGBX numpy array shared with a surface, no per-item `pixels3d` locks) that is blitted to the target once; shadow and smoothing entries are `SparseMask`es (covered pixels only; a shadow box is ~97 % empty) blended by packed-word arithmetic (three channels per multiply, `take` / scatter); sprite and terrain surfaces are no longer `convert_alpha`ed (same byte layout as the frame, so blits skip format conversion). Remaining: `build_draw_list` ~10 ms (3500 map objects per frame, no per-object cache), 1024x768 above 30 fps.
+
 
 ## 15. Handoff to prototype completion (J)
 

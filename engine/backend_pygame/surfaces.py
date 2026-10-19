@@ -28,8 +28,6 @@ class SurfaceCache:
         if comp is not None:
             arr, y0 = comp
             surf = pygame.image.frombuffer(arr.tobytes(), (arr.shape[1], arr.shape[0]), "RGBA")
-            if pygame.display.get_surface() is not None:
-                surf = surf.convert_alpha()
             val = (surf, y0)
         if self.capacity:
             d[key] = val

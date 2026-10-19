@@ -246,6 +246,7 @@ Open: see [open-questions](../open-questions.md#engine).
   "centre on unit" call is not wired (`(unit.x >> 8) - W/2`, no height term, CONFIRMED earlier).
 - Day/night light in the engine (the exe recomputes the light map with the
   clock; G1 uses the fixed default).
+- Renderer: 31.6 ms (640x480) / 46 ms (1024x768) on the map 73 fight (combat.md 14.1); `build_draw_list` (~10 ms, per-object work for every tree in the window) is the next target for 30 fps at 1024x768.
 - Scroll hitch of about 27 ms when new cells enter (pre-warm water phases or add a
   flat-cell fast path to `composite`).
 - Trigger references to world ids: section 11 is keyed by structure uid (`0x6000 + uid`, CONFIRMED,
