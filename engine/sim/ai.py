@@ -28,6 +28,8 @@ FLEE_CELLS = 3                      # FUN_00558b92 distance of the wimpy / withd
 WIMPY_RADIUS, WITHDRAW_RADIUS = 10, 2
 MARK_TURNS = 20                     # the attacker's cell stays revealed while mark_age <= 20
 NO_TARGET = 0xFFFFFF
+SLEEP_STATE = 0x1B                  # unit state of a member of a sleeping squad (FUN_0056dca2, docs/engine/ai.md 15)
+WAKE_BLOCKS = 2                     # a human unit wakes the squads with a member within +-2 blocks of 8 cells (FUN_0055aca2 / 0x55b406)
 # FUN_005711ea preference table (server+0xa54, built at 0x56827a..0x568310), index attacker class * 4 + candidate class
 PREFERENCE = (2, 1, 2, 4, 4, 2, 1, 0, 2, 1, 4, 0, 2, 1, 2, 4)
 
@@ -291,6 +293,7 @@ def enable(world):
         g.members.append(u.id)
     for g in world.ai_groups.values():
         init_group(world, g)
+    wake(world)                                         # 0x4f212b: the awake map is built at map load
 
 
 def _stand_squads(world):
@@ -334,16 +337,45 @@ def init_group(world, g):
 
 # --- the pass (FUN_0056fe4d -> FUN_00570087 -> FUN_005728fa) ---------------------------------------------------------------
 
+def wake(world):
+    """`FUN_0055b5f1` (map load `0x4f212b` and every group pass `0x56fe9c`): which computer squads are awake (GroupAI record `+0x45`).  A
+    squad is awake when one of its members stands within two 8-cell blocks (a 5 x 5 block neighbourhood, 16..23 cells) of a unit of a
+    human player (`FUN_0055aca2` marks, `FUN_0055b406` reads), or is wounded (`hp < max hp`, `FUN_0055aca2` computer branch), or has
+    `keep_awake` (record `+0x48`).  Everything else sleeps until the next pass (docs/engine/ai.md 15)."""
+    if not world.ai_sleep:
+        for g in world.ai_groups.values():
+            g.awake = True
+        return
+    marks = set()
+    for u in world.units.values():
+        pl = world.players.get(u.owner)
+        if u.hp > 0 and pl is not None and pl.human:
+            bx, by = u.x >> 3, u.y >> 3
+            marks.update((bx + i, by + j) for i in range(-WAKE_BLOCKS, WAKE_BLOCKS + 1) for j in range(-WAKE_BLOCKS, WAKE_BLOCKS + 1))
+    for g in world.ai_groups.values():
+        g.awake = g.keep_awake or any(
+            (u.x >> 3, u.y >> 3) in marks or u.hp < u.hp_max for u in (world.units.get(i) for i in g.members) if u is not None)
+
+
+def asleep(world, u):
+    """`FUN_0056dca2` pre-check (a): `server+0xbbe8 == 0` and the squad's record `+0x45 == 0` and Brain order 0 (no swing, no step in progress)."""
+    g = world.ai_groups.get((u.owner, u.squad)) if world.ai_sleep else None
+    return g is not None and not g.awake and u.brain_order == 0 and not u.mover.step_ticks
+
+
 def ai_system(world, commands):
     """Run the squads' handler at `tick & 15 == 6`, before the command drain; players in id order, squads in creation order."""
     if not world.ai_on or (world.tick & 15) != 6:
         return
+    wake(world)
     block = (world.tick + 1) >> 4                       # server+0, the 16-tick block counter (Simulation.block)
     for owner in sorted({g.key[0] for g in world.ai_groups.values()}):
         for g in [g for g in world.ai_groups.values() if g.key[0] == owner]:
             g.members = [i for i in g.members if i in world.units]
             if not g.members:
                 g.order = 0xFF
+                continue
+            if not g.awake:                             # FUN_00570087: a sleeping squad's pass is skipped (handler and post step)
                 continue
             handler(world, g, block)
             for i in list(g.members):

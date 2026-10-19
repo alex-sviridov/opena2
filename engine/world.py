@@ -127,10 +127,13 @@ class AiGroup:
     base: int = 0                   # +0x38
     seen: int = 0                   # +0x30 set after the first pass
     passes: int = 0                 # +0x34
+    awake: bool = True              # GroupAI record +0x45, recomputed at every group pass (ai.wake, docs/engine/ai.md 15)
+    keep_awake: bool = False        # GroupAI record +0x48: never sleeps (set for squads a Scenario instant refers to; the engine has no scripts)
 
     def dump(self):
-        return [list(self.key), list(self.members), self.order, self.centre, self.spread, self.reach, self.radius, self.base,
-                self.seen, self.passes]
+        d = [list(self.key), list(self.members), self.order, self.centre, self.spread, self.reach, self.radius, self.base,
+             self.seen, self.passes]
+        return d if self.awake else d + [0]             # a sleeping squad changes the hash; an awake one keeps the old layout
 
 
 @dataclass(frozen=True)
@@ -408,6 +411,7 @@ class World:
         self.fight_log = []         # Damage / Died entries (sim/combat.py), drained by the UI, not part of the dump
         self.item_table = None      # allods2.formats.itemdefs.ItemTable (from_map); combat stats read it
         self._next_group = 1
+        self.ai_sleep = True        # server+0xbbe8 == 0: squads far from every human unit sleep (sim/ai.py `wake`, ai.md 15)
         self.ai_on = False          # sim/ai.py `enable`: the squads are in `ai_groups` and the state is part of dump()
         self.ai_groups = {}         # (owner, squad) -> AiGroup, in creation order
         self.ai_emitted = []        # AI commands since the last drain by `Simulation.step` (the log), not part of dump()

@@ -555,6 +555,12 @@ def _tick_unit(world, u):
             death.remove_dead(world, u)
         return
     m = u.mover
+    if world.ai_on:
+        if ai.asleep(world, u):                         # 0x56dca2 pre-check (a): a sleeping squad's idle members do nothing (state 0x1b)
+            u.state = ai.SLEEP_STATE
+            return
+        if u.state == ai.SLEEP_STATE:                   # 0x56dd0b: the Brain tick clears the state unless it is 2 or 0xf
+            u.state = IDLE_STATE
     old_pos, old_face = (u.x, u.y, u.sub_x, u.sub_y), m.target_facing
     _tick_inner(world, u)
     if u.state == MOVE_STATE and m.target_facing != old_face and (u.x, u.y, u.sub_x, u.sub_y) == old_pos:

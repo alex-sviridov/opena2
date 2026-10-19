@@ -22,6 +22,7 @@ def world(n=48, seed=1, heights=None):
     w.players[1] = Player(1, 0, human=True, relations=(18,) + (1,) * 15)
     w.players[2] = Player(2, 1, relations=(1, 18) + (0,) * 14)
     w.players[3] = Player(3, 2, relations=(1, 0, 18) + (0,) * 13)
+    w.ai_sleep = False                  # the sleep gate (A§15) is tested on its own; the other tests keep the squads awake
     return w
 
 
@@ -608,3 +609,69 @@ def test_a_hidden_hero_is_not_a_pool_target_until_a_member_touches_it():
     h.hidden = False
     run(sim, 16)
     assert m.ai.target == h.id
+
+
+# --- sleeping squads (A§15: FUN_0055b5f1 awake map, FUN_00570087 / FUN_0056dca2 gates) ----------------------------------------
+
+def _sleep_world(mx, my=8, hx=8, hy=8):
+    w = world(n=64)
+    w.ai_sleep = True
+    hero(w, 1, hx, hy)
+    m = unit(w, 2, mx, my, 2, squad=1)
+    return w, m
+
+
+def test_a_squad_wakes_only_within_two_blocks_of_eight_cells_of_a_human_unit():
+    for mx, awake in ((8, True), (31, True), (32, False), (47, False)):         # hero block 1 -> blocks -1..3 -> cells 0..31
+        w, _ = _sleep_world(mx)
+        ai.enable(w)
+        assert w.ai_groups[(2, 1)].awake is awake, mx
+    w, _ = _sleep_world(8, my=40)                                               # the same test on the other axis (block 5 vs 1)
+    ai.enable(w)
+    assert not w.ai_groups[(2, 1)].awake
+
+
+def test_a_wounded_member_or_the_keep_awake_flag_keeps_a_far_squad_awake():
+    w, m = _sleep_world(50)
+    ai.enable(w)
+    g = w.ai_groups[(2, 1)]
+    assert not g.awake
+    m.hp -= 1
+    ai.wake(w)
+    assert g.awake
+    m.hp = m.hp_max
+    ai.wake(w)
+    assert not g.awake
+    g.keep_awake = True
+    ai.wake(w)
+    assert g.awake
+
+
+def test_without_the_sleep_switch_every_squad_is_awake():
+    w, _ = _sleep_world(50)
+    w.ai_sleep = False
+    ai.enable(w)
+    assert w.ai_groups[(2, 1)].awake
+
+
+def test_a_sleeping_squad_does_not_think_or_look_around_and_wakes_when_the_hero_comes():
+    w, m = _sleep_world(50)
+    sim = Simulation(w, ai=True)
+    run(sim, 200)
+    assert m.state == ai.SLEEP_STATE and not m.mode_look and w.ai_groups[(2, 1)].seen == 0
+    h = w.units[UNIT_ID_BASE + 1]
+    h.x = 44                                                    # next to it (teleport: the hero's walk is not under test)
+    run(sim, 16)
+    g = w.ai_groups[(2, 1)]
+    assert g.awake and g.seen == 1 and m.state != ai.SLEEP_STATE
+
+
+def test_a_sleeping_member_with_a_step_in_progress_finishes_the_step():
+    w, m = _sleep_world(50)
+    sim = Simulation(w, ai=True)
+    m.mover.step_ticks = 3
+    assert not ai.asleep(w, m)
+    m.mover.step_ticks = 0
+    assert ai.asleep(w, m)
+    m.brain_order = 1                                           # a swing in progress is Brain order 1
+    assert not ai.asleep(w, m)
