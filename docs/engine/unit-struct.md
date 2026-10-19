@@ -323,15 +323,15 @@ Order issuers (ECX = server order object; every one first calls `FUN_0056dbfb` =
 | 2 | go and pick up item/sack at cell | 56da98; msg 0x21 | dest brain+0xa, mover+0x90=0, mode 0 | `56c8da` (go, mode 12 then state 2) |
 | 3 | attack target | 56d1be (self target -> stop `56dba1`); msg 0x19 | brain+0xc=target, brain+0x14=range, mode 0 | `56acc8`: special spell roll (3 slots), else mode 5; stops (`56dbc6`) when target state==0x10 |
 | 4 | AI-internal move to cell | 56d393 only caller 0x56f75a | dest, mode 0 | `569638` |
-| 8 | follow leader | 56d5b9; msg 0x1b | brain+0x10=leader, +0x70=dist (default 3), mode 0 | `5696e8`; stops when leader state==0x10 |
-| 0xa | patrol along waypoint list | 56d6b7 (add), 56d7b5 (rotate), 56d850 (AI); msg 0x1d | anchor=my cell, waypoints list +0xb4, brain+2 | `569b62`; flag handling 2.3 |
+| 8 | follow leader | 56d5b9; msg 0x1b | brain+0x10=leader, +0x70=dist (default 3), mode 0 | `5696e8` (engine `follow.exec_defend`, [ai §14.2](ai.md)); stops when leader state==0x10 |
+| 0xa | patrol along waypoint list | 56d6b7 (add), 56d7b5 (rotate), 56d850 (AI); msg 0x1d | anchor=my cell, waypoints list +0xb4, brain+2 | `569b62` (engine `follow.exec_patrol`); flag handling 2.3 |
 | 0xb | stand (at next cell if moving) | 56d4ba; msg 0x17 | anchor = mover+6 if not centred else my cell, mode 0 | `569cc9` -> `56a5fc` |
 | 0xc | stand / guard here | 56d52b (also what Stop = `56dba1` issues); msg 0x18 | anchor = my cell, mode 0 | `56a1fb`: scan enemies in range (range+1), nearest by distance then cost -> attack (`56c840`) else idle (`56afd9`) |
 | 0xd | cast at object | 56d3e6; msg 0x1e (5702be), 0x25 | brain+0x28 obj, +0x30 spell, +0x14 range | `56c72b` |
 | 0xe | cast at cell | 56d446; msg 0x1f (57033d), 0x26 | brain+0x3c cell, +0x30 spell | `56969c` |
 | 0xf | use structure/sack | 56d22b (obj centre cell, size 1..4 -> offsets +0/+0x101/+0x202); msg 0x24 | brain+0x68 obj, dest, +0x14=1..3 | `56af23` (state 0xf, tick case 0xf) |
 | 0x10 | removed/dead (set by 510ad6 on removal) | - | - | - |
-| 0x11 | follow variant | 56d638 | like 8 | `569857` |
+| 0x11 | follow variant | 56d638 | like 8 | `569857` (engine `follow.exec_follow`) |
 | 0x16 | (U) mode-0 order | 56da4f; msg 0x14 | none | `56c9bc` |
 | 0x17 | stand variant (anchor = my cell) | 56d572; msg 0x12 | anchor | default branch -> `56afac(c,0)` = `56a1fb` |
 | 0x18 / 0x19 | (U) set only (56db41, 56db71) | - | - | `56f492` / `56f71a`; 0x18 also special-cased at 2.3 |

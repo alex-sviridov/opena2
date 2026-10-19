@@ -6,6 +6,7 @@ Spec: docs/engine/combat.md 12.5 (`FUN_0050fc5a`, vtable slot `+0x14` of the cre
 
 from engine.world import DEAD
 
+from . import spells
 from .death import decay_corpses
 
 JOB_PHASE = 12                  # tick & 15 at which the job runs
@@ -56,3 +57,4 @@ def vitals_system(world, commands):
     for u in list(world.units.values()):
         regen(world, u, block)
     decay_corpses(world)
+    spells.minion_job(world)                # the rest of FUN_0052bbb7: the summon cap (docs/data/spells.md 9b)

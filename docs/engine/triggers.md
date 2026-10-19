@@ -62,10 +62,10 @@ the party is placed at map start, not in the map file, §9).
 | +0x74 | checks: file `+0x318` (default 1); not read by any trigger routine (bounded search `0x573000`-`0x57c600`) |
 | +0x78 | checks: number of trigger pairs naming it (written by the trigger pass of the compiler); no reader found |
 
-Side effect (CONFIRMED `0x5632b0`-`0x563157`, `0x5639a5`-`0x563a3b`): the squad of the first resolved group
-argument, else of the second; and the squad (`creature+0x70`) of the first resolved unit, else of the second,
-get GroupAI record `+0x48 := 1` (**kept awake**, [ai §15.1](ai.md#151-the-awake-map-confirmed)), for every
-instant and for every check **except check type 1**.
+Side effect (CONFIRMED `0x5632b0`-`0x563157`, `0x5639a5`-`0x563a3b`, re-read in `0x562f9e`-`0x5632f4`): after **each group argument** the squad of the first resolved group (`+0x60`), else of the second (`+0x68`), and after **each unit argument**
+the squad (`creature+0x70`) of the second unit when the shared slot `+0x68` holds one, else of the first (`+0x5c`), get GroupAI record `+0x48 := 1` (**kept awake**, [ai §15.1](ai.md#151-the-awake-map-confirmed)), for every
+instant and for every check **except check type 1**. Net effect: **every unit argument flags its squad** (the first when it is processed, the second as the slot holder), but of two group arguments **only the first** is flagged (the second is
+looked at only when the first did not resolve, and the compile has failed then).
 
 ### 2.3 Variable references (CONFIRMED, unused)
 
@@ -180,10 +180,12 @@ when a unit of server id `< 0x15` reaches death stage 2 (`0x41050f`, [combat §1
 | 3 | Stand Ground | `570b8b(g)` | 3 |
 | 4 | Move | `5703c0(g, n1, n2)` | 4 |
 | 5 | Swarm 2 | `57063e(g, n1, n2)` | 5 |
-| 10 | Attack | `570946(g, u)` | 0: members whose score `FUN_005711ea` is not `0xffffff` attack `u` (`FUN_0056d1be`), the others are stopped |
-| 11 | Defend | `570c84(g, u, n1)` | 0: members follow `u` at range `n1` (`FUN_0056d5b9`, unit order 8) |
-| 14 | Patrol | `570d26(g, n1, n2)` | 0: members `FUN_0056d6b7(m, n1, n2)` |
-| 15 | Follow | `570cd5(g, u, n1)` | 0: members `FUN_0056d638(m, u, n1)` |
+| 10 | Attack | `570946(g, u)` | 0: members whose score `FUN_005711ea` is not `0xffffff` attack `u` (`FUN_0056d1be`, unit order 3), the others are stopped |
+| 11 | Defend | `570c84(g, u, n1)` | 0: members `FUN_0056d5b9(m, u, n1)`, unit order 8 (follow `u` within `n1`, attack what is near `u`) |
+| 14 | Patrol | `570d26(g, n1, n2)` | 0: members `FUN_0056d6b7(m, n1, n2)`, unit order `0xa` (walk between the own cell and `(n1, n2)`) |
+| 15 | Follow | `570cd5(g, u, n1)` | 0: members `FUN_0056d638(m, u, n1)`, unit order `0x11` (follow `u` within `n1`) |
+
+The member orders, their executors and the engine are in [ai §14.2](ai.md#142-the-unit-orders-of-the-scripted-sub-commands-10-11-14-15-confirmed).
 | 17 | Roam | `5708ff(g)` | `0x11` wander |
 | 18 | Dwell | `570aba(g, n1)` | `0x12`, radius `n1` |
 
@@ -249,14 +251,12 @@ decoded.
   still in the command group it had at map start (a player command or an owner change moves it out) and of the
   same owner; phased-out members still count), `Player`, the structure `MapObject`. `Script.values` / `fired`
   are the 1000 slots, `Script.errors` the compiler's messages, `Script.trace` the fired triggers and run instants.
-* **Implemented** checks: 1-21 (11 and 13 do nothing), 23, 24 (`Script.scenario_vars`, empty at map start), 26 for bit 12
-  (`Unit.hidden`), 27 and the constants; the item checks read `Unit.carried` (the section 8 pack: the engine's
-  only inventory, INFERRED equal to the exe's until pickup and give exist). Instants: 1-6 (group sub-commands
-  1-5, 17, 18 through `ai.set_group_order`), 8, 9, 10, 16-19, 22, 23 (`Script.gold`), 26, 32, 33, 34 for
-  parameter 6, 35, 36, 39; unknown kinds log "Bad instant"; drop locations go to `Script.drops`.
-* **Not implemented** (counted in `Script.unsupported`; `enable(..., strict=True)` raises `NotImplementedError`):
-  checks 22, 25 and 26 for other bits; instants 7, 11-15, 20, 21, 24, 25, 27-31, 34 for parameters 15 / 16, 38;
-  group sub-commands 10, 11, 14, 15; variable references; units by name (`>= 11001`).
+* **Implemented** checks: 1-27 (11 and 13 do nothing; 22 teleports like instant 27; 25 and the effect bits of 26 other than 12 answer 0 and are counted in `Script.unbuilt`, the engine has no cell or unit effects) and the constants; the item checks read `Unit.carried` (the section 8 pack: the engine's
+  only inventory, INFERRED equal to the exe's until pickup and give exist). Instants: **all kinds of the exe** except variable references (`Script.unsupported`, T§2.3: never written) and unit names (`>= 11001`): 1-6 (group sub-commands 1-5, 10, 11, 14, 15, 17, 18 through `ai.set_group_order`, `orders.attack_group` and `follow.*`),
+  7 (the player's formation byte, `Player.formation`), 8-10, 11-13 and 28 and 38 (items: `take_item` / append on `Unit.carried`), 14 / 15 / 31 (nothing to change), 16-19, 20 (drop all: a pile on the unit's cell), 22, 23 (`Script.gold`), 26,
+  27 (`teleport`: `FUN_0055a96c`), 32-36 (34 for the parameters 6, 15 defence, 16 absorption), 39; unknown kinds log "Bad instant"; drop locations go to `Script.drops`.
+  **Documented no-ops** (`Script.unbuilt`, to revisit with the effect system): 21 and 24 (a scripted cast from a hidden caster object, `FUN_004f06ac`: a 0x208-byte creature at the cell with a one-spell book, Mind 30, the power in the sphere skill, windup / recovery 1, state `0xe` / `0xd`; the cast is counted in `World.unbuilt_casts`), 25 (a cell record: trap), 29 and 30
+  (durations of the effects of a spell on a tile / unit: there are none to change), check 25 / 26 (above).
 * **Phase out / in**: the unit leaves `world.units`, the spatial index, its command group / squad record and the
   selections into `Script.phased` and stays a `TriggerGroup` member; phase-in draws the `FUN_00510089` tries
   from `world.rng` (radius 0 draws nothing), puts the unit at the cell centre with no step in progress, appends
@@ -348,7 +348,8 @@ campaign maps do not need it: scripts that name a hero not in the party change i
 
 ## Open questions
 
-* `FUN_005563ca` / `FUN_0055c5a0` (the free-cell test of `FUN_00510089`).
+* `FUN_005563ca` / `FUN_0055c5a0` (the free-cell test of `FUN_00510089` and of the teleport `FUN_0055a928`, which calls it twice with the flag 0 and 1).
+* The item rules of `FUN_00529ae2` (add: stacking, weight / capacity limits) for instants 11, 12, 28; the hidden caster of instants 21 / 24 (`FUN_004f06ac` appends it to the list at `server+0x2c`; whether it ticks like a creature); the reader of the cell record of instant 25.
 * Where single player posts the ready message (type 4, `FUN_0041c50d` <- UI window `FUN_0048c8a3`) relative to the first tick; the "already on
   the map" test `FUN_0055641c` / `FUN_00551edb` of §9.2; the second loop of `FUN_00562518` for units by name (§9.5).
 * The window message `0x41d` and the mission-complete dialog's buttons (`0x486ddb`); Scenario variable `0x300`.

@@ -16,6 +16,7 @@ from allods2.formats import scenario as S
 from engine.world import DEAD, OrderGroup
 
 from . import ai
+from .combat import combat_stats
 from .pathfinding import chebyshev
 
 SLOTS = 1000                        # S+0xc784 values (4000 bytes) and S+0xe6c4 fired flags (1000 bytes), FUN_0057468d
@@ -125,6 +126,7 @@ class Script:
     phased: dict = field(default_factory=dict)          # unit id -> Unit phased out (instants 16, 32)
     errors: list = field(default_factory=list)          # compile messages ("Can't resolve unit 5", ...)
     unsupported: Counter = field(default_factory=Counter)   # ("check" | "instant" | "group", kind) not implemented
+    unbuilt: Counter = field(default_factory=Counter)       # ("instant" | "check", kind) run as a documented no-op: the effect system is missing
     trace: list = field(default_factory=list)           # (tick, "trigger" | "instant", index): debug, not dumped
     strict: bool = False                    # raise NotImplementedError instead of counting
 
@@ -135,7 +137,8 @@ class Script:
                 **({"gold": sorted(self.gold.items())} if self.gold else {}),
                 **({"vars": sorted(self.scenario_vars.items())} if self.scenario_vars else {}),
                 **({"phased": sorted(self.phased)} if self.phased else {}),
-                **({"unsupported": sorted("%s:%d" % k for k in self.unsupported)} if self.unsupported else {})}
+                **({"unsupported": sorted("%s:%d" % k for k in self.unsupported)} if self.unsupported else {}),
+                **({"unbuilt": sorted("%s:%d" % k for k in self.unbuilt)} if self.unbuilt else {})}
 
 
 # --- compilation (T§2) ----------------------------------------------------------------------------------------------------------
@@ -229,16 +232,18 @@ def _compile(rec, index, res, check):
         else:
             first[slot] = True
             setattr(c, slot, obj)
-    # keep-awake side effect (T§2.2): the first resolved group, else the second; the squad of the first unit, else the second
+    # keep-awake side effect (T§2.2, CONFIRMED 0x5632b0-0x563157): after each group argument the squad of the first resolved group (else of the second)
+    # is flagged; after each unit argument the squad of the second unit when there is one (the shared slot +0x68), else of the first: so every
+    # unit argument flags its squad, but of two group arguments only the first one is flagged
     if not (check and rec.type == 1):
         g = c.group if c.group is not None else (c.second if isinstance(c.second, TriggerGroup) else None)
         if g is not None and g.ai_group is not None:
             g.ai_group.keep_awake = True
-        u = c.unit if c.unit is not None else (c.second if c.second is not None and hasattr(c.second, "squad") else None)
-        if u is not None:
-            ag = res.world.ai_groups.get((u.owner, u.squad))
-            if ag is not None and u.id in ag.members:
-                ag.keep_awake = True
+        for u in (c.unit, c.second):
+            if u is not None and hasattr(u, "squad"):
+                ag = res.world.ai_groups.get((u.owner, u.squad))
+                if ag is not None and u.id in ag.members:
+                    ag.keep_awake = True
     return c, ok
 
 
@@ -387,8 +392,18 @@ def eval_check(world, script, c):
         vals[c.index] = script.scenario_vars.get(n[0], 0)
     elif kind == 24:
         vals[c.index] = script.scenario_vars.get(n[0] + SUBOBJECTIVE_BASE, 0)
-    elif kind == 26 and n[0] == 12:
-        vals[c.index] = int(u.hidden)                   # +0x144 bit 12: Invisibility (the only effect bit the engine has)
+    elif kind == 22:                                    # FUN_005776fd: the unit on (n0, n1) is teleported to (n2, n3): 1 if there is one
+        who = sorted((world.units[i] for i in world.units_at(n[0] & 0xFF, n[1] & 0xFF)), key=lambda m: m.seq)
+        if who:
+            teleport(world, who[0], n[2] & 0xFF, n[3] & 0xFF)
+        vals[c.index] = int(bool(who))
+    elif kind == 25:                                    # FUN_005777d3: an area effect in a layer of the cell; the engine has no cell effects
+        script.unbuilt[("check", 25)] += 1
+        vals[c.index] = 0
+    elif kind == 26:                                    # FUN_00577857: +0x144 bit n0 (effect kind); only Invisibility (12) can be set so far
+        if n[0] != 12:
+            script.unbuilt[("check", 26)] += 1
+        vals[c.index] = int(u.hidden) if n[0] == 12 else 0
     elif kind == 27:
         vals[c.index] = int(u.x == (n[1] & 0xFF) and u.y == (n[2] & 0xFF) and (u.sub_x, u.sub_y) == (128, 128))
     else:
@@ -400,16 +415,30 @@ def _set_var(script, i, v):
         script.values[i] = _i32(v)
 
 
-def _set_group_order(world, script, g, sub, n):
+def _set_group_order(world, script, g, sub, n, u=None):
+    from . import follow, orders as ord_
     orders = {1: (ai.G_GUARD, n[1]), 2: (ai.G_HOLD, (n[1] & 0xFF, n[2] & 0xFF)), 3: (ai.G_STAND, None),
               4: (ai.G_MOVE, (n[1] & 0xFF, n[2] & 0xFF)), 5: (ai.G_SWARM, (n[1] & 0xFF, n[2] & 0xFF)),
               17: (ai.G_WANDER, None), 18: (ai.G_COMPUTER, n[1] & 0xFF)}
-    if sub not in orders:
+    if sub not in orders and sub not in (10, 11, 14, 15):
         _unsupported(script, "group", sub)
         return
     target = g.target()
     if target is None or not [i for i in target.members if i in world.units]:
         return                                          # an empty group: every setter only loops over the members
+    if sub in (10, 11, 14, 15):                         # the unit orders (ai.md 14.2): group order 0, the members run the executors
+        target.members = [i for i in target.members if i in world.units]
+        if sub == 14:
+            follow.patrol_group(world, target, n[1], n[2])
+        elif u is None:
+            return
+        elif sub == 10:
+            ord_.attack_group(world, target, u)         # FUN_00570946
+        elif sub == 11:
+            follow.defend_group(world, target, u, n[1])
+        else:
+            follow.follow_group(world, target, u, n[1])
+        return
     order, arg = orders[sub]
     ai.set_group_order(world, target, order, arg)
 
@@ -512,6 +541,38 @@ def phase_in(world, script, u, cell=None, radius=None):
     return True
 
 
+def take_item(u, code):
+    """`FUN_00529f3f(inventory, code)`: the first item whose code (low 16 bits) matches leaves the inventory (a stack gives one piece); True if found.
+    The engine's inventory is the section 8 pack (`Unit.carried`)."""
+    for i, c in enumerate(u.carried):
+        if (c & 0xFFFF) == code:
+            u.carried = tuple(u.carried[:i]) + tuple(u.carried[i + 1:])
+            return True
+    return False
+
+
+def teleport(world, u, x, y):
+    """`FUN_0055a96c(u, x, y)`: when the cell passes the free test (`FUN_0055a928`: `FUN_0055c5a0` twice, here `_free`) the unit leaves its cell (stamps
+    and occupant slots, `FUN_00553891`), takes the new one (centre of the cell, INFERRED), registers again (`FUN_0055020a`) and stands (`FUN_0056dba1`);
+    a computer-owned unit re-anchors there (`FUN_0056d4ba`).  A unit off the map (phased out, dead) or a blocked cell: nothing."""
+    from . import movement as mv
+    if u.id not in world.units or not _free(world, u, x, y):
+        return False
+    world._index_del(world._ucells, u)
+    world.release(u)
+    m = u.mover
+    m.step_target = m.step_from = None
+    m.steps = m.step_ticks = 0
+    u.x, u.y, u.sub_x, u.sub_y = x, y, 128, 128
+    world._index_add(world._ucells, u)
+    world.slots.place(u)
+    mv.set_stand(world, u)
+    pl = world.players.get(u.owner)
+    if pl is not None and not pl.human:
+        mv.set_guard(world, u)
+    return True
+
+
 def run_instant(world, script, index):
     """FUN_00574f3f (T§4)."""
     if not 0 <= index < len(script.instants):
@@ -534,7 +595,7 @@ def run_instant(world, script, index):
     elif kind == 5:
         script.fail = _i32(n[0])
     elif kind == 6:
-        _set_group_order(world, script, c.group, n[0], n)
+        _set_group_order(world, script, c.group, n[0], n, u)
     elif kind == 8:
         if 0 <= n[0] < SLOTS:
             _set_var(script, n[0], script.values[n[0]] + 1)
@@ -566,8 +627,48 @@ def run_instant(world, script, index):
     elif kind in (32, 33):
         for m in c.group.live():
             (phase_out if kind == 32 else phase_in)(world, script, m)
-    elif kind == 34 and n[0] == 6:
-        u.hp = _s16(n[1])
+    elif kind == 7:                                     # FUN_005737ba: the player's server formation byte (0 off, 2 auto, anything else on)
+        if c.player is not None:
+            c.player.formation = {0: 0, 2: 1}.get(n[0] & 0xFF, 2)
+    elif kind == 11:
+        if take_item(u, c.item):
+            u2 = c.second
+            if u2 is not None:
+                u2.carried = tuple(u2.carried) + (c.item,)
+    elif kind == 12:
+        u.carried = tuple(u.carried) + (c.item,)
+    elif kind == 13:
+        take_item(u, c.item)
+    elif kind in (14, 15, 29, 30, 31):
+        # 14 / 15: a client refresh; 29 / 30: durations of the effects of a spell on a tile / unit; 31: outpost repop delay.  The engine has no
+        # spell effects and no outposts, so there is nothing to change (re-check when the effect system exists)
+        if kind in (29, 30):
+            script.unbuilt[("instant", kind)] += 1
+    elif kind == 20:
+        if u.carried:
+            world.place_pile(u.x, u.y, 0, [x & 0xFFFF for x in u.carried])      # FUN_005109f5 -> FUN_0052acf6: the pack becomes a pile
+        u.carried = ()
+    elif kind in (21, 24):                              # FUN_004f086f / FUN_004f0832: a scripted cast from a hidden caster; the effect handlers are missing
+        script.unbuilt[("instant", kind)] += 1
+        spell = n[4] if kind == 21 else n[2]
+        world.unbuilt_casts[spell] = world.unbuilt_casts.get(spell, 0) + 1
+    elif kind == 25:                                    # FUN_0055ba36: a cell record (trap); the engine has no cell effects
+        script.unbuilt[("instant", 25)] += 1
+    elif kind == 27:
+        teleport(world, u, n[0] & 0xFF, n[1] & 0xFF)
+    elif kind == 28:
+        c.second.carried = tuple(c.second.carried) + tuple(u.carried)
+        u.carried = ()
+    elif kind == 34:
+        if n[0] == 6:
+            u.hp = _s16(n[1])
+        elif n[0] == 15:
+            combat_stats(world, u).block.defence = _s16(n[1])
+        elif n[0] == 16:
+            combat_stats(world, u).block.absorb = _s16(n[1])
+    elif kind == 38:
+        for m in world.units.values():
+            take_item(m, c.item)
     elif kind == 35:
         script.scenario_vars[n[0]] = _i32(n[1])
     elif kind == 36:
@@ -576,8 +677,6 @@ def run_instant(world, script, index):
         g = c.group.ai_group
         if g is not None:
             g.keep_awake = False
-    elif kind in (7, 11, 12, 13, 14, 15, 20, 21, 24, 25, 27, 28, 29, 30, 31, 34, 38):
-        _unsupported(script, "instant", kind)
     else:
         script.errors.append("Script: Bad instant %d." % kind)
 

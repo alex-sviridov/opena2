@@ -334,6 +334,7 @@ def init_group(world, g):
         u.order = GUARD_ORDER
         u.anchor = (u.x, u.y)
         u.mode_go = u.mode_attack = u.mode_look = u.mode_cast = False
+        u.mode_follow = False
         u.mover.waiting = u.mover.parked = False
     g.order = GROUP_ORDER
     record_stats(world, g, mem)
@@ -906,7 +907,12 @@ def _enemies(world, u, r):
     ground classes 1, 2 only (flyers use rec+8, structures rec+0xc, piles another slot), once per cell of the occupant's own `size x size`
     footprint (a big unit is listed once for each footprint cell inside the square, no de-duplication: it weighs more in the mean position),
     first come per cell.  Hidden units (`Unit.hidden`) need a detector among the unit's group (squad)."""
-    cells = [(u.x + dx, u.y + dy) for dy in range(-r, r + 1) for dx in range(-r, r + 1)]
+    return enemies_around(world, u, u.x, u.y, r)
+
+
+def enemies_around(world, u, cx, cy, r):
+    """`FUN_00567988(u, cell word)` (the same square round any cell; `u` supplies the owner and the squad that detects hidden units)."""
+    cells = [(cx + dx, cy + dy) for dy in range(-r, r + 1) for dx in range(-r, r + 1)]
     out = mv._occupants(world, cells)                   # the occupant slot of each cell (first come; a loser of the race is missing)
     detectors = [m for m in world.units.values() if m.owner == u.owner and m.squad == u.squad and m.hp > 0] if any(c.hidden for c in out) else ()
     return [c for c in out if at_war(world, u.owner, c.owner) and (not c.hidden or _detected(c, detectors))]
@@ -918,6 +924,12 @@ def flee_cell(world, u, near):
     n = len(near)
     px = sum(pos16(c)[0] for c in near) // n
     py = sum(pos16(c)[1] for c in near) // n
+    return away_cell(world, u, px, py, FLEE_CELLS)
+
+
+def away_cell(world, u, px, py, cells):
+    """`FUN_00558b92(u, point (px, py) in 1/256 cell, cells)`: `cells` cells beyond u on the ray from the point through u, along the dominant
+    axis (float32 slope), clamped to the playable area (the wimpy / withdraw step and the follower that stands too close, ai.md 14.2)."""
     ux, uy = pos16(u)
     dx, dy = ux - px, uy - py
     dx, dy = dx or 1, dy or 1
@@ -925,12 +937,12 @@ def flee_cell(world, u, near):
     if abs(dx) > abs(dy):
         s = f32(dy / dx)
         b = f32(uy - ux * s)
-        nx = ux + FLEE_CELLS * 256 if dx > 0 else ux - FLEE_CELLS * 256
+        nx = ux + cells * 256 if dx > 0 else ux - cells * 256
         ny = int(nx * s + b)
     else:
         s = f32(dx / dy)
         b = f32(ux - uy * s)
-        ny = uy + FLEE_CELLS * 256 if dy > 0 else uy - FLEE_CELLS * 256
+        ny = uy + cells * 256 if dy > 0 else uy - cells * 256
         nx = int(ny * s + b)
     nx, ny = nx >> 8, ny >> 8
     nx = min(max(nx, 8), world.width - 9)
@@ -970,6 +982,7 @@ def apply(world, cmd):
         if isinstance(cmd, MoveUnits):
             cell = cmd.cell                                     # CONFIRMED: the exe feeds the raw cell to its planner (ai.md 3)
             u.mode_go, u.mode_attack, u.mode_look = True, False, False
+            u.mode_follow = False
             u.mode_cast = u.mode_cell = False
             if m.goal != cell:
                 m.goal = cell
@@ -982,12 +995,14 @@ def apply(world, cmd):
             u.target = t.id
             u.range = cb.combat_stats(world, u).range
             u.mode_attack, u.mode_go, u.mode_look = True, False, False
+            u.mode_follow = False
             u.mode_cast = u.mode_cell = False
             m.waiting = m.parked = False
         elif isinstance(cmd, CastSpell):
             apply_cast(world, u, cmd)
         elif isinstance(cmd, Stop):
             u.mode_look, u.mode_go, u.mode_attack, u.mode_cast = not _human(world, u), False, False, False
+            u.mode_follow = False
             u.mode_cell = False
 
 
@@ -1009,6 +1024,7 @@ def apply_cast(world, u, cmd):
         u.mode_cell, u.mode_cast = True, False
         u.cast_cell = tuple(cmd.cell)
     u.mode_go = u.mode_attack = u.mode_look = False
+    u.mode_follow = False
     u.cast_wrapper = w
     u.range = spells.wrapper_range(sp, w, spells.unit_level(u, sp))
     u.ai_cast = True

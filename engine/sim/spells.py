@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from allods2.formats import spelldefs
 
 LIGHTNING, PRISMATIC_SPRAY = 10, 11             # `'\n'` / `'\v'` in FUN_00519998 / FUN_00519db8
+CONTROL_SPIRIT, SUMMON = 22, 25                  # spells.md 9b
 INVISIBILITY, TELEPORT, HEAL, DRAIN_LIFE, SHIELD, CURSE = 12, 23, 24, 26, 27, 28      # spell numbers the AI code names (docs/engine/ai.md 12)
 SERVER_BOLT_TICKS, CLIENT_BOLT_TICKS = 10, 5    # missile carrier override (0x51be87) / client flight message (0x519998)
 
@@ -76,7 +77,7 @@ def recovery_ticks(base, hero_delay, complication, rng):
 
 # --- cast order, Brain mode 8, the cast phases (docs/data/spells.md 9c.1-9c.2) -------------------------------------------------------------
 
-from engine.world import Carrier, CastReleased, CastStarted, SpellCast       # noqa: E402  (after the pure math above)
+from engine.world import DEAD, Carrier, CastReleased, CastStarted, SpellCast       # noqa: E402  (after the pure math above)
 from . import movement as mv                                                 # noqa: E402
 from .pathfinding import centre_x, centre_y, foot, unit_size                 # noqa: E402
 
@@ -180,6 +181,7 @@ def set_cast(world, u, target, wrapper):
     u.cast_wrapper = wrapper
     u.range = wrapper_range(spell, wrapper, unit_level(u, spell))
     u.mode_go = u.mode_attack = u.mode_look = u.mode_cast = False
+    u.mode_follow = False
     u.anchor = None
     u.mover.waiting = u.mover.parked = False
 
@@ -204,6 +206,7 @@ def refresh_cast(world, u):
         return
     spell = world.spell_table.get(u.cast_wrapper.number)
     u.mode_go = u.mode_attack = u.mode_look = False
+    u.mode_follow = False
     u.mode_cast = True
     u.mover.waiting = u.mover.parked = False
     u.range = wrapper_range(spell, u.cast_wrapper, unit_level(u, spell))
@@ -251,6 +254,7 @@ def set_cell_cast(world, u, cell, wrapper):
     u.cast_wrapper = wrapper
     u.range = wrapper_range(spell, wrapper, unit_level(u, spell))
     u.mode_go = u.mode_attack = u.mode_look = u.mode_cast = u.mode_cell = False
+    u.mode_follow = False
     u.anchor = None
     u.mover.waiting = u.mover.parked = False
 
@@ -276,6 +280,7 @@ def refresh_cell(world, u):
         return
     spell = world.spell_table.get(u.cast_wrapper.number)
     u.mode_go = u.mode_attack = u.mode_look = u.mode_cast = False
+    u.mode_follow = False
     u.mode_cell = True
     u.mover.waiting = u.mover.parked = False
     u.range = wrapper_range(spell, u.cast_wrapper, unit_level(u, spell))
@@ -438,6 +443,104 @@ def drain_release(world, u, t, spell, level):
     heal(world, u, amount, u)
 
 
+SUMMON_RADIUS = 6               # FUN_00510089(caster cell, 6) at 0x51a7d9
+MINION_PHASE = 12               # tick & 15 of the job FUN_0052bbb7 (sim/vitals.py runs it)
+
+
+def astral_skill(u):
+    """The raw word `unit+0xb2` (skill 5, astral): a human's skill, a monster's `spell_power` / `skillastral` (`monster_skill`)."""
+    if u.human:
+        return u.skills[5] if len(u.skills) > 5 else 0
+    return monster_skill(u.stats, 5)
+
+
+def summon_release(world, u):
+    """`FUN_00519db8` case 25 (`0x51a595`-`0x51a91a`): family roll `rand(1..3)` (`FUN_0051fa4e(3)`, the first draw), tier `clamp(astral / 25 + 1, 1, 4)`
+    with a C division (truncation), the template `Squirrel` / `Turtle` / `Foot_Animated` `[.tier]` created by name, the summoned flag `+0x1a0 = 1`, placed
+    by `FUN_00510089(caster cell, 6)` (no cell: the cast ends, no unit); owner = the caster's, master `+0x148` = the caster's id; the unit gets a group of
+    its own, a stand (`FUN_0056dba1`) and the guard order `FUN_005709d9(group, 0)` (group order 1: the minion walks to enemies in sight and returns,
+    the player's G command; not a Brain mode: the earlier reading of `+0x20 = 1` as a minion mode was the group record's order byte)."""
+    from . import spawn
+    roll = _rand1(world.rng, 3)
+    skill = astral_skill(u)
+    name = spelldefs.summon_unit(skill, roll)
+    tpl = spawn.template_by_name(world, name)
+    if tpl is None:
+        return None
+    m, g = spawn.place(world, tpl, u.owner, u.x, u.y, SUMMON_RADIUS, behaviour=8, master=u.id)
+    if m is None:
+        return None
+    spawn.settle(world, m, g, stand_ground=False)
+    return m
+
+
+def raise_release(world, u, cell):
+    """`FUN_00519db8` case 22 (`0x51a91f`-`0x51b1d9`), Control Spirit / "Animate Dead" at a cell: the corpse list is searched for stage 2, then 3, then
+    4 (a body is a candidate when its type is outside `0x52..0x62` and its cell is the target cell; the first in list order wins); the corpse is
+    consumed at once (HP -10001, stage 5); the new unit (`F_Zombie.1`, `F_Skeleton.1`, `Ghost`: `spelldefs.raise_dead`) copies body, reaction, mind,
+    spirit, max HP, attack skill `+0xa6` and defence `+0xbe` of the body, HP = max; placed by `FUN_00510089(corpse cell, 0)` (a failure leaves the body
+    consumed and nothing else), summoned flag, owner = the caster's, master 0; a group of its own with a stand and the stand-ground order
+    (`FUN_00570f2b`: cancel + `FUN_00570b8b`, group order 3).  No level or mana dependence beyond the cast."""
+    from . import spawn
+    from .combat import combat_stats
+    from .death import STAGE5_HP
+    from engine.world import death_stage
+    body = None
+    for stage in (2, 3, 4):
+        for cp in world.corpses.values():
+            if death_stage(cp.hp) == stage and not 0x52 <= cp.type_id <= 0x62 and (cp.x, cp.y) == tuple(cell):
+                body = cp
+                break
+        if body is not None:
+            break
+    if body is None:
+        return None
+    stage = death_stage(body.hp)
+    st = combat_stats(world, body)
+    attrs = prog.attributes(body.stats) if body.human else tuple(body.stats.get(k, 0) or 0 for k in ("body", "reaction", "mind", "spirit"))
+    made = spelldefs.raise_dead(stage, attrs[0], attrs[1], attrs[2], attrs[3], body.hp_max, st.record.skill, st.block.defence)
+    body.hp = STAGE5_HP
+    world.corpses.pop(body.id, None)
+    if made is None:
+        return None
+    name, vals = made
+    tpl = spawn.template_by_name(world, name)
+    if tpl is None:
+        return None
+    fields = {k: vals[k] for k in ("body", "reaction", "mind", "spirit") if k in vals}
+    fields.update(hp_max=vals["max_hp"], to_hit=vals["attack"], defence=vals["defence"])
+    m, g = spawn.place(world, tpl, u.owner, body.x, body.y, 0, behaviour=8, master=0, fields=fields)
+    if m is None:
+        return None
+    spawn.settle(world, m, g, stand_ground=True)
+    return m
+
+
+def minion_job(world):
+    """`FUN_0052bbb7` after the regeneration and the corpse decay (`tick & 15 == 12`): count the creatures per master key `+0x148`; one `rand(1..100)`
+    per key (`FUN_0051fa4e(100)`), the key is marked when `roll < count`; the first creature of a marked key in the list is removed (HP -10000, key
+    cleared, `FUN_00510a70`: summoned, so no loot or XP).  Key order = first appearance in the creature list (DECISION: the exe walks a hash map
+    of 17 buckets keyed by the master's network id, which the engine does not reproduce; exact for one master)."""
+    from . import death
+    counts = {}
+    for u in world.units.values():
+        if u.master:
+            counts[u.master] = counts.get(u.master, 0) + 1
+    marked = []
+    for key, n in counts.items():
+        if _rand1(world.rng, 100) < n:
+            marked.append(key)
+    for key in marked:
+        for u in world.units.values():
+            if u.master == key:
+                u.master = 0
+                u.hp = -10000
+                u.state = u.order = DEAD
+                u.last_attacker = None
+                death.remove_dead(world, u)
+                break
+
+
 def cast_release_cell(world, u, c, st):
     """State 0xe release: `FUN_00519db8(caster, 0, x, y)`: the cast XP, then the cell handlers (area / field carriers, teleport, raise dead ...),
     none of which is built yet: `stub_release`."""
@@ -445,7 +548,12 @@ def cast_release_cell(world, u, c, st):
     spell = world.spell_table.get(c.spell)
     if st.mage and c.item_count is None:
         xp.award(world, u, int(0.5 * spell.mana_cost + 0.5), spell.sphere)
-    stub_release(world, u, spell.number, cell=c.cell)
+    if spell.number == SUMMON and world.assets is not None:
+        summon_release(world, u)
+    elif spell.number == CONTROL_SPIRIT and world.assets is not None:
+        raise_release(world, u, c.cell)
+    else:
+        stub_release(world, u, spell.number, cell=c.cell)
 
 
 def cast_release(world, u, c, st):

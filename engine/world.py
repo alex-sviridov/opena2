@@ -424,6 +424,15 @@ class Unit:
     ai_cast: bool = False           # brain+0x60: the cast was set by the AI (`FUN_0056a981` & co.): Brain mode 8 / 9 stays after the cast starts; cleared by every cancel
     mode_cell: bool = False         # Brain mode 9 (cast at a cell with approach, `FUN_0056ec3f`)
     cast_cell: tuple = None         # brain+0x3c target cell (x, y) of the cell cast order 0xe / mode 9
+    master: int = 0                 # +0x148 the summoner's id (Summon spell; 0 = none): the minion cap job reads it (sim/spells.py `minion_job`)
+    # follow / patrol orders and Brain mode 4 (docs/engine/ai.md 14.2; sim/follow.py)
+    leader: int = None              # brain+0x10 the object being followed / defended (orders 8, 0x11)
+    follow_range: int = 0           # brain+0x70 follow distance (default 3)
+    mode_follow: bool = False       # Brain mode 4 (approach brain+0x18 within brain+0x14, `FUN_0056ea52`)
+    follow_target: int = None       # brain+0x18 the mode-4 target
+    patrol: list = field(default_factory=list)      # brain+0xb4 the waypoint list of order 0xa (cell tuples)
+    patrol_wp: tuple = None         # brain+2 the waypoint being walked to
+    patrol_walk: bool = False       # brain+4 the previous pass left a walk running
     equipment: tuple = ()           # humans loaded from a character record: the 12 equipped items in slot order (saves.Item; empty slot = code 0)
     pack: tuple = ()                # humans loaded from a character record: the backpack items (saves.Item); `carried` holds their codes
 
@@ -512,6 +521,7 @@ class World:
         self.fight_log = []         # Damage / Died entries (sim/combat.py), drained by the UI, not part of the dump
         self.item_table = None      # allods2.formats.itemdefs.ItemTable (from_map); combat stats read it
         self.spell_table = None     # allods2.formats.spelldefs.SpellTable (from_map); the cast code reads it
+        self.assets = None          # the AssetCache of from_map: units created at run time (Summon, Control Spirit) are built from its tables
         self.carriers = []          # Carrier, in creation order (sim/spells.py); part of dump() only while non-empty
         self._next_carrier = 1
         self._next_group = 1
@@ -875,6 +885,7 @@ class World:
             w.item_table = assets.items()
         if hasattr(assets, "spells"):
             w.spell_table = assets.spells()
+        w.assets = assets
         stats = assets.databin().structures
         reg = assets.objects_reg()
         rep = w.report
@@ -1119,7 +1130,7 @@ class World:
         fight = World._fight_state(u)
         death = World._death_state(u)
         cast = World._cast_state(u)
-        if fight is None and death is None and cast is None and not (u.order or u.state or u.path or u.odometer or m.steps or m.turning or u.order_group
+        if fight is None and death is None and cast is None and World._follow_state(u) is None and not u.master and not (u.order or u.state or u.path or u.odometer or m.steps or m.turning or u.order_group
                                   or u.stopped or m.waiting or m.parked or m.target_facing != u.facing):
             return []
         d = {"order": u.order, "state": u.state, "path": [list(c) for c in u.path],
@@ -1145,7 +1156,20 @@ class World:
             d["death"] = death
         if cast is not None:
             d["cast"] = cast
+        follow = World._follow_state(u)
+        if follow is not None:
+            d["follow"] = follow
+        if u.master:
+            d["master"] = u.master
         return [d]
+
+    @staticmethod
+    def _follow_state(u):
+        """Follow / patrol state as a list, None while the unit never had such an order (old goldens stay valid)."""
+        if u.leader is None and not u.mode_follow and u.follow_target is None and not u.patrol and u.patrol_wp is None and not u.patrol_walk:
+            return None
+        return [u.leader, u.follow_range, int(u.mode_follow), u.follow_target, [list(c) for c in u.patrol],
+                list(u.patrol_wp) if u.patrol_wp else None, int(u.patrol_walk)]
 
     @staticmethod
     def _death_state(u):

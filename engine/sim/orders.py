@@ -12,7 +12,7 @@ from .combat import can_order_attack, refresh_attack, set_attack
 from .movement import (ATTACK_ORDER, CENTRE, MoveTo, _in_map, _set_action, IDLE, cancel, fail_stop, live_cells, path_grid,
                        set_guard, set_move, set_stand, set_still, stop_unit, unit_size, unit_speed)
 from .pathfinding import chebyshev
-from . import ai, spells
+from . import ai, follow, spells
 
 MAX_IDS = 253                       # FUN_0050bbb8 stops appending at 253 (R 2)
 FORMATION_LIMIT = 2                 # server+0xa724: Chebyshev distance an Auto group may be spread over (R 3.2)
@@ -228,6 +228,7 @@ def _pass_move(world, g):
         # parked unit (order 1) and a unit whose order the failure turned into 0xc (`stopped` still 0)
         u.mode_go = True
         u.mode_attack = u.mode_cast = False
+        u.mode_follow = False
         m.waiting = m.parked = False
         if (not _target_free(world, u, g.target) and m.goal == g.target
                 and chebyshev(cell, g.target) < 2):
@@ -239,8 +240,9 @@ def _pass_move(world, g):
 
 
 def _pass_orders(world, g):
-    """Group order 0: `FUN_00569321` for every member, list order.  Only the attack order (3) has an effect here (combat.md 2.3); the
-    executors of the other orders are no-ops for what the engine models (guard scan, state := 0)."""
+    """Group order 0: `FUN_00569321` for every member, list order.  The attack (3), cast (0xd, 0xe), defend (8), patrol (0xa) and follow (0x11)
+    orders have an effect here (combat.md 2.3, spells.md 9c, ai.md 14.2); the executors of the other orders are no-ops for what the engine
+    models (guard scan, state := 0).  A leader in state 0x10 stops its follower inside the executors (`follow._leader`)."""
     for i in list(g.members):
         u = world.units[i]
         if u.order == ATTACK_ORDER:
@@ -249,6 +251,12 @@ def _pass_orders(world, g):
             spells.refresh_cast(world, u)               # FUN_0056c72b: Brain mode 8
         elif u.order == spells.CELL_ORDER:
             spells.refresh_cell(world, u)               # FUN_0056969c: Brain mode 9
+        elif u.order == follow.DEFEND_ORDER:
+            follow.exec_defend(world, u)                # FUN_005696e8
+        elif u.order == follow.FOLLOW_ORDER:
+            follow.exec_follow(world, u)                # FUN_00569857
+        elif u.order == follow.PATROL_ORDER:
+            follow.exec_patrol(world, u)                # FUN_00569b62
 
 
 def attack_group(world, g, target):

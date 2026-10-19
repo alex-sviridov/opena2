@@ -78,3 +78,41 @@ def test_map_10_start_trigger_sends_message_1_at_the_first_pass_and_replays():
     assert (6, 1) in msgs                                       # 'Start': FALSE == FALSE -> 'Send message 1 - start'
     assert w.script.fired[0] == 1 and w.check_consistency() == []
     assert run(40).dump_hash() == w.dump_hash()
+
+
+def test_every_instant_and_check_of_the_install_is_handled():
+    """Run each compiled instant and check of the 46 scripts once on its own map: nothing is counted unsupported (triggers.md 8)."""
+    for path in campaign_maps(GFS):
+        w, h = build(path)
+        s = w.script
+        for i in range(len(s.instants)):
+            T.run_instant(w, s, i)
+        for c in s.checks:
+            T.eval_check(w, s, c)
+        assert not s.unsupported, (path, dict(s.unsupported))
+        assert w.check_consistency() == [], path
+
+
+@pytest.mark.parametrize("name,order", [("30", 0xA), ("70", 8), ("53", 0x11)])
+def test_the_scripted_unit_orders_run_on_a_real_map(name, order):
+    """The group sub-commands 14 (patrol), 11 (defend) and 15 (follow): fired once, the members hold the order for the first passes (a leader that
+    dies ends it) and the run stays consistent and deterministic."""
+    sub = {0xA: 14, 8: 11, 0x11: 15}[order]
+
+    def run():
+        w, h = build(name, seed=2)
+        s = w.script
+        n = 0
+        for i, c in enumerate(s.instants):
+            if c.type == 6 and c.nums[0] == sub:
+                T.run_instant(w, s, i)
+                n += 1
+        sim = Simulation(w, triggers=True)
+        for _ in range(100):
+            sim.step()
+        return w, n
+
+    w, n = run()
+    assert n and [u for u in w.units.values() if u.order == order or u.mode_follow]
+    assert w.check_consistency() == []
+    assert run()[0].dump_hash() == w.dump_hash()

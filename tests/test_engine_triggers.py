@@ -133,6 +133,25 @@ def test_a_referenced_squad_is_kept_awake_except_by_check_1():
     assert w2.ai_groups[(2, 1)].keep_awake
 
 
+def test_every_unit_argument_flags_its_squad_but_only_the_first_group_argument_does():
+    """CONFIRMED 0x563101-0x5631bc / 0x5632b0-0x56331f: the unit tail runs after each unit argument (the second one wins the shared slot, the first was
+    flagged when it was processed), the group tail checks the first group slot first."""
+    def build(checks):
+        w = world()
+        hero(w, 1, 20, 24)
+        unit(w, 2, 30, 24, 2, 1)
+        unit(w, 3, 34, 24, 2, 2)
+        unit(w, 4, 36, 24, 3, 5)
+        T.enable(w, script([], checks, []))
+        return w
+    w = build([rec(6, 1, (S.K_UNIT, 2), (S.K_UNIT, 3))])               # distance between two units: both squads
+    assert w.ai_groups[(2, 1)].keep_awake and w.ai_groups[(2, 2)].keep_awake and not w.ai_groups[(3, 5)].keep_awake
+    w = build([rec(5, 1, (S.K_UNIT, 4))])
+    assert w.ai_groups[(3, 5)].keep_awake and not w.ai_groups[(2, 1)].keep_awake
+    w = build([rec(5, 1, (S.K_GROUP, 1), (S.K_GROUP, 2))])             # two groups (squads 1 and 2): only the first
+    assert w.ai_groups[(2, 1)].keep_awake and not w.ai_groups[(2, 2)].keep_awake
+
+
 def test_hero_ids_resolve_by_the_reduced_server_id():
     w = world()
     h = hero(w, 1, 20, 24)
@@ -292,10 +311,10 @@ def test_group_command_move_reorders_the_squad_and_suspend_lets_it_sleep():
 
 
 def test_unimplemented_kinds_are_counted_or_raise_in_strict_mode():
-    attack = rec(6, 1, (S.K_CONST, 10), (S.K_UNIT, 1), (S.K_GROUP, 1))
-    w, sim, *_ = setup(script([attack, rec(20, 2, (S.K_UNIT, 2))], TRUE, [trig(ALWAYS, [1, 2])]))
+    attack = rec(6, 1, (S.K_CONST, 6), (S.K_UNIT, 1), (S.K_GROUP, 1))          # group sub-command 6 has no setter
+    w, sim, *_ = setup(script([attack, rec(20, 2, (S.K_UNIT, 8001))], TRUE, [trig(ALWAYS, [1, 2])]))      # a variable reference is never resolved
     run(sim, 7)
-    assert w.script.unsupported == {("group", 10): 1, ("instant", 20): 1}
+    assert w.script.unsupported == {("group", 6): 1, ("instant", 20): 1}
     w, sim, *_ = setup(script([attack], TRUE, [trig(ALWAYS, [1])]), strict=True)
     with pytest.raises(NotImplementedError):
         run(sim, 7)

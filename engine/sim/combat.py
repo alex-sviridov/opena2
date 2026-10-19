@@ -189,6 +189,7 @@ def set_attack(world, u, t):
     u.target = t.id
     u.range = combat_stats(world, u).range
     u.mode_go = u.mode_attack = u.mode_cast = False
+    u.mode_follow = False
     u.anchor = None
     u.mover.waiting = u.mover.parked = False
 
@@ -202,6 +203,7 @@ def refresh_attack(world, u):
         return
     u.mode_go = False
     u.mode_attack = True
+    u.mode_follow = False
     u.mover.waiting = u.mover.parked = False
     u.range = combat_stats(world, u).range
 

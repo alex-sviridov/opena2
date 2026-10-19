@@ -318,9 +318,9 @@ Engine (`engine/sim/spells.py`): the damage branch (I4a), **Heal 24** (`heal_rel
 `min' + rand(1..spread')` capped at `maxHP - HP`, `FUN_00510484` with the revive `FUN_00510534`) and **Drain Life 26** (`drain_release`, `0x51a3f3`: astral protection,
 cap HP + 10, damage XP credit, hit reaction, last attacker, the caster heals the amount) are built; `FUN_0051fa4e(n)` = `rand(n - 1) + 1`. Every other handler (protections,
 Bless / Curse, Haste / Slow, Shield, Invisibility, Stone Curse, the area / field carriers of Fire Ball, Wall of Fire / Earth, Poison Cloud, Blizzard, Acid Stream, Darkness,
-Light, Teleport, Summon, Control Spirit, the Prismatic Spray chain at cast start) is a **documented no-op**: mana, cast animation, windup and recovery run as in the exe,
+Light, Teleport, the Prismatic Spray chain at cast start) is a **documented no-op**: mana, cast animation, windup and recovery run as in the exe,
 the release changes nothing and is counted in `World.unbuilt_casts` (spell number -> count; `stub_release`). Not a guess of the effect: they need the effect system
-(`FUN_0051ce12`, `+0x144` bits) and the carriers of §4 / §9b.
+(`FUN_0051ce12`, `+0x144` bits) and the carriers of §4 / §9b. **Summon 25 and Control Spirit 22 are built** (they create units, no effect object: `summon_release`, `raise_release`, [§9b](#9b-field-carriers-summons-raising-tooltip)) when the world carries its asset tables (`World.assets`, set by `from_map`).
 
 ## 9b. Field carriers, summons, raising, tooltip
 
@@ -350,19 +350,22 @@ and alerts the AI (`FUN_0056e6b8`), except for Light.
 **Summon (25, `0x51a595`).** One unit per cast, no level dependence. Family roll `rand(1..3)` -> `Squirrel`, `Turtle`, `Foot_Animated`; tier
 `clamp(skill_astral / 25 + 1, 1, 4)` from the raw skill word `unit+0xb2` (not the level); tier 1 has no suffix, otherwise `.N`
 (`summon_unit`; the types exist as `Name`, `.2`..`.5`). The unit is created by name (`FUN_0050e173`), placed within 6 cells of the
-caster (`FUN_00510089`), owner = caster's player, `+0x1a0 = 1` (no loot, no XP), master id `+0x148` = caster id, brain mode 1.
+caster (`FUN_00510089(caster cell, 6)`, the family roll `FUN_0051fa4e(3)` is the first RNG draw; no free cell: the cast ends), owner = caster's player, `+0x1a0 = 1` (no loot, no XP), master id `+0x148` = caster id. Then the minion gets **a group of its own** (`FUN_0052ae43`,
+`FUN_0052af8c`), a stand (`FUN_0056dba1`) and **`FUN_005709d9(group, 0)` (`0x51a8d7`) = the player's G command: group order 1, members order `0xb`, radius `MinimalGuardRange`** (10); the awake map is recomputed (`FUN_0055b5f1`). The earlier
+"brain mode 1" was a misreading: `+0x20` is the **group record's order byte** ([ai §14](../engine/ai.md#14-the-other-group-orders-confirmed-fun_005700f3-dispatch-engine-implemented-see-the-end-of-this-section)), not a Brain mode; there is no
+minion mode. Engine: `spells.summon_release` (`engine/sim/spawn.py` builds the unit from the world's asset tables, `squad` = a private negative number so that it never joins a map squad), with the cap job `spells.minion_job` (called by `vitals_system`).
 No timer: minions persist, but a master with `n >= 2` minions loses one every 16 ticks with probability `(n-1)/100`
-(`FUN_0052bbb7`, tick `& 0xf == 0xc`, `minion_expiry_chance`); a minion's death handler sets HP -10000 at once (`FUN_00510a70`), so no corpse
+(`FUN_0052bbb7`, tick `& 0xf == 0xc`, `minion_expiry_chance`; engine `spells.minion_job`: one `rand(1..100)` per master key, the first minion of a marked key is removed through `death.remove_dead` with HP -10000; the key order is the first appearance in the creature list, DECISION: the exe walks a 17-bucket hash map keyed by the master's network id, exact for one master); a minion's death handler sets HP -10000 at once (`FUN_00510a70`), so no corpse
 remains.
 
 **Control Spirit / "Animate Dead" (22, `0x51a91f`).** Target = cell. Corpse stage `unit+0x13c` is derived from HP by the corpse
 decay `FUN_005110b8` (run every 16 ticks per corpse, HP -1 per run, types 0x21..0x24 heroes stop at HP -60): `corpse_stage`
 (HP < -10 -> 2, < -20 -> 3, < -40 -> 4, < -600 -> 5 removed). The spell searches the corpse list for a stage-2 corpse on exactly the
 target cell (`FUN_0054fa73`, cell index equality), then stage 3, then 4; types `unit_type` 0x52..0x62 (zombies, skeletons) are skipped.
-The corpse is consumed (stage 5, HP -10001). The new unit (`+0x1a0 = 1`, master 0, owner = caster's player, brain mode 3, permanent,
-level-independent) appears on that cell with copied stats (`raise_dead`): stage 2 `F_Zombie.1` (body, mind, spirit, max HP copied,
+The corpse is consumed (stage 5, HP -10001, at once: a failed placement leaves it consumed). The new unit (`+0x1a0 = 1`, master 0, owner = caster's player, permanent,
+level-independent) is placed by `FUN_00510089(corpse cell, 0)` with a stand and **`FUN_00570f2b(group)` (`0x51b1a2`) = cancel + stand ground `FUN_00570b8b`: group order 3, member order `0xc`** (the earlier "brain mode 3" is the group order byte too); it appears on that cell with copied stats (`raise_dead`): stage 2 `F_Zombie.1` (body, mind, spirit, max HP copied,
 reaction/2+1), stage 3 `F_Skeleton.1` (body and reaction /2+1, max HP/2), stage 4 `Ghost` (reaction/2+1, max HP/2); attack skill `+0xa6`
-and defence `+0xbe` copied; HP = max HP. Whether the template recompute (vtable `+0x58`) overrides the copy: INFERRED not.
+and defence `+0xbe` copied; HP = max HP. Whether the template recompute (vtable `+0x58`) overrides the copy: INFERRED not. Engine: `spells.raise_release` (the copies replace the template columns `body`, `reaction`, `mind`, `spirit`, `hp_max`, `to_hit`, `defence` of the new unit; the corpse's attack skill and defence are read from its combat stats, i.e. the halved defence of a dying body).
 
 **Spell level of a hero (cast side).** The client overview (`FUN_00416615` loop over 24 spells, order `SPELLS_TXT_ORDER`) computes per party
 member `L = clamp(skill[sphere] + mind - 30, 0, 255)` from view bytes `+0x156+sphere` and `+0x145`, scales a wrapper copy (`FUN_0051951d`)
@@ -385,5 +388,4 @@ Display names come from `spell.txt`, descriptions only for these 24 spells (no e
 
 - Spell button mask (view `+0xd0` object `+0x148` / `+0x150`, 9c.1): how the enabled bits follow the spellbook and mana; Stop (`FUN_0056dbc6`) during a cast.
 - Book wrapper scaling: whether `FUN_00519483` rewrites the spellbook wrapper's `+9` in place (the AI reads `+9` as a range, [ai §12](../engine/ai.md#open-questions)).
-- Brain registration of minions: Summon uses `FUN_005709d9` (brain byte `+0x20` = 1), Control Spirit `FUN_00570b8b` (`+0x20` = 3); meaning of the modes.
 - Spellbook tooltip arrays for the rows Speed (0xb6), Sight (0xb8) and which spell fills them (`FUN_00416615` ff., `FUN_004c628f`).
