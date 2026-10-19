@@ -132,14 +132,36 @@ def _visible(world, observers):
     return vis
 
 
-def _hostiles_on(world, owner, cells):
-    """The units of cells, creation order, that `owner` is at war with (`FUN_00567a16` + `FUN_00567ddf`; the hidden-unit clause
-    is skipped: no effect sets flag 0x1000 yet): the living ones, or, when there is none, the dying ones (HP < 1, not yet removed)."""
+def reach_gap(a, b):
+    """`FUN_00556dcd`: the gap level between two objects, `(max over x, y of max(0, |centre distance| - (size_a + size_b) * 128) >> 8) + 1`
+    (positions in 1/256 cell, the centre of a size-n footprint is `pos + (n - 1) * 128`): 1 = touching or overlapping."""
+    sa, sb = unit_size(a), unit_size(b)
+    (ax, ay), (bx, by) = pos16(a), pos16(b)
+    gx = max(0, abs((ax + (sa - 1) * 128) - (bx + (sb - 1) * 128)) - (sa + sb) * 128)
+    gy = max(0, abs((ay + (sa - 1) * 128) - (by + (sb - 1) * 128)) - (sa + sb) * 128)
+    return (max(gx, gy) >> 8) + 1
+
+
+def see_invisible(u):
+    """brain+0x71, data.bin p36 (`see_invisible`): -1 or absent (humans) keeps the constructor default 1."""
+    v = u.stats.get("see_invisible") if u.stats is not None else None
+    return 1 if v is None or v < 0 else int(v)
+
+
+def _detected(hidden, detectors):
+    """`FUN_00567a16` hidden clause: a unit with flag `+0x144 & 0x1000` is kept only if some member of the first member's group has
+    `reach_gap(hidden, member) <= member.see_invisible` (default 1: only touching units see it)."""
+    return any(reach_gap(hidden, d) <= see_invisible(d) for d in detectors)
+
+
+def _hostiles_on(world, owner, cells, detectors=()):
+    """The units of cells, creation order, that `owner` is at war with (`FUN_00567a16` + `FUN_00567ddf`; a hidden unit (`Unit.hidden`) only
+    when `_detected` by `detectors`): the living ones, or, when there is none, the dying ones (HP < 1, not yet removed)."""
     ids = set()
     for c in cells:
         ids |= world.units_at(*c)
     out = [world.units[i] for i in ids]
-    out = [u for u in out if at_war(world, owner, u.owner)]
+    out = [u for u in out if at_war(world, owner, u.owner) and (not u.hidden or _detected(u, detectors))]
     out.sort(key=lambda u: u.seq)
     living = [u for u in out if u.hp > 0]
     # FUN_00567ddf moves the HP < 1 units into the list server+0xa88; the callers (FUN_00571c4d, FUN_00569fd4, FUN_0056ed4e ...) put them back
@@ -364,7 +386,7 @@ def _pool(world, g, mem):
     owner = g.key[0]
     cells = _visible(world, mem)
     cen = unword(g.centre)
-    return [u for u in _hostiles_on(world, owner, cells) if chebyshev((u.x, u.y), cen) <= g.radius]
+    return [u for u in _hostiles_on(world, owner, cells, mem) if chebyshev((u.x, u.y), cen) <= g.radius]
 
 
 def _assign_targets(world, mem, pool):
@@ -497,16 +519,19 @@ def on_hit(world, attacker, victim):
 # --- flee step (FUN_00573713) --------------------------------------------------------------------------------------------------
 
 def _enemies(world, u, r):
-    """`FUN_0054ec6a` + `FUN_00567a16`: units in the Chebyshev square of radius r the owner is at war with (dying ones included)."""
-    out = []
-    for dy in range(-r, r + 1):
-        for dx in range(-r, r + 1):
-            for i in world.units_at(u.x + dx, u.y + dy):
-                c = world.units[i]
-                if at_war(world, u.owner, c.owner):
-                    out.append(c)
-    out.sort(key=lambda c: c.seq)
-    return out
+    """`FUN_0054ec6a` + `FUN_00567a16`: the occupants of the Chebyshev square of radius r that the owner is at war with (dying ones included).
+    The list holds creatures only: a cell with bit 0x20 and a record yields its occupant slot rec+4 (`FUN_00551edb`), which is written for
+    ground classes 1, 2 only (flyers use rec+8, structures rec+0xc, piles another slot), once per cell of the occupant's own `size x size`
+    footprint (a big unit is listed once for each footprint cell inside the square, no de-duplication: it weighs more in the mean position),
+    first come per cell.  Hidden units (`Unit.hidden`) need a detector among the unit's group (squad)."""
+    cells = [(u.x + dx, u.y + dy) for dy in range(-r, r + 1) for dx in range(-r, r + 1)]
+    slot = {}
+    for o in mv._occupants(world, cells):                                   # sorted by cell_seq: the first to enter a cell holds its slot
+        for c in mv._footprint(o, (o.x, o.y)):
+            slot.setdefault(c, o)
+    out = [slot[c] for c in cells if c in slot]
+    detectors = [m for m in world.units.values() if m.owner == u.owner and m.squad == u.squad and m.hp > 0] if any(c.hidden for c in out) else ()
+    return [c for c in out if at_war(world, u.owner, c.owner) and (not c.hidden or _detected(c, detectors))]
 
 
 def flee_cell(world, u, near):

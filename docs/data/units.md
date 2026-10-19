@@ -63,7 +63,7 @@ Creature offset ([unit-struct](../engine/unit-struct.md#2-creature-layout-server
 | 33 | dying_time | vtable +0x74 → timer +0x6c | ticks of the death animation (`dying − 1`) | CONFIRMED `0x50f048`, `0x50f221` (corrects databin.md "unused") |
 | 34 | withdraw | brain obj +0x40 | HP threshold: at HP ≤ it and a hostile within 2 cells the unit flees 3 cells away (`0x56cd11` -> `0x56ce0f`, [research §4.5](../engine/click-to-move-research.md#45-the-post-step-fun_00573713-retreat-and-withdraw)); name INFERRED | CONFIRMED compare and effect |
 | 35 | wimpy | brain obj +0x44 | HP threshold of the retreat (`0x56cb0c` -> `0x56c9bc`, hostile within 10 cells, same flee move; tested first); halved by the difficulty tweak | CONFIRMED |
-| 36 | see_invisible | brain obj +0x71 | detection level compared at `0x567ae7`; default 1 | compare CONFIRMED, effect INFERRED |
+| 36 | see_invisible | brain obj +0x71 | detection level compared at `0x567ae7` with the `FUN_00556dcd` gap (1 = touching, +1 per free cell) of a unit under Invisibility (`+0x144 & 0x1000`, [AI §4](../engine/ai.md#4-the-pool-fun_00571c4d-and-the-sight-map-confirmed)); default 1, -1 keeps it | CONFIRMED `0x567a16`, `0x556dcd`, `0x51ce12` |
 | 37 | xp | +0x1c | XP reward base, see §4 | CONFIRMED |
 | 38 | gold_chance | — | gold drops if `p38 > rand(0..100)` | CONFIRMED `0x510ca0` |
 | 39, 40 | gold_base, gold_spread | — | gold = base + rand(0..spread) (40 is a spread, not a max) | CONFIRMED `0x510cc3` |

@@ -102,10 +102,20 @@ After the handler, the post step `FUN_00573713` runs for every member of every g
 2. For every member: `FUN_00553329(m, cell word)` = **`FUN_00552c28`**, the sight flood, marks cells (§4.1). If the owner is computer controlled
    (`owner+0x2c != 0`) and `brain+0x58 != 0` (the **attacker's cell** stored by the hit reaction): grid[`brain+0x58`] += 1; `brain+0x5a++`;
    `if brain+0x5a > 20: brain+0x58 := 0`. So a hit reveals the attacker's cell to its group for 21 passes (336 ticks) even outside sight.
-3. Every creature of the world (`pf+0xa456c` list) whose **cell word** has a non-zero grid byte is added to the pool.
+3. Every creature of the world (`pf+0xa456c` list; CONFIRMED `0x571c4d`: members come from the group's own list, candidates from this creature list, so structures are never squad members or
+   pool candidates; `FUN_0056acc8` has no structure branch either: its `unit+0x14 -> +0x2c` test is the owner's computer flag, choosing the caster check `FUN_0056b059` or the human one
+   `FUN_0057a769`; the engine's "structures as targets" gap is therefore not an exe feature) whose **cell word** has a non-zero grid byte is added to the pool.
 4. `FUN_00567a16(first member, pool, 0)`: delete units the owner is **not at war with** (`relations[owner][other] & 1 == 0`, matrix
    `server+0xa8bc`, `[a*0x46 + 8 + b]`); and delete a unit with flag `+0x144 & 0x1000` (hidden) unless some member detects it
-   (`reach_gap(hidden, member) <= member.brain+0x71`, `see_invisible`, data.bin p36). No effect sets `0x1000` yet, so the engine ignores the clause.
+   (`reach_gap(hidden, member) <= member.brain+0x71`, `see_invisible`, data.bin p36). The list walked for "some member" is `*(first member + 0x70)`, the owner's group object.
+   **Hidden flag CONFIRMED**: `+0x144 & 0x1000` is bit `1 << 12` of the effect-kind mask: the generic effect application `FUN_0051ce12` ORs `1 << kind` into `+0x144`
+   (`0x51d10a`; no caller found, reached through the effect vtable), expiry `FUN_0051cc9f` (`0x51cdd5`) and replacement clear it (`0x51cf13`); kind 12 is **Invisibility**
+   ([spells](../data/spells.md), `0x51b927`; it ends on the owner's attack, `FUN_00516b2f`). Other `+0x144` writers are the init to 0 (`0x50e201`), the copy (`0x50ea66`) and bits `0x100000` / `0x10000000`
+   (`0x517041`, `0x5170a0`). The same flag is read by the caster selectors (`FUN_0056bc7b` `0x56c47a`, `0x56c54f`; `FUN_00567c56` `0x567cd3`) and the UI target pick (`FUN_0057a307` `0x57a3bb`).
+   **Level**: `FUN_00556dcd` = `(max over x, y of max(0, |centre distance| - (size_a + size_b) * 128) >> 8) + 1` (centre of a size-n footprint = `pos + (n-1)*128`, 1/256 cells): 1 touching,
+   2 one free cell between. With the default `see_invisible` 1 (data.bin p36; -1 or humans keep 1; monsters have 0..10, mostly 3) a hidden hero is invisible to the pool unless a squad member touches it
+   (p36 = 3 sees it two free cells away). A hidden unit that is not at war is dropped anyway (the relation test comes first). Engine: `Unit.hidden` (the setter, the Invisibility effect, does not exist yet),
+   `ai.reach_gap`, `ai.see_invisible`, the clause in `_hostiles_on` and `_enemies`.
 5. `FUN_00567ddf`: delete pool units with HP < 1.
 5b. `FUN_00567ddf` does not only delete: it **moves** every pool unit with HP < 1 (`creature+0x94` word) from the pool list (`server+0xa68`) into the **dead list `server+0xa88`**
    (list object `+0xa84`; cleared first). CONFIRMED `0x567ddf`.
@@ -218,8 +228,14 @@ for 10 ticks after the hit** (§3 branch 4) and a unit whose pursuit failed goes
 After the handler, for each member: `HP <= brain+0x44` (wimpy, data.bin p35, halved on difficulty mode 1) and a hostile within 10 cells (`FUN_0056cb0c`)
 -> `FUN_0056c9bc`; elif `HP <= brain+0x40` (withdraw, p34) and a hostile within 2 cells -> `FUN_0056ce0f`. Both (units without a spell list): living
 hostiles in the list -> `go(m, flee)` where `flee = FUN_00558b92(m, mean position of the hostiles, 3)` (3 cells away along the dominant axis, clamped to
-[8, size-9]); none -> guard scan (`FUN_0056ce0f`: also when the list is empty). The hostile list is `FUN_0054ec6a(cell, r)` (objects in the Chebyshev
-square of radius `r`) then `FUN_00567a16` (§4.4). **Not** a state: the unit keeps its order and target; the next pass's branch table (§3) overrides
+[8, size-9]); none -> guard scan (`FUN_0056ce0f`: also when the list is empty). The hostile list is `FUN_0054ec6a(cell, r)` (the **occupants** of the Chebyshev
+square of radius `r`, scan order: centre, then each ring) then `FUN_00567a16` (§4, step 4).
+**Creatures only (CONFIRMED `0x54ec6a`, `0x551edb`, `0x5503af`)**: a cell counts when bit `0x20` of `pf+0x10000` is set ("has a cell record"), and the entry is the record's occupant slot
+rec`+4` (`FUN_00551edb`), written only by `FUN_005503af` for ground movement classes 1, 2 (class 3 flyers go to rec`+8`, never listed) from `FUN_0055020a`, whose callers all pass a creature
+(`0x510089` placement, `0x54eee7` teleport, `0x554bf8`/`0x554fd2` movement, `0x55a96c`). Structures live in rec`+0xc`, piles in another slot, carriers/sacks are piles: none is listed, so **a hostile
+structure never makes a monster flee**. The list is **not de-duplicated** (`FUN_0053c5c0` appends): a unit of footprint `n x n` is listed once per footprint cell (anchored at its own cell,
+`FUN_0055020a`) inside the square and the first unit to enter a shared cell holds the slot; the flee point (the mean position) is weighted accordingly. Dead bodies are occupants too. The owner test
+(`FUN_0057994d`, `obj+0x14 -> +4`) is only ever applied to creatures there. **Not** a state: the unit keeps its order and target; the next pass's branch table (§3) overrides
 the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16 ticks, then the pool target pulls it back.
 
 ## 10. Engine mapping (DECISIONS)
@@ -235,8 +251,8 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
   the pool radius, the post, the target, a label with mode / order / target uid / radius / stamp). Tests that use monsters as dummies keep the old behaviour.
 * Deviations (all invisible in the 46 maps' normal play, none changes the rules above): an event-raised mode (§6.2) runs its body one tick later than the
   exe's direct call; (a go cell is passed raw, as the exe does: cell (0, 0) for a never-hit unit, §3); a target that
-  disappears ends mode 5 without stopping the unit (INFERRED, the exe's pointer); casters (units with spells) and the effect bits `0x1000` / `0x40000`
-  are not modelled; the difficulty tweak is implemented behind `World.from_map(difficulty=...)` (default 2 = off, section 10.1); the target flag `+0x4c & 8` test of `FUN_0056acc8` is not modelled (off-map units do not exist in the engine).
+  disappears ends mode 5 without stopping the unit (INFERRED, the exe's pointer); casters (units with spells) and the effect bit `0x40000`
+  are not modelled (`0x1000` hidden: the clause is, `Unit.hidden` has no setter yet); the difficulty tweak is implemented behind `World.from_map(difficulty=...)` (default 2 = off, section 10.1); the target flag `+0x4c & 8` test of `FUN_0056acc8` is not modelled (off-map units do not exist in the engine).
 ### 10.1 Difficulty tweak (`FUN_00561bf9` `0x561e20`-`0x561f0b`, CONFIRMED)
 
 `[0x6044c4+0xd8]` is the game option "difficulty": the server ctor `0x4e97bf` stores **2**; the only setter is `0x493d80`, called from the game-setup window `0x4891d8` (`0x48972f`) with `selector + 1` (the selector control is filled from the chosen list entry, `0x4899e3`; the whole server state is also saved/loaded as 1..3 by `0x4ec732`). Nothing else writes it, so a game that never visits that window keeps **2 = normal = no tweak** (INFERRED: that the single-player campaign start does not run the window; the default itself is CONFIRMED). It is not the map header: `field_88` is only the multiplayer advert level ([map.md](../formats/map.md)). The tweak runs only for units whose map flag `0x10` is clear (monsters; heroes take the other branch), when the mode is not 2 and settings `+0x74 == 0` (single-player map, `field_84 == 1`). Mode 1 (easy): max HP = trunc(template HP x 0.5 `0x5d1b00`), HP = max HP, brain `+0x44` (wimpy) `>>= 1`. Mode 3 (hard; the code branch is "else", so 0 would act the same, never stored): to-hit `+0xa6` and defence `+0xbe` += `0x32`, max HP = trunc(x 1.5 `0x5d1b08`). It scales the template value; a map HP override replaces it afterwards, and the monster recompute is additive so the +50 survives. Engine: `World.from_map(m, assets, difficulty=2)` (`DEFAULT_DIFFICULTY`), `Unit.tweak` (0 / 1 / 3), `combatstats.monster_stats(hard=)`, `ai.post_step` (wimpy). Default 2 changes nothing: no golden or hash moves. Not modelled: the client-side damage scaling (x0.5 easy / x1.5 hard, `FUN_00502019`) and the `[0x6044c4+0x174]` multiplayer filter.
@@ -244,8 +260,8 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
 * Optimisation allowed by "1:1, but faster": the sight flood is memoised per pass per (cell, scan, height field) and written with numpy-free integer
   loops; the pool is built from the spatial index (`world.units`) restricted to the group's visible cells, not by scanning all creatures. Results are identical.
 * RNG: the only draw is `rand(-1..1)` at the first pass of each group (§3.5), in group creation order.
-* Not modelled (INFERRED needed or phase K): hidden units (`0x1000`), the `0x40000` scan-range effect bit, spells, the second list, caster scan,
-  special attacks `FUN_0056a981`, structures as targets, group orders 1, 2, 5, `0x11`, `0x13` and `0xff` ([§14](#14-the-other-group-orders)).
+* Not modelled (INFERRED needed or phase K): the Invisibility effect that sets `Unit.hidden`, the `0x40000` scan-range effect bit, spells, the second list, caster scan,
+  special attacks `FUN_0056a981`, group orders 1, 2, 5, `0x11`, `0x13` and `0xff` ([§14](#14-the-other-group-orders)).
 
 ## 11. Tests and code
 

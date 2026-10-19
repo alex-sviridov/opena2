@@ -504,3 +504,62 @@ def test_easy_difficulty_halves_the_wimpy_threshold():
     m.hp = 5
     run(sim, 16)
     assert m.mode_go and m.mover.goal[0] < m.x                    # 5 <= 10 >> 1: it flees west, away from the hero
+
+
+# --- the flee list FUN_0054ec6a + FUN_00567a16 (A§9) and the hidden-unit clause ----------------------------------------------
+
+def test_the_flee_list_holds_ground_occupants_only_once_per_footprint_cell_and_no_flyers():
+    w = world()
+    m = unit(w, 1, 20, 20, 2, 1)
+    big = hero(w, 2, 24, 20, token=2)                    # footprint 24..25 x 20..21: 4 cells inside the square, listed 4 times
+    fly = hero(w, 3, 20, 24, move=3)
+    fly.move_type = 3                     # a flyer holds rec+8, never read by FUN_00551edb
+    small = hero(w, 4, 20, 16)
+    near = ai._enemies(w, m, 10)
+    assert [c.id for c in near].count(big.id) == 4
+    assert fly.id not in [c.id for c in near]
+    assert [c.id for c in near].count(small.id) == 1
+    assert ai._enemies(w, m, 3) == []
+    assert sorted(c.id for c in ai._enemies(w, m, 4)) == sorted([big.id, big.id, small.id])   # footprint cells (24,20) and (24,21) are inside radius 4
+
+
+def test_a_structure_on_the_cells_is_not_in_the_flee_list():
+    # only occupant slots (creatures) are read: with no creature near, a wimpy unit's list is empty
+    w = world()
+    m = unit(w, 1, 20, 20, 2, 1, wimpy=10)
+    assert ai._enemies(w, m, 10) == []
+
+
+def test_reach_gap_is_one_when_touching_and_grows_by_one_per_cell():
+    w = world()
+    a = hero(w, 1, 20, 20)
+    assert ai.reach_gap(a, hero(w, 2, 21, 20)) == 1
+    assert ai.reach_gap(a, hero(w, 3, 22, 20)) == 2
+    assert ai.reach_gap(a, hero(w, 4, 20, 25)) == 5
+
+
+def test_a_hidden_hostile_is_in_the_flee_list_only_inside_the_see_invisible_gap():
+    w = world()
+    m = unit(w, 1, 20, 20, 2, 1)
+    h = hero(w, 2, 22, 20)
+    h.hidden = True
+    assert ai.see_invisible(m) == 1
+    assert ai._enemies(w, m, 10) == []                    # gap 2 > 1
+    m.stats.fields["see_invisible"] = 2
+    assert ai._enemies(w, m, 10) == [h]
+    m.stats.fields["see_invisible"] = 1
+    w.move_unit(h.id, 21, 20)
+    assert ai._enemies(w, m, 10) == [h]                   # touching: gap 1
+
+
+def test_a_hidden_hero_is_not_a_pool_target_until_a_member_touches_it():
+    w = world()
+    m = unit(w, 1, 20, 20, 2, 1)
+    h = hero(w, 2, 25, 20)
+    h.hidden = True
+    sim = Simulation(w, ai=True)
+    run(sim, 20)
+    assert m.ai.target is None
+    h.hidden = False
+    run(sim, 16)
+    assert m.ai.target == h.id

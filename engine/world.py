@@ -294,6 +294,7 @@ class Unit:
     mover: Mover = field(default_factory=Mover)
     odometer: int = 0               # client walk counter obj+0x9c: map units moved, 16 per walk frame
     order_group: int = 0            # id of the OrderGroup the unit belongs to (unit+0x70), 0 none
+    hidden: bool = False            # +0x144 & 0x1000: the Invisibility effect (kind 12, FUN_0051ce12 sets bit 1 << kind); nothing sets it yet
     stopped: bool = False           # brain+0x50: set by the stop routine FUN_0056dbc6, cleared by every cancel
     mode_go: bool = False           # Brain mode 1 (go to brain+0xa, mover.goal): the move order and the group-pass restart
                                     # (FUN_0056c8af) set it, the stand orders (FUN_0056d52b) and a failure under another order clear it
@@ -993,6 +994,8 @@ class World:
             d["wait"] = [int(m.waiting), int(m.parked)]
         if u.order_group or u.stopped or u.anchor:                          # only after a player command
             d["cmd"] = [u.order_group, int(u.stopped), list(u.anchor) if u.anchor else None]
+        if u.hidden:                                                        # only under an Invisibility effect
+            d["hidden"] = 1
         if u.mode_go and u.order != 1:                                      # a restarted unit under the stand order
             d["mode"] = 1
         if fight is not None:
