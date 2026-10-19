@@ -7,10 +7,10 @@ comments; routine addresses there).  Layer 4: reads and writes `engine.world` on
 
 from engine.world import OrderGroup
 
-from .commands import AttackUnit, MoveUnits, SetFormation, Stop
+from .commands import AttackUnit, Guard, MoveUnits, SetFormation, StandStill, Stop, Swarm
 from .combat import can_order_attack, refresh_attack, set_attack
 from .movement import (ATTACK_ORDER, CENTRE, MoveTo, _in_map, _set_action, IDLE, cancel, fail_stop, live_cells, path_grid,
-                       set_move, set_stand, stop_unit, unit_size, unit_speed)
+                       set_guard, set_move, set_stand, set_still, stop_unit, unit_size, unit_speed)
 from .pathfinding import chebyshev
 from . import ai
 
@@ -95,8 +95,9 @@ def _cancel_group(world, g):
     g.order = 0
 
 
-def move_group(world, g, x, y, raw=False):
-    """`FUN_005703c0` (R 3.2, 4.1, 4.3).  `raw` (debug `MoveTo`): the target is used as given, no wrap or clamp."""
+def move_group(world, g, x, y, raw=False, swarm=False):
+    """`FUN_005703c0` (R 3.2, 4.1, 4.3).  `raw` (debug `MoveTo`): the target is used as given, no wrap or clamp.  `swarm`: `FUN_0057063e`, the same
+    code with group order 5 at the end (cmd 0x1a)."""
     x, y = x & 0xFF, y & 0xFF
     formation, minspeed = True, 250
     _cancel_group(world, g)
@@ -124,7 +125,7 @@ def move_group(world, g, x, y, raw=False):
         set_move(world, u, *((tx, ty) if raw else _clamp(world, tx, ty)))
     if formation:
         g.speed = minspeed
-    g.order = GROUP_MOVE
+    g.order = ai.G_SWARM if swarm else GROUP_MOVE
     g.target = (x, y)
 
 
@@ -134,6 +135,48 @@ def stop_group(world, g):
     for i in g.members:
         set_stand(world, world.units[i])
     g.order = GROUP_STAND
+
+
+def guard_group(world, g, radius=0, computer=False):
+    """`FUN_005709d9(group, radius)` (cmd 0x17 G with radius 0; the scripted guard with the radius byte) and `FUN_00570aba` (`computer`: the squads'
+    group order 0x12): every member `FUN_0056d4ba` (order 0xb, anchor), the group order, `FUN_0057026e` (centroid stats, pool radius := reach), then
+    a given radius raises the pool radius to it, else the floor applies: G -> `MinimalGuardRange` (10), 0x12 -> 20 (when the reach is below 10)."""
+    _cancel_group(world, g)
+    mem = [world.units[i] for i in g.members]
+    for u in mem:
+        set_guard(world, u)
+    g.order = ai.G_COMPUTER if computer else ai.G_GUARD
+    if mem:
+        ai.record_stats(world, g, mem)
+    if radius:
+        if g.radius < radius:
+            g.radius = g.base = radius
+    elif g.radius < ai.MIN_GUARD_RANGE:
+        g.radius = g.base = ai.DEFAULT_RADIUS if computer else ai.MIN_GUARD_RANGE
+
+
+def still_group(world, g):
+    """`FUN_00570bde` (cmd 0x12 L): every member `FUN_0056d572` (order 0x17, anchor on the own cell), group order 0x13."""
+    _cancel_group(world, g)
+    for i in g.members:
+        set_still(world, world.units[i])
+    g.order = ai.G_STILL
+
+
+def hold_group(world, g, x, y):
+    """`FUN_005708bc` (scripted sub-command 2): cancel, group order 2, destination `y << 8 | x`; the members keep their order."""
+    _cancel_group(world, g)
+    g.order = ai.G_HOLD
+    g.target = (x & 0xFF, y & 0xFF)
+
+
+def wander_group(world, g):
+    """`FUN_005708ff` (scripted sub-command 17): cancel, group order 0x11, destination := the first member's cell, counter := 0."""
+    _cancel_group(world, g)
+    g.order = ai.G_WANDER
+    first = world.units[g.members[0]] if g.members else None
+    g.target = (first.x, first.y) if first is not None else (0, 0)
+    g.counter = 0
 
 
 def _target_free(world, u, cell):
@@ -146,8 +189,9 @@ def _target_free(world, u, cell):
 
 
 def group_pass(world):
-    """`FUN_0056fe4d` (R 4.4): per player in id order, each group in creation order; only group order 4 (move) is
-    decoded, plus order 3 (stand ground, `57309d`) when the AI is on (docs/engine/ai.md 14)."""
+    """`FUN_0056fe4d` (R 4.4): per player in id order, each group in creation order: the group orders 0 and 4 always, 3 (stand ground, `57309d`),
+    1, 2, 0x11, 0x12, 0x13 and 0xff when the AI is on, 5 (swarm) and 0x11 (wander) also with the AI off (an empty pool: they walk); the
+    handlers are in `ai.run_group` (docs/engine/ai.md 14)."""
     for pid in sorted({g.owner for g in world.groups.values()}):
         for g in [g for g in world.groups.values() if g.owner == pid]:
             if g.members and g.order == GROUP_MOVE:
@@ -156,6 +200,8 @@ def group_pass(world):
                 _pass_orders(world, g)
             elif g.members and g.order == GROUP_STAND and world.ai_on:
                 ai.stand_pass(world, g)         # FUN_0057309d; behind the AI switch (the original always runs it)
+            elif g.members and g.order in ai.PASS_ORDERS and (world.ai_on or g.order in (ai.G_SWARM, ai.G_WANDER)):
+                ai.run_group(world, g)
 
 
 def _pass_move(world, g):
@@ -165,6 +211,8 @@ def _pass_move(world, g):
         m = u.mover
         cell = (u.x, u.y)
         at_centre = (u.sub_x, u.sub_y) == (CENTRE, CENTRE)
+        if m.goal is None:
+            m.goal, m.arrived, m.failed = (0, 0), False, False     # brain+0xa of a member that never got a destination (a wander group): cell word 0
         if m.goal is not None and cell == m.goal and at_centre and not u.stopped:
             stop_unit(world, u)                         # arrived (FUN_0056dbc6)
             m.arrived = False
@@ -230,6 +278,18 @@ def orders_system(world, commands):
             g = intake(world, cmd.player_id, cmd.unit_ids)
             if g is not None:
                 stop_group(world, g)
+        elif isinstance(cmd, Guard):
+            g = intake(world, cmd.player_id, cmd.unit_ids)
+            if g is not None:
+                guard_group(world, g, 0)                # cmd 0x17: FUN_005709d9(group, 0)
+        elif isinstance(cmd, StandStill):
+            g = intake(world, cmd.player_id, cmd.unit_ids)
+            if g is not None:
+                still_group(world, g)
+        elif isinstance(cmd, Swarm):
+            g = intake(world, cmd.player_id, cmd.unit_ids)
+            if g is not None:
+                move_group(world, g, *cmd.cell, swarm=True)
         elif isinstance(cmd, SetFormation):
             if cmd.player_id in world.players and cmd.mode in (0, 1, 2):
                 world.players[cmd.player_id].formation = cmd.mode

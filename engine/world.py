@@ -93,6 +93,20 @@ class OrderGroup:
     order: int = 0
     target: tuple = (0, 0)
     speed: int = 0
+    # the AI fields of the group record (docs/engine/ai.md 2, 14): used by the group orders 1, 2, 5, 0x11, 0x12, 0x13
+    centre: int = 0                 # +0x28 packed cell word of the centroid
+    spread: int = 0                 # +0x2a
+    reach: int = 0                  # +0x2c
+    radius: int = 0                 # +0x2d pool radius in cells
+    base: int = 0                   # +0x38
+    seen: int = 0                   # +0x30
+    passes: int = 0                 # +0x34
+    counter: int = 0                # +0x15 wander pass counter (byte)
+
+    def ai_dump(self):
+        """The AI fields, [] while they are all zero (a plain move / stand group keeps the old hash layout)."""
+        d = [self.centre, self.spread, self.reach, self.radius, self.base, self.seen, self.passes, self.counter]
+        return d if any(d) else []
 
 
 @dataclass
@@ -129,11 +143,21 @@ class AiGroup:
     passes: int = 0                 # +0x34
     awake: bool = True              # GroupAI record +0x45, recomputed at every group pass (ai.wake, docs/engine/ai.md 15)
     keep_awake: bool = False        # GroupAI record +0x48: never sleeps (set for squads a Scenario instant refers to; the engine has no scripts)
+    target: tuple = (0, 0)          # +0x0a group destination (x, y) of the orders 2, 5, 0x11
+    speed: int = 0                  # +0x44 group speed of a formation (orders 4, 5)
+    counter: int = 0                # +0x15 wander pass counter (byte)
+
+    @property
+    def owner(self):
+        return self.key[0]
 
     def dump(self):
         d = [list(self.key), list(self.members), self.order, self.centre, self.spread, self.reach, self.radius, self.base,
              self.seen, self.passes]
-        return d if self.awake else d + [0]             # a sleeping squad changes the hash; an awake one keeps the old layout
+        d = d if self.awake else d + [0]                # a sleeping squad changes the hash; an awake one keeps the old layout
+        if self.order != 0x12:                          # a squad a script re-ordered (ai.set_group_order)
+            d += [list(self.target), self.speed, self.counter]
+        return d
 
 
 @dataclass(frozen=True)
@@ -951,7 +975,7 @@ class World:
                 "items": [[i.id, i.x, i.y, i.sub_x, i.sub_y, i.gold, list(i.codes), list(i.groups)]
                           for _, i in sorted(self.items.items())],
                 "block": [bytes(row).hex() for row in self._block],
-                **({"groups": [[g.id, g.owner, list(g.members), g.order, list(g.target), g.speed]
+                **({"groups": [[g.id, g.owner, list(g.members), g.order, list(g.target), g.speed] + g.ai_dump()
                                for g in self.groups.values()]} if self.groups else {}),
                 **({"corpses": [[u.id, u.x, u.y, u.sub_x, u.sub_y, u.facing, u.hp, u.type_id, u.owner, u.death_tick]
                                 for _, u in sorted(self.corpses.items())]} if self.corpses else {}),

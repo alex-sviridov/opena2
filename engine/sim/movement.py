@@ -29,6 +29,7 @@ SNAP_TURN = 0x20                # a turn of at most 45 degrees snaps (FUN_005564
 
 IDLE_STATE, MOVE_STATE = 0, 1   # unit.state (+0x54)
 NO_ORDER, MOVE_ORDER, ATTACK_ORDER, STAND_ORDER = 0, 1, 3, 0xC   # unit.order (+0x50): none, move to cell, attack, stand/guard
+GUARD_ORDER, STILL_ORDER = 0xB, 0x17                             # guard post (G, the squads), stand still (L)
 ATTACK_STATE = 3                # unit.state: melee swing (docs/engine/combat.md section 4)
 STATIC_PLAN_FORCED = 0xFF       # mover.consumed value that forces a static re-plan (brain wrapper 0x56e4b0)
 WAIT = "wait"                    # _drive result: a blocker wait began (not an ended order)
@@ -527,6 +528,31 @@ def set_stand(world, u):
     u.mover.waiting = u.mover.parked = False
     if not u.mover.step_ticks:
         _set_action(world, u, IDLE)
+
+
+def _set_post(world, u, order, anchor):
+    cancel(u)
+    u.mode_go = False
+    u.mode_attack = False
+    u.mode_look = False
+    u.order = order
+    u.anchor = anchor
+    u.mover.waiting = u.mover.parked = False
+    if not u.mover.step_ticks:
+        _set_action(world, u, IDLE)
+
+
+def set_guard(world, u):
+    """`FUN_0056d4ba` (cmd 0x17 G, `FUN_00570aba`, the squad set-up): order 0xb, Brain mode 0, anchor = the cell being entered (`mover+6`)
+    when the unit is between cells, else its own cell (docs/engine/click-to-move-research.md 5)."""
+    centred = (u.sub_x, u.sub_y) == (CENTRE, CENTRE)
+    step = u.mover.step_target
+    _set_post(world, u, GUARD_ORDER, (u.x, u.y) if centred or step is None else tuple(step))
+
+
+def set_still(world, u):
+    """`FUN_0056d572` (cmd 0x12 L): order 0x17 (stand still), anchor = the own cell, Brain mode 0."""
+    _set_post(world, u, STILL_ORDER, (u.x, u.y))
 
 
 def set_move(world, u, x, y):

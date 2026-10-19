@@ -59,6 +59,38 @@ class Stop(Command):
 
 
 @dataclass(frozen=True)
+class Guard(Command):
+    """Exe command 0x17 (key G, guard): new command group, members order 0xb on their anchor, group order 1 (`FUN_005709d9`)."""
+    player_id: int
+    unit_ids: tuple
+
+    def __post_init__(self):
+        object.__setattr__(self, "unit_ids", tuple(self.unit_ids))
+
+
+@dataclass(frozen=True)
+class StandStill(Command):
+    """Exe command 0x12 (key L, stand still): members order 0x17, group order 0x13 (`FUN_00570bde`)."""
+    player_id: int
+    unit_ids: tuple
+
+    def __post_init__(self):
+        object.__setattr__(self, "unit_ids", tuple(self.unit_ids))
+
+
+@dataclass(frozen=True)
+class Swarm(Command):
+    """Exe command 0x1a (swarm, key S then a click, or Ctrl+click): the move group code with group order 5 (`FUN_0057063e`)."""
+    player_id: int
+    unit_ids: tuple
+    cell: tuple
+
+    def __post_init__(self):
+        object.__setattr__(self, "unit_ids", tuple(self.unit_ids))
+        object.__setattr__(self, "cell", (int(self.cell[0]), int(self.cell[1])))
+
+
+@dataclass(frozen=True)
 class SetFormation(Command):
     """Exe command 0x46 sub-code 2: the player's formation option, client mode 0 off, 1 auto, 2 on."""
     player_id: int

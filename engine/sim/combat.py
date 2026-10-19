@@ -210,8 +210,8 @@ def attack_mode(world, u):
     """Brain mode 5 (`FUN_0056eab5`): in range -> start the swing (`FUN_0056e8c3`), else approach with the follow driver (`FUN_0056ea52`)."""
     t = world.find_unit(u.target)
     if t is None:
-        if world.ai_on and u.order == ai.GUARD_ORDER:
-            u.mode_attack = False                   # an AI unit keeps its order; the next squad pass picks a new target or the post (INFERRED)
+        if world.ai_on and (u.order == ai.GUARD_ORDER or ai.pool_driven(world, u)):
+            u.mode_attack = False                   # a unit of a pool-driven group keeps its order; the next group pass picks a new target or the post (INFERRED)
         else:
             mv.stop_unit(world, u)                  # the id was freed (stage 5, flyer): the exe's pointer lookup fails
         return
