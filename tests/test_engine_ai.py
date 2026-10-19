@@ -352,3 +352,42 @@ def test_the_ai_debug_flag_parses_and_the_draw_list_draws_the_overlay():
     assert {"ai_sight", "ai_radius", "ai_post", "ai_target", "ai_text"} <= kinds
     plain = build_draw_list(w, cam, 7, AssetCache(None), opts, flags, (m.id,), None)
     assert not {i.kind for i in plain} & {"ai_sight", "ai_text"}                  # no info, no overlay
+
+
+# --- the dead list server+0xa88 (A§4 step 6) ---------------------------------------------------------------------------------
+
+def test_a_dying_body_is_a_target_only_when_no_living_enemy_is_in_the_pool():
+    w = world()
+    m = unit(w, 1, 20, 20, 2, 1)
+    body = hero(w, 2, 24, 20)
+    body.hp = -3                                                  # dying, still in the world (death.py keeps it until HP < -9)
+    living = hero(w, 3, 25, 20)
+    cells = {(24, 20), (25, 20)}
+    assert [u.id for u in ai._hostiles_on(w, 2, cells)] == [living.id]
+    assert [u.id for u in ai._hostiles_on(w, 2, {(24, 20)})] == [body.id]       # empty pool: the 0xa88 list is added back
+    assert ai._hostiles_on(w, 2, {(30, 30)}) == []
+
+
+def test_a_monster_keeps_attacking_the_body_of_the_last_hero():
+    w = world()
+    m = unit(w, 1, 20, 20, 2, 1)
+    body = hero(w, 2, 24, 20)
+    body.hp = -3
+    body.hp_max = 500
+    sim = Simulation(w, ai=True)
+    run(sim, 7)
+    assert m.ai.target == body.id
+
+
+def test_a_hit_between_neutral_owners_declares_war_both_ways_but_not_between_allies():
+    w = world()
+    w.players[3].relations = (0, 0, 18) + (0,) * 13
+    w.players[2].relations = (0, 18, 0) + (0,) * 13
+    a = unit(w, 1, 20, 20, 2, 1)
+    b = unit(w, 2, 21, 20, 3, 2)
+    ai.on_hit(w, a, b)
+    assert w.players[2].relations[2] & 1 and w.players[3].relations[1] & 1
+    w.players[2].relations = (0, 18, 2) + (0,) * 13                # allied: bits 0..1 non-zero, left alone
+    w.players[3].relations = (0, 2, 18) + (0,) * 13
+    ai.on_hit(w, a, b)
+    assert w.players[2].relations[2] == 2 and w.players[3].relations[1] == 2

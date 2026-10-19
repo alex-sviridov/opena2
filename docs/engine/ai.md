@@ -90,9 +90,17 @@ After the handler, the post step `FUN_00573713` runs for every member of every g
    `server+0xa8bc`, `[a*0x46 + 8 + b]`); and delete a unit with flag `+0x144 & 0x1000` (hidden) unless some member detects it
    (`reach_gap(hidden, member) <= member.brain+0x71`, `see_invisible`, data.bin p36). No effect sets `0x1000` yet, so the engine ignores the clause.
 5. `FUN_00567ddf`: delete pool units with HP < 1.
-6. When the pool is empty and `FUN_0044fc20` of the second list (`server+0xa88`, filled by caster code) is non-empty, those units are added:
-   phase K (the list is empty for melee monsters).
+5b. `FUN_00567ddf` does not only delete: it **moves** every pool unit with HP < 1 (`creature+0x94` word) from the pool list (`server+0xa68`) into the **dead list `server+0xa88`**
+   (list object `+0xa84`; cleared first). CONFIRMED `0x567ddf`.
+6. When the pool is empty and the dead list is non-empty (`FUN_0044fc20`), the dead list is **put back into the pool** and cleared (`0x571e27`-`0x571e90`, same code
+   in `FUN_00569fd4` `0x56a165`, `FUN_00571e9b`, `FUN_0056ed4e`, `FUN_00571c4d`, `FUN_0057184f`, `FUN_0057224e`). So `+0xa88` = "at-war units in sight that are dying/dead but
+   still in the creature list"; a **melee monster with only dying enemies in sight keeps a (dying) target** (it finishes the body, which `death.py` keeps until HP < -9) instead of
+   losing it. The list is empty otherwise, not "caster code" (the earlier reading was wrong). Engine: `ai._hostiles_on` returns the living, else the dying ones.
 
+**Caster lists `server+0xaa8` / `0xac8`** (CONFIRMED `0x567c56`, callers `FUN_0056b059`, `FUN_0056bc7b`): the caster first builds the unfiltered pool with `FUN_00571e9b`
+(sight flood as §4, no `FUN_00567a16` relation filter, still `FUN_00567ddf`), then `FUN_00567c56(caster, &server+0xa64)` clears both lists and sorts each pool unit (skipping brain state `0x10`
+and undetected hidden units) by `FUN_0057994d(caster, unit)`: at war -> `+0xac8` (targets of attack spells), else -> `+0xaa8` (**allies / neutrals / itself: heal `0x18` and buff
+targets**, picked by lowest `hp/hp_max`). Melee monsters never touch them (phase K).
 ### 4.1 Sight flood `FUN_00552c28` + `FUN_00552af8` (CONFIRMED)
 
 Tables built once by `FUN_005536a4` (`ScanShift` = 7 from `Scanning\ScanShift`, `1 << 7 = 128`), 41x41 window, offset `(i, j)` in -20..20:
@@ -180,8 +188,8 @@ brain mode 0 (a ranged or caster unit: `FUN_0056c592`/mode `0xb`, phase K). So a
 ## 8. Hit reaction `FUN_0056e6b8(attacker, victim, 0)` (CONFIRMED)
 
 Called at the end of `take_hit` (`0x517520`, also `0x517a5b`, `0x51881d`, `0x51a4d8`, `0x579e06`) when both creatures have an owner: victim brain
-`+0x54 := 1`; `+0x58 := cell word of the attacker` (the revealed cell, §4.2), `+0x5a := 0`; an event record via `FUN_0057977a` / `FUN_0057b210`
-(`world+0xbd98`, type 1; log/UI only: no consumer changes AI state, INFERRED); `+0x94 := attacker`, `+0x98 := tick`; and `+0x9c` := the cell **10
+`+0x54 := 1`; `+0x58 := cell word of the attacker` (the revealed cell, §4.2), `+0x5a := 0`; `FUN_0057977a(relations, attacker, victim, 0)` first: **a hit between neutral owners (`rel & 3 == 0`) sets the war bit attacker->victim, and victim->attacker likewise** (CONFIRMED; `declare_war` in the engine; a human attacker also posts a notice via `FUN_00504e87`, not modelled); then an event record via `FUN_0057b210`
+(`world+0xbd98`, type 1, appended by `FUN_0057b210` to the list `server+0xbbec`; the list is cleared every server tick by `FUN_0057485b` -> `FUN_0057b2b0` (CONFIRMED) and no reader was found: an event log, it changes no AI state, INFERRED); `+0x94 := attacker`, `+0x98 := tick`; and `+0x9c` := the cell **10
 cells beyond the victim on the ray attacker -> victim**: `d = victimpos16 - attackerpos16` per axis (`cell*256+sub`), `s = 10.0 / max(|dx|, |dy|)`
 (double division by the int; a zero denominator is `inf`/NaN as in x87, ftol -> `0x80000000`), `cell = (victim.cy + trunc(dy*s)) << 8 | (victim.cx + trunc(dx*s))`
 (16-bit truncation, no clamp here; the mode-1 order clamps to the map). Mapped to the brief: **a hit unit with no target runs away from its attacker
@@ -225,8 +233,8 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
 ## 12. Phase K list (ranged and casters)
 
 `FUN_0056bc7b` (caster scan: heal `0x18`, `0x1b`, buffs `0x14/0x15`, attack spells `0xd/0x13/4/8/0xc` with mana gates 5/10/40), `FUN_0056c592`/
-`FUN_0056c72b`/`FUN_0056969c` (cast executors), `FUN_0056a981` (special attack rolls), `FUN_0056b059`, `FUN_0056bb0d/53/2e`, the pool's second list
-(`server+0xa88`), `FUN_0056eff3` mode 6 for ranged units (the melee driver is reused),, `FUN_0057a769` / `FUN_0057a999`, group orders 1, 5, `0x11`, `0x13`, `0xff` (`FUN_00572xxx`).
+`FUN_0056c72b`/`FUN_0056969c` (cast executors), `FUN_0056a981` (special attack rolls), `FUN_0056b059`, `FUN_0056bb0d/53/2e`, the caster lists
+(`server+0xaa8` / `0xac8`), `FUN_0056eff3` mode 6 for ranged units (the melee driver is reused),, `FUN_0057a769` / `FUN_0057a999`, group orders 1, 5, `0x11`, `0x13`, `0xff` (`FUN_00572xxx`).
 
 ## 13. VERIFY IN GAME
 
@@ -245,6 +253,6 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
 
 ## Open questions
 
-* Contents and writers of the second list `server+0xa88` / `0xaa8` (caster and "remembered" units); `FUN_0057977a` consumer of the event record.
+* Is the event list `server+0xbbec` read anywhere (indirect list walkers)? No direct reader found; INFERRED unused.
 * Meaning of the stale stamp `+0x16` when a unit is never hit (`hitcell` = 0) - quirk 3 above.
 * Group orders `0x11`, `0x13` handlers (`FUN_00572ec4`, `FUN_0057311c`) and the sacks/pickup order of computer players.

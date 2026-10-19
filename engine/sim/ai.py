@@ -133,15 +133,18 @@ def _visible(world, observers):
 
 
 def _hostiles_on(world, owner, cells):
-    """The living units of cells, creation order, that `owner` is at war with (`FUN_00567a16` + `FUN_00567ddf`; the hidden-unit clause
-    is skipped: no effect sets flag 0x1000 yet)."""
+    """The units of cells, creation order, that `owner` is at war with (`FUN_00567a16` + `FUN_00567ddf`; the hidden-unit clause
+    is skipped: no effect sets flag 0x1000 yet): the living ones, or, when there is none, the dying ones (HP < 1, not yet removed)."""
     ids = set()
     for c in cells:
         ids |= world.units_at(*c)
     out = [world.units[i] for i in ids]
-    out = [u for u in out if u.hp > 0 and at_war(world, owner, u.owner)]
+    out = [u for u in out if at_war(world, owner, u.owner)]
     out.sort(key=lambda u: u.seq)
-    return out
+    living = [u for u in out if u.hp > 0]
+    # FUN_00567ddf moves the HP < 1 units into the list server+0xa88; the callers (FUN_00571c4d, FUN_00569fd4, FUN_0056ed4e ...) put them back
+    # when no living unit is left, so a dying body that is still in the world stays a target of an empty pool (A§4 step 6).
+    return living or out
 
 
 def class_of(u):
@@ -377,9 +380,25 @@ def auto_scan(world, u):
 
 # --- hit reaction (FUN_0056e6b8) ----------------------------------------------------------------------------------------------
 
+def _set_war(world, a, b):
+    pl = world.players.get(a)
+    if pl is not None and 0 < b <= len(pl.relations) and not pl.relations[b - 1] & 3:
+        rel = list(pl.relations)
+        rel[b - 1] |= 1
+        pl.relations = tuple(rel)
+
+
+def declare_war(world, attacker_owner, victim_owner):
+    """`FUN_0057977a(relations, attacker, victim, 0)`: a hit between two neutral owners (relation & 3 == 0) sets the war bit both ways
+    (attacker -> victim first, then victim -> attacker; the exe also posts a notice for a human attacker, not modelled)."""
+    _set_war(world, attacker_owner, victim_owner)
+    _set_war(world, victim_owner, attacker_owner)
+
+
 def on_hit(world, attacker, victim):
     """Called by the fight code for every resolved attack: alert the victim, reveal the attacker's cell to its squad, and store the cell
     10 cells beyond the victim on the ray attacker -> victim."""
+    declare_war(world, attacker.owner, victim.owner)
     b = victim.ai
     b.alerted = 1
     b.mark_cell = word(attacker.x, attacker.y)
