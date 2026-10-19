@@ -179,6 +179,30 @@ def score(world, me, cand):
     return s
 
 
+def score_stand(world, me, cand):
+    """`FUN_005713f8(me, cand)`, the score of the stand-ground pass (group order 3, `FUN_005725a8`): the same terms as `score`, but the
+    candidate must be within reach at once: the cell distance (melee) or `max(1, distance - range + 1)` (ranged) must be below 2, i.e. an
+    adjacent cell or inside the attack range; the preference then only doubles (1) or halves (4) the score (no mind / HP clause, no `0x40000`)."""
+    d = chebyshev((cand.x, cand.y), (me.x, me.y))
+    cls = class_of(cand)
+    if cls == 1 and attack_range(world, cand) > 1:
+        cls = 0
+    my_range = attack_range(world, me)
+    if my_range > 1:
+        pref = PREFERENCE[cls]
+        d = d - my_range + 1 if d > my_range else 1
+    else:
+        pref = PREFERENCE[class_of(me) * 4 + cls]
+    if d >= 2 or pref == 0:
+        return NO_TARGET
+    s = d * 256 + mv._fold(me.facing, cb.octant(foot(me), foot(cand)) & 0xFF)
+    if pref == 1:
+        s *= 2
+    elif pref == 4:
+        s >>= 1
+    return s
+
+
 def centroid_stats(world, g):
     """`FUN_0056fa63`: mean cell, widest member distance, and reach (distance + scan range) of the living-or-dying members."""
     mem = [world.units[i] for i in g.members if i in world.units]
@@ -210,10 +234,19 @@ def attack(world, m, t):
     emit(world, AttackUnit(m.owner, (m.id,), t.id, ai=True))
 
 
+def _human(world, m):
+    pl = world.players.get(m.owner)
+    return pl is not None and pl.human
+
+
 def idle(world, m):
-    """`FUN_0056afd9`: a computer-owned unit with nothing to do looks around (brain mode 0xb).  Already looking = a no-op in the exe
-    (the mode is set to the value it has), so the command is not issued again (log size)."""
-    if m.mode_look and not m.mode_go and not m.mode_attack:
+    """`FUN_0056afd9`: a computer-owned unit with nothing to do looks around (brain mode 0xb); a human's unit gets brain mode 0
+    (`FUN_0056b025`; a caster would run the caster scan, phase K).  Already in that mode = a no-op in the exe (the mode is set to the
+    value it has), so the command is not issued again (log size)."""
+    if _human(world, m):
+        if not (m.mode_look or m.mode_go or m.mode_attack):
+            return
+    elif m.mode_look and not m.mode_go and not m.mode_attack:
         return
     emit(world, Stop(m.owner, (m.id,), ai=True))
 
@@ -224,6 +257,7 @@ def enable(world):
     """Build the squads of the computer players and run `FUN_00570aba(group, 0)` on each (map load, `FUN_00562745`)."""
     world.ai_on = True
     world.ai_groups.clear()
+    _stand_squads(world)
     for u in world.units.values():
         pl = world.players.get(u.owner)
         if pl is None or pl.human or not u.known:
@@ -235,6 +269,23 @@ def enable(world):
         g.members.append(u.id)
     for g in world.ai_groups.values():
         init_group(world, g)
+
+
+def _stand_squads(world):
+    """`FUN_00562745` for the human players (map load, new game): every squad of a human player becomes a command group under group order 3
+    (`FUN_00570f2b` -> `FUN_00570b8b`: members order `0xc` on their own cell), so that the stand-ground pass (`stand_pass`) runs for them.
+    Units that already belong to a command group (a test or a save that issued commands) are left alone."""
+    from . import orders
+    squads = {}
+    for u in world.units.values():
+        pl = world.players.get(u.owner)
+        if pl is not None and pl.human and u.known and not u.order_group:
+            squads.setdefault((u.owner, u.squad), []).append(u)
+    for (owner, _), mem in squads.items():
+        g = orders._new_group(world, owner)
+        for u in mem:
+            orders._join(world, g, u)
+        orders.stop_group(world, g)
 
 
 def init_group(world, g):
@@ -325,6 +376,31 @@ def _assign_targets(world, mem, pool):
             if s < best_s:
                 best, best_s = c, s
         m.ai.target = best.id if best is not None else None
+
+
+def stand_pass(world, g):
+    """`FUN_0057309d`, the group pass of group order 3 (stand ground; `g` is a command group, `orders.OrderGroup`).  Every 16 ticks: the pool of
+    hostiles in the members' sight (`FUN_00571c4d`, no radius filter), each member's best `score_stand` candidate (`FUN_005725a8`), then per
+    member in list order: no target -> `FUN_0056afd9` (human: brain mode 0), else `FUN_0056acc8` (brain mode 5 on the target).  There is no
+    guard scan: the reach test is inside the score (adjacent for a melee unit, inside the range for a ranged one)."""
+    mem = [world.units[i] for i in g.members if i in world.units]
+    if not mem:
+        return
+    pool = _hostiles_on(world, mem[0].owner, _visible(world, mem))
+    for m in mem:
+        best, best_s = None, NO_TARGET
+        for c in pool:
+            s = score_stand(world, m, c)
+            if s < best_s:
+                best, best_s = c, s
+        m.ai.target = best.id if best is not None else None
+    for m in mem:
+        t = world.units.get(m.ai.target) if m.ai.target is not None else None
+        if t is None:
+            m.ai.target = None
+            idle(world, m)
+        else:
+            engage(world, m, t)
 
 
 def engage(world, m, t):
@@ -502,7 +578,7 @@ def apply(world, cmd):
             u.mode_attack, u.mode_go, u.mode_look = True, False, False
             m.waiting = m.parked = False
         elif isinstance(cmd, Stop):
-            u.mode_look, u.mode_go, u.mode_attack = True, False, False
+            u.mode_look, u.mode_go, u.mode_attack = not _human(world, u), False, False
 
 
 def look_around(world, u):

@@ -405,3 +405,89 @@ def test_a_hit_between_neutral_owners_declares_war_both_ways_but_not_between_all
     w.players[3].relations = (0, 2, 18) + (0,) * 13
     ai.on_hit(w, a, b)
     assert w.players[2].relations[2] == 2 and w.players[3].relations[1] == 2
+
+
+# --- the human's stand-ground pass (group order 3, FUN_0057309d; A§14) --------------------------------------------------------
+
+def _stand_world(gap, hero_rng=1, mon_scan=0):
+    w = world()
+    h = unit(w, 1, 20, 24, 1, 0, hp=500, scan=6, rng=hero_rng)
+    m = unit(w, 2, 20 + gap, 24, 2, 0, hp=500, scan=mon_scan, lo=0)
+    return w, h, m
+
+
+def test_human_squads_start_in_a_stand_ground_group_when_the_ai_is_on():
+    w, h, m = _stand_world(1)
+    assert not w.groups
+    Simulation(w, ai=True)
+    g = w.groups[h.order_group]
+    assert g.order == 3 and g.members == [h.id] and h.order == 0xC
+    assert m.order_group == 0                       # the monster squad is an AI group, not a command group
+
+
+def test_a_stand_ground_melee_unit_attacks_an_adjacent_hostile_at_the_next_pass():
+    w, h, m = _stand_world(1)
+    sim = Simulation(w, ai=True)
+    run(sim, 6)
+    assert not h.mode_attack                        # tick & 15 == 6 has not come yet
+    run(sim, 2)
+    assert h.mode_attack and h.ai.target == m.id
+    run(sim, 60)
+    assert any(e.attacker == h.id and e.target == m.id for e in damages(w))
+    assert h.order == 0xC                           # the stand order is untouched (brain mode 5 only)
+
+
+def test_a_stand_ground_melee_unit_ignores_a_hostile_that_is_visible_but_not_adjacent():
+    w, h, m = _stand_world(3)
+    sim = Simulation(w, ai=True)
+    run(sim, 80)
+    assert not damages(w) and not h.mode_attack and h.ai.target is None
+    assert (h.x, h.y) == (20, 24)                   # and it does not walk after it (no guard scan, no chase)
+
+
+def test_a_stand_ground_ranged_unit_attacks_a_hostile_inside_its_range_only():
+    w, h, m = _stand_world(3, hero_rng=4)
+    sim = Simulation(w, ai=True)
+    run(sim, 8)
+    assert h.mode_attack and h.ai.target == m.id
+    w2, h2, m2 = _stand_world(5, hero_rng=4)
+    run(Simulation(w2, ai=True), 80)
+    assert not h2.mode_attack and h2.ai.target is None
+
+
+def test_score_stand_cuts_off_what_is_not_in_reach_and_keeps_the_facing_term():
+    w, h, m = _stand_world(1)
+    s = ai.score_stand(w, h, m)
+    assert s == ai.score(w, h, m) or s in (2 * ai.score(w, h, m), ai.score(w, h, m) >> 1)   # the preference clause differs
+    assert s < 2 * 256 * 2                          # distance 1: one row of 256 (times the preference factor) plus the facing change
+    far = unit(w, 3, 25, 24, 2, 0, scan=0)
+    assert ai.score_stand(w, h, far) == ai.NO_TARGET and ai.score(w, h, far) != ai.NO_TARGET
+
+
+def test_a_stand_ground_unit_whose_target_left_returns_to_brain_mode_zero():
+    w, h, m = _stand_world(1)
+    sim = Simulation(w, ai=True)
+    run(sim, 8)
+    assert h.mode_attack
+    w.remove_unit(m.id)
+    run(sim, 16)
+    assert not h.mode_attack and not h.mode_look and not h.mode_go
+
+
+def test_a_unit_that_stopped_after_a_move_scans_for_enemies_every_pass_group_order_4():
+    w = world()
+    h = unit(w, 1, 20, 24, 1, 0, hp=500, scan=6)
+    sim = Simulation(w, ai=True)
+    sim.step([MoveUnits(1, (h.id,), (22, 24))])
+    run(sim, 100)
+    assert h.stopped and (h.x, h.y) == (22, 24)
+    m = unit(w, 2, 23, 24, 2, 0, hp=500, scan=0, lo=0)
+    run(sim, 40)
+    assert any(e.attacker == h.id and e.target == m.id for e in damages(w))
+
+
+def test_nothing_changes_for_the_human_when_the_ai_is_off():
+    w, h, m = _stand_world(1)
+    sim = Simulation(w)
+    run(sim, 100)
+    assert not damages(w) and not w.groups and not h.mode_attack

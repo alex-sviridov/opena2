@@ -247,4 +247,4 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   attacker (run-away when it has no target), wimpy / withdraw HP thresholds flee 3 cells; `engine/sim/ai.py`, AI commands are `MoveUnits/AttackUnit/Stop(ai=True)` in the log,
   `Simulation(world, ai=True)`, `engine run` (`--no-ai`, F5 / `--debug ai` overlay), `tests/test_engine_ai.py`. Casters, special attacks, the second pool list: phase K list in ai.md.
 - Status: E, F, G3b, G3c (fonts), H (H1-H3), I1, I2, I3 done. Next: I4 (spells and special attacks: `FUN_0056a981`, caster scan `FUN_0056bc7b` and the phase K list of docs/engine/ai.md, then
-  structures as targets, human stand-ground scans). Also (docs/open-questions.md): town-scene animations, text conventions.
+  structures as targets; the human stand-ground pass (group order 3) and the other group orders are in ai.md §14, order 3 implemented behind the AI switch). Also (docs/open-questions.md): town-scene animations, text conventions.

@@ -147,13 +147,15 @@ def _target_free(world, u, cell):
 
 def group_pass(world):
     """`FUN_0056fe4d` (R 4.4): per player in id order, each group in creation order; only group order 4 (move) is
-    decoded.  Order 3 (stand ground, `57309d`) and the computer players' branch are phase I."""
+    decoded, plus order 3 (stand ground, `57309d`) when the AI is on (docs/engine/ai.md 14)."""
     for pid in sorted({g.owner for g in world.groups.values()}):
         for g in [g for g in world.groups.values() if g.owner == pid]:
             if g.members and g.order == GROUP_MOVE:
                 _pass_move(world, g)
             elif g.members and g.order == GROUP_ORDERS:
                 _pass_orders(world, g)
+            elif g.members and g.order == GROUP_STAND and world.ai_on:
+                ai.stand_pass(world, g)         # FUN_0057309d; behind the AI switch (the original always runs it)
 
 
 def _pass_move(world, g):
@@ -170,7 +172,9 @@ def _pass_move(world, g):
             stop_unit(world, u)                         # arrived at the end of its plan (a fallback cell)
             m.arrived = False
         if u.stopped:
-            continue                                    # guard scan (FUN_0056a1fb): no enemies exist yet
+            if world.ai_on:
+                ai.guard_scan(world, u)                 # FUN_0056afac(u, 0) = FUN_0056a1fb; AI-off sims have no enemies to scan
+            continue
         # FUN_0056c8af: brain mode := 1, destination := brain+0xa.  No test of the unit's order: it restarts a
         # parked unit (order 1) and a unit whose order the failure turned into 0xc (`stopped` still 0)
         u.mode_go = True

@@ -45,7 +45,7 @@ Group record = `group+0x3c` (shared with the command groups, [click-to-move §4.
 `FUN_0057026e`: `FUN_0056f850` (the stats above), `+0x2d = +0x38 := +0x2c`; then `if +0x2d < MinimalGuardRange: +0x2d = +0x38 := 0x14`
 (20); `+0x39 := 0`. `MinimalGuardRange` = registry key `Scanning\MinimalGuardRange` read at `0x5683a7` (`FUN_004e6f9f`) with default 10; the
 install's `world/data/map.reg` has no such key (only `ScanShift`), so **10** (CONFIRMED by scanning the file). The human's squads get
-group order 3 instead (`FUN_00562745`).
+group order 3 instead (`FUN_00562745`, [§14](#14-the-other-group-orders)).
 
 ## 3. The group pass `FUN_005728fa` (CONFIRMED, asm `0x5728fa`-`0x572d54`)
 
@@ -168,8 +168,8 @@ penalises ghosts only through 1 -> cand class 2 (value 1). The smallest score wi
 
 `FUN_0056acc8(m, t)` (the member has a target): if the target's `+0x4c & 8` (player-hero flag) is set -> guard scan `FUN_0056afac(m, 0)`; special
 attacks (spell slots `brain+0x7c+4i`, probability `rand15 < brain+0x88+4i`, last slot that passes; `FUN_0056a981`) -> **phase K**; if no spell:
-`m == t` -> no target; target 0 -> `FUN_00567988` (nearest enemies list) -> guard scan; for a non-computer owner `FUN_0057a769`; for monsters
-(`owner+0x2c == 0` branch is the *human-owner* branch; monsters take the else): `brain mode := 5`, `brain+0xc := t`, `brain+0x14 := FUN_0056ac5b(m)`
+`m == t` -> no target; target 0 -> `FUN_00567988` (nearest enemies list) -> guard scan; a unit with a spell list (`FUN_0053a5a0`) first tries the cast path (human owner,
+`owner+0x2c == 0`: `FUN_0056b059`; computer owner: `FUN_0057a769`; phase K); otherwise (every melee unit): `brain mode := 5`, `brain+0xc := t`, `brain+0x14 := FUN_0056ac5b(m)`
 (range); a **ranged** unit (`FUN_0053a5a0`, range byte `< 2`) calls `FUN_0056bc7b` (caster scan: phase K). Mode 5 is the I1 melee driver
 (`attack_mode`, [combat §2.3](combat.md)); the follow planner stamps `brain+0x16` when the target is out of reach (§3). Order, anchor and group of
 the unit are unchanged (an AI attack is **not** order 3).
@@ -192,8 +192,7 @@ living one with the smallest facing change (`<=`, the last of equals wins; start
 
 ## 7. Guard scan `FUN_0056a1fb` (CONFIRMED)
 
-Not run by the handler itself: it is the scan of `FUN_0056afac(u, 0)`, used by the retreat step (§9), by `FUN_0056acc8` and by the stand orders of the human's
-units (order `0xc`, `0x17`: not modelled yet). Candidates
+Not run by the handler itself: it is the scan of `FUN_0056afac(u, 0)`, used by the retreat step (§9), by `FUN_0056acc8` and by the group pass of the human's stopped units (group order 4, [§14](#14-the-other-group-orders)) and of empty-order groups (`0xff`); the stand-ground pass (order 3) does **not** use it. Candidates
 are the single-unit pool built by `FUN_00569fd4` (same steps as §4 with only this unit's sight flood, then `FUN_00567a16`, `FUN_00567ddf`).
 `best` starts empty with `bestgap = range + 1` (`range = FUN_0056ac5b`, byte arithmetic); for each candidate `c` with `FUN_005711ea(u, c) !=
 0xffffff`: `g = reach_gap(u, c)` (`FUN_00556dcd`), `+1` if `class(c) == 3 and class(u) != 3`, `a = FUN_0055aa21(facing octant(u,c), u.facing)`;
@@ -240,7 +239,7 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
   loops; the pool is built from the spatial index (`world.units`) restricted to the group's visible cells, not by scanning all creatures. Results are identical.
 * RNG: the only draw is `rand(-1..1)` at the first pass of each group (§3.5), in group creation order.
 * Not modelled (INFERRED needed or phase K): hidden units (`0x1000`), the `0x40000` scan-range effect bit, spells, the second list, caster scan,
-  special attacks `FUN_0056a981`, structures as targets, group orders other than `0x12`/3.
+  special attacks `FUN_0056a981`, structures as targets, group orders 1, 2, 5, `0x11`, `0x13` and `0xff` ([§14](#14-the-other-group-orders)).
 
 ## 11. Tests and code
 
@@ -251,7 +250,7 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
 
 `FUN_0056bc7b` (caster scan: heal `0x18`, `0x1b`, buffs `0x14/0x15`, attack spells `0xd/0x13/4/8/0xc` with mana gates 5/10/40), `FUN_0056c592`/
 `FUN_0056c72b`/`FUN_0056969c` (cast executors), `FUN_0056a981` (special attack rolls), `FUN_0056b059`, `FUN_0056bb0d/53/2e`, the caster lists
-(`server+0xaa8` / `0xac8`), `FUN_0056eff3` mode 6 for ranged units (the melee driver is reused),, `FUN_0057a769` / `FUN_0057a999`, group orders 1, 5, `0x11`, `0x13`, `0xff` (`FUN_00572xxx`).
+(`server+0xaa8` / `0xac8`), `FUN_0056eff3` mode 6 for ranged units (the melee driver is reused),, `FUN_0057a769` / `FUN_0057a999`, the cast branches of the other group orders ([§14](#14-the-other-group-orders)).
 
 ## 13. VERIFY IN GAME
 
@@ -268,7 +267,50 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
 9. A melee monster never targets a flyer; a hero on a ridge higher than the monster is noticed later.
 10. Idle monsters turn on the spot about every 3 seconds, and a monster hit from behind turns at once.
 
+## 14. The other group orders (CONFIRMED, `FUN_005700f3` dispatch; engine: 3 and 4's scan only)
+
+Group order = `record+0x20`; the pass `FUN_00570087` visits every player's groups (`FUN_005700f3`: empty group -> `0xff`, handler, then the post step §9 on every
+member). "Pool" = `FUN_00571c4d` over the members (§4), "assign" = `FUN_0057240b` (each member's lowest `FUN_005711ea` score in the pool, §5, no radius filter unless
+stated), "act" = per member in list order: target -> `FUN_0056acc8` (§6), no target -> the line given. `idle` = `FUN_0056afd9`: a computer owner gets brain mode `0xb`
+(§6.1), a human's non-caster brain mode 0 (`FUN_0056b025`; a unit with a spell list runs the caster scan `FUN_0056bc7b`, phase K). `go(m, c)` = `FUN_0056c8af` (§3).
+
+| Order | Handler | Per pass (every 16 ticks) | Set by |
+|---|---|---|---|
+| `0` | `FUN_0056fe34` -> `FUN_005692d5` | each member runs its own order executor (attack order 3 etc., [combat](combat.md)) | cmds `0x14` (R), `0x19` attack, `0x1b` follow, `0x1d` patrol; scripted attack/follow |
+| `1` guard | `57275f` | the §3 machinery of `0x12` without the hit / stamp branch table: centroid stats, pool, radius filter (`+0x2d`), assign, first-pass radius growth (§3.5); act: no target -> if cell == anchor `brain+0` and at a centre `idle`, else `go(m, anchor)` | cmd `0x17` G (`FUN_005709d9`, members order `0xb` via `FUN_0056d4ba`, radius floor `MinimalGuardRange` = 10); scripted guard (sub-command 1, radius byte) |
+| `2` go & hold | `572d57(group, dest = +0x0a)` | pool, assign (no radius); act: no target -> if cell == dest and at a centre `idle`, else `go(m, dest)` | scripted sub-command 2 (`FUN_005708bc`: cancel, `+0x0a := y << 8 \| x`, members keep their order); map-object effects (`FUN_0052f8e2` cases `0xb`, `0xc`, INFERRED: a unit steps on a trigger object and the computer group with `+0x48 == 1` is sent to it) |
+| `3` stand ground | `57309d` | pool, **`FUN_005725a8`** assign with `FUN_005713f8` (the reach-limited score below), no radius filter, no pass counter; act: no target -> `idle`, target -> `FUN_0056acc8` (brain mode 5, the unit's order stays `0xc`) | cmd `0x18` T (`FUN_00570b8b`: members order `0xc` on the own cell), map load for every human squad (`FUN_00562745` via `FUN_00570f2b` = cancel + `570b8b`), scripted sub-command 3 |
+| `4` move | `573198` | [click-to-move §4.4](click-to-move-research.md); a **stopped** member (`brain+0x50`) runs the guard scan `FUN_0056a1fb` (§7) every pass | cmd `0x16` move, scripted sub-command 4 |
+| `5` swarm | `572e1e(group, dest = +0x0a)` | pool; **pool empty -> `573198(group, dest)`** (walk to `dest` as a move group, scan for the stopped); else assign (no radius), act: no target -> `FUN_0056afac(m, 1)` = `idle`, target -> `FUN_0056acc8` | cmd `0x1a` (`FUN_0057063e`: formation offsets in `brain+0x24/0x26`, `+0x44` speed, `+0x0a := dest`), scripted sub-command 5 |
+| `0x11` wander | `572ec4` | `d` = max Chebyshev distance of the members from `+0x0a`; **if `d < 10` or the counter `+0x15 > 0x32`**: `+0x0a :=` the cell 20 cells away in a random one of the 8 directions (`rand(0..7)`, redrawn until it is inside the playable rectangle), counter := 0; then `572e1e(group, +0x0a)` and counter++ | scripted sub-command 17 (`FUN_005708ff`: `+0x0a :=` the first member's cell, counter := 0) |
+| `0x12` computer guard | `5728fa` | §3 | `FUN_00570aba` at map load (every non-human squad), by `520a5e` (summon: creates the group, then runs the stored instant), `560d9b` (scripted unit creation, likewise), scripted sub-command 18 (radius byte) |
+| `0x13` stand still | `57311c` | `idle` for every member (no pool, no target, no scan: never fights unless attacked and ordered) | cmd `0x12` L (`FUN_00570bde`: members order `0x17` via `FUN_0056d572`) |
+| `0xff` empty / new | `573159` | every member `FUN_0056afac(m, 0)` = guard scan (§7). A fresh group record starts as `0xff` (`FUN_005691c7`, from the group constructor `FUN_00515cd8`) and an empty group is forced to it, so only a member joined before any order is set sees this | - |
+
+Scripted orders are the trigger-side "instant" of type 6 (`FUN_00574f3f` switch -> `FUN_00577cee`, sub-command in `+8`; `FUN_00574ba1` runs the instants of the
+triggers whose conditions hold; `Scenario` section 7/10-12 are not decoded). The sub-commands that leave group order 0 or 4 (attack `0xa`, follow `0xb`, patrol-like
+`0xe`/`0xf`) go to `570946` / `570c84` / `570d26` / `570cd5`. So a script can replace a computer squad's `0x12` by 1 (guard), 2 (go and hold), 3, 4, 5 or `0x11` (wander).
+No path sets 2 / `0x11` / `0x13` / `0xff` on a human squad except a script or an object effect (2) and the L key (`0x13`).
+
+**Stand ground (3) answers "do idle heroes attack what stands next to them?"** Yes, through **the pool and the score, not the guard scan** (`FUN_0056a1fb` is not
+called by `57309d`): every 16 ticks (`tick & 15 == 6`, same tick for all groups) each member of a stand-ground group takes the lowest score over the hostile living
+units (relation bit 1) inside the **union of the members' sight floods** (§4.1; a unit with `scan_range` 0 sees only its own cell). `FUN_005713f8(me, cand)`:
+`d` = Chebyshev distance of the cells; candidate class as in §5; **melee** (`range < 2`): preference table `PREFERENCE[class(me) * 4 + class(cand)]`; **ranged**: table row
+by the candidate class, `d := d - range + 1` if `d > range` else 1; **`d >= 2` or preference 0 -> `0xffffff` (not a target)**; else `score = d * 256 + facing change`, doubled for
+preference 1, halved for 4 (none of §5's mind / HP / `0x40000` terms). So a melee unit targets only an **adjacent cell** (cell distance <= 1), a ranged unit anything
+within its attack range, that it can see; then brain mode 5 on it (the swing starts when facing and `reach_gap <= range`, §6 / [combat §2.3](combat.md)). No target ->
+brain mode 0 (which also ends a chase started by the previous pass). The unit never walks to a target beyond its reach, but mode 5 may step after an adjacent target for
+up to 16 ticks. The pass uses the unit's *cell*, not its footprint gap, for the cutoff. Without a spell list nothing else differs between human and computer owners.
+The reaction lag is the monsters' (up to 16 ticks, all groups in the same tick). A human group after a move command (order 4) get the real guard scan (the unit stopped by the
+arrival `FUN_0056dbc6`, `brain+0x50 == 1`): range `FUN_0056ac5b` (adjacent for melee), candidates = the unit's **own** sight, `reach_gap` order (§7), brain mode 6 (`FUN_0056c840`).
+
+Engine: `ai.stand_pass` (`orders.group_pass`, behind `world.ai_on`), `ai.score_stand`, the human `idle` (mode 0), `ai._stand_squads` at `enable` (the stand groups of the human squads),
+the guard scan for stopped members of move groups (`orders._pass_move`). With the AI off nothing changes. DECISIONS: the human's brain mode 6 of the guard scan is the mode-5
+driver (as for monsters); spell-list units (casters) take the non-caster branch; the `+0x4c & 8` flag test of `FUN_0056acc8` is skipped (§10); the final clause of `FUN_0056a1fb`
+(`FUN_0055be86` re-stamp when `mover+0x80` differs) is not modelled.
+
 ## Open questions
 
 * Is the event list `server+0xbbec` read anywhere (indirect list walkers)? No direct reader found; INFERRED unused.
-* Group orders `0x11`, `0x13` handlers (`FUN_00572ec4`, `FUN_0057311c`) and the sacks/pickup order of computer players.
+* Group orders 1, 2, 5, `0x11`, `0x13`, `0xff` for the engine: decoded in §14, not implemented (needs the G / L / swarm commands `0x17`, `0x12`, `0x1a`, and the Scenario instants, `FUN_00577cee`); the sacks/pickup order of computer players (the L / `P` keys, `FUN_00419f2a`) is not part of the group handlers.
+* Which map-object effect sends a group to the object with order 2 (`FUN_0052f8e2` cases `0xb`/`0xc`) and what the `+0x48` / `+0x4c` group flags mean (written by `520a5e` / `560d9b` from the summon record); start at `FUN_0052f8e2`.

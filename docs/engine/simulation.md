@@ -892,8 +892,10 @@ HP > 0 test stands in for it, 8.1).
 
 **Orders and group handlers still to build:** `0x17` guard (G), `0x12` (L), `0x14` (R) next to the `0x18` stand ground done here;
 `0x19` attack (`+0xe`, order 3), `0x1a` swarm (formation + group order 5, handler `572e1e`), `0x1b` follow (group `570c84`, orders 8/0x11),
-`0x1d` patrol (0xa); group handlers for orders 1, 3, 5, `0x13` (`57275f`, `57309d`, `572e1e`, `57311c`; only 4 is decoded, 8.3),
-the computer players' branch of the pass.
+`0x1d` patrol (0xa). **All group handlers are decoded: [ai §14](ai.md#14-the-other-group-orders)** (1 `57275f`, 2 `572d57`, 3 `57309d`, 5 `572e1e`, `0x11`
+`572ec4`, `0x13` `57311c`, `0xff` `573159`, `0x12` `5728fa`). Implemented with the AI on: order 3 (the stand-ground pass attacks hostiles it sees
+that are adjacent, or in range for ranged units: a pool + score pass, not the guard scan) and the guard scan of the stopped members of a move group (order 4);
+with the AI off the human units still never react (no enemies exist in those sims). Orders 1, 2, 5, `0x11`, `0x13` wait for their commands.
 
 **The retreat/withdraw post step `FUN_00573713`** ([research §4.5](click-to-move-research.md#45-the-post-step-fun_00573713-retreat-and-withdraw),
 CONFIRMED, combat-only for now): after every group handler, every 16 ticks, each member with HP <= `brain+0x44` (10 cells) or <= `brain+0x40`
@@ -959,9 +961,8 @@ The state is part of `World.dump()` once it differs from its initial value (old 
 
 1. What a unit does at a centre with an empty dynamic list after a failed hop plan (`FUN_00555c7e` empty-list "turn step" path, `0x555c7e`) beyond the failure stop; and whether the stale-list case (turn > 32 ticks) is reachable with real data.bin turn rates.
 2. Haste/Slow vs the group speed byte: the byte is fixed (§8.2); the effect system is phase I.
-4. Group orders 1, 3, 5, 0x13 (`57275f`, `57309d`, `572e1e`, `57311c`) and the computer players' branch of the pass: phase I
-   ([research §9](click-to-move-research.md)). The retreat post step `FUN_00573713` is decoded (§9 hook); its spell branches and
-   the hidden-enemy detection `FUN_00556dcd` remain.
+4. Group orders 1, 2, 5, 0x11, 0x13 are decoded ([ai §14](ai.md#14-the-other-group-orders)) but not built (their commands and the Scenario instants are missing);
+   the retreat post step `FUN_00573713` is decoded (§9 hook); its spell branches and the hidden-enemy detection `FUN_00556dcd` remain.
 5. The stored occupant/stamp slots with their release quirks (7.4 "Cell record"): `FUN_0055073f` clears a slot of any unit, so a first-come loser loses its record when the winner leaves; the engine derives the occupant instead. Starting routine `FUN_0055be86` callers `0x558b7c`, `0x56a5df` (how often a standing unit re-stamps, which decides how long such a cell stays unowned).
 6. The x87 control word at run time (precision / exception mask) for the slope in `FUN_00557f08`: only the follower-on-target-centre case (`0/0`) depends on it (7.4 step 3). Starting routine CRT start-up before `0x557f08`; DirectDraw init.
 7. `FUN_004e9b95` (loading a saved game, the branch of `FUN_004eb715` that skips `server+0 := 0; server+4 := 0`): which tick counter and block counter a loaded game restarts with (phase of the group pass after a load).

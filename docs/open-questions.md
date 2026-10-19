@@ -41,7 +41,7 @@ from both places when answered).
 
 - Monster damage = template + equipped weapon: confirm in play. [combat](engine/combat.md#open-questions)
 - Special attacks (`FUN_0056a981`), mage casting (`FUN_0056b059`, `FUN_0056bc7b`), the caster lists `server+0xaa8`/`0xac8` (answered in the doc, spell use is phase K). [ai](engine/ai.md#11-phase-k-list-ranged-and-casters)
-- AI: group orders `0x11`/`0x13`. [ai](engine/ai.md#open-questions)
+- AI: group orders 1, 2, 5, `0x11`, `0x13`, `0xff` are decoded but not built (need commands `0x17`/`0x12`/`0x1a` and the Scenario instants); object-effect order 2 (`FUN_0052f8e2`) and the `+0x48`/`+0x4c` group flags. [ai](engine/ai.md#open-questions)
 - Client reaction on message `0x73` beyond the number (view unit vtable `+0x74`); the recovery-timer byte wrap. [combat](engine/combat.md#open-questions)
 
 ## Not started (from the reversing plan)
@@ -87,7 +87,7 @@ from both places when answered).
 - [Engine minimap](engine/rendering.md#open-questions): final channel pass `0x4ac030`, fog background surface `DAT_00626be0`, fog gate of the unit dots; start at `FUN_004ac414`.
 - Movement and orders (H1, H3) [simulation](engine/simulation.md#open-questions): the empty-dynamic-list step at a centre after a failed hop (`FUN_00555c7e`) and whether a stale dynamic list (turn over 32 ticks) occurs with real turn rates;
   Haste/Slow vs the group speed byte (phase I); group
-  handlers for orders 1, 3, 5, 0x13 and the computer players' branch of the pass (`FUN_00570087`: `57275f`, `57309d`, `572e1e`, `57311c`),
+  the engine side of the group orders 1, 2, 5, 0x11, 0x13 (decoded, [ai §14](engine/ai.md#14-the-other-group-orders)),
   tick counters after loading a save (`FUN_004e9b95`, branch of `FUN_004eb715`); the server's handling of the client's type-100 message (`FUN_004f515d`).
 - Handoff to combat (phase I) [simulation §9](engine/simulation.md#9-handoff-to-combat-phase-i): wiring the decoded follow driver (7.4: `follow_fallback`, `FUN_0055574d`) to brain modes 4/5/6/8 and orders `0x19`/`0x1b`, orders `0x17`/`0x19`..`0x1d` and their group handlers, voice, the consolidated VERIFY IN GAME list (§9 items 1-10).
 - Order planning spike (H3 bench) [simulation §8.7](engine/simulation.md#87-tests-end-states-measured): a 20-unit order on the 256 x 256 map costs ~0.46 s in one tick (pure-Python planner); worker-thread or faster planner, results must stay bit-identical.
