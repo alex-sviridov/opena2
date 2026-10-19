@@ -523,6 +523,7 @@ def cancel(u, world=None):
     derived from positions).  Plans, `dest`, `turning` and the dynamic list are untouched."""
     u.mover.target_facing = u.facing
     u.mover.follow = None                       # FUN_0056d969: mover+0x7c := 0
+    u.ai_cast = False                           # FUN_0056d969 0x56da27: brain+0x60 := 0 (docs/engine/ai.md 12.7)
     u.state = IDLE_STATE
     u.stopped = False
     if world is not None:
@@ -550,7 +551,7 @@ def set_stand(world, u):
     """`FUN_0056d52b`: order 0xc (stand/guard), anchor = the own cell, mode 0."""
     cancel(u, world)
     u.mode_go = False
-    u.mode_attack = u.mode_cast = False
+    u.mode_attack = u.mode_cast = u.mode_cell = False
     u.order = STAND_ORDER
     u.anchor = (u.x, u.y)
     u.mover.waiting = u.mover.parked = False
@@ -561,7 +562,7 @@ def set_stand(world, u):
 def _set_post(world, u, order, anchor):
     cancel(u, world)
     u.mode_go = False
-    u.mode_attack = u.mode_cast = False
+    u.mode_attack = u.mode_cast = u.mode_cell = False
     u.mode_look = False
     u.order = order
     u.anchor = anchor
@@ -590,7 +591,7 @@ def set_move(world, u, x, y):
     m = u.mover
     u.order = MOVE_ORDER
     u.mode_go = True
-    u.mode_attack = u.mode_cast = False
+    u.mode_attack = u.mode_cast = u.mode_cell = False
     u.anchor = None
     m.goal = (x, y)
     m.arrived = m.failed = False
@@ -625,12 +626,12 @@ def _tick_unit(world, u):
             fail_stop(world, u)
         else:
             u.mode_go = False
-            u.mode_attack = u.mode_cast = False
+            u.mode_attack = u.mode_cast = u.mode_cell = False
             if world.ai_on and u.order == ai.GUARD_ORDER:       # 0x56e320: mode 0 and the auto target scan FUN_0056ed4e
                 ai.auto_scan(world, u)
     if u.state == ATTACK_STATE:
         combat.swing_tick(world, u)
-    elif u.state == spells.CAST_STATE:
+    elif u.state in (spells.CAST_STATE, spells.CELL_STATE):
         spells.cast_tick(world, u)
 
 
@@ -652,17 +653,29 @@ def _tick_inner(world, u):
         return
     if u.mode_cast and (u.mode_attack or u.mode_go or u.mode_look):
         u.mode_cast = False                             # the exe has one mode byte: the last writer wins
+    if u.mode_cell and (u.mode_attack or u.mode_go or u.mode_look or u.mode_cast):
+        u.mode_cell = False
     if u.mode_attack:                                   # Brain mode 5 (FUN_0056eab5)
         combat.attack_mode(world, u)
         return
     if u.mode_cast:                                     # Brain mode 8 (FUN_0056ebc0)
         spells.cast_mode(world, u)
         return
+    if u.mode_cell:                                     # Brain mode 9 (FUN_0056ec3f)
+        spells.cell_mode(world, u)
+        return
     if u.mode_look:                                     # Brain mode 0xb (FUN_0056e5bc): the idle look-around of a computer-owned unit
         ai.look_around(world, u)
         return
     if not u.mode_go or m.parked:
         return
+    go_tick(world, u)
+
+
+def go_tick(world, u):
+    """The body of the move driver at a cell centre (`FUN_0056e4ac` -> `FUN_00555411` with stop distance 0): the blocker wait, the plan,
+    the step.  Brain mode 1 and the out-of-range branch of mode 9 (`spells.cell_mode`) run it."""
+    m = u.mover
     if m.waiting:
         _tick_wait(world, u)
         return

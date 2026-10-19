@@ -116,12 +116,17 @@ class CommandQueue:
 @dataclass(frozen=True)
 class CastSpell(Command):
     """Exe command `0x1e` (cast at a unit; docs/data/spells.md 9c.1): the player's units that know spell `spell_id` (a bit of their spellbook) cast it
-    at unit `target_id`; the others of the group are only cancelled."""
+    at unit `target_id`; the others of the group are only cancelled.  With `cell` = (x, y) (and `target_id` None) it is command `0x1f`, the cast at a
+    cell (order 0xe; only spells with `target == 2`).  `ai=True`: the AI's brain-level cast (`FUN_0056c72b` mode 8 at the unit, `FUN_0056969c` mode 9 at
+    the cell; docs/engine/ai.md 12): no group, no cancel, order kept, `brain+0x60 := 1`."""
     player_id: int
     unit_ids: tuple
     spell_id: int
-    target_id: int
-    ai: bool = False                # K: the AI's cast path (`FUN_0056a981`)
+    target_id: int = None
+    ai: bool = False
+    cell: tuple = None
 
     def __post_init__(self):
         object.__setattr__(self, "unit_ids", tuple(self.unit_ids))
+        if self.cell is not None:
+            object.__setattr__(self, "cell", (int(self.cell[0]), int(self.cell[1])))

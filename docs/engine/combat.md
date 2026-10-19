@@ -63,11 +63,11 @@ At `tick & 15 == 6` (before the command drain of that tick) the group pass runs 
 order is 0. For order 3: if the target's state is `0x10` (removed) the unit is stopped (`FUN_0056dbc6`: cancel, order `0xc`,
 anchor = own cell, `brain+0x50 := 1`); then `FUN_0056acc8(unit, target)`:
 - target flag `+0x4c & 8` (off the map, [ai §6](ai.md#6-attack-and-return-execution-confirmed)): guard scan instead (no such units in the engine);
-- monsters only: up to three special attacks (`brain+0x7c..0x84`, probabilities `+0x88..+0x90` against a raw `rand()`) may take
-  over (spells: phase K);
-- otherwise **Brain mode := 5, `brain+0xc := target`, `brain+0x14 := FUN_0056ac5b`** (range). Mages (`+0x4c & 4`) and
-  ranged units first try a spell (`FUN_0056b059`, `FUN_0057a769`, `FUN_0056bc7b`): not modelled (INFERRED: they then fall
-  back to the same mode 5).
+- monsters only: up to three special attacks (`brain+0x7c..0x84`, probabilities `+0x88..+0x90` = `p * 0x147` against a raw `rand()`) may take
+  over ([ai §12.2-12.3](ai.md#122-fun_0056acc8u-t-with-spells-the-attack-decision-of-every-group-handler-6), built);
+- otherwise **Brain mode := 5, `brain+0xc := target`, `brain+0x14 := FUN_0056ac5b`** (range). Mages (`+0x4c & 4`) first try a spell: a computer owner
+  `FUN_0057a769` ([ai §12.4](ai.md#124-computer-owned-mage-engaging-fun_0057a769u-t), built), a human owner `FUN_0056b059` (a no-op without the hero's selected
+  spell) and, in mode 5 with range < 2, `FUN_0056bc7b` ([ai §12.6](ai.md#126-human-owned-mages-the-players-units-and-the-flee-step), not built).
 
 So **a freshly ordered unit starts its attack at the next `tick & 15 == 6`**, 0 to 15 ticks after the command (the command
 itself only sets order 3 and mode 0). The same executor re-sets mode 5 every 16 ticks, which undoes a mode 0 left by a
@@ -673,17 +673,22 @@ loop at `0x46cf31` follows the body draws, CONFIRMED by call order); the positio
 (`missile_position`), age = `tick - born`, so the missile reaches the target on the last tick before the damage. `AssetCache.projectile_set(pid)`; projectile id = `2 * spell + 8`. The cast animation is
 the attack action restarted at the cast start (`cast_start`: `action = "attack"`, animation.md 2.4 shares the block). UI: `C` (the original key of button 5) arms `pending = CAST` with the spell
 `castable_spell` finds (the lowest unit-target damage spell in a selected unit's book that its mana pays; the spellbook window is a J item), the cast cursor exists already, a click on a unit sends
-`CastSpell` (`OrderInput.release`, cmd `0x1e`), a click on the ground sends nothing (cell casts are phase K) and the mode resets either way, right release cancels it and keeps the selection (R 1.5).
+`CastSpell` (`OrderInput.release`, cmd `0x1e`), a click on the ground sends nothing (the sim has the cell form `CastSpell(cell=...)` = cmd `0x1f`, the UI does not send it: the client's cell-cast path is not traced) and the mode resets either way, right release cancels it and keeps the selection (R 1.5).
 There is no clickable command bar in the engine yet: the panel button of the spec belongs to the command bar of J1. VERIFY IN GAME (INFERRED here): missile spawn height (`MISSILE_Z` = 28 px) and
 facing rounding, the trail not drawn when the carrier is younger than one tick, that the cast button is disabled when the mana is short, `C` + click instead of the spellbook.
 
 Timeline (tests): order at tick T0; the next `tick & 15 == 6` is `P`; `CastStarted` at `P + 1`; `CastReleased` at `P + 1 + windup`; the damage at `release + max(flight, 1)` with
 `flight = trunc(sqrt(dx^2 + dy^2)) / speed` (positions in 1/256 cell, Fire Arrow speed 200: 8 ticks at 7 cells).
 
-Decisions (INFERRED unless marked): the cast order has no cell variant yet (`0xe`, `0x1f`: phase K); a missing target id stops the unit like an attack does; a caster is "gone" when it left `world.units`;
-spell damage goes through the exe's own `take_hit_detail` (the to-hit roll is drawn even for a spell, CONFIRMED structure of `FUN_00516f6f`); level of a monster caster is 0 (`spell_power`/skills are not
-loaded for monsters, AI casting is phase K); the target `brain+0xa4/+0xa8` stamps (AI buff logic) and the Invisibility break of the caster (`FUN_005106d2(0xc)`) need the effect system and are not modelled;
+Decisions (INFERRED unless marked): the cell cast (`0x1f`, order `0xe`, Brain mode 9, state `0xe`) is built in phase K ([spells §9d](../data/spells.md#9d-ai-casts-cell-casts-and-the-built-handlers-phase-k)); a missing target id stops the unit like an attack does; a caster is "gone" when it left `world.units`;
+spell damage goes through the exe's own `take_hit_detail` (the to-hit roll is drawn even for a spell, CONFIRMED structure of `FUN_00516f6f`); a monster caster's level uses `spell_power` / the mage skills and the
+template mind (phase K, [ai §12.1](ai.md#121-creature-set-up-fun_005114f3-monsters-0x5115860x511f44)); the target `brain+0xa4/+0xa8` stamps are written (`AiState.spell_mark`); the Invisibility break of the caster (`FUN_005106d2(0xc)`) needs the effect system and is not modelled;
 a staff has no charge counter; pack items (scroll command `0x25`) do not exist yet. VERIFY IN GAME: spells §9c.4.
+
+**AI casts (phase K, [ai §12](ai.md#12-casters-and-special-attacks-confirmed-unless-marked-engine-127)).** The AI issues `CastSpell(..., ai=True)` (unit or `cell`), applied at the
+brain level (`ai.apply_cast`: mode 8 / 9, `Unit.ai_cast` = `brain+0x60`); because `brain+0x60` is set the stop after the cast start is skipped and the mode repeats the cast
+until the next pass. A mage monster now has its mana, skills, book and mage flag (so its `castSpell` staff replaces its melee hit, §14 staff branch). Releases: damage,
+Heal, Drain Life built; the rest counted in `World.unbuilt_casts` ([spells §9d](../data/spells.md#9d-ai-casts-cell-casts-and-the-built-handlers-phase-k)).
 
 ### 14.1 Close-out checks (I4c)
 
@@ -713,7 +718,7 @@ side has no vision rule in the simulation (a click on a fogged cell becomes a mo
 **UI pieces still missing for J.** The command bar with its buttons (the hotkeys A M D S T G L C exist; `R` retreat `0x14`, `P` pick up all `0x13`, F4-F12 spell shortcuts do not), the spellbook window
 (spell choice and the cast cursor's spell, `FUN_0041f370`; `C` uses a fixed slot), the inventory / backpack and hero screens, the main-hero panel pieces (skills, XP, equipment), the hero-death
 load / quit dialog, the new-game screen (difficulty), the in-game menu, sound (no audio at all: cast sounds `500 + id`, hit sounds), the message line for out-of-range / no-mana feedback (the exe shows none
-for the cast button: it is disabled), town scenes, saves. Phase K: AI casting (ai.md 12), special attacks, cell casts (`0x1f`, order `0xe`), the non-damage spell handlers and the effect system
+for the cast button: it is disabled), town scenes, saves. Phase K (started: AI casting, special attacks, cell casts, Heal and Drain Life are built, ai.md 12 / spells.md 9d): the human mages' scan `FUN_0056bc7b`, the non-damage spell handlers and the effect system
 (Invisibility sets `Unit.hidden`, Bless / Curse / Haste / Slow), summons and raising, structures as targets, scroll items (`0x25`) and the pack.
 
 ## Open questions

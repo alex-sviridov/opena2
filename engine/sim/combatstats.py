@@ -216,8 +216,10 @@ def monster_stats(t, items=None, hard=False):
     elif kind == SURE_HIT_KIND:
         sure = True
         rec.lo, rec.sp = u8(lo_t), u8(sp_t)
+    mask = t.get("known_spells", -1)
     st = CombatStats(rec, block, sure_hit=sure, human=False, windup=_param(t, "windup", HUMAN_WINDUP),
-                     recovery=_param(t, "recovery", HUMAN_RECOVERY))
+                     recovery=_param(t, "recovery", HUMAN_RECOVERY),
+                     mage=mask is not None and mask not in (0, -1))     # 0x511dd6: known_spells neither 0 nor -1 -> +0x4c |= 6 (docs/engine/ai.md 12.1)
     bonus = _Bonus()
     if items is not None:
         for text in t.equipment:

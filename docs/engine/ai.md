@@ -127,7 +127,7 @@ After the handler, the post step `FUN_00573713` runs for every member of every g
 **Caster lists `server+0xaa8` / `0xac8`** (CONFIRMED `0x567c56`, callers `FUN_0056b059`, `FUN_0056bc7b`): the caster first builds the unfiltered pool with `FUN_00571e9b`
 (sight flood as §4, no `FUN_00567a16` relation filter, still `FUN_00567ddf`), then `FUN_00567c56(caster, &server+0xa64)` clears both lists and sorts each pool unit (skipping brain state `0x10`
 and undetected hidden units) by `FUN_0057994d(caster, unit)`: at war -> `+0xac8` (targets of attack spells), else -> `+0xaa8` (**allies / neutrals / itself: heal `0x18` and buff
-targets**, picked by lowest `hp/hp_max`). Melee monsters never touch them (phase K).
+targets**, picked by lowest `hp/hp_max`). Only the human-owner mage code (`FUN_0056b059`, `FUN_0056bc7b`, §12.6) reads them; melee monsters and the computer branch never do.
 ### 4.1 Sight flood `FUN_00552c28` + `FUN_00552af8` (CONFIRMED)
 
 Tables built once by `FUN_005536a4` (`ScanShift` = 7 from `Scanning\ScanShift`, `1 << 7 = 128`), 41x41 window, offset `(i, j)` in -20..20:
@@ -177,14 +177,14 @@ penalises ghosts only through 1 -> cand class 2 (value 1). The smallest score wi
 ## 6. Attack and return execution (CONFIRMED)
 
 `FUN_0056acc8(m, t)` (the member has a target): if the target's `+0x4c & 8` is set -> guard scan `FUN_0056afac(m, 0)`. **Bit 8 = the unit is off the map** (CONFIRMED: set only by `FUN_005102a3` = remove from the grid `FUN_00553891` + `|= 8` + two `FUN_005053a8` view calls; cleared by `FUN_00510318` / `FUN_005103ae` = put back on the map, which log "Unit can't enter / return to map"; callers in the scenario/group code `0x521099`, `0x52f813` (`FUN_0052f8e2`), `0x57821e`, `0x57824e`, `0x5787f2`; any creature class, not a hero flag, not an immunity); the engine has no off-map units, so the test never fires (nothing to model); special
-attacks (spell slots `brain+0x7c+4i`, probability `rand15 < brain+0x88+4i`, last slot that passes; `FUN_0056a981`) -> **phase K**; if no spell:
+attacks (spell slots `brain+0x7c+4i`, probability `rand15 < brain+0x88+4i`, last slot that passes; `FUN_0056a981`) -> §12.2-12.3; if no spell:
 `m == t` -> no target; target 0 -> `FUN_00567988` (nearest enemies list) -> guard scan; a **mage** (`FUN_0053a5a0` = `return +0x4c & 4`, CONFIRMED; see below) first tries the cast path (human owner,
-`owner+0x2c == 0`: `FUN_0056b059`; computer owner: `FUN_0057a769`; phase K); otherwise (every melee unit): `brain mode := 5`, `brain+0xc := t`, `brain+0x14 := FUN_0056ac5b(m)`
-(range); a **mage** with range byte `< 2` calls `FUN_0056bc7b` (caster scan: phase K). Mode 5 is the I1 melee driver
+`owner+0x2c == 0`: `FUN_0056b059`; computer owner: `FUN_0057a769`; §12.4, §12.6); otherwise (every melee unit): `brain mode := 5`, `brain+0xc := t`, `brain+0x14 := FUN_0056ac5b(m)`
+(range); a human-owned **mage** with range byte `< 2` calls `FUN_0056bc7b` (caster scan, §12.6). Mode 5 is the I1 melee driver
 (`attack_mode`, [combat §2.3](combat.md)); the follow planner stamps `brain+0x16` when the target is out of reach (§3). Order, anchor and group of
 the unit are unchanged (an AI attack is **not** order 3).
 
-**`+0x4c` creature flags (CONFIRMED)**: bit 2 = has a spell list (monster: template `spell_1` (p48) `> 0`, `0x511c0a`; human: spellbook built, `0x51203b`); bit 4 = **mage** (monster: template `known_spells` (p56) neither 0 nor -1, written `|= 6` at `0x511dd6`; human: `maxMana +0x9c != 0`, `0x514907` / `0x512050`); bit 8 = off the map (above); bit 0x10 = sure hit (monster damage kind 3). Bit 1 is set by no creature writer. `FUN_0053a5a0` is therefore *not* "has a spell list": the 38 `.4` / `.5` template variants with `spell_1 > 0` (`Goblin_Pike.4`, `Ogre.5`, ...) have bit 2 only and use `FUN_0056a981` (special attacks), not the mage path. **Goblin_Pike (`spell_1` -1, `known_spells` 0) and every other melee monster: always 0.** Mage templates (64 of 241 monster records: Dragon, Orc_Shaman, `M_Skeleton.3-5`, Necromancer, Druid*, Necro*, Succubus*, MercenaryDruid*) and every human with mana are the units that reach `FUN_0056bc7b` / `FUN_0056c840` / `FUN_0056b025` (phase K). The map unit `behaviour` bits (`+0x194/+0x19c/+0x198/+0x1a0`) are unrelated to `+0x4c`.
+**`+0x4c` creature flags (CONFIRMED)**: bit 2 = has a spell list (monster: template `spell_1` (p48) `> 0`, `0x511c0a`; human: spellbook built, `0x51203b`); bit 4 = **mage** (monster: template `known_spells` (p56) neither 0 nor -1, written `|= 6` at `0x511dd6`; human: `maxMana +0x9c != 0`, `0x514907` / `0x512050`); bit 8 = off the map (above); bit 0x10 = sure hit (monster damage kind 3). Bit 1 is set by no creature writer. `FUN_0053a5a0` is therefore *not* "has a spell list": the 38 `.4` / `.5` template variants with `spell_1 > 0` (`Goblin_Pike.4`, `Ogre.5`, ...) have bit 2 only and use `FUN_0056a981` (special attacks), not the mage path. **Goblin_Pike (`spell_1` -1, `known_spells` 0) and every other melee monster: always 0.** Mage templates (64 of 241 monster records: Dragon, Orc_Shaman, `M_Skeleton.3-5`, Necromancer, Druid*, Necro*, Succubus*, MercenaryDruid*) and every human with mana are the units that reach `FUN_0057a769` / `FUN_0056c592` (computer owners) or `FUN_0056b059` / `FUN_0056bc7b` / `FUN_0056b025` (human owners), §12. The map unit `behaviour` bits (`+0x194/+0x19c/+0x198/+0x1a0`) are unrelated to `+0x4c`.
 
 Returning: `go(m, anchor)` every pass until `cell == anchor` at a centre; then `FUN_0056afd9` (§6.1).
 
@@ -253,30 +253,167 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
   the pool radius, the post, the target, a label with mode / order / target uid / radius / stamp). Tests that use monsters as dummies keep the old behaviour.
 * Deviations (all invisible in the 46 maps' normal play, none changes the rules above): an event-raised mode (§6.2) runs its body one tick later than the
   exe's direct call; (a go cell is passed raw, as the exe does: cell (0, 0) for a never-hit unit, §3); a target that
-  disappears ends mode 5 without stopping the unit (INFERRED, the exe's pointer); casters (units with spells) and the effect bit `0x40000`
-  are not modelled (`0x1000` hidden: the clause is, `Unit.hidden` has no setter yet); the difficulty tweak is implemented behind `World.from_map(difficulty=...)` (default 2 = off, section 10.1); the target flag `+0x4c & 8` test of `FUN_0056acc8` is not modelled (off-map units do not exist in the engine).
+  disappears ends mode 5 (and an AI's mode 8) without stopping the unit (INFERRED, the exe's pointer); casters: §12.7 (the human-owner scan
+  `FUN_0056bc7b` and the Teleport flee are not built); the effect bit `0x40000` is not modelled (`0x1000` hidden: the clause is, `Unit.hidden` has no setter yet); the difficulty tweak is implemented behind `World.from_map(difficulty=...)` (default 2 = off, section 10.1); the target flag `+0x4c & 8` test of `FUN_0056acc8` is not modelled (off-map units do not exist in the engine).
 ### 10.1 Difficulty tweak (`FUN_00561bf9` `0x561e20`-`0x561f0b`, CONFIRMED)
 
 `[0x6044c4+0xd8]` is the game option "difficulty": the server ctor `0x4e97bf` stores **2**; the only setter is `0x493d80`, called from `FUN_004891d8` (`0x48972f`) with `selector + 1`. **Who reaches it in single player (CONFIRMED, REA)**: `FUN_004891d8` is not a lobby window but the main shell window's handler of message `0x44c` ("a child panel closed", dispatch `FUN_004852d8`, class vtable `0x5ce0d8`, ctor `0x481efc`; `this+0x5d8` = game kind: 2 = single player, 1 / 3 / 0 = network client / host / join). The server object (and so the option) is created only by `FUN_0048ab76` (ctor `0x4e957b` -> `0x4e97bf`, then `0x4eb356`), whose five callers are the game-kind starters: kind 2 by screen state `0x425` (`0x48c0e2`) and state `0x419` (`0x48db37`); kind 3 / 1 / 0 by `0x48f156` / `0x48f1e2` / `0x48ef1f` (network). **New game = state `0x425`** (loads `main\text\town.txt`, kind 2, selector `this+0x598 := 1`), then `FUN_0048f4e2` shows the setup panel `this+0x374` (resource `0x466`, class ctor `0x43270d`): name, option index `+0x208`, and **three radio buttons Easy / Medium / Hard** (`0x434fa1/0x434fdb/0x435014` write `+0x20c := 0/1/2`; their tooltips `0x437533` use main.txt lines 247..249 only when kind == 2; town.txt tip 9 says "select the easy level if you play for the first time"). OK on that panel copies the values (`0x4891d8` `this+0x374` branch: selector `FUN_00493ce0` -> `this+0x598`) and shows the confirm panel `this+0x36c` (`FUN_0048f3f0`); OK on `this+0x36c` with kind 2 runs `0x40d480`, `0x49183e`, the two option flags, **`if ([0x6044c4]) setter(this+0x598 + 1)`** and enters state `0x42e` (the game). So **the player chooses Easy (1) / Medium (2, preselected) / Hard (3) once, at the start of a new single-player game; every map of the campaign then uses it** (nothing re-creates the server between missions; the value is read per unit by `FUN_00561bf9`). **Load game = state `0x419`** (list dialog `this+0x13c`, OK `0x445`): `FUN_0048db37` makes a kind-2 server (default 2), then `FUN_004e9b95` reads the saved server state through `FUN_004ec732`, which restores `+0xd8` **only if the saved value is 1..3** (`0x4ecad4`-`0x4ecae9`), so the difficulty lives in the save file (written by `0x4ec8a1`) and is not asked again. Other paths (`0x444bcc`, class `0x44498d` with vtable `0x5cc438`) are dead code (no constructor call). Network host / join / lobby (kinds 0, 1, 3) reach the same panels but are out of scope. Mapping to the engine: `engine run MAP --difficulty 1|2|3` = Easy / Medium (default, no tweak) / Hard; there is no per-map difficulty and the map header does not carry one. It is not the map header: `field_88` is only the multiplayer advert level ([map.md](../formats/map.md)). The tweak runs only for units whose map flag `0x10` is clear (monsters; heroes take the other branch), when the mode is not 2 and settings `+0x74 == 0` (single-player map, `field_84 == 1`). Mode 1 (easy): max HP = trunc(template HP x 0.5 `0x5d1b00`), HP = max HP, brain `+0x44` (wimpy) `>>= 1`. Mode 3 (hard; the code branch is "else", so 0 would act the same, never stored): to-hit `+0xa6` and defence `+0xbe` += `0x32`, max HP = trunc(x 1.5 `0x5d1b08`). It scales the template value; a map HP override replaces it afterwards, and the monster recompute is additive so the +50 survives. Engine: `World.from_map(m, assets, difficulty=2)` (`DEFAULT_DIFFICULTY`), `Unit.tweak` (0 / 1 / 3), `combatstats.monster_stats(hard=)`, `ai.post_step` (wimpy). Default 2 changes nothing: no golden or hash moves. Not modelled: the client-side damage scaling (x0.5 easy / x1.5 hard, `FUN_00502019`) and the `[0x6044c4+0x174]` multiplayer filter.
 
 * Optimisation allowed by "1:1, but faster": the sight flood is memoised per pass per (cell, scan, height field) and written with numpy-free integer
   loops; the pool is built from the spatial index (`world.units`) restricted to the group's visible cells, not by scanning all creatures. Results are identical.
-* RNG: the only draw is `rand(-1..1)` at the first pass of each group (§3.5), in group creation order.
-* Not modelled (INFERRED needed or phase K): the Invisibility effect that sets `Unit.hidden`, the `0x40000` scan-range effect bit, spells, the second list, caster scan,
-  special attacks `FUN_0056a981`. The other group orders are built ([§14.1](#141-implementation-and-the-asm-details-it-rests-on-confirmed-unless-marked)).
+* RNG: the group pass draws `rand(-1..1)` at the first pass of each group (§3.5), in group creation order, and the caster draws of §12 (slot rolls,
+  the mage's `rand(100)` and pick, the idle friend / spell picks) in member order inside the handlers; the look-around (§6.1) draws per tick.
+* Not modelled: the Invisibility effect that sets `Unit.hidden`, the `0x40000` scan-range effect bit, the human-owner caster code (`FUN_0056b059` with a selected
+  spell, `FUN_0056bc7b`) and the Teleport flee (§12.6), the effects of the non-damage spells (§12.7: counted in `World.unbuilt_casts`). The other group orders are built ([§14.1](#141-implementation-and-the-asm-details-it-rests-on-confirmed-unless-marked)).
 
 ## 11. Tests and code
 
 `engine/sim/ai.py` (+ hooks: `orders.orders_system`, `movement._tick_inner/_tick_unit/follow_drive`, `combat.resolve_attack/attack_mode`, `Simulation`),
 `tests/test_engine_ai.py` (sight, score, notice / ignore, chase and return, squad alert, pool radius, 16-tick rate, hit reaction, hit-mark reveal, flee, look-around, 10-monster replay hash, log, overlay).
+Casting (§12): `tests/test_engine_ai_casting.py` (slot rolls and their draws, Teleport distance, target kinds, mage pick / mana / defensive filter / the
+30 % rethink, idle heal / Shield / friend buff and the Curse quirk, mode 8 repeat, mode 9 and command `0x1f`, Heal, revive, Drain Life, stubs,
+determinism) and `tests/test_engine_ai_casting_maps.py` (map 73, needs the install).
 
-## 12. Phase K list (ranged and casters)
+## 12. Casters and special attacks (CONFIRMED unless marked; engine: §12.7)
 
-Moved here from I4 (the player-side cast is built, combat.md §14): special attacks `FUN_0056a981` (rolls over the three spell slots), structures as spell/attack targets, the cast order for cells (`FUN_0056969c`, mode 9, command `0x1f`), summon and the non-damage spell handlers (`FUN_00519db8` cases), the AI's `ai=True` flag of `CastSpell`.
+`B` = brain (`u+0x1c4`). "Wrapper of n" = `FUN_0051c391(n)` on the unit's spellbook `u+0x140` (0 when unknown; record `+8` number, `+9` range, `+0xa`
+defensive, `+0xc` mana cost, [spells §3](../data/spells.md)). "Cast at a unit" = `B+0x60 := 1` then **`FUN_0056c72b(u, t, w)`**: `t == 0` -> the nearest enemy
+(`FUN_00567988`) or friend (`FUN_005679cf`, `w+0xa != 0`) of the square of radius `mover+8` (5) round `u`, none -> guard scan; else **Brain mode 8**, `B+0x28 := t`,
+`B+0x30 := w`, the target's `B+0xa4 := spell number`, `B+0xa8 := tick` (the "recently enchanted" stamp read by `FUN_0056bc7b`), `B+0x14 :=` wrapper range. "Cast at a
+cell" = `B+0x60 := 1` then **`FUN_0056969c(u, cell, w)`**: Brain mode 9, `B+0x3c := cell`, `B+0x30 := w`, `B+0x14 :=` wrapper range. Neither touches the order
+(`+0x50`, so an AI caster keeps order `0xb`), the group or `B+0x0c`.
 
-`FUN_0056bc7b` (caster scan: heal `0x18`, `0x1b`, buffs `0x14/0x15`, attack spells `0xd/0x13/4/8/0xc` with mana gates 5/10/40), `FUN_0056c592`/
-`FUN_0056c72b`/`FUN_0056969c` (cast executors), `FUN_0056a981` (special attack rolls), `FUN_0056b059`, `FUN_0056bb0d/53/2e`, the caster lists
-(`server+0xaa8` / `0xac8`), `FUN_0056eff3` mode 6 for ranged units (the melee driver is reused),, `FUN_0057a769` / `FUN_0057a999`, the cast branches of the other group orders ([§14](#14-the-other-group-orders)).
+### 12.1 Creature set-up (`FUN_005114f3`, monsters; `0x511586`-`0x511f44`)
+
+* `+0x9c` max mana := data.bin `manaMax`, **`+0x9a` mana := `+0x9c`** (`0x5115a5`), `+0xa0 := +0x9a`. Mind `+0x88` = template `mind`.
+* `p48 > 0` (`spell_1`): `+0x4c |= 2`, a spellbook `+0x140` is created. For i = 0..2: `s = p(48+2i)`, `q = p(49+2i)`; if `s > 0`: wrapper `FUN_0051906d(s)` added to the
+  book (`FUN_0051c29e`), **`B+0x7c+4i := s`, `B+0x88+4i := q * 0x147`** (`0x511d36`, `0x511d4f`); unused slots stay 0 (brain memset).
+* Skills `+0xa8+2k` (k = 1..5) := `p54` (`spell_power`) for every monster (`0x511d64`-`0x511d94`).
+* `p56` (`known_spells`) neither 0 nor -1: `+0x4c |= 6` (**mage**), a **new** spellbook replaces `+0x140` with the wrapper of every bit n = 1..29, and the skills
+  `+0xaa..+0xb2` := `p57..p61` (raw words, -1 kept) (`0x511dd6`-`0x511f44`). No template has both a slot and a mask.
+* `B+0x78` (the default spell, read by `FUN_0056ac5b` and `FUN_0056b059`) is written only for heroes (creation `0x4f30f5`, record load `0x4ead58`, the client's
+  spell-select command `0x4f69c5`/`0x4f69e3`): **0 for every map unit**, so their `FUN_0056ac5b` range is the attack range `u+0x12c`.
+
+So the install has two kinds of spell users (§6): **special-attack monsters** (bit 2 only: `.4` / `.5` variants, slots with probabilities 1..20, mana 0, the slot
+spells in the book, level `p54 - 30 + mind`) and **mages** (bits 2 + 4: Dragon, Orc_Shaman, `M_Skeleton.3-5`, Necro*, Druid*, Succubus*, MercenaryDruid*, and every human
+with mana; level `skill[sphere] - 30 + mind`). A mage pays mana at the cast start ([spells 9c.2](../data/spells.md)), a special attack is free.
+
+### 12.2 `FUN_0056acc8(u, t)` with spells (the attack decision of every group handler, §6)
+
+```
+if t.flags(+0x4c) & 8:  guard scan; return                      # off the map (not modelled, §10)
+pick = 0
+for i in 0, 1, 2:                                               # one rand15 per USED slot, in slot order
+    if B.slot[i] != 0 and rand15() < B.prob[i]:  pick = B.slot[i]     # FUN_0057afc0 = rand(); the LAST passing slot wins
+if pick:
+    if pick != 23 or Chebyshev(cell t, cell u) > 2:  FUN_0056a981(u, t, pick); return      # 12.3
+    # Teleport with the target within 2 cells: fall through
+if u == t: t = 0
+if t == 0: t = first of FUN_00567988(u, cell u) (radius mover+8 = 5); none -> guard scan; return
+if owner(u)+0x2c == 0:                                           # human owner
+    if mage(u) and FUN_0056b059(u, t): return                    # 12.6
+    B.mode = 5; B+0xc = t; B+0x14 = FUN_0056ac5b(u)
+    if mage(u) and B+0x14 < 2: FUN_0056bc7b(u)                   # 12.6
+else:                                                            # computer owner: monsters and computer-owned humans
+    if mage(u) and FUN_0057a769(u, t): return                    # 12.4
+    B.mode = 5; B+0xc = t; B+0x14 = FUN_0056ac5b(u)
+```
+
+The probability is `p * 0x147` against `rand15` (0..0x7fff): `p = 10` passes 3270 of 32768 (9.98 %), `p = 1` 0.998 %. `FUN_0056ac5b(u)` = the wrapper range of
+`B+0x78` when that spell is in the book and `mana >= cost`, else `u+0x12c` (monsters: always `u+0x12c`, 12.1). `mage(u)` = `FUN_0053a5a0` = `+0x4c & 4`.
+
+### 12.3 Special attack `FUN_0056a981(u, t, n)`
+
+`w` = wrapper of n; **`w == 0` -> return** (nothing, `B+0x60` untouched, and `FUN_0056acc8` has already returned: the unit keeps its previous mode this pass). Else by n
+(jump table `0x56abe7`), then **`B+0x60 := 1`** for every n:
+
+| n | Target | Call |
+|---|---|---|
+| 1 5 10 11 16 18 26 28 29 | the enemy | `FUN_0056c72b(u, t, w)` |
+| 2 3 6 7 14 15 17 | the enemy's cell (`t+0x10` cell word) | `FUN_0056969c(u, cell t, w)` |
+| 4 8 12 13 19 20 21 24 25 27 | itself | `FUN_0056c72b(u, u, w)` |
+| 9 | the cell next to `u` towards `t`: `o = FUN_005568e4(u, t) >> 5`, `(x u + dx[o], y u + dy[o])` (byte arithmetic, tables `pf+0x58e88/0x58e90`) | `FUN_0056969c` |
+| 23 | (`Chebyshev > 2` again) the first cell of the 3 x 3 square round `t`, rows `y-1..y+1` outer, columns `x-1..x+1` inner (packed `cell t - 0x101 + row*0x100 + col`), where `FUN_0055cd50(u, cell)` holds (every footprint cell of `u` clear of the live layer `pf+0x20000` under the mover mask `mover+5`); none (or the packed word 0) -> nothing | `FUN_0056969c` |
+| 22, others | nothing | - |
+
+No mana test (a special-attack monster has no mana mage bit: the cast is free) and no range test (the Brain mode approaches to the wrapper range).
+
+### 12.4 Computer-owned mage engaging: `FUN_0057a769(u, t)`
+
+```
+if mind(u+0x88) < 60 or (r = rand(100)) > 29:                   # rand(n) = FUN_0057afd0(n) = rand15 * n / 0x8000; drawn only when mind >= 60
+    L = [wrapper n for n in 1..28 if known and w.cost <= mana and w.defensive(+0xa) == 0]     # spell 29 (Slow) is never picked here
+    k = rand(len(L))                                             # drawn even when L is empty (rand15 * 0)
+    if L empty: return 0                                         # -> mode 5 (melee / shooting)
+    cast at a unit (u, t, L[k]); return 1
+else:                                                            # mind >= 60 and r <= 29 (30 %)
+    FUN_0056acc8(u, t); return 0                                 # recursion: the whole decision again (new slot and r draws) ...
+```
+
+... and since it returns 0 the **outer** `FUN_0056acc8` then sets mode 5: a clever mage (mind >= 60) melees / shoots in 30 % of the passes, after the inner call
+spent its draws and wrote its cast fields (the outer mode-5 write wins). There is no range, line-of-sight or target-kind test: a cell spell (Fire Ball, Poison Cloud,
+Blizzard, ...) is cast **at the unit** (state `0xd`, `FUN_00519d7f` -> `FUN_00519db8(u, t, 0, 0)`).
+
+### 12.5 Computer-owned mage idle: `FUN_0056afd9` -> `FUN_0056c592(u)`
+
+`FUN_0056afd9` (computer owner) sets mode `0xb` and, for a mage, calls `FUN_0056c592`:
+
+```
+if book(u+0x140) == 0 or mana <= 10: return
+h = wrapper 24 (Heal); if h == 0: return
+if hp != hp_max: cast at a unit (u, u, h); return
+S = occupants of the square of radius h.range round u (FUN_0054ec6a: centre, then per ring k the cells (x+i, y+k), (x+i, y-k) for i = -k..k and,
+    for |i| != k, (x+k, y+i), (x-k, y+i); ground occupant slot only, dying bodies included)
+S -= units whose owner u's owner is not allied with (relation bit 2; a player's word for itself is 0x12) and undetected hidden ones (FUN_00567b2d)
+best = the first unit of S with the smallest (int)(hp / hp_max)        # C integer division (idiv): 0 for every wounded or dying unit, 1 at full HP
+if best < 1.0: cast at a unit (u, best, h)
+else: FUN_0057a999(u, S)
+```
+
+`FUN_0057a999(u, S)` (here always with `hp == hp_max`): `w = wrapper 27` (Shield); if `w != 0` and the effect bit `1 << 27` of `u+0x144` is clear -> cast at a unit
+(u, u, w). Otherwise `k = rand(|S|)` (always drawn), `f` = the k-th unit of S (none when S is empty); `f == 0` or `f`'s owner object differs from u's -> 0. If `f`
+is wounded and `u` knows Heal -> heal `f` (unreachable after `FUN_0056c592`). Else, only when `mana == max mana`: `L = [wrapper n, n = 1..28, known, cost <= mana,
+defensive, n not 24 / 27]`, `k = rand(|L|)` (always drawn); **when L is empty the wrapper variable still holds the loop's last lookup, the wrapper of 28 (Curse) or 0**
+(quirk: a mage that knows Curse and no other defensive spell curses its friend); that wrapper, unless 0 or already active on `f` (`f+0x144 & 1 << n`), is cast at `f`.
+
+### 12.6 Human-owned mages (the player's units) and the flee step
+
+* `FUN_0056b059(u, t)`: returns 0 unless `B+0x78` (the hero's selected spell, 12.1) is set and castable (`FUN_0056bb0d(n)` = the wrapper when `cost <= mana`);
+  then by that spell: 1 5 10 11 16 26 -> cast at `t`; 2 (radius 1, round the cell ahead of each unit that is between cells) and 3 6 7 (radius 2) -> per at-war unit of
+  the caster list `server+0xac8` count the occupants of the square round it (at war +1; others -1, the caster itself -100) and cast at `t` when the best count is > 0;
+  18 / 28 -> cast at `t` when `t` lacks the effect bit, else when some at-war unit of the list lacks it (quirk: still at `t`); 24 -> the friend (`FUN_0056bb53`) with the
+  smallest `(int)(hp / hp_max)` is healed when `< 1`, else mode 0 and 1 is returned; 25 -> at itself (without `B+0x60`); 27 -> Shield at itself unless active; 22 and
+  the rest -> 0.
+* `FUN_0056bc7b(u)` (human mage in mode 5 with range < 2, and the human idle `FUN_0056b025`; "castable n" = `FUN_0056bb0d` = known and `cost <= mana`; "in range" =
+  `FUN_0056bc2e` = Chebyshev cells `<=` wrapper range; "friend" = `FUN_0056bb53`: not at war and not allied with owner flag 4, allied with flag 2, the same owner with
+  flag 1, or itself; "fresh" = target `B+0xa4 != 20 || |B+0xa8 - tick| > 20` (it compares with 20 = Bless for every spell)). The flag byte is the owner's party-AI
+  byte (player `+0x34` record `+0x20`, starts `0xff` in `FUN_005691c7`, replaced by a client command, `0x4f6945`, operand `+0xe`; the client side is not traced).
+  Order: mana < 5 or flag 8 clear -> mode 0. `hp < max` and castable 24 -> heal itself. Shield bit (`+0x144 & 1 << 27`) clear and castable 27 -> Shield itself.
+  Caster lists (§4); castable 24 and a list count > 1 -> the friend in range with the smallest `(int)(hp / hp_max)`, healed when `< 1`. Flag 0x10 clear or mana < 10
+  -> mode 0. Per friend of `server+0xaa8`: Bless 20 (`FUN_00542c90` and not effect 20, fresh, in range), then Haste 21 (not effect 21, fresh, in range). Flag 0x20 clear or
+  mana < 40 -> mode 0. Per friend: 13, 19, 4, 8 (the protections, not already active, in range, fresh), 12 Invisibility (not hidden, not itself, relation `& 3 != 0`,
+  fresh). Then Invisibility on itself if castable and not hidden, else mode 0. Every cast is "cast at a unit".
+* Flee (`FUN_00573713`, §9) for a unit **with a spellbook** that can cast Teleport (23, `cost <= mana`): `FUN_0056cb8c` (wimpy) / `FUN_0056cef3` (withdraw) take the
+  flee cell `scan + 1` / `scan - 1` cells away (`FUN_00558b92`) and teleport there (cast at a cell); the Invisibility branch after it is unreachable (both tests ask
+  for spell 23; INFERRED: the second was meant to be 12). Without Teleport the normal flee runs. Only `Orc_Sword.4/5` have Teleport in the book (a slot spell) and their mana is 0 < 60, so this never fires
+  for a template unit (a human mage with Teleport and 60 mana would).
+* Mode 9 / order `0xe`: the group pass runs `FUN_0056969c(u, B+0x3c, B+0x30)` for order `0xe` (`FUN_00569321`); command `0x1f` -> `FUN_0057033d(group, x, y)`
+  -> per member with a wrapper `FUN_0056d446` (cancel, order `0xe`, `B+0x3c := y << 8 | x`, wrapper, range, mode 0); only spells with `target == 2` (`FUN_0051941a`).
+
+### 12.7 The cast Brain modes for an AI caster
+
+Mode 8 (`FUN_0056ebc0`) and mode 9 (`FUN_0056ec3f`) start the cast (`FUN_0056e906` / `FUN_0056e986`: brain order 2, state `0xd` / `0xe`) and call the stop
+`FUN_0056dbc6` **only when `B+0x60 == 0`** (a player's cast). An AI cast has `B+0x60 == 1`: the mode stays 8 / 9, so when the brain order ends (3 ticks after the
+done flag) the **same spell is cast again at the same target / cell** until the next group pass replaces the mode, exactly like the melee mode 5. A short mana
+check fails silently and retries every 3 ticks. Only the cancel `FUN_0056d969` clears `B+0x60` (`0x56da27`). Mode 9 is: in range = `facing == FUN_00556b2c(u, cell)`
+and `Chebyshev(cell u, cell) <= B+0x14` (`FUN_0055539a`); else `FUN_0056e4ac(u, cell, range)` = the move driver `FUN_00555411(u, cell, range)` towards the cell, which at
+a cell centre within `range` only turns to the cell (`FUN_00556da2`), and state 1.
+
+**Engine (`engine/sim/ai.py`, `spells.py`)**: `engage` = 12.2 (computer branch built; the human branch keeps mode 5: `FUN_0056b059` is exact as a no-op because the
+engine has no selected spell, `FUN_0056bc7b` is not built), `special_attack` = 12.3, `caster_attack` = 12.4, `mage_idle` / `friend_cast` = 12.5 (called by `idle`), the
+casts are `CastSpell(..., ai=True)` commands (unit or cell) applied by `ai.apply` (mode 8 / 9 with `Unit.ai_cast`), the Brain mode 9 and state `0xe` are
+`spells.cell_mode` / `cast_tick`. Effects: `+0x144` effect bits other than Invisibility do not exist in the engine (no effect system), so "already active" is always false.
+The Teleport flee (12.6) is not built (no shipped template can reach it).
 
 ## 13. VERIFY IN GAME
 
@@ -299,12 +436,18 @@ Moved here from I4 (the player-side cast is built, combat.md §14): special atta
 14. Wander (scripted only, no shipped map known to use it): a squad ordered to wander picks a cell 20 cells away in one of 8 directions every 51 passes or when it is within 9 cells; in the exe
     the members themselves walk to their own old destination (or the map corner (0, 0)), not to the picked cell (§14.1): does a scripted wander squad visibly walk to a corner?
 
+15. Special attacks: a `Squirrel.4` (Fire Arrow, probability 10) switches to Fire Arrow on about one pass in ten and then casts it (free) every few ticks until the next pass, otherwise bites; an `Orc_Sword.4` teleports next to a hero
+    more than 2 cells away (the effect is not built in the engine).
+16. A computer mage (Orc_Shaman, Necro*) keeps casting the same spell at its target every few ticks between passes (mode 8 stays), heals itself when hurt and, idle at full HP,
+    casts Shield on itself (the engine has no effects: it recasts Shield every pass and burns mana; in the game the active Shield stops that).
+17. A mage with mind >= 60 (Dragon) melees in about 30 % of the passes even with mana.
+
 ## 14. The other group orders (CONFIRMED, `FUN_005700f3` dispatch; engine: implemented, see the end of this section)
 
 Group order = `record+0x20`; the pass `FUN_00570087` visits every player's groups (`FUN_005700f3`: empty group -> `0xff`, handler, then the post step §9 on every
 member). "Pool" = `FUN_00571c4d` over the members (§4), "assign" = `FUN_0057240b` (each member's lowest `FUN_005711ea` score in the pool, §5, no radius filter unless
 stated), "act" = per member in list order: target -> `FUN_0056acc8` (§6), no target -> the line given. `idle` = `FUN_0056afd9`: a computer owner gets brain mode `0xb`
-(§6.1), a human's non-caster brain mode 0 (`FUN_0056b025`; a unit with a spell list runs the caster scan `FUN_0056bc7b`, phase K). `go(m, c)` = `FUN_0056c8af` (§3).
+(§6.1), a human's non-caster brain mode 0 (`FUN_0056b025`; a mage runs the caster scan `FUN_0056bc7b`, §12.6). `go(m, c)` = `FUN_0056c8af` (§3).
 
 | Order | Handler | Per pass (every 16 ticks) | Set by |
 |---|---|---|---|
@@ -409,3 +552,8 @@ So the "map-object effect" of the earlier INFERRED line does not exist: it is th
 
 * The scripted group sub-commands 10 (attack, `FUN_00570946`), 11 (defend, `FUN_00570c84`), 14 (patrol, `FUN_00570d26` -> `FUN_0056d6b7`) and 15 (follow, `FUN_00570cd5`) and their member orders; the other callers of the guard / stand-ground setters (summon `0x51a8d7`, `570f2b` at `0x4f0637` ...); the sacks/pickup order (`P` key, cmd `0x13`, `FUN_00419f2a`) is not a group handler.
 * The quest side of [§15.2](#152-the-quest-that-sends-a-group-order-2): who `this` is (the giver, `hero+0x10`), whether the shipped scripts ever create squads with creation-record bit 8 (kind `0xc`), the completion events of kinds `0xb` / `0xc` (`FUN_0057e87a`), and the three non-group kinds `4`-`6`.
+* Party-AI flag byte of a human player (player `+0x34` record `+0x20`, default `0xff`, §12.6): which client option / command writes it (`0x4f6945`, operand `+0xe`) and its single-player
+  value; needed before `FUN_0056bc7b` (human mages healing / buffing on their own) is built. Start: the command case of `0x4f6945` in `FUN_004f515d`, its client sender.
+* Book wrapper range: does `FUN_00519483` scale the spellbook's own wrapper (so `+9` is the range of the last cast's level) or a copy? The engine uses the range at the caster's
+  current level everywhere (`spells.wrapper_range`). Start `0x519483`, `0x5195b1`.
+* Revive `FUN_00510534` (Heal of a dying unit): `FUN_005551d6(position)` and whether the recompute (vtable `+0x58`) rebuilds defence after the `<<= 1` (engine: rebuilt).

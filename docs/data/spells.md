@@ -128,8 +128,8 @@ the same spell id by max value / max time; Bless and Curse replace each other).
 | Invisibility | 12 | `0x51b927` | ticks `L*16` (`FUN_00519db8`), 0 = no effect; effect id `0x20` ([palettes](../formats/palettes.md)) |
 | Stone Curse | 18 | `0x51b6ae` | ticks `L*15*16*2/100` (normal cast; item cast `*1`); on creatures `rand(0..ticks*(100-protEarth)/100)` (0 = no effect, `unit+0xca`); text terms `absorbtion +5`, `defence -20` |
 | Poison Cloud | 6 | `0x51a206` | text `health=-2:continuous 8`: value `ftol(-2 * (L/45 + 1))` every 8 ticks (`FUN_0051cc9f`: mode bit 2 pulses when `ticks & 7 == 0`); area carrier |
-| Heal | 24 | `0x51a2b8` | target not hostile (relation matrix `[ +0xa8c4 ] & 1` clear), `hp > -10`, `+0x98 != 0`; amount `min' + rand(1..spread')` capped to `maxHP - HP` (`unit+0x96`, `+0x94`); `FUN_00510484(amount)` |
-| Drain Life | 26 | `0x51a3f3` | creature targets only; `amount = (min' + rand(1..spread')) * (100 - protAstral) / 100` (int, `unit+0xcc`), capped at `target HP + 10`; target HP `-= amount`, caster `FUN_00510484(amount)` (heal), XP credit vtable `+0x6c` |
+| Heal | 24 | `0x51a2b8` | (engine: built, §9d) target not hostile (relation matrix `[ +0xa8c4 ] & 1` clear), `hp > -10`, `+0x98 != 0`; amount `min' + rand(1..spread')` capped to `maxHP - HP` (`unit+0x96`, `+0x94`); `FUN_00510484(amount)` |
+| Drain Life | 26 | `0x51a3f3` | (engine: built, §9d) creature targets only; `amount = (min' + rand(1..spread')) * (100 - protAstral) / 100` (int, `unit+0xcc`), capped at `target HP + 10`; target HP `-= amount`, caster `FUN_00510484(amount)` (heal), XP credit vtable `+0x6c` |
 | Summon | 25 | `0x51a595` | CONFIRMED, §9b: one monster per cast near the caster |
 | Control Spirit ("Animate Dead") | 22 | `0x51a91f` | CONFIRMED, §9b: raises a corpse on the target cell as zombie / skeleton / ghost |
 | Teleport | 23 | `0x51a554` | `FUN_0055a96c(caster, cell)` then `FUN_00502019`; client effect `0x36` ([animation §4.4](../formats/animation.md)) |
@@ -306,6 +306,22 @@ recovery byte, `+0x136` done flag, `+0x5c` target, `+0x60/+0x61` target cell, `+
 - INFERRED: casters are "gone" when removed from `world.units`; a caster that dies between release and delivery still lets the carrier hit (the missile is independent), only the attacker credit is dropped.
 - VERIFY IN GAME: (1) a hero with the start staff casts Fire Arrow with no mana change; (2) a learned-spell cast with 2 mana left of 3 does nothing and retries silently; (3) the delay between the cast animation start and the first damage number at 7 cells (windup + 8 ticks); (4) Stop pressed during the windup: the cast completes (INFERRED from the brain order structure, `FUN_0056dbc6` not traced); (5) a scroll is consumed, a staff is not.
 
+## 9d. AI casts, cell casts and the built handlers (phase K)
+
+The AI's decision is in [ai §12](../engine/ai.md#12-casters-and-special-attacks-confirmed-unless-marked-engine-127). Cast side (CONFIRMED there): an AI cast is
+`brain+0x60 := 1` + `FUN_0056c72b` (mode 8) or `FUN_0056969c` (mode 9), so the Brain mode **stays** after the cast starts and the spell is cast again until the next
+group pass; command `0x1f` = `FUN_0057033d` -> `FUN_0056d446` (order `0xe`, only `target == 2` spells); mode 9 = `FUN_0056ec3f` (in range: facing to the cell and
+Chebyshev `<=` range, else the move driver with stop distance = range); state `0xe` releases through `FUN_00519db8(caster, 0, x, y)`. Monsters: mana = `manaMax`
+(`0x5115a5`), skills = `spell_power` or `skill*` (mages), the book = the slot spells or the `known_spells` mask, the mage flag from the mask (ai §12.1).
+
+Engine (`engine/sim/spells.py`): the damage branch (I4a), **Heal 24** (`heal_release`, §4 row, `0x51a2b8`: no effect on an at-war target, HP > -10 and `+0x98 != 0`,
+`min' + rand(1..spread')` capped at `maxHP - HP`, `FUN_00510484` with the revive `FUN_00510534`) and **Drain Life 26** (`drain_release`, `0x51a3f3`: astral protection,
+cap HP + 10, damage XP credit, hit reaction, last attacker, the caster heals the amount) are built; `FUN_0051fa4e(n)` = `rand(n - 1) + 1`. Every other handler (protections,
+Bless / Curse, Haste / Slow, Shield, Invisibility, Stone Curse, the area / field carriers of Fire Ball, Wall of Fire / Earth, Poison Cloud, Blizzard, Acid Stream, Darkness,
+Light, Teleport, Summon, Control Spirit, the Prismatic Spray chain at cast start) is a **documented no-op**: mana, cast animation, windup and recovery run as in the exe,
+the release changes nothing and is counted in `World.unbuilt_casts` (spell number -> count; `stub_release`). Not a guess of the effect: they need the effect system
+(`FUN_0051ce12`, `+0x144` bits) and the carriers of §4 / §9b.
+
 ## 9b. Field carriers, summons, raising, tooltip
 
 All CONFIRMED in allods2.exe unless tagged. Code: `spelldefs.py` constants and functions named below.
@@ -367,6 +383,7 @@ Display names come from `spell.txt`, descriptions only for these 24 spells (no e
 
 ## 11. Open questions
 
-- Spell button mask (view `+0xd0` object `+0x148` / `+0x150`, 9c.1): how the enabled bits follow the spellbook and mana; cell-target command `0x1f` (`FUN_0057033d`); Stop (`FUN_0056dbc6`) during a cast.
+- Spell button mask (view `+0xd0` object `+0x148` / `+0x150`, 9c.1): how the enabled bits follow the spellbook and mana; Stop (`FUN_0056dbc6`) during a cast.
+- Book wrapper scaling: whether `FUN_00519483` rewrites the spellbook wrapper's `+9` in place (the AI reads `+9` as a range, [ai §12](../engine/ai.md#open-questions)).
 - Brain registration of minions: Summon uses `FUN_005709d9` (brain byte `+0x20` = 1), Control Spirit `FUN_00570b8b` (`+0x20` = 3); meaning of the modes.
 - Spellbook tooltip arrays for the rows Speed (0xb6), Sight (0xb8) and which spell fills them (`FUN_00416615` ff., `FUN_004c628f`).

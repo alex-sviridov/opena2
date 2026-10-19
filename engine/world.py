@@ -127,9 +127,12 @@ class AiState:
     mark_cell: int = 0
     mark_age: int = 0
     alerted: int = 0
+    spell_mark: int = 0             # brain+0xa4: number of the last spell an AI / player cast aimed at this unit (`FUN_0056c72b`), read by `FUN_0056bc7b`
+    spell_tick: int = 0             # brain+0xa8: the server tick of that cast order
 
     def dump(self):
-        return [self.stamp, self.target, self.hit_by, self.hit_tick, self.hit_cell, self.mark_cell, self.mark_age, self.alerted]
+        d = [self.stamp, self.target, self.hit_by, self.hit_tick, self.hit_cell, self.mark_cell, self.mark_age, self.alerted]
+        return d + [self.spell_mark, self.spell_tick] if self.spell_mark else d      # old AI goldens keep their layout
 
 
 @dataclass
@@ -175,6 +178,16 @@ class Damage:
     hp: int
     roll: int = 0
     hit: bool = False
+
+
+@dataclass(frozen=True)
+class Healed:
+    """Fight log entry: `FUN_00510484` raised the HP of `target` by `amount` (Heal 24, the caster of Drain Life 26; spells.md 4); `hp` after it."""
+    tick: int
+    caster: int
+    target: int
+    amount: int
+    hp: int
 
 
 @dataclass(frozen=True)
@@ -408,6 +421,9 @@ class Unit:
     cast_wrapper: object = None     # brain+0x30 the `spells.Wrapper` of the cast order
     cast: object = None             # `SpellCast` of the cast in progress (unit +0x5c/+0x64/+0x68)
     spellbook: int = None           # unit+0x140 learned-spell bit mask (bit n = spell n); None: derived from the template (`spells.known_mask`)
+    ai_cast: bool = False           # brain+0x60: the cast was set by the AI (`FUN_0056a981` & co.): Brain mode 8 / 9 stays after the cast starts; cleared by every cancel
+    mode_cell: bool = False         # Brain mode 9 (cast at a cell with approach, `FUN_0056ec3f`)
+    cast_cell: tuple = None         # brain+0x3c target cell (x, y) of the cell cast order 0xe / mode 9
     equipment: tuple = ()           # humans loaded from a character record: the 12 equipped items in slot order (saves.Item; empty slot = code 0)
     pack: tuple = ()                # humans loaded from a character record: the backpack items (saves.Item); `carried` holds their codes
 
@@ -503,6 +519,7 @@ class World:
         self.ai_on = False          # sim/ai.py `enable`: the squads are in `ai_groups` and the state is part of dump()
         self.ai_groups = {}         # (owner, squad) -> AiGroup, in creation order
         self.ai_emitted = []        # AI commands since the last drain by `Simulation.step` (the log), not part of dump()
+        self.unbuilt_casts = {}     # spell number -> releases whose effect handler is not built (sim/spells.py `stub_release`), not part of dump()
         self.script = None          # sim/triggers.py `Script` once `triggers.enable` compiled the map's section 7; dumped only then
         self._sight = {}            # (x, y, scan) -> frozenset of visible cells (the heights never change), not part of dump()
         self.report = BuildReport()
@@ -938,6 +955,8 @@ class World:
             u.tweak = tweak
             if tpl is not None and not rec.is_human:
                 u.mover.turn_rate = max(1, tpl.turn_rate)       # mover+0xa: monster p9; humans: the speed stat (sim/movement.py)
+                if (tpl.get("mana_max", -1) or 0) > 0:          # FUN_005114f3 0x511586-0x5115a5: +0x9c := manaMax, +0x9a := +0x9c (ai.md 12.1);
+                    u.mana = u.mana_max = tpl.mana_max          # -1 / 0 (every non-mage) stay 0 here: nothing reads a non-mage's mana
             if rec.is_human and tpl is not None:        # docs/data/progression.md section 4: no award logic yet
                 u.skills = prog.skills_of(tpl)
                 u.mana = u.mana_max = mana_max
@@ -1141,10 +1160,14 @@ class World:
     def _cast_state(u):
         """Spell-cast state as a list, None while the unit never cast or got a cast order (old goldens stay valid)."""
         c, w = u.cast, u.cast_wrapper
-        if c is None and w is None and not u.mode_cast and u.cast_target is None and u.spellbook is None:
+        if (c is None and w is None and not u.mode_cast and u.cast_target is None and u.spellbook is None and not u.ai_cast and not u.mode_cell
+                and u.cast_cell is None):
             return None
-        return [int(u.mode_cast), u.cast_target, [w.number, w.item_count] if w is not None else None,
-                [c.spell, c.target, list(c.cell) if c.cell else None, c.item_count] if c is not None else None, u.spellbook]
+        d = [int(u.mode_cast), u.cast_target, [w.number, w.item_count] if w is not None else None,
+             [c.spell, c.target, list(c.cell) if c.cell else None, c.item_count] if c is not None else None, u.spellbook]
+        if u.ai_cast or u.mode_cell or u.cast_cell is not None:          # AI / cell casts only: the I4 goldens keep their layout
+            d += [int(u.ai_cast), int(u.mode_cell), list(u.cast_cell) if u.cast_cell else None]
+        return d
 
     @staticmethod
     def _fight_state(u):

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from allods2.formats import spelldefs
 
 LIGHTNING, PRISMATIC_SPRAY = 10, 11             # `'\n'` / `'\v'` in FUN_00519998 / FUN_00519db8
+INVISIBILITY, TELEPORT, HEAL, DRAIN_LIFE, SHIELD, CURSE = 12, 23, 24, 26, 27, 28      # spell numbers the AI code names (docs/engine/ai.md 12)
 SERVER_BOLT_TICKS, CLIENT_BOLT_TICKS = 10, 5    # missile carrier override (0x51be87) / client flight message (0x519998)
 
 
@@ -81,24 +82,55 @@ from .pathfinding import centre_x, centre_y, foot, unit_size                 # n
 
 CAST_ORDER = 0xD                    # unit.order (+0x50): cast at a unit (`FUN_0056d3e6`); the group pass turns it into Brain mode 8
 BRAIN_CAST = 2                      # unit.brain_order (brain+0x9): a cast is in progress (`FUN_0056e906`)
-CAST_STATE = 0xD                    # unit.state (+0x54): casting at a unit (0xe, at a cell, is phase K)
+CAST_STATE = 0xD                    # unit.state (+0x54): casting at a unit
+CELL_STATE = 0xE                    # unit.state: casting at a cell (`FUN_0056e986`)
+CELL_ORDER = 0xE                    # unit.order: cast at a cell (`FUN_0056d446`, command 0x1f); the group pass turns it into Brain mode 9
 PHASE_START, PHASE_WINDUP, PHASE_RECOVERY = 0, 5, 7     # the swing's phases (`combat.py`), shared by states 3, 0xd and 0xe
 
 
+BOOK_BITS = ((1 << 30) - 1) & ~1      # spells 1..29 (the book loops `n = 1..0x1d`)
+
+
+def monster_slots(t):
+    """The three special-attack slots of a monster template (`FUN_005114f3` 0x511c70-0x511d56): `(spell, probability * 0x147)` per slot, (0, 0)
+    for an unused one (`spell_i <= 0`: the brain stays memset 0).  `brain+0x7c+4i` / `brain+0x88+4i`; docs/engine/ai.md 12.1."""
+    out = []
+    for i in (1, 2, 3):
+        n = t.get("spell_%d" % i, -1) if t is not None else -1
+        q = t.get("probability_%d" % i, 0) if t is not None else 0
+        out.append((n, q * 0x147) if n is not None and n > 0 else (0, 0))
+    return tuple(out)
+
+
+def _monster_mage_mask(t):
+    m = t.get("known_spells", -1)
+    return m if m is not None and m not in (0, -1) else None
+
+
 def known_mask(u):
-    """Spellbook bit mask (`unit+0x140`, bit n = spell n): the unit's own, else the template's `known_spells` (humans with mana, monsters with a
-    mask other than 0 / -1; docs/data/units.md)."""
+    """Spellbook bit mask (`unit+0x140`, bit n = spell n): the unit's own, else built as the creature set-up does: a human with mana from
+    `known_spells`; a monster from `known_spells` when it is neither 0 nor -1 (the mage book, `0x511dd6`), else from its special-attack slot
+    spells (`0x511d22`, only when `spell_1 > 0`).  docs/engine/ai.md 12.1."""
     if u.spellbook is not None:
         return u.spellbook
     t = u.stats
     if t is None:
         return 0
     m = t.get("known_spells", -1)
-    if m is None or m <= 0:
+    if u.human:
+        if m is None or m <= 0 or u.mana_max <= 0:
+            return 0
+        return m
+    mm = _monster_mage_mask(t)
+    if mm is not None:
+        return mm & BOOK_BITS
+    if (t.get("spell_1", -1) or 0) <= 0:
         return 0
-    if u.human and u.mana_max <= 0:
-        return 0
-    return m
+    mask = 0
+    for n, _ in monster_slots(t):
+        if n:
+            mask |= 1 << n
+    return mask
 
 
 def wrapper_of(u, spell_id):
@@ -106,11 +138,32 @@ def wrapper_of(u, spell_id):
     return Wrapper(spell_id) if (known_mask(u) >> spell_id) & 1 else None
 
 
+_MONSTER_SKILLS = ("skillfire", "skillwater", "skillair", "skillearth", "skillastral")
+
+
+def monster_skill(t, sphere):
+    """`unit+0xa8+2*sphere` of a monster (`FUN_005114f3`): `spell_power` (p54) for every school, replaced by p57..p61 (raw, -1 kept) for a mage."""
+    if t is None or not 1 <= sphere <= 5:
+        return 0
+    if _monster_mage_mask(t) is not None:
+        return t.get(_MONSTER_SKILLS[sphere - 1], -1)
+    return t.get("spell_power", -1)
+
+
+def mind_of(u):
+    """`unit+0x88` (Mind): a human's recomputed attribute, a monster's template value."""
+    if u.stats is None:
+        return 0
+    return prog.attributes(u.stats)[2] if u.human else (u.stats.get("mind", 0) or 0)
+
+
 def unit_level(u, spell):
     """`FUN_00519483` / `FUN_00519db8`: `skill[sphere] - 30 + Mind` of the caster (`unit+0xa8+2*sphere`, `unit+0x88`), clamped 0..255."""
-    skill = u.skills[spell.sphere] if len(u.skills) > spell.sphere else 0
-    mind = prog.attributes(u.stats)[2] if u.human and u.stats is not None else 0
-    return level_from(skill, mind)
+    if u.human:
+        skill = u.skills[spell.sphere] if len(u.skills) > spell.sphere else 0
+    else:
+        skill = monster_skill(u.stats, spell.sphere)
+    return level_from(skill, mind_of(u))
 
 
 def cast_level(u, spell, item_count=None):
@@ -167,7 +220,10 @@ def cast_mode(world, u):
     """Brain mode 8 (`FUN_0056ebc0`): out of range -> the follow driver of the melee approach and state 1; else start the cast (`FUN_0056e906`)."""
     t = world.find_unit(u.cast_target)
     if t is None:
-        mv.stop_unit(world, u)
+        if u.ai_cast:
+            u.mode_cast = False         # as for an AI's mode 5 (combat.attack_mode): the next group pass decides again (INFERRED: the exe's dangling pointer)
+        else:
+            mv.stop_unit(world, u)
         return
     if t is not u and not in_cast_range(u, t):
         step = mv.follow_drive(world, u, t)
@@ -182,12 +238,93 @@ def cast_mode(world, u):
     u.swing_count = 0
     u.state = CAST_STATE
     u.cast = SpellCast(spell_id, target=t.id, item_count=u.cast_wrapper.item_count)
-    mv.stop_unit(world, u)          # brain+0x60 == 0 for a player's cast: `FUN_0056dbc6` (state 0, order 0xc, mode 0)
+    if not u.ai_cast:
+        mv.stop_unit(world, u)      # brain+0x60 == 0 for a player's cast: `FUN_0056dbc6` (state 0, order 0xc, mode 0); an AI cast keeps mode 8 (ai.md 12.7)
+
+
+def set_cell_cast(world, u, cell, wrapper):
+    """`FUN_0056d446(unit, x, y, wrapper)` (command 0x1f): cancel, order 0xe, brain `+0x3c` = the cell, `+0x30` = wrapper, range = wrapper `+9`, Brain mode 0."""
+    spell = world.spell_table.get(wrapper.number)
+    mv.cancel(u, world)
+    u.order = CELL_ORDER
+    u.cast_cell = (int(cell[0]) & 0xFF, int(cell[1]) & 0xFF)
+    u.cast_wrapper = wrapper
+    u.range = wrapper_range(spell, wrapper, unit_level(u, spell))
+    u.mode_go = u.mode_attack = u.mode_look = u.mode_cast = u.mode_cell = False
+    u.anchor = None
+    u.mover.waiting = u.mover.parked = False
+
+
+def cell_cast_group(world, g, spell_id, cell, cancel_group):
+    """Command `0x1f` (`FUN_004f515d` -> `FUN_0057033d`): only for a spell that targets a cell (`FUN_0051941a`: param `target == 2`); cancel the group,
+    then `set_cell_cast` for every member with the spell in its book (the others only get the cancel, as for `cast_group`)."""
+    spell = world.spell_table.get(spell_id)
+    if spell is None or spell.target != 2:
+        return
+    cancel_group(world, g)
+    for i in g.members:
+        u = world.units[i]
+        w = wrapper_of(u, spell_id)
+        if w is not None:
+            set_cell_cast(world, u, cell, w)
+
+
+def refresh_cell(world, u):
+    """Group pass, order 0xe (`FUN_00569321` -> `FUN_0056969c(unit, brain+0x3c, brain+0x30)`): Brain mode 9, range = wrapper `+9`."""
+    if u.cast_wrapper is None or u.cast_cell is None:
+        mv.stop_unit(world, u)
+        return
+    spell = world.spell_table.get(u.cast_wrapper.number)
+    u.mode_go = u.mode_attack = u.mode_look = u.mode_cast = False
+    u.mode_cell = True
+    u.mover.waiting = u.mover.parked = False
+    u.range = wrapper_range(spell, u.cast_wrapper, unit_level(u, spell))
+
+
+def facing_to_cell(u, cell):
+    """`FUN_00556b2c(unit, cell)`: the 8-way facing (sector * 32) from the unit's cell to `cell` (spelldefs.direction8, the 2:1 rule)."""
+    return spelldefs.direction8(cell[0] - u.x, cell[1] - u.y) << 5
+
+
+def cell_mode(world, u):
+    """Brain mode 9 (`FUN_0056ec3f`): in range (`FUN_0055539a`: facing == `FUN_00556b2c(cell)` and Chebyshev(cell, unit cell) <= range) -> start the
+    cell cast (`FUN_0056e986`); else `FUN_0056e4ac(unit, cell, range)`: the move driver `FUN_00555411` towards the cell, which within `range` of it only
+    turns to it (`FUN_00556da2`), and state 1."""
+    from .pathfinding import chebyshev
+    cell = u.cast_cell
+    here = (u.x, u.y)
+    if u.cast_wrapper is None or cell is None:
+        mv.stop_unit(world, u)
+        return
+    face = facing_to_cell(u, cell)
+    dist = chebyshev(here, cell)
+    if u.facing == face and dist <= u.range:
+        u.brain_order = BRAIN_CAST
+        u.swing_count = 0
+        u.state = CELL_STATE
+        u.cast = SpellCast(u.cast_wrapper.number, cell=tuple(cell), item_count=u.cast_wrapper.item_count)
+        if not u.ai_cast:
+            mv.stop_unit(world, u)      # FUN_0056e986: brain+0x60 == 0 -> FUN_0056dbc6
+        return
+    m = u.mover
+    if dist <= u.range:                 # FUN_00555411 at a centre, within the stop distance: only the turn (range 0 never gets here: dist 0 is in range)
+        if u.facing != face or m.turning:
+            mv._set_action(world, u, mv.TURN)
+        mv._turn_toward(u, face)
+    else:
+        if m.goal != tuple(cell):
+            m.goal = tuple(cell)
+            m.arrived = m.failed = False
+        mv.go_tick(world, u)
+        if m.waiting or m.parked:       # FUN_00555411's blocker turn writes Brain mode 10 / 0 over mode 9 (the engine's wait is mode 1 + waiting)
+            u.mode_cell, u.mode_go = False, True
+    u.state = mv.MOVE_STATE
 
 
 def brain_cast(u):
-    """Brain order 2 (`FUN_0056dca2`): state 0xd, count one tick, and once more than 2 ticks old with the done flag set, back to order 0."""
-    u.state = CAST_STATE
+    """Brain order 2 (`FUN_0056dca2`): state 0xd (0xe for a cell cast, brain `+0x5c == 0`), count one tick, and once more than 2 ticks old with
+    the done flag set, back to order 0."""
+    u.state = CELL_STATE if (u.cast is not None and u.cast.cell is not None) else CAST_STATE
     u.swing_count = (u.swing_count + 1) & 0xFF
     if u.swing_count > 2 and u.done:
         u.brain_order = 0
@@ -199,28 +336,121 @@ def cast_start(world, u, c, st):
     """`FUN_00519998` at phase 0: the mage's mana check and spend (a cast from an item pays nothing), the step clock `+0x138 := tick` and the
     client's projectile message.  Returns False when the mana is short (nothing changes: the exe retries on its next Brain pass)."""
     spell = world.spell_table.get(c.spell)
-    t = world.find_unit(c.target)
-    if t is None:
-        return False
+    t = None
+    if c.cell is None:
+        t = world.find_unit(c.target)
+        if t is None:
+            return False
     if st.mage and c.item_count is None:
         if u.mana < spell.mana_cost:
             return False
         u.mana -= spell.mana_cost
     ax, ay = u.x * 256 + u.sub_x, u.y * 256 + u.sub_y
-    if unit_size(t) > 1:
+    if t is None:
+        bx, by = c.cell[0] * 256 + 128, c.cell[1] * 256 + 128      # INFERRED: the cell centre (only the client's flight time uses it)
+    elif unit_size(t) > 1:
         bx, by = (centre_x(t) & 0xFFFF) - 1, (centre_y(t) & 0xFFFF) - 1
     else:
         bx, by = t.x * 256 + t.sub_x, t.y * 256 + t.sub_y
     from .combat import log
-    log(world, CastStarted(world.tick, u.id, t.id, c.spell, client_flight_ticks(spell, bx - ax, by - ay)))
+    if spell.number == PRISMATIC_SPRAY and t is not None:
+        stub_release(world, u, spell.number)        # FUN_00519998: the chain FUN_00519c04 (up to min(7, L/20 + 2) targets) runs here: not built
+    log(world, CastStarted(world.tick, u.id, t.id if t is not None else None, c.spell, client_flight_ticks(spell, bx - ax, by - ay)))
     u.step_end = world.tick         # the client message `FUN_005041d6` stores the server tick in unit +0x138
     u.action, u.action_start_tick = mv.ATTACK, world.tick      # client action 8 plays the shared attack block (animation.md 2.4)
     return True
 
 
+def stub_release(world, u, number, target=None, cell=None):
+    """A release whose effect handler (`FUN_00519db8` switch case, area / field carrier, chain, summon, teleport ...) is not built: nothing changes in the
+    world (mana, animation and recovery already ran); the release is counted in `World.unbuilt_casts` (spell number -> count).  Not a guess of the effect."""
+    world.unbuilt_casts[number] = world.unbuilt_casts.get(number, 0) + 1
+
+
+def heal(world, t, amount, caster=None):
+    """`FUN_00510484(amount)`: HP += amount, capped at the maximum; a unit that rises from HP < 1 to HP > 0 is revived (`FUN_00510534`)."""
+    from .combat import log
+    from engine.world import Healed
+    before = t.hp
+    t.hp = min(t.hp + amount, t.hp_max)
+    log(world, Healed(world.tick, caster.id if caster is not None else None, t.id, amount, t.hp))
+    if before < 1 and t.hp > 0:
+        revive(world, t)
+
+
+def revive(world, t):
+    """`FUN_00510534`: the dying state is undone: corpse stage byte `+0x13c := 0` (the next HP <= 0 starts the countdown again), phase 0, done flag 1,
+    defence `<<= 1` then the recompute (vtable +0x58; INFERRED: it rebuilds the combat numbers, so the engine drops its halved copy), HP at least 1, then
+    `FUN_0056dba1` (cancel + order 0xc on the own cell).  `FUN_005551d6(position)` is not decoded (INFERRED: a grid update; nothing modelled)."""
+    t.death_seen = False
+    t.death_tick = None
+    t.phase = 0
+    t.done = True
+    t.combat = None
+    t.hp = max(t.hp, 1)
+    mv.fail_stop(world, t)
+    mv._set_action(world, t, mv.IDLE)
+
+
+def _rand1(rng, n):
+    """`FUN_0051fa4e(n)` = `FUN_0051fa25(n - 1) + 1` (1..n; n == 0 draws and gives 1)."""
+    return rng.rand(n - 1) + 1
+
+
+def heal_release(world, u, t, spell, level):
+    """`FUN_00519db8` case 0x18 (`0x51a2b8`): no effect on a target whose owner the caster is at war with (relation bit 1); otherwise, when the target
+    has HP > -10 and an HP regeneration (`+0x98 != 0`): `min' + rand(1..spread')` capped at `maxHP - HP`, then `FUN_00510484`."""
+    from . import ai, vitals
+    if ai.at_war(world, u.owner, t.owner):
+        return
+    if t.hp <= -10 or not vitals.regen_rates(t)[0]:
+        return
+    sc = spell.scaled(level)
+    amount = (sc.damage_min & 0xFF) + _rand1(world.rng, sc.damage_spread & 0xFF)
+    cap = t.hp_max - t.hp
+    heal(world, t, amount if amount < cap else cap, u)
+
+
+def drain_release(world, u, t, spell, level):
+    """`FUN_00519db8` case 0x1a (`0x51a3f3`), creature targets only: `(min' + rand(1..spread')) * (100 - protAstral) / 100` (C division), capped at the
+    target's HP + 10; if positive: the caster's damage XP credit (vtable +0x6c), the AI hit reaction, target HP -= amount, last attacker := caster, then
+    the caster heals the amount (`FUN_00510484`)."""
+    from . import ai, xp
+    from .combat import combat_stats, log
+    from engine.world import Damage, Died
+    sc = spell.scaled(level)
+    amount = (sc.damage_min & 0xFF) + _rand1(world.rng, sc.damage_spread & 0xFF)
+    p = combat_stats(world, t).block.prot[5]
+    amount = int(amount * (100 - p) / 100)              # cdq / idiv: truncation toward zero
+    cap = t.hp + 10
+    amount = amount if amount < cap else cap
+    if amount <= 0:
+        return
+    before = t.hp
+    xp.damage_credit(world, u, t, amount, before)
+    if world.ai_on:
+        ai.on_hit(world, u, t)
+    t.hp = before - amount
+    log(world, Damage(world.tick, u.id, t.id, amount, t.hp, 0, True))
+    t.last_attacker = u.id
+    if before > 0 and t.hp <= 0:
+        log(world, Died(world.tick, t.id, u.id))
+    heal(world, u, amount, u)
+
+
+def cast_release_cell(world, u, c, st):
+    """State 0xe release: `FUN_00519db8(caster, 0, x, y)`: the cast XP, then the cell handlers (area / field carriers, teleport, raise dead ...),
+    none of which is built yet: `stub_release`."""
+    from . import xp
+    spell = world.spell_table.get(c.spell)
+    if st.mage and c.item_count is None:
+        xp.award(world, u, int(0.5 * spell.mana_cost + 0.5), spell.sphere)
+    stub_release(world, u, spell.number, cell=c.cell)
+
+
 def cast_release(world, u, c, st):
-    """`FUN_00519d7f` -> `FUN_00519db8` for the damage branch: cast XP, level, off-map test, then the missile carrier (`delivery == 2`, flight time from
-    the distance NOW) or the point carrier at once (`delivery == 1`).  Spells with no scaled damage have other handlers (phase K): nothing happens."""
+    """`FUN_00519d7f` -> `FUN_00519db8` for a unit target: cast XP, level, off-map test, then Heal (24) and Drain Life (26), or the damage branch: the missile
+    carrier (`delivery == 2`, flight time from the distance NOW) or the point carrier at once (`delivery == 1`).  Every other handler is `stub_release`."""
     from . import xp
     from .combat import log
     spell = world.spell_table.get(c.spell)
@@ -232,8 +462,13 @@ def cast_release(world, u, c, st):
         xp.award(world, u, int(0.5 * spell.mana_cost + 0.5), spell.sphere)      # vtable +0x70 = FUN_005131ef: AddExp(ftol(0.5 * mana + 0.5), 0, sphere)
     if t is None:
         return
+    if spell.number in (HEAL, DRAIN_LIFE):
+        (heal_release if spell.number == HEAL else drain_release)(world, u, t, spell, level)
+        log(world, CastReleased(world.tick, u.id, t.id, c.spell, level, 0))
+        return
     sc = spell.scaled(level)
     if (sc.damage_min & 0xFF) + (sc.damage_spread & 0xFF) == 0 or spell.distribution != spelldefs.DIST_SINGLE:
+        stub_release(world, u, spell.number, target=t)
         return
     carrier = 0
     if spell.delivery == spelldefs.DELIVERY_MISSILE:
@@ -264,7 +499,7 @@ def cast_tick(world, u):
         u.timer = (u.timer - 1) & 0xFF
         if u.timer == 0:
             if c is not None:
-                cast_release(world, u, c, st)
+                (cast_release_cell if c.cell is not None else cast_release)(world, u, c, st)
                 if c.item_count is not None:        # unit +0x68 / +0x64 := 0 (a staff stays, a scroll would be deleted: no pack items yet)
                     u.cast = c = None
             u.phase = PHASE_RECOVERY

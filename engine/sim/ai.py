@@ -12,7 +12,8 @@ from engine.world import AiGroup, AiState
 
 from . import combat as cb
 from . import movement as mv
-from .commands import AttackUnit, MoveUnits, Stop
+from . import spells
+from .commands import AttackUnit, CastSpell, MoveUnits, Stop
 from .pathfinding import chebyshev, follow_distance, foot, unit_size
 
 GROUP_ORDER = 0x12                  # group order of the computer players' squads (FUN_00570aba)
@@ -271,15 +272,19 @@ def _human(world, m):
 
 
 def idle(world, m):
-    """`FUN_0056afd9`: a computer-owned unit with nothing to do looks around (brain mode 0xb); a human's unit gets brain mode 0
-    (`FUN_0056b025`; a caster would run the caster scan, phase K).  Already in that mode = a no-op in the exe (the mode is set to the
-    value it has), so the command is not issued again (log size)."""
+    """`FUN_0056afd9`: a computer-owned unit with nothing to do looks around (brain mode 0xb) and a computer-owned mage then runs
+    `FUN_0056c592` (`mage_idle`: heal, Shield, friends; ai.md 12.5); a human's unit gets brain mode 0 (`FUN_0056b025`; a human mage would run
+    the caster scan `FUN_0056bc7b`, not built: ai.md 12.6).  Already in that mode = a no-op in the exe (the mode is set to the value it has),
+    so the command is not issued again (log size)."""
     if _human(world, m):
         if not (m.mode_look or m.mode_go or m.mode_attack):
             return
-    elif m.mode_look and not m.mode_go and not m.mode_attack:
+        emit(world, Stop(m.owner, (m.id,), ai=True))
         return
-    emit(world, Stop(m.owner, (m.id,), ai=True))
+    if not (m.mode_look and not m.mode_go and not m.mode_attack and not m.mode_cast and not m.mode_cell):
+        emit(world, Stop(m.owner, (m.id,), ai=True))
+    if is_mage(world, m):
+        mage_idle(world, m)
 
 
 # --- set-up ---------------------------------------------------------------------------------------------------------------
@@ -592,10 +597,220 @@ def stand_pass(world, g):
 
 
 def engage(world, m, t):
-    """`FUN_0056acc8` for a unit without a spell list: brain mode 5 on the target (spell / special attacks: phase K)."""
+    """`FUN_0056acc8(m, t)` (docs/engine/ai.md 12.2): the special-attack roll over the monster's three slots (one `rand15` per used slot, the last
+    slot whose `rand15 < probability * 0x147` wins; Teleport only when the target is more than 2 cells away), else a computer-owned mage tries
+    `FUN_0057a769` (`caster_attack`), else brain mode 5 on the target.  A human-owned unit takes mode 5 (`FUN_0056b059` does nothing without the
+    hero's selected spell, which the engine does not have; the scan `FUN_0056bc7b` is not built).  The target flag `+0x4c & 8` (off the map) and
+    the `m == t` branch (`FUN_00567988`) are never reached from the pools (§10)."""
+    pick = 0
+    if not m.human:
+        for n, p in spells.monster_slots(m.stats):
+            if n and world.rng.rand15() < p:            # FUN_0057afc0 = rand(); only used slots draw
+                pick = n
+    if pick and (pick != spells.TELEPORT or chebyshev((t.x, t.y), (m.x, m.y)) > 2):
+        special_attack(world, m, t, pick)
+        return
     if m is t:
         return
+    if not _human(world, m) and is_mage(world, m) and caster_attack(world, m, t):
+        return
     attack(world, m, t)
+
+
+# --- casters (docs/engine/ai.md 12) ----------------------------------------------------------------------------------------
+
+SPECIAL_ENEMY = frozenset((1, 5, 10, 11, 16, 18, 26, 28, 29))      # FUN_0056a981 jump table 0x56abe7: cast at the enemy
+SPECIAL_CELL = frozenset((2, 3, 6, 7, 14, 15, 17))                  # at the enemy's cell
+SPECIAL_SELF = frozenset((4, 8, 12, 13, 19, 20, 21, 24, 25, 27))    # at itself
+SPECIAL_AHEAD = 9                                                    # the cell next to the caster towards the enemy
+CLEVER_MIND, CLEVER_MELEE = 60, 29      # FUN_0057a769: mind >= 60 and rand(100) <= 29 -> the decision again, then mode 5
+IDLE_MANA = 10                          # FUN_0056c592: an idle mage needs mana > 10
+OWN_SPELLS = 0x1D                       # the cast lists loop n = 1..28 (`< 0x1d`): spell 29 is never in them
+
+
+def is_mage(world, u):
+    """`FUN_0053a5a0` = creature flag `+0x4c & 4` (ai.md 12.1)."""
+    return cb.combat_stats(world, u).mage
+
+
+def _divide(rng, n):
+    """`FUN_0057afd0(n)` = `rand15 * n / 0x8000` (the order manager's helper; one draw, also for n == 0)."""
+    return rng.rand15() * n // 0x8000
+
+
+def _wrapper_ok(world, u, n, defensive):
+    """The cast-list filter of `FUN_0057a769` / `FUN_0057a999`: spell n in the book, `cost <= mana` (signed words), `wrapper+0xa == defensive`."""
+    if not (spells.known_mask(u) >> n) & 1:
+        return False
+    sp = world.spell_table.get(n) if world.spell_table is not None else None
+    return sp is not None and sp.mana_cost <= u.mana and (sp.defensive == 1) == defensive
+
+
+def cast_at(world, m, t, n):
+    """`brain+0x60 := 1` + `FUN_0056c72b(m, t, wrapper n)`: Brain mode 8 at unit `t` (an `ai=True` `CastSpell`)."""
+    emit(world, CastSpell(m.owner, (m.id,), n, t.id, ai=True))
+
+
+def cast_cell(world, m, cell, n):
+    """`brain+0x60 := 1` + `FUN_0056969c(m, cell, wrapper n)`: Brain mode 9 at the cell (an `ai=True` `CastSpell` with `cell`)."""
+    emit(world, CastSpell(m.owner, (m.id,), n, None, ai=True, cell=(cell[0] & 0xFF, cell[1] & 0xFF)))
+
+
+def can_stand(world, u, cell):
+    """`FUN_0055cd50(u, cell)`: every cell of u's `size x size` footprint from `cell` is clear in the live layer (`pf+0x20000`: the static block
+    layer and the unit stamps, u's own included) under u's mover mask (`mover+5`)."""
+    from allods2.formats import passability as pas
+    from engine.cellslots import pack
+    mt = u.move_type if u.move_type in pas.MOVE_MASK else 1
+    mask = pas.MOVE_MASK[mt]
+    n = unit_size(u)
+    for dy in range(n):
+        for dx in range(n):
+            x, y = (cell[0] + dx) & 0xFF, (cell[1] + dy) & 0xFF
+            if world.blocked(x, y, mt):
+                return False
+            for air, bit in ((0, mv.UNIT_STAMP_GROUND), (1, mv.UNIT_STAMP_AIR)):
+                if bit & mask and pack(x, y) in world.slots.stamp[air]:
+                    return False
+    return True
+
+
+def special_attack(world, m, t, n):
+    """`FUN_0056a981(m, t, n)` (ai.md 12.3): the target by spell number, then `brain+0x60 := 1`; nothing when n is not in the book."""
+    if spells.wrapper_of(m, n) is None:
+        return
+    if n in SPECIAL_ENEMY:
+        cast_at(world, m, t, n)
+    elif n in SPECIAL_CELL:
+        cast_cell(world, m, (t.x, t.y), n)
+    elif n in SPECIAL_SELF:
+        cast_at(world, m, m, n)
+    elif n == SPECIAL_AHEAD:
+        o = (cb.octant(foot(m), foot(t)) & 0xFF) >> 5                   # FUN_005568e4 >> 5, tables pf+0x58e88 / 0x58e90
+        cast_cell(world, m, (m.x + WANDER_DX[o], m.y + WANDER_DY[o]), n)
+    elif n == spells.TELEPORT and chebyshev((t.x, t.y), (m.x, m.y)) > 2:
+        base = word(t.x, t.y) - 0x101
+        found = 0
+        for row in range(3):
+            for col in range(3):
+                c = (base + row * 0x100 + col) & 0xFFFF
+                if can_stand(world, m, unword(c)):
+                    found = c
+                    break
+            if found:
+                break
+        if found:
+            cast_cell(world, m, unword(found), n)
+    m.ai_cast = True
+
+
+def caster_attack(world, m, t):
+    """`FUN_0057a769(m, t)` (ai.md 12.4): a computer-owned mage picks a random offensive spell it can pay (n = 1..28) and casts it at the target;
+    with mind >= 60 it first draws `rand(100)` and on <= 29 runs the whole decision again and reports 0 (the caller then sets mode 5)."""
+    if spells.mind_of(m) >= CLEVER_MIND and _divide(world.rng, 100) <= CLEVER_MELEE:
+        engage(world, m, t)
+        return False
+    cands = [n for n in range(1, OWN_SPELLS) if _wrapper_ok(world, m, n, False)]
+    k = _divide(world.rng, len(cands))
+    if not cands:
+        return False
+    cast_at(world, m, t, cands[k])
+    return True
+
+
+def ring_cells(cell, r):
+    """`FUN_0054ec6a(cell, r)` cell order: the centre, then per ring k = 1..r the cells (x+i, y+k), (x+i, y-k) for i = -k..k and, when |i| != k,
+    (x+k, y+i), (x-k, y+i); packed 16-bit cell arithmetic (y << 8 | x)."""
+    w0 = word(*cell)
+    out = [cell]
+    for k in range(1, (r & 0xFF) + 1):
+        for i in range(-k, k + 1):
+            out.append(unword((w0 + k * 0x100 + i) & 0xFFFF))
+            out.append(unword((w0 - k * 0x100 + i) & 0xFFFF))
+            if abs(i) != k:
+                out.append(unword((w0 + i * 0x100 + k) & 0xFFFF))
+                out.append(unword((w0 + i * 0x100 - k) & 0xFFFF))
+    return out
+
+
+def allied(world, owner, other):
+    """Relation bit 2 of `owner`'s word for `other` (a player's word for itself is 0x12)."""
+    pl = world.players.get(owner)
+    return pl is not None and 0 < other <= len(pl.relations) and bool(pl.relations[other - 1] & 2)
+
+
+def effect_active(u, n):
+    """`u+0x144 & 1 << n`: only Invisibility (12, `Unit.hidden`) exists in the engine; every other effect is never active (no effect system)."""
+    return n == spells.INVISIBILITY and u.hidden
+
+
+def _ratio(o):
+    """`(int)hp / (int)hp_max` as the exe divides (`idiv`, truncation toward zero), as a double."""
+    return int(o.hp / o.hp_max) if o.hp_max else 2
+
+
+def mage_idle(world, m):
+    """`FUN_0056c592(m)` (ai.md 12.5): book and mana > 10, knows Heal: wounded -> heal itself; else the least healthy ally of the square of the heal
+    range (`(int)(hp / hp_max) < 1`: the first wounded or dying one in ring order) -> heal it; else `friend_cast`."""
+    if world.spell_table is None or not spells.known_mask(m) or m.mana <= IDLE_MANA:
+        return
+    if spells.wrapper_of(m, spells.HEAL) is None:
+        return
+    if m.hp != m.hp_max:
+        cast_at(world, m, m, spells.HEAL)
+        return
+    sp = world.spell_table.get(spells.HEAL)
+    r = spells.wrapper_range(sp, spells.Wrapper(spells.HEAL), spells.unit_level(m, sp))
+    occ = mv._occupants(world, ring_cells((m.x, m.y), r))
+    detectors = None
+    keep = []
+    for o in occ:                                       # FUN_00567b2d: allies only, a hidden one only when the group detects it
+        if not allied(world, m.owner, o.owner):
+            continue
+        if o.hidden:
+            if detectors is None:
+                detectors = [d for d in world.units.values() if d.owner == m.owner and d.squad == m.squad and d.hp > 0]
+            if not _detected(o, detectors):
+                continue
+        keep.append(o)
+    best, bv = None, 2.0
+    for o in keep:
+        v = _ratio(o)
+        if v < bv:
+            best, bv = o, v
+    if bv < 1.0:
+        cast_at(world, m, best, spells.HEAL)
+    else:
+        friend_cast(world, m, keep)
+
+
+def friend_cast(world, m, friends):
+    """`FUN_0057a999(m, friends)` (ai.md 12.5): Shield (27) on itself when it knows it and it is not active; else a random friend of the list (one
+    draw), of the same owner: wounded -> heal; else, at full mana, a random defensive spell (n = 1..28, not 24 / 27; one draw; an empty list leaves the
+    loop's last lookup, Curse 28 when known) unless already active on it."""
+    heal = spells.wrapper_of(m, spells.HEAL)
+    if not (m.hp == m.hp_max or heal is None):
+        cast_at(world, m, m, spells.HEAL)
+        return True
+    if spells.wrapper_of(m, spells.SHIELD) is not None and not effect_active(m, spells.SHIELD):
+        cast_at(world, m, m, spells.SHIELD)
+        return True
+    k = _divide(world.rng, len(friends))
+    f = friends[k] if k < len(friends) else None
+    if f is None or f.owner != m.owner:
+        return False
+    if f.hp != f.hp_max and heal is not None:
+        cast_at(world, m, f, spells.HEAL)
+        return True
+    if m.mana != m.mana_max:
+        return False
+    cands = [n for n in range(1, OWN_SPELLS) if n not in (spells.HEAL, spells.SHIELD) and _wrapper_ok(world, m, n, True)]
+    k = _divide(world.rng, len(cands))
+    n = cands[k] if cands else (spells.CURSE if spells.wrapper_of(m, spells.CURSE) is not None else 0)
+    if not n or effect_active(f, n):
+        return False
+    cast_at(world, m, f, n)
+    return True
 
 
 # --- guard scan (FUN_0056a1fb), auto scan (FUN_0056ed4e) ---------------------------------------------------------------------
@@ -755,6 +970,7 @@ def apply(world, cmd):
         if isinstance(cmd, MoveUnits):
             cell = cmd.cell                                     # CONFIRMED: the exe feeds the raw cell to its planner (ai.md 3)
             u.mode_go, u.mode_attack, u.mode_look = True, False, False
+            u.mode_cast = u.mode_cell = False
             if m.goal != cell:
                 m.goal = cell
                 m.arrived = m.failed = False
@@ -766,9 +982,37 @@ def apply(world, cmd):
             u.target = t.id
             u.range = cb.combat_stats(world, u).range
             u.mode_attack, u.mode_go, u.mode_look = True, False, False
+            u.mode_cast = u.mode_cell = False
             m.waiting = m.parked = False
+        elif isinstance(cmd, CastSpell):
+            apply_cast(world, u, cmd)
         elif isinstance(cmd, Stop):
             u.mode_look, u.mode_go, u.mode_attack, u.mode_cast = not _human(world, u), False, False, False
+            u.mode_cell = False
+
+
+def apply_cast(world, u, cmd):
+    """The AI cast (`brain+0x60 := 1`, then `FUN_0056c72b` or `FUN_0056969c`): Brain mode 8 at the unit (target, wrapper, range = wrapper `+9`, the
+    target's `brain+0xa4/+0xa8` := spell number / tick) or Brain mode 9 at the cell.  Order, anchor and group untouched."""
+    if world.spell_table is None or world.spell_table.get(cmd.spell_id) is None:
+        return
+    w = spells.Wrapper(cmd.spell_id)
+    sp = world.spell_table.get(cmd.spell_id)
+    if cmd.cell is None:
+        t = world.find_unit(cmd.target_id)
+        if t is None:
+            return
+        u.mode_cast, u.mode_cell = True, False
+        u.cast_target = t.id
+        t.ai.spell_mark, t.ai.spell_tick = cmd.spell_id, world.tick
+    else:
+        u.mode_cell, u.mode_cast = True, False
+        u.cast_cell = tuple(cmd.cell)
+    u.mode_go = u.mode_attack = u.mode_look = False
+    u.cast_wrapper = w
+    u.range = spells.wrapper_range(sp, w, spells.unit_level(u, sp))
+    u.ai_cast = True
+    u.mover.waiting = u.mover.parked = False
 
 
 def look_around(world, u):

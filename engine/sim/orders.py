@@ -247,6 +247,8 @@ def _pass_orders(world, g):
             refresh_attack(world, u)
         elif u.order == spells.CAST_ORDER:
             spells.refresh_cast(world, u)               # FUN_0056c72b: Brain mode 8
+        elif u.order == spells.CELL_ORDER:
+            spells.refresh_cell(world, u)               # FUN_0056969c: Brain mode 9
 
 
 def attack_group(world, g, target):
@@ -277,6 +279,10 @@ def orders_system(world, commands):
             target = world.find_unit(cmd.target_id)      # a corpse is a legal target (combat.md 12.2)
             if g is not None and target is not None:
                 attack_group(world, g, target)
+        elif isinstance(cmd, CastSpell) and cmd.cell is not None:
+            g = intake(world, cmd.player_id, cmd.unit_ids)      # command 0x1f (docs/engine/ai.md 12.6)
+            if g is not None and world.spell_table is not None:
+                spells.cell_cast_group(world, g, cmd.spell_id, cmd.cell, _cancel_group)
         elif isinstance(cmd, CastSpell):
             g = intake(world, cmd.player_id, cmd.unit_ids)
             target = world.find_unit(cmd.target_id)     # a corpse is a legal target, as for an attack (spells.md 9c.3)
