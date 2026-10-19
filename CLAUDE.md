@@ -239,5 +239,12 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   rnd(spread)` with chance `p/101`, one generated item, carried items, a pile on the unit's cell); XP per hit and `0.5 * victim.xp` kill credit to the last hitter only, level-ups
   recompute max HP / mana (`engine/sim/{death,vitals,xp}.py`); regeneration at `tick & 15 == 12` (HP per unit every 64 ticks, mana every 16, x3 after 80 ticks without a step; humans
   100 / 50); HP/mana bars for hovered units, mana bar, info panel mana / level / XP; `--debug combat` logs removal, loot and level-ups.
-- Status: E, F, G3b, G3c (fonts), H (H1-H3), I1, I2 done. Next: I3 (AI reaction: retaliation of attacked monsters `FUN_0056e6b8`, guard and auto-target scans `FUN_0056a1fb` / `FUN_0056ed4e`, then
-  spells and special attacks). Also (docs/open-questions.md): town-scene animations, text conventions.
+- Monster AI (I3) done, REA-checked ([ai](docs/engine/ai.md)): there is **no per-monster aggro radius or leash**; the squads (map `squad` per owner) of every computer player run
+  group order `0x12` (`FUN_005728fa`) at `tick & 15 == 6` (every 16 ticks, all groups in the same tick): sight flood `FUN_00552c28` (scan range in cells, `light = (scan << 7) + 64`
+  minus 128/181 per step minus height difference, rings 1..19) of every member plus the attacker cell a hit reveals for 21 passes -> hostile living pool (relation bit 1), pruned
+  to the squad radius (reach, >= 20, +3..5 after the first pass) round the centroid -> each member takes the lowest `FUN_005711ea` score (cells * 256 + facing change, class table) ->
+  attack (mode 5), else back to its own start cell (anchor), where it looks around (mode `0xb`, `rand` per tick); a hit stores the cell 10 beyond the victim on the ray from the
+  attacker (run-away when it has no target), wimpy / withdraw HP thresholds flee 3 cells; `engine/sim/ai.py`, AI commands are `MoveUnits/AttackUnit/Stop(ai=True)` in the log,
+  `Simulation(world, ai=True)`, `engine run` (`--no-ai`, F5 / `--debug ai` overlay), `tests/test_engine_ai.py`. Casters, special attacks, the second pool list: phase K list in ai.md.
+- Status: E, F, G3b, G3c (fonts), H (H1-H3), I1, I2, I3 done. Next: I4 (spells and special attacks: `FUN_0056a981`, caster scan `FUN_0056bc7b` and the phase K list of docs/engine/ai.md, then
+  structures as targets, human stand-ground scans). Also (docs/open-questions.md): town-scene animations, text conventions.

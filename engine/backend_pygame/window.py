@@ -5,6 +5,7 @@ import dataclasses
 import pygame
 
 from engine.sim import DEFAULT_SPEED, CommandQueue, Simulation, tick_period_ms
+from engine.sim import ai as ai_mod
 from allods2.common import as_fs
 from engine.ui import (CursorInput, DebugFlags, Layout, MainText, MessageLine, MinimapPanel, OrderInput, ScrollInput,
                        SelectionInput, choose_cursor, choose_minimap_cursor, drain_no_way, level_up_messages, target_cell)
@@ -21,7 +22,7 @@ from .sprites import SpriteCache
 from .surfaces import SurfaceCache
 
 MAX_FRAME_MS = 250
-DEBUG_KEYS = {pygame.K_F1: "passability", pygame.K_F2: "markers", pygame.K_F3: "depth", pygame.K_F4: "paths"}
+DEBUG_KEYS = {pygame.K_F1: "passability", pygame.K_F2: "markers", pygame.K_F3: "depth", pygame.K_F4: "paths", pygame.K_F5: "ai"}
 FLYING_TEXT = 0x66                                                   # main.txt 0x66 + state: "Flying damage is Off" / "On"
 ORDER_KEYS = {pygame.K_m: "m", pygame.K_a: "a", pygame.K_d: "d", pygame.K_s: "s", pygame.K_t: "t"}
 KEYS = {pygame.K_LEFT: "left", pygame.K_RIGHT: "right", pygame.K_UP: "up", pygame.K_DOWN: "down"}
@@ -126,11 +127,18 @@ def minimap_order_target(projection, camera, layout, panel, pos):
     return minimap_move_cell(cell_x, vp.h // 32 + 4 if row is None else row, camera.iy >> 5)
 
 
+def ai_overlay(world, debug, selection):
+    """{unit id: `ai.overlay`} for the selected monsters while the `ai` debug flag is on (F5), else None."""
+    if not debug.ai or not world.ai_on:
+        return None
+    return {uid: ai_mod.overlay(world, world.units[uid]) for uid in selection if uid in world.units}
+
+
 def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Allods 2", max_frames=None,
-        assets=None, options=None, debug=None, minimap=None, player_id=PLAYER_ID, commands=()):
+        assets=None, options=None, debug=None, minimap=None, player_id=PLAYER_ID, commands=(), ai=True):
     """Accumulator main loop: fixed-step sim, variable-rate drawing.  Returns the `Simulation` when the window
     closes (or after `max_frames`, for tests).  `layout`: `Layout` of the window size (the camera is built from
-    `layout.viewport`).  F1-F4 toggle the debug overlays, Ctrl+H the health bars, Ctrl+F cycles the formation.
+    `layout.viewport`).  `ai`: the monsters think (docs/engine/ai.md; `--no-ai` of the CLI).  F1-F5 toggle the debug overlays, Ctrl+H the health bars, Ctrl+F cycles the formation.
     Left mouse: click / drag selects, a click with a selection orders by the cursor (move, attack over ground),
     Shift toggles; M / A / D / S arm a pending mode, T stands ground; right click cancels the mode or deselects,
     right drag scrolls; the minimap orders a walk (own units selected) or moves the camera; "No way" shows in
@@ -149,11 +157,11 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     texts = MainText.load(as_fs(fs))
     messages = MessageLine()
     panel = MinimapPanel.from_layout(minimap.geometry, layout) if minimap else None
-    sim, queue, scroll = Simulation(world), CommandQueue(), ScrollInput()
+    sim, queue, scroll = Simulation(world, ai=ai), CommandQueue(), ScrollInput()
     for cmd in commands:
         queue.put(cmd)
     player = world.players[player_id]
-    items = build_draw_list(world, camera, world.tick, assets, options, debug, player.selection)
+    items = build_draw_list(world, camera, world.tick, assets, options, debug, player.selection, ai_info=ai_overlay(world, debug, player.selection))
     selecting = SelectionInput(player_id, layout.screen.w, lambda: items.picks,
                                lambda e: world.units[e].owner if e in world.units else None,
                                lambda: player.selection, hostile_to(world, player_id))
@@ -268,7 +276,8 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
         drain_no_way(world, player_id, messages, now, texts)
         ordering.update()
         hover = pick_at(items.picks, *mouse) if mouse is not None and layout.viewport.contains(*mouse) else None
-        items = build_draw_list(world, camera, world.tick, assets, options, debug, player.selection, hover)
+        items = build_draw_list(world, camera, world.tick, assets, options, debug, player.selection, hover,
+                                ai_info=ai_overlay(world, debug, player.selection))
         text = messages.current(now)
         numbers = floating_entries(world, floats, camera, assets, fs, now) if options.flying_damage else ()
         ui.draw(screen, caches, build_terrain_items(terrain_view, camera, world.tick), items, camera,

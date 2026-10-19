@@ -12,6 +12,7 @@ from .combat import can_order_attack, refresh_attack, set_attack
 from .movement import (ATTACK_ORDER, CENTRE, MoveTo, _in_map, _set_action, IDLE, cancel, fail_stop, live_cells, path_grid,
                        set_move, set_stand, stop_unit, unit_size, unit_speed)
 from .pathfinding import chebyshev
+from . import ai
 
 MAX_IDS = 253                       # FUN_0050bbb8 stops appending at 253 (R 2)
 FORMATION_LIMIT = 2                 # server+0xa724: Chebyshev distance an Auto group may be spread over (R 3.2)
@@ -210,7 +211,9 @@ def orders_system(world, commands):
     if (world.tick & 15) == PASS_PHASE:
         group_pass(world)
     for cmd in commands:
-        if isinstance(cmd, MoveUnits):
+        if getattr(cmd, "ai", False):               # an AI command from a log: the brain-level executor, no group (docs/engine/ai.md 10)
+            ai.apply(world, cmd)
+        elif isinstance(cmd, MoveUnits):
             g = intake(world, cmd.player_id, cmd.unit_ids)
             if g is not None:
                 move_group(world, g, *cmd.cell)

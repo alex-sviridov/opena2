@@ -566,6 +566,8 @@ def _tick_unit(world, u):
         else:
             u.mode_go = False
             u.mode_attack = False
+            if world.ai_on and u.order == ai.GUARD_ORDER:       # 0x56e320: mode 0 and the auto target scan FUN_0056ed4e
+                ai.auto_scan(world, u)
     if u.state == ATTACK_STATE:
         combat.swing_tick(world, u)
 
@@ -585,6 +587,9 @@ def _tick_inner(world, u):
         return
     if u.mode_attack:                                   # Brain mode 5 (FUN_0056eab5)
         combat.attack_mode(world, u)
+        return
+    if u.mode_look:                                     # Brain mode 0xb (FUN_0056e5bc): the idle look-around of a computer-owned unit
+        ai.look_around(world, u)
         return
     if not u.mode_go or m.parked:
         return
@@ -640,6 +645,7 @@ def follow_drive(world, u, t):
             m.last_plan = res
             if res.reason in ("fallback", "unreachable"):
                 _maybe_no_way(world, u, res, tcell)
+                ai.on_static_plan(world, u, res, tcell)         # the class-0x12 clause stamps brain+0x16 (docs/engine/ai.md 3)
         m.static_len = len(m.static_path)
         m.dest = tcell
         if not m.static_path:
@@ -673,4 +679,4 @@ def movement_system(world, commands):
         _tick_unit(world, u)
 
 
-from . import combat, death    # noqa: E402  the fight code imports this module: bound here, used at call time (circular on purpose)
+from . import ai, combat, death    # noqa: E402  the fight code imports this module: bound here, used at call time (circular on purpose)

@@ -229,7 +229,7 @@ if (emin + espread > 0) and ((T + roll > D) or (min + spread == 0)):            
     (e outside 1..5: error "Unknown magic damage type")
     if dmg3 > 0: total += dmg3
 side effects: if attacker has a template (+0x3c != 0): defender.last_attacker := attacker (+0x40),
-              defender.last_element := e if attacker is a mage (+0x4c & 4) else 0 (+0x48); AI reaction FUN_0056e6b8 (not modelled)
+              defender.last_element := e if attacker is a mage (+0x4c & 4) else 0 (+0x48); AI reaction FUN_0056e6b8 (modelled in [ai §8](ai.md#8-hit-reaction-fun_0056e6b8attacker-victim-0-confirmed) when the AI is on)
 return max(total, 0)
 ```
 

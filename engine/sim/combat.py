@@ -210,7 +210,10 @@ def attack_mode(world, u):
     """Brain mode 5 (`FUN_0056eab5`): in range -> start the swing (`FUN_0056e8c3`), else approach with the follow driver (`FUN_0056ea52`)."""
     t = world.find_unit(u.target)
     if t is None:
-        mv.stop_unit(world, u)                      # the id was freed (stage 5, flyer): the exe's pointer lookup fails
+        if world.ai_on and u.order == ai.GUARD_ORDER:
+            u.mode_attack = False                   # an AI unit keeps its order; the next squad pass picks a new target or the post (INFERRED)
+        else:
+            mv.stop_unit(world, u)                  # the id was freed (stage 5, flyer): the exe's pointer lookup fails
         return
     a, b = foot(u), foot(t)
     if u.facing == octant(a, b) and reach_gap(a, b) <= u.range:
@@ -277,6 +280,8 @@ def resolve_attack(world, a, t, st):
     t.hp = before - res.damage                      # the exe's s16 (no wrap here: HP stays within +-32767 in play)
     if a.stats is not None:
         t.last_attacker = a.id
+    if world.ai_on:
+        ai.on_hit(world, a, t)                      # FUN_0056e6b8 at the end of take_hit (docs/engine/ai.md 8)
     if before > 0 or t.hp > -10:                    # message 0x73 (C§5.1 step 5)
         log(world, Damage(world.tick, a.id, t.id, res.damage, t.hp, res.roll, res.hit))
     xp.damage_credit(world, a, t, res.damage, before)
@@ -284,4 +289,4 @@ def resolve_attack(world, a, t, st):
         log(world, Died(world.tick, t.id, a.id))
 
 
-from . import xp    # noqa: E402  xp reads `combat_stats` and `log` from this module: bound at the end (circular on purpose)
+from . import ai, xp    # noqa: E402  xp reads `combat_stats` and `log` from this module: bound at the end (circular on purpose)

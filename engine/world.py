@@ -94,6 +94,44 @@ class OrderGroup:
     speed: int = 0
 
 
+@dataclass
+class AiState:
+    """Per-unit AI fields of the Brain (docs/engine/ai.md 3, 8): `stamp` = `brain+0x16` (the follow planner's failure stamp, a block
+    counter word; ctor 0xffdc), `target` = `+0x20` (the group scan's choice), `hit_by`/`hit_tick`/`hit_cell` = `+0x94/+0x98/+0x9c` (the hit
+    reaction `FUN_0056e6b8`; `hit_cell` is a packed cell word `y << 8 | x`), `mark_cell`/`mark_age` = `+0x58/+0x5a` (the attacker's cell
+    revealed to the group), `alerted` = `+0x54` (a hit turns the idle look-around at once)."""
+    stamp: int = 0xFFDC
+    target: int = None
+    hit_by: int = None
+    hit_tick: int = 0
+    hit_cell: int = 0
+    mark_cell: int = 0
+    mark_age: int = 0
+    alerted: int = 0
+
+    def dump(self):
+        return [self.stamp, self.target, self.hit_by, self.hit_tick, self.hit_cell, self.mark_cell, self.mark_age, self.alerted]
+
+
+@dataclass
+class AiGroup:
+    """A squad of one computer-owned player under group order `0x12` (docs/engine/ai.md 2): the group record fields the handler reads."""
+    key: tuple                      # (owner, squad)
+    members: list = field(default_factory=list)     # unit ids in list (creation) order
+    order: int = 0x12
+    centre: int = 0                 # +0x28 packed cell word of the centroid
+    spread: int = 0                 # +0x2a max member distance to the centroid
+    reach: int = 0                  # +0x2c max (distance + scan range)
+    radius: int = 0                 # +0x2d pool radius in cells
+    base: int = 0                   # +0x38
+    seen: int = 0                   # +0x30 set after the first pass
+    passes: int = 0                 # +0x34
+
+    def dump(self):
+        return [list(self.key), list(self.members), self.order, self.centre, self.spread, self.reach, self.radius, self.base,
+                self.seen, self.passes]
+
+
 @dataclass(frozen=True)
 class Damage:
     """Fight log entry: one resolved blow (`World.fight_log`, never in the dump).  `amount` 0 for a miss or an absorbed hit; `hp` is the
@@ -279,6 +317,8 @@ class Unit:
     mana_acc: int = 0               # +0xa3 likewise for mana
     carried: tuple = ()             # item codes of the section 8 group the unit carries (dropped at death)
     kill_list: list = field(default_factory=list)       # +0x1a8 repeat-kill list of a hero: up to 5 [server_id, count]
+    ai: AiState = field(default_factory=AiState)        # Brain AI fields (sim/ai.py, docs/engine/ai.md)
+    mode_look: bool = False         # Brain mode 0xb: the idle look-around (`FUN_0056e5bc`) of a computer-owned unit
 
     def __post_init__(self):
         if self.mover.target_facing < 0:
@@ -365,6 +405,10 @@ class World:
         self.fight_log = []         # Damage / Died entries (sim/combat.py), drained by the UI, not part of the dump
         self.item_table = None      # allods2.formats.itemdefs.ItemTable (from_map); combat stats read it
         self._next_group = 1
+        self.ai_on = False          # sim/ai.py `enable`: the squads are in `ai_groups` and the state is part of dump()
+        self.ai_groups = {}         # (owner, squad) -> AiGroup, in creation order
+        self.ai_emitted = []        # AI commands since the last drain by `Simulation.step` (the log), not part of dump()
+        self._sight = {}            # (x, y, scan) -> frozenset of visible cells (the heights never change), not part of dump()
         self.report = BuildReport()
         self._cells = {}            # (x, y) -> set of ids over present footprint cells
         self._claim = {}            # (x, y) -> id of the structure registered there (first wins)
@@ -892,7 +936,14 @@ class World:
                                for g in self.groups.values()]} if self.groups else {}),
                 **({"corpses": [[u.id, u.x, u.y, u.sub_x, u.sub_y, u.facing, u.hp, u.type_id, u.owner, u.death_tick]
                                 for _, u in sorted(self.corpses.items())]} if self.corpses else {}),
+                **({"ai": self._ai_dump()} if self.ai_on else {}),
                 **({"rng": self.rng.state} if self.rng.state != self.seed else {})}
+
+    def _ai_dump(self):
+        """AI state: the squads and the per-unit Brain fields, only once the AI is enabled (old goldens stay valid)."""
+        return {"groups": [g.dump() for g in self.ai_groups.values()],
+                "units": [[u.id, u.mode_look] + u.ai.dump() for _, u in sorted(self.units.items())
+                          if u.ai != AiState() or u.mode_look]}
 
     @staticmethod
     def _player_extra(p):

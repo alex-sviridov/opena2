@@ -17,7 +17,7 @@ routines it calls. The brief's states map onto it as follows:
 
 | Brief | Original |
 |---|---|
-| idle / guard | member in brain mode 0 / `0xb` at its anchor `brain+0`, running the guard scan `FUN_0056a1fb` (§7) |
+| idle / guard | member on its anchor `brain+0` in brain mode `0xb`, the idle look-around `FUN_0056e5bc` (§6.1); set by `FUN_0056afd9` |
 | alerted / chasing | a target `brain+0x20` was assigned by the group scan (§4-5): `FUN_0056acc8` sets brain mode 5 (attack with approach) |
 | attacking | mode 5 in range: swing (I1, [combat](combat.md)) |
 | returning | `FUN_0056c8af(u, anchor)`: brain mode 1 towards `brain+0` once the group has no target for the member (§6) |
@@ -69,12 +69,12 @@ elif dB < 10:                                 go(m, B.hitcell)
 elif B.target != 0:                           FUN_0056acc8(m, target)  # attack, §6
 elif hp != hp_max and |B.hit_tick - tk| < 10: go(m, B.hitcell)         # recently hit, nobody to fight
 else:                                         # the +0x9e wander branch at 0x572bb1 is dead code (xor eax,eax; test; je)
-    if cell(m) == B.anchor and at_centre(m):  guard scan FUN_0056afac(m, 1) = FUN_0056afd9   # §7
+    if cell(m) == B.anchor and at_centre(m):  FUN_0056afac(m, 1) = FUN_0056afd9: brain mode 0xb (computer owner), §6.1
     else:                                     go(m, B.anchor)          # return to the post
 go(m, c) = FUN_0056c8af: brain mode := 1, brain+0xa := c   (order, group and target untouched)
 ```
 
-`B+0x16` is the **path-failure stamp** written by the follow planner ([simulation §7.4](simulation.md): `block` counter when a mode-5 unit
+`B+0x16` starts at `0xffdc` (ctor `0x569003`; a never-stamped unit has `dB` ~65 500). It is the **path-failure stamp** written by the follow planner ([simulation §7.4](simulation.md): `block` counter when a mode-5 unit
 cannot get within range of its target); `B.hitcell`/`hit_tick` come from the hit reaction (§8). `hitcell` is 0 until the first hit, so a
 failure stamp on a never-hit unit sends it to cell (0, 0) (clamped by the mode-1 mover): **INFERRED quirk, VERIFY IN GAME**.
 After the handler, the post step `FUN_00573713` runs for every member of every group (§9).
@@ -149,11 +149,26 @@ attacks (spell slots `brain+0x7c+4i`, probability `rand15 < brain+0x88+4i`, last
 (`attack_mode`, [combat §2.3](combat.md)); the follow planner stamps `brain+0x16` when the target is out of reach (§3). Order, anchor and group of
 the unit are unchanged (an AI attack is **not** order 3).
 
-Returning: `go(m, anchor)` every pass until `cell == anchor` at a centre; then mode 0 and the guard scan.
+Returning: `go(m, anchor)` every pass until `cell == anchor` at a centre; then `FUN_0056afd9` (§6.1).
+
+### 6.1 Idle look-around, brain mode `0xb` (`FUN_0056e5bc`, CONFIRMED)
+
+`FUN_0056afd9` (`owner+0x2c != 0` = computer controlled) sets brain mode `0xb`; the mode body runs **every tick**. With `cur = mover+0` (facing) and `tgt =
+mover+1` (target facing): if `cur == tgt`: when `brain+0x54 == 0` and `rand15() > 0xcc` (99.4 % of the ticks) the state is 0 and nothing else happens;
+otherwise `tgt := cur + 0x21 + rand15 * 0xbe / 0x8000` (byte), `brain+0x54 := 0`, start the turn (`FUN_00556454`), state 1. If `cur != tgt` the turn continues,
+state 1. So an idle monster turns on the spot about every 165 ticks by 33..222 units of 256, and **at once** after a hit (`brain+0x54 := 1`, §8). This is
+the only per-tick RNG use of the AI: one `rand15` per settled idle monster per tick, in creature order (the divisor `0x8000` is INFERRED: it is the object's first word).
+
+### 6.2 Mover event and auto scan (`0x56e1b0`, `FUN_0056ed4e`, CONFIRMED)
+
+When the mover raises its event flag (`mover+0x98`: the planner failed or the path is exhausted) a unit under order `0xb` gets mode 0 and the auto scan: among
+the creatures within `FUN_0056ac5b` cells (a candidate is listed only if its distance is `<=` the nearest listed so far, the quirk of `0x56ed4e`), the hostile
+living one with the smallest facing change (`<=`, the last of equals wins; start 300) becomes `brain+0xc` in mode 6 (the same driver as 5); none: mode `0xb`.
 
 ## 7. Guard scan `FUN_0056a1fb` (CONFIRMED)
 
-Run for a member standing on its anchor (§3 last branch), for any unit that reaches order `0xc`/`0x17`/`0xb` idle, and by the retreat step. Candidates
+Not run by the handler itself: it is the scan of `FUN_0056afac(u, 0)`, used by the retreat step (§9), by `FUN_0056acc8` and by the stand orders of the human's
+units (order `0xc`, `0x17`: not modelled yet). Candidates
 are the single-unit pool built by `FUN_00569fd4` (same steps as §4 with only this unit's sight flood, then `FUN_00567a16`, `FUN_00567ddf`).
 `best` starts empty with `bestgap = range + 1` (`range = FUN_0056ac5b`, byte arithmetic); for each candidate `c` with `FUN_005711ea(u, c) !=
 0xffffff`: `g = reach_gap(u, c)` (`FUN_00556dcd`), `+1` if `class(c) == 3 and class(u) != 3`, `a = FUN_0055aa21(facing octant(u,c), u.facing)`;
@@ -183,27 +198,37 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
 
 ## 10. Engine mapping (DECISIONS)
 
-* `engine/sim/ai.py`: `AiGroup` (per `(owner, squad)`), per-unit `AiState` in `World` (`world.ai`, dumped only when the AI is enabled so old goldens and
-  hashes hold). `Simulation(ai=True)` adds `ai_system`; it runs at `tick & 15 == 6` **before** the command drain, like the exe's group pass.
-* **Commands.** The AI issues `MoveUnits(ai=True)` for `FUN_0056c8af`, `AttackUnit(ai=True)` for the mode-5 attack and `Stop(ai=True)` for the guard
-  scan's mode 0 / set-stand. The `ai` flag selects the **brain-level** executor (`orders.apply_ai`): no command group, no cancel of the unit's order, the
-  AI group membership is kept - exactly what the exe's direct brain writes do. Plain (player) commands are unchanged. Commands are logged
-  `(tick, cmd)` in `Simulation.log`; `replay(..., ai="log")` applies them from the log, `ai="regen"` (default when the sim has the AI) drops logged AI
-  commands and regenerates them: both give the same state hash (tested).
-* Opt-in: `engine run` enables the AI (`--no-ai` to disable); tests that use monsters as dummies keep the old behaviour by default.
+* `engine/sim/ai.py`: `AiGroup` (per `(owner, squad)`, `World.ai_groups`), per-unit `AiState` (`Unit.ai`, `Unit.mode_look`), dumped only when the AI is
+  enabled so old goldens and hashes hold. `Simulation(ai=True)` adds `ai_system`; it runs at `tick & 15 == 6` **before** the command drain, like the exe's group pass.
+* **Commands.** The AI issues `MoveUnits(ai=True)` for `FUN_0056c8af`, `AttackUnit(ai=True)` for the mode-5 attack and `Stop(ai=True)` for `FUN_0056afd9` (mode `0xb`). The `ai` flag selects the **brain-level** executor (`orders.apply_ai`): no command group, no cancel of the unit's order, the
+  AI group membership is kept - exactly what the exe's direct brain writes do. Plain (player) commands are unchanged. Every AI command goes through
+  `ai.emit` (apply at once + `World.ai_emitted`), `Simulation.step` appends them to `Simulation.log` as `(tick, cmd)`. `replay()` of a sim that has the AI drops
+  the logged AI commands and regenerates them (same hash, tested); a sim without the AI applies them from the log in the drain (approximate: the
+  events of §6.2 happen inside the movement tick, the drain is before it).
+* Opt-in: `Simulation(world, ai=True)`; `engine run` enables it (`--no-ai` disables, F5 / `--debug ai` draws the overlay: sight = the aggro area, the ring at
+  the pool radius, the post, the target, a label with mode / order / target uid / radius / stamp). Tests that use monsters as dummies keep the old behaviour.
+* Deviations (all invisible in the 46 maps' normal play, none changes the rules above): an event-raised mode (§6.2) runs its body one tick later than the
+  exe's direct call; a go cell is clamped to [8, size-9] (the exe feeds its planner the raw cell, e.g. cell (0, 0) for a never-hit unit); a target that
+  disappears ends mode 5 without stopping the unit (INFERRED, the exe's pointer); casters (units with spells) and the effect bits `0x1000` / `0x40000`
+  are not modelled; the difficulty tweak of `brain+0x44` is not applied; the target flag `+0x4c & 8` test of `FUN_0056acc8` is not modelled (meaning unknown).
 * Optimisation allowed by "1:1, but faster": the sight flood is memoised per pass per (cell, scan, height field) and written with numpy-free integer
   loops; the pool is built from the spatial index (`world.units`) restricted to the group's visible cells, not by scanning all creatures. Results are identical.
 * RNG: the only draw is `rand(-1..1)` at the first pass of each group (§3.5), in group creation order.
 * Not modelled (INFERRED needed or phase K): hidden units (`0x1000`), the `0x40000` scan-range effect bit, spells, the second list, caster scan,
   special attacks `FUN_0056a981`, structures as targets, group orders other than `0x12`/3.
 
-## 11. Phase K list (ranged and casters)
+## 11. Tests and code
+
+`engine/sim/ai.py` (+ hooks: `orders.orders_system`, `movement._tick_inner/_tick_unit/follow_drive`, `combat.resolve_attack/attack_mode`, `Simulation`),
+`tests/test_engine_ai.py` (sight, score, notice / ignore, chase and return, squad alert, pool radius, 16-tick rate, hit reaction, hit-mark reveal, flee, look-around, 10-monster replay hash, log, overlay).
+
+## 12. Phase K list (ranged and casters)
 
 `FUN_0056bc7b` (caster scan: heal `0x18`, `0x1b`, buffs `0x14/0x15`, attack spells `0xd/0x13/4/8/0xc` with mana gates 5/10/40), `FUN_0056c592`/
 `FUN_0056c72b`/`FUN_0056969c` (cast executors), `FUN_0056a981` (special attack rolls), `FUN_0056b059`, `FUN_0056bb0d/53/2e`, the pool's second list
-(`server+0xa88`), `FUN_0056eff3` mode 6 for ranged units, `FUN_0057a769` / `FUN_0057a999`, group orders 1, 5, `0x11`, `0x13`, `0xff` (`FUN_00572xxx`).
+(`server+0xa88`), `FUN_0056eff3` mode 6 for ranged units (the melee driver is reused),, `FUN_0057a769` / `FUN_0057a999`, group orders 1, 5, `0x11`, `0x13`, `0xff` (`FUN_00572xxx`).
 
-## 12. VERIFY IN GAME
+## 13. VERIFY IN GAME
 
 1. Think rate: a monster standing still reacts within 16 ticks (1-2 s at speed 0-8) of a hero entering its sight; two monsters of one squad react in the **same** tick.
 2. Notice distance: stand at 5, 7, 9, 12 cells from a sleeping `Goblin_Pike` (`scan_range` from data.bin) in the open: it should notice at about its `scan_range`
@@ -216,6 +241,7 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
 7. Flee: `Goblin_Pike` at HP <= 10 of 40 with the hero within 10 cells steps away 3 cells every 16 ticks (wimpy); an `Orc_Bow` backs off from anything within 2 cells.
 8. Never-hit unit whose target is unreachable (across water) stamps `+0x16` and walks to cell (0, 0)-ish: does it?
 9. A melee monster never targets a flyer; a hero on a ridge higher than the monster is noticed later.
+10. Idle monsters turn on the spot about every 3 seconds, and a monster hit from behind turns at once.
 
 ## Open questions
 

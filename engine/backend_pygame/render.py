@@ -51,7 +51,8 @@ def draw_bar(surface, it, ball=None):
         surface.blit(ball, (it.sx + it.w - 4, it.sy))
 
 
-PATH_TINTS = {"searched": (80, 120, 255, 60), "path": (255, 220, 0, 110), "hop": (0, 255, 90, 150)}
+PATH_TINTS = {"searched": (80, 120, 255, 60), "path": (255, 220, 0, 110), "hop": (0, 255, 90, 150),
+              "ai_sight": (255, 60, 60, 45), "ai_radius": (255, 160, 0, 130), "ai_post": (0, 200, 255, 170), "ai_target": (255, 0, 0, 170)}
 
 
 def _overlay(surface, caches, it):
@@ -70,6 +71,8 @@ def _overlay(surface, caches, it):
         pygame.draw.line(surface, HOTSPOT_COLOR, (x, y - 4), (x, y + 4))
     elif it.kind == "marker":
         pygame.draw.rect(surface, MARKER_COLOR, r, 1)
+    elif it.kind == "ai_text":
+        surface.blit(render_text(it.text, DEPTH_COLOR, font=3, shadow=False, background=(0, 0, 0)), r.topleft)
     elif it.kind == "depth":
         surface.blit(render_text(it.text, DEPTH_COLOR, font=3, shadow=False, background=(0, 0, 0)), r.topleft)
 

@@ -8,7 +8,7 @@
 MAP as for `python -m allods2 map` (10, scenario/10.alm, or a file).  X, Y =
 the viewport's top-left in world pixels (x = 32*col, y = 32*row - height).
 `run` starts at the playable-area corner (256, 256) by default.  Arrow keys
-or the mouse at the window edge scroll; F1/F2/F3 toggle the debug overlays
+or the mouse at the window edge scroll; F1/F2/F3/F5 toggle the debug overlays
 passability / markers / depth, Ctrl+H the health bars of all units, Ctrl+L the floating damage numbers (on by default, as in the game); Esc quits.  --debug takes a comma list of those
 names (screenshot: drawn in the PNG).  Objects and structures are drawn with the
 game's default options; --no-* switch shadows, the BRIGHT2 light row, the b.256
@@ -217,7 +217,7 @@ def main(argv=None):
         q.add_argument("--no-light", action="store_true")
         q.add_argument("--no-smoothing", action="store_true")
         q.add_argument("--no-objects", action="store_true")
-        q.add_argument("--debug", default="", metavar="LIST", help="passability,markers,depth")
+        q.add_argument("--debug", default="", metavar="LIST", help="passability,markers,depth,paths,combat,ai")
     i = sub.add_parser("world-info")
     i.add_argument("map")
     i.add_argument("--install")
@@ -233,6 +233,7 @@ def main(argv=None):
     m.add_argument("--install")
     m.add_argument("--units", action="store_true", help="add the unit dots")
     r.add_argument("--no-minimap", action="store_true")
+    r.add_argument("--no-ai", action="store_true", help="monsters do not think (docs/engine/ai.md)")
     r.add_argument("--debug-move", nargs="+", metavar="UID_OR_CELL",
                    help="developer tool: UID X,Y [X,Y ...] walks the unit along straight legs")
     r.add_argument("--debug-moveto", nargs="+", metavar="UID_OR_CELL",
@@ -270,7 +271,7 @@ def main(argv=None):
         except ValueError as e:
             p.error(str(e))
         window.run(world, tv, camera, a.layout, a.speed, "Allods 2 - " + world.name,
-                   assets=assets, options=opts, debug=debug, minimap=mm, commands=commands)
+                   assets=assets, options=opts, debug=debug, minimap=mm, commands=commands, ai=not a.no_ai)
     elif a.interface:
         from engine.backend_pygame.interface import screenshot_window
         from engine.world import UNIT_ID_BASE

@@ -860,6 +860,8 @@ Cost note: such a unit makes a hop plan per tick.
 
 ## 9. Handoff to combat (phase I)
 
+**I3 (monster AI) is done: [ai](ai.md)** - the group order `0x12` handler (`FUN_005728fa`), the guard / auto scans, the hit reaction and the flee step at the post of every pass are implemented there; the "computer players' branch of the pass" below is that handler.
+
 **I1 (melee attack) is done: [combat](combat.md)** implements brain modes 5 and the follow driver (`movement.follow_drive`), order 3 / command `0x19`, the group
 pass executor for group order 0, the swing (state 3) and the hit. What stays open below: modes 4, 6, 8 and the other group handlers, guard / swarm /
 patrol / follow orders, the retreat post step, spells and the AI. The text below is the pre-I1 handoff, kept for the facts.

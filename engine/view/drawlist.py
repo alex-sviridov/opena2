@@ -423,7 +423,7 @@ def _item(ctx, it):
         ctx.sprite(it, BACKPACK_KEY, "main_b", frame, x, y, ow[0], ow[1], dep + (0, 3), "half")
 
 
-def _debug_items(ctx, debug, selection=()):
+def _debug_items(ctx, debug, selection=(), ai_info=None):
     """Overlay items for the DebugFlags set in `debug` (attributes passability, markers, depth)."""
     out = []
     vx, vy, w, hv = ctx.win
@@ -456,6 +456,8 @@ def _debug_items(ctx, debug, selection=()):
                                     text="hotspot", depth=(PASS_DEBUG, ent.y, -ent.x, 2, ent.seq, 0, 0)))
     if getattr(debug, "paths", False):
         out.extend(_path_items(ctx, selection))
+    if getattr(debug, "ai", False) and ai_info:
+        out.extend(_ai_items(ctx, ai_info))
     if getattr(debug, "depth", False):
         for it in ctx.items:
             if it.kind == "sprite" and it.blend != "half":
@@ -492,6 +494,33 @@ def _path_items(ctx, selection):
     return out
 
 
+def _ai_items(ctx, ai_info):
+    """AI overlay of the selected monsters (docs/engine/ai.md 10): `ai_info` = {unit id: sim.ai.overlay(...)}, computed by the backend."""
+    out, relief = [], ctx.relief
+
+    def cell(kind, x, y, n):
+        if in_window(ctx.win, x, y) and 0 <= x < ctx.world.width and 0 <= y < ctx.world.height:
+            out.append(DrawItem(kind, None, None, 0, CELL * x - ctx.cx, CELL * y - int(relief[y, x]) - ctx.cy,
+                                CELL, CELL, depth=(PASS_DEBUG, y, -x, 8 + n, 0, 0, 0)))
+
+    for uid, info in sorted(ai_info.items()):
+        u = ctx.world.units.get(uid)
+        if u is None or info is None:
+            continue
+        for x, y in sorted(info["sight"]):
+            cell("ai_sight", x, y, 0)
+        for x, y in sorted(info["ring"]):
+            cell("ai_radius", x, y, 1)
+        if info["post"]:
+            cell("ai_post", *info["post"], 2)
+        if info["target"]:
+            cell("ai_target", *info["target"], 3)
+        if in_window(ctx.win, u.x, u.y):
+            out.append(DrawItem("ai_text", uid, None, 0, CELL * u.x - ctx.cx, CELL * u.y - int(relief[u.y, u.x]) - ctx.cy - 40, 1, 1,
+                                text=info["label"], depth=(PASS_DEBUG, u.y, -u.x, 12, 0, 0, 0)))
+    return out
+
+
 def _bars(ctx, selection, hover=None):
     """Selection bars (FUN_004653a5, ui-layout.md section 9): the HP bar on the top edge of each selected or hovered unit's pick rect (every
     drawn unit with `DrawOptions.health_bars`), and the mana bar 4 px lower for a unit with mana (`obj+0x14a > 0`)."""
@@ -516,7 +545,7 @@ def _bars(ctx, selection, hover=None):
     return out
 
 
-def build_draw_list(world, camera, tick, assets, options=None, debug=None, selection=(), hover=None):
+def build_draw_list(world, camera, tick, assets, options=None, debug=None, selection=(), hover=None, ai_info=None):
     """Sprites (and requested debug overlays) of map objects and structures for
     `camera`, in drawing order: sorted by `DrawItem.depth` =
     (pass, row, -col, slot, seq, part, sub) (the exe's scan order, docs/engine/rendering.md).
@@ -542,5 +571,5 @@ def build_draw_list(world, camera, tick, assets, options=None, debug=None, selec
     ctx.items.picks = [r for _, r in sorted(ctx.picks, key=lambda p: p[0] + (0, 2))]
     ctx.items.extend(_bars(ctx, selection, hover))
     if debug is not None:
-        ctx.items.extend(sorted(_debug_items(ctx, debug, selection), key=lambda i: i.depth))
+        ctx.items.extend(sorted(_debug_items(ctx, debug, selection, ai_info), key=lambda i: i.depth))
     return ctx.items

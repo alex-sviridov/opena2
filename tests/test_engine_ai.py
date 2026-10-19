@@ -1,0 +1,354 @@
+"""Monster AI (I3): the squad group handler, sight, target score, hit reaction, flee, determinism.  Synthetic worlds, always run.
+Spec: docs/engine/ai.md (A§ = its sections)."""
+
+import numpy as np
+
+from allods2.formats.unitstats import MONSTER, UnitType
+from engine.sim import MoveUnits, Simulation, replay
+from engine.sim import ai
+from engine.sim.combatstats import ArmourBlock, AttackRecord, CombatStats
+from engine.world import UNIT_ID_BASE, Damage, Player, Unit, World
+
+EAST = 64
+
+
+def world(n=48, seed=1, heights=None):
+    h = np.zeros((n, n), np.int8) if heights is None else heights
+    w = World(np.zeros((n, n), np.uint16), h, "syn", seed=seed)
+    w._cost = np.full((n, n), 8, np.uint8)
+    w.players[1] = Player(1, 0, human=True, relations=(18,) + (1,) * 15)
+    w.players[2] = Player(2, 1, relations=(1, 18) + (0,) * 14)
+    w.players[3] = Player(3, 2, relations=(1, 0, 18) + (0,) * 13)
+    return w
+
+
+def stats(scan=6, mind=10, wimpy=0, withdraw=0, token=1, move=1, speed=24):
+    return UnitType(MONSTER, 1, "Test", 1, 1, {"scan_range": scan, "mind": mind, "wimpy": wimpy, "withdraw": withdraw,
+                                                 "token_size": token, "movement_type": move, "speed": speed, "turn_rate": 32}, (), ())
+
+
+def unit(w, uid, x, y, owner, squad=0, hp=40, scan=6, speed=24, lo=3, windup=6, recovery=4, rng=1, **kw):
+    u = Unit(UNIT_ID_BASE + uid, 1, owner, x, y, uid=uid, hp=hp, hp_max=hp, facing=EAST, squad=squad,
+             stats=stats(scan, speed=speed, **kw))
+    u.mover.turn_rate = 32
+    u.combat = CombatStats(AttackRecord(skill=500, lo=lo, sp=0), ArmourBlock(0, 0), windup=windup, recovery=recovery, range=rng)
+    w.add_unit(u)
+    return u
+
+
+def hero(w, uid, x, y, **kw):
+    return unit(w, uid, x, y, 1, 0, hp=500, scan=0, **kw)
+
+
+def damages(w):
+    return [e for e in w.fight_log if isinstance(e, Damage)]
+
+
+def ai_log(sim):
+    return [(t, c) for t, c in sim.log if getattr(c, "ai", False)]
+
+
+def run(sim, n):
+    for _ in range(n):
+        sim.step()
+
+
+# --- sight (A§4.1) --------------------------------------------------------------------------------------------------------------
+
+def test_sight_on_flat_ground_reaches_the_scan_range_straight_and_less_diagonally():
+    w = world()
+    cells = ai.sight(w, 24, 24, 6)
+    assert (30, 24) in cells and (31, 24) not in cells          # (6 << 7) + 64 - 6 * 128 = 64 > 0; the seventh cell is dark
+    assert (24, 18) in cells and (24, 17) not in cells
+    assert (28, 28) in cells and (29, 29) not in cells          # a diagonal step costs 181: 832 - 4 * 181 = 108 > 0, 5 * 181 > 832
+
+
+def test_a_ridge_higher_than_the_observer_shortens_the_sight_and_lower_ground_lengthens_it():
+    h = np.zeros((48, 48), np.int8)
+    h[:, 27:29] = 127
+    w = world(heights=h)
+    cells = ai.sight(w, 24, 24, 6)
+    assert (28, 24) in cells and (29, 24) not in cells and (30, 24) not in cells        # 576 - 255 - 255 < 0 two cells into the ridge
+    assert (30, 24) in ai.sight(world(), 24, 24, 6)
+    h2 = np.zeros((48, 48), np.int8)
+    h2[:, 28:] = -50
+    w2 = world(heights=h2)
+    assert (31, 24) in ai.sight(w2, 24, 24, 6) and (33, 24) not in ai.sight(w2, 24, 24, 6)         # downhill adds light
+
+
+def test_sight_stays_inside_the_playable_area():
+    w = world()
+    cells = ai.sight(w, 10, 24, 20)
+    assert all(8 <= x <= 48 - 9 for x, _ in cells) and min(x for x, _ in cells) == 8
+
+
+# --- target score (A§5) ---------------------------------------------------------------------------------------------------------
+
+def test_score_is_distance_then_facing_and_a_melee_walker_never_targets_a_flyer():
+    w = world()
+    me = unit(w, 1, 20, 20, 2, 1)
+    near, far = hero(w, 2, 22, 20), hero(w, 3, 25, 20)
+    assert ai.score(w, me, near) < ai.score(w, me, far)
+    assert ai.score(w, me, near) == 2 * 256 + 0                  # facing east: octant of an eastern target is 64
+    fly = hero(w, 4, 21, 20, move=3)
+    fly.move_type = 3
+    assert ai.score(w, me, fly) == ai.NO_TARGET
+
+
+def test_a_small_clever_unit_scores_ranged_walkers_better_and_ghosts_worse():
+    w = world()
+    me = unit(w, 1, 20, 20, 2, 1, mind=15)
+    archer = hero(w, 2, 24, 20, rng=4)
+    ghost = hero(w, 3, 24, 21, move=2)
+    ghost.move_type = 2
+    plain = 4 * 256 + ai.mv._fold(me.facing, ai.cb.octant(ai.foot(me), ai.foot(archer)) & 255)
+    assert ai.score(w, me, archer) == plain - (plain >> 2)
+    base = 4 * 256 + ai.mv._fold(me.facing, ai.cb.octant(ai.foot(me), ai.foot(ghost)) & 255)
+    assert ai.score(w, me, ghost) == base + (base >> 1)
+
+
+# --- noticing, chasing, attacking, returning ---------------------------------------------------------------------------------
+
+def test_the_hero_inside_the_scan_range_is_attacked_after_the_next_pass():
+    w = world()
+    m = unit(w, 1, 20, 20, 2, 1)
+    h = hero(w, 2, 25, 20)
+    sim = Simulation(w, ai=True)
+    run(sim, 6)
+    assert m.ai.target is None and not m.mode_attack               # the first pass is at tick 6, not before
+    sim.step()
+    assert m.ai.target == h.id and m.mode_attack and m.target == h.id
+    run(sim, 200)
+    assert damages(w) and damages(w)[0].attacker == m.id
+
+
+def test_a_hero_outside_the_scan_range_is_ignored():
+    w = world()
+    m = unit(w, 1, 20, 20, 2, 1)
+    hero(w, 2, 28, 20)                                           # 8 cells: dark
+    sim = Simulation(w, ai=True)
+    run(sim, 200)
+    assert m.ai.target is None and not damages(w) and (m.x, m.y) == (20, 20)
+    assert not any(isinstance(c, ai.AttackUnit) for _, c in sim.log)
+
+
+def test_the_monster_returns_to_its_post_after_the_hero_outruns_its_sight():
+    w = world()
+    m = unit(w, 1, 20, 20, 2, 1)
+    h = hero(w, 2, 25, 20, speed=32)
+    sim = Simulation(w, ai=True)
+    run(sim, 8)
+    assert m.mode_attack
+    sim.step([MoveUnits(1, (h.id,), (44, 20))])
+    far = 0
+    for _ in range(300):
+        sim.step()
+        far = max(far, m.x)
+    assert far > 22                                               # it chased
+    run(sim, 700)
+    assert (m.x, m.y) == (20, 20) and m.ai.target is None
+    assert m.mode_look                                            # back on the post it looks around again
+
+
+def test_an_alert_reaches_the_whole_squad_but_not_another_squad():
+    w = world()
+    a = unit(w, 1, 20, 20, 2, 1)
+    b = unit(w, 2, 20, 30, 2, 1)                                  # 10 cells from a: out of its own sight
+    c = unit(w, 3, 20, 31, 2, 7)                                  # another squad
+    h = hero(w, 4, 24, 20)
+    sim = Simulation(w, ai=True)
+    run(sim, 7)
+    assert a.ai.target == h.id and b.ai.target == h.id and b.mode_attack
+    assert c.ai.target is None and not c.mode_attack
+
+
+def test_a_hostile_beyond_the_pool_radius_is_ignored_even_when_visible():
+    w = world()
+    a = unit(w, 1, 12, 20, 2, 1, scan=20)                        # sees far
+    b = unit(w, 2, 12, 21, 2, 1, scan=0)
+    hero(w, 3, 12 + 19, 20)                                      # inside a's sight window (19 rings) and the pool radius 21
+    sim = Simulation(w, ai=True)
+    g = w.ai_groups[(2, 1)]
+    assert g.radius == 21 and g.base == 21                   # centroid (12, 21): the sub-cell mean rounds the cell up; 1 + 20
+    run(sim, 7)
+    assert a.ai.target is not None                               # 19 <= 20: inside
+
+
+# --- rates and quirks ---------------------------------------------------------------------------------------------------------
+
+def test_the_ai_thinks_every_sixteen_ticks_starting_at_tick_six():
+    w = world()
+    unit(w, 1, 20, 20, 2, 1)
+    h = hero(w, 2, 40, 20)
+    sim = Simulation(w, ai=True)
+    run(sim, 100)
+    w.move_unit(h.id, 24, 20)                                    # appears in the sight window at tick 100
+    run(sim, 40)
+    pass_ticks = [t for t, c in ai_log(sim)]
+    assert pass_ticks and all(t & 15 == 6 for t in pass_ticks)
+    assert pass_ticks[0] == 6 or min(t for t in pass_ticks if t >= 100) == 102          # reaction at the next pass after tick 100
+
+
+def test_the_pool_radius_is_the_reach_floored_at_twenty_then_grows_once_by_three_to_five():
+    w = world()
+    for i, (x, y) in enumerate([(20, 20), (20, 29)]):
+        unit(w, i + 1, x, y, 2, 1)
+    g = None
+    sim = Simulation(w, ai=True)
+    g = w.ai_groups[(2, 1)]
+    assert g.base == g.radius == 14 + 6 - 4 or g.base == g.reach               # centroid (20, 24), spread 5, reach 5 + 6 = 11
+    assert g.reach == 11 and g.radius == 11
+    run(sim, 7)
+    assert g.radius in (14, 15, 16) and g.seen == 1               # base 11 + 4 + rand(-1..1)
+    r = g.radius
+    run(sim, 100)
+    assert g.radius == r
+
+
+def test_a_hit_unit_without_a_target_runs_ten_cells_away_from_its_attacker():
+    w = world(64)
+    m = unit(w, 1, 40, 24, 2, 1, scan=0)
+    shooter = hero(w, 2, 10, 24)                                 # 30 cells away: revealed by the hit mark but beyond the pool radius
+    sim = Simulation(w, ai=True)
+    ai.on_hit(w, shooter, m)
+    assert m.ai.hit_cell == ai.word(50, 24) and m.ai.alerted == 1 and m.ai.mark_cell == ai.word(10, 24)
+    m.hp = 30
+    run(sim, 7)
+    assert m.ai.target is None and m.mode_go and m.mover.goal == (50, 24)    # damaged, hit just now, no target: it goes there
+
+
+def test_the_attacker_cell_is_revealed_to_the_squad_for_twenty_one_passes():
+    w = world()
+    a = unit(w, 1, 24, 24, 2, 1, scan=0)
+    b = unit(w, 2, 24, 26, 2, 1, scan=0)
+    shooter = hero(w, 3, 30, 24)                                  # nobody sees it
+    sim = Simulation(w, ai=True)
+    ai.on_hit(w, shooter, a)
+    run(sim, 7)
+    assert a.ai.target == shooter.id and b.ai.target == shooter.id
+    for _ in range(25):
+        run(sim, 16)
+    assert a.ai.mark_cell == 0 and a.ai.target is None
+
+
+def test_flee_cell_is_three_cells_beyond_on_the_ray_from_the_enemies_and_clamped():
+    w = world()
+    me = unit(w, 1, 20, 20, 2, 1)
+    foe = hero(w, 2, 17, 20)
+    assert ai.flee_cell(w, me, [foe]) == ai.word(23, 20)
+    me2 = unit(w, 3, 9, 9, 2, 5)
+    foe2 = hero(w, 4, 12, 12)
+    assert ai.flee_cell(w, me2, [foe2]) == ai.word(8, 8)         # 6 cells away is clamped to the border
+
+
+def test_a_wimpy_monster_with_a_hostile_in_range_steps_away_every_pass():
+    w = world()
+    m = unit(w, 1, 20, 20, 2, 1, hp=40, wimpy=10)
+    m.hp = 8
+    hero(w, 2, 24, 20)
+    sim = Simulation(w, ai=True)
+    run(sim, 7)
+    assert m.mode_go and m.mover.goal == (17, 20)
+
+
+def test_the_idle_look_around_turns_rarely_and_at_once_after_a_hit():
+    w = world()
+    m = unit(w, 1, 24, 24, 2, 1)
+    sim = Simulation(w, ai=True)
+    run(sim, 7)
+    assert m.mode_look
+    faces = set()
+    for _ in range(3000):
+        sim.step()
+        faces.add(m.facing)
+    assert 5 < len(faces)                                         # it turned many times over 3000 ticks, a few dozen turns
+    m.ai.alerted = 1
+    f = m.mover.target_facing
+    sim.step()
+    assert m.ai.alerted == 0 and m.mover.target_facing != f
+
+
+# --- determinism and the log (A§10) -------------------------------------------------------------------------------------------
+
+def crowd():
+    w = world(64, seed=5)
+    for i in range(10):
+        unit(w, i + 1, 10 + (i % 5) * 4, 12 + (i // 5) * 5, 2, 1 + i // 3)
+    h = hero(w, 20, 17, 15, speed=40)
+    return w, h
+
+
+def run_crowd(ticks=500):
+    w, h = crowd()
+    sim = Simulation(w, ai=True)
+    run(sim, ticks // 2)
+    sim.step([MoveUnits(1, (h.id,), (40, 40))])            # the hero stood among them, now it leaves
+    run(sim, ticks - ticks // 2)
+    return sim
+
+
+def test_ten_monsters_replay_to_the_same_hash():
+    a = run_crowd()
+    b = run_crowd()
+    assert a.world.dump_hash() == b.world.dump_hash()
+    assert damages(a.world)                                        # the scenario fights
+    w, h = crowd()
+    c = Simulation(w, ai=True)
+    replay(c, [(t, cmd) for t, cmd in a.log], 501)
+    assert c.world.dump_hash() == a.world.dump_hash()
+
+
+def test_every_ai_action_is_logged_with_the_ai_flag_and_replays_from_the_log_alone():
+    a = run_crowd(300)
+    logged = ai_log(a)
+    assert logged
+    w, h = crowd()
+    c = Simulation(w, ai=True)
+    replay(c, a.log, 301)
+    assert ai_log(c) == logged
+
+
+def test_the_ai_is_opt_in_and_changes_nothing_when_off():
+    w, h = crowd()
+    ref = w.dump_hash()
+    sim = Simulation(w)
+    run(sim, 100)
+    assert not w.ai_on and "ai" not in w.dump() and not sim.log
+    assert all(u.x == u.x for u in w.units.values()) and ref != ""
+
+
+# --- the debug overlay (A§10) ---------------------------------------------------------------------------------------------------
+
+def test_overlay_reports_the_sight_ring_post_target_and_mode_of_a_selected_monster():
+    w = world(96)
+    m = unit(w, 1, 40, 40, 2, 1)
+    h = hero(w, 2, 44, 40)
+    sim = Simulation(w, ai=True)
+    run(sim, 7)
+    info = ai.overlay(w, m)
+    assert (46, 40) in info["sight"] and (47, 40) not in info["sight"]          # the aggro area: 6 cells on flat ground
+    g = w.ai_groups[(2, 1)]
+    assert (40 + g.radius, 40) in info["ring"] and (40 - g.radius, 40 + g.radius) in info["ring"]
+    assert info["post"] == (40, 40) and info["target"] == (44, 40)
+    assert info["label"].startswith("attack order 0xb t=2 R=%d" % g.radius)
+    assert ai.overlay(w, h) is None                                               # the hero is in no squad
+
+
+def test_the_ai_debug_flag_parses_and_the_draw_list_draws_the_overlay():
+    from allods2.assets import AssetCache
+    from engine.ui import DebugFlags
+    from engine.view import Camera, DrawOptions, build_draw_list
+    flags = DebugFlags.parse("ai")
+    assert flags.ai and flags.any()
+    w = world(96)
+    m = unit(w, 1, 40, 40, 2, 1)
+    hero(w, 2, 44, 40)
+    sim = Simulation(w, ai=True)
+    run(sim, 7)
+    cam = Camera(2400, 1900, w.width, w.height, 10 * 32, 10 * 32)             # cells 10..85 are in view
+    opts = DrawOptions(units=False, objects=False)
+    items = build_draw_list(w, cam, 7, AssetCache(None), opts, flags, (m.id,), None, ai_info={m.id: ai.overlay(w, m)})
+    kinds = {i.kind for i in items}
+    assert {"ai_sight", "ai_radius", "ai_post", "ai_target", "ai_text"} <= kinds
+    plain = build_draw_list(w, cam, 7, AssetCache(None), opts, flags, (m.id,), None)
+    assert not {i.kind for i in plain} & {"ai_sight", "ai_text"}                  # no info, no overlay

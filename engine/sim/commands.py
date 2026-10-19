@@ -27,6 +27,7 @@ class MoveUnits(Command):
     player_id: int
     unit_ids: tuple
     cell: tuple
+    ai: bool = False                # issued by the AI (docs/engine/ai.md 10): the brain-level `FUN_0056c8af`, no new command group
 
     def __post_init__(self):
         object.__setattr__(self, "unit_ids", tuple(self.unit_ids))
@@ -40,6 +41,7 @@ class AttackUnit(Command):
     player_id: int
     unit_ids: tuple
     target_id: int
+    ai: bool = False                # AI: the brain-level mode 5 of `FUN_0056acc8` (order, anchor and group untouched)
 
     def __post_init__(self):
         object.__setattr__(self, "unit_ids", tuple(self.unit_ids))
@@ -50,6 +52,7 @@ class Stop(Command):
     """Exe command 0x18 (key T, stand ground): cancel the walk, order 0xc."""
     player_id: int
     unit_ids: tuple
+    ai: bool = False                # AI: brain mode 0 (`FUN_0056b025`), the unit keeps its order and group
 
     def __post_init__(self):
         object.__setattr__(self, "unit_ids", tuple(self.unit_ids))
