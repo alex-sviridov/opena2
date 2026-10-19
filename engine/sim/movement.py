@@ -263,7 +263,7 @@ def apply_follow_path(world, cmd):
     u.mover.static_path = []
     u.order, u.state = MOVE_ORDER, MOVE_STATE
     u.mode_go = True
-    u.mode_attack = False
+    u.mode_attack = u.mode_cast = False
     u.mover.waiting = u.mover.parked = False
     return True
 
@@ -522,7 +522,7 @@ def set_stand(world, u):
     """`FUN_0056d52b`: order 0xc (stand/guard), anchor = the own cell, mode 0."""
     cancel(u)
     u.mode_go = False
-    u.mode_attack = False
+    u.mode_attack = u.mode_cast = False
     u.order = STAND_ORDER
     u.anchor = (u.x, u.y)
     u.mover.waiting = u.mover.parked = False
@@ -533,7 +533,7 @@ def set_stand(world, u):
 def _set_post(world, u, order, anchor):
     cancel(u)
     u.mode_go = False
-    u.mode_attack = False
+    u.mode_attack = u.mode_cast = False
     u.mode_look = False
     u.order = order
     u.anchor = anchor
@@ -562,7 +562,7 @@ def set_move(world, u, x, y):
     m = u.mover
     u.order = MOVE_ORDER
     u.mode_go = True
-    u.mode_attack = False
+    u.mode_attack = u.mode_cast = False
     u.anchor = None
     m.goal = (x, y)
     m.arrived = m.failed = False
@@ -597,17 +597,22 @@ def _tick_unit(world, u):
             fail_stop(world, u)
         else:
             u.mode_go = False
-            u.mode_attack = False
+            u.mode_attack = u.mode_cast = False
             if world.ai_on and u.order == ai.GUARD_ORDER:       # 0x56e320: mode 0 and the auto target scan FUN_0056ed4e
                 ai.auto_scan(world, u)
     if u.state == ATTACK_STATE:
         combat.swing_tick(world, u)
+    elif u.state == spells.CAST_STATE:
+        spells.cast_tick(world, u)
 
 
 def _tick_inner(world, u):
     m = u.mover
     if u.brain_order == combat.BRAIN_SWING:              # Brain order 1: the swing runs, no mode (FUN_0056dca2 order switch)
         combat.brain_swing(u)
+        return
+    if u.brain_order == spells.BRAIN_CAST:              # Brain order 2: a cast runs, no mode
+        spells.brain_cast(u)
         return
     if m.step_ticks:                                    # a step is in progress (FUN_00555b38)
         u.state = MOVE_STATE
@@ -617,8 +622,13 @@ def _tick_inner(world, u):
             if m.goal is not None:
                 u.path = []             # FUN_00555b38 clears the dynamic list (+0x1e4) at every step end
         return
+    if u.mode_cast and (u.mode_attack or u.mode_go or u.mode_look):
+        u.mode_cast = False                             # the exe has one mode byte: the last writer wins
     if u.mode_attack:                                   # Brain mode 5 (FUN_0056eab5)
         combat.attack_mode(world, u)
+        return
+    if u.mode_cast:                                     # Brain mode 8 (FUN_0056ebc0)
+        spells.cast_mode(world, u)
         return
     if u.mode_look:                                     # Brain mode 0xb (FUN_0056e5bc): the idle look-around of a computer-owned unit
         ai.look_around(world, u)
@@ -711,4 +721,4 @@ def movement_system(world, commands):
         _tick_unit(world, u)
 
 
-from . import ai, combat, death    # noqa: E402  the fight code imports this module: bound here, used at call time (circular on purpose)
+from . import ai, combat, death, spells    # noqa: E402  the fight code imports this module: bound here, used at call time (circular on purpose)

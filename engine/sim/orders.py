@@ -7,12 +7,12 @@ comments; routine addresses there).  Layer 4: reads and writes `engine.world` on
 
 from engine.world import OrderGroup
 
-from .commands import AttackUnit, Guard, MoveUnits, SetFormation, StandStill, Stop, Swarm
+from .commands import AttackUnit, CastSpell, Guard, MoveUnits, SetFormation, StandStill, Stop, Swarm
 from .combat import can_order_attack, refresh_attack, set_attack
 from .movement import (ATTACK_ORDER, CENTRE, MoveTo, _in_map, _set_action, IDLE, cancel, fail_stop, live_cells, path_grid,
                        set_guard, set_move, set_stand, set_still, stop_unit, unit_size, unit_speed)
 from .pathfinding import chebyshev
-from . import ai
+from . import ai, spells
 
 MAX_IDS = 253                       # FUN_0050bbb8 stops appending at 253 (R 2)
 FORMATION_LIMIT = 2                 # server+0xa724: Chebyshev distance an Auto group may be spread over (R 3.2)
@@ -226,7 +226,7 @@ def _pass_move(world, g):
         # FUN_0056c8af: brain mode := 1, destination := brain+0xa.  No test of the unit's order: it restarts a
         # parked unit (order 1) and a unit whose order the failure turned into 0xc (`stopped` still 0)
         u.mode_go = True
-        u.mode_attack = False
+        u.mode_attack = u.mode_cast = False
         m.waiting = m.parked = False
         if (not _target_free(world, u, g.target) and m.goal == g.target
                 and chebyshev(cell, g.target) < 2):
@@ -244,6 +244,8 @@ def _pass_orders(world, g):
         u = world.units[i]
         if u.order == ATTACK_ORDER:
             refresh_attack(world, u)
+        elif u.order == spells.CAST_ORDER:
+            spells.refresh_cast(world, u)               # FUN_0056c72b: Brain mode 8
 
 
 def attack_group(world, g, target):
@@ -274,6 +276,11 @@ def orders_system(world, commands):
             target = world.find_unit(cmd.target_id)      # a corpse is a legal target (combat.md 12.2)
             if g is not None and target is not None:
                 attack_group(world, g, target)
+        elif isinstance(cmd, CastSpell):
+            g = intake(world, cmd.player_id, cmd.unit_ids)
+            target = world.find_unit(cmd.target_id)     # a corpse is a legal target, as for an attack (spells.md 9c.3)
+            if g is not None and target is not None and world.spell_table is not None:
+                spells.cast_group(world, g, cmd.spell_id, target, _cancel_group)
         elif isinstance(cmd, Stop):
             g = intake(world, cmd.player_id, cmd.unit_ids)
             if g is not None:

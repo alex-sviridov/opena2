@@ -328,7 +328,7 @@ def init_group(world, g):
         mv.cancel(u)
         u.order = GUARD_ORDER
         u.anchor = (u.x, u.y)
-        u.mode_go = u.mode_attack = u.mode_look = False
+        u.mode_go = u.mode_attack = u.mode_look = u.mode_cast = False
         u.mover.waiting = u.mover.parked = False
     g.order = GROUP_ORDER
     record_stats(world, g, mem)
@@ -768,7 +768,7 @@ def apply(world, cmd):
             u.mode_attack, u.mode_go, u.mode_look = True, False, False
             m.waiting = m.parked = False
         elif isinstance(cmd, Stop):
-            u.mode_look, u.mode_go, u.mode_attack = not _human(world, u), False, False
+            u.mode_look, u.mode_go, u.mode_attack, u.mode_cast = not _human(world, u), False, False, False
 
 
 def look_around(world, u):

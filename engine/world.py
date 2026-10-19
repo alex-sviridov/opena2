@@ -189,6 +189,53 @@ class Removed:
 
 
 @dataclass(frozen=True)
+class CastStarted:
+    """Fight log entry: the cast passed its first tick (`FUN_00519998` returned non-zero: mana spent for a learned spell, the client message `0x86`
+    sent); `flight` is the client's projectile time (`sim/spells.client_flight_ticks`)."""
+    tick: int
+    caster: int
+    target: int
+    spell: int
+    flight: int
+
+
+@dataclass(frozen=True)
+class CastReleased:
+    """Fight log entry: the windup ended and the effect was built (`FUN_00519db8`): `level` of the cast, `carrier` the missile carrier id (0: none)."""
+    tick: int
+    caster: int
+    target: int
+    spell: int
+    level: int
+    carrier: int
+
+
+@dataclass
+class SpellCast:
+    """The cast in progress (unit `+0x5c` target, `+0x60/+0x61` cell, `+0x64` wrapper, `+0x68` item): `item_count` is the `castSpell=Name:N`
+    count of a cast from the wielded weapon (`+0x68 != 0`, free of mana, level N), None for a learned spell."""
+    spell: int
+    target: int = None              # unit id (state 0xd); None for a cell cast
+    cell: tuple = None              # state 0xe
+    item_count: int = None
+
+
+@dataclass
+class Carrier:
+    """A spell carrier of the active list (`server+0x7c`, `FUN_0052c279`): kind "missile" (`FUN_00518d1e`, counts `ticks_left` down and then appends
+    its point carrier) or "point" (`FUN_005178d4`, applies the effect on its first visit).  Docs: spells.md 9c.3."""
+    uid: int
+    kind: str
+    caster: int
+    target: int
+    spell: int
+    level: int
+    ticks_left: int = 0
+    born: int = 0
+    hostile: bool = True            # carrier +0x41: attacker credit and AI alert
+
+
+@dataclass(frozen=True)
 class HeroDied:
     """Fight log entry: message `0xb4` (`FUN_00510a70` step 8): a hero unit of the human player reached state 0x10.  `code` = `server_id - 0x13`
     (owner+0x40); `main` = it was the owner's main hero (HP := -50, `hero_deaths` + 1).  The client opens the modal "load / quit" dialog (combat.md 12.4)."""
@@ -349,6 +396,12 @@ class Unit:
     ai: AiState = field(default_factory=AiState)        # Brain AI fields (sim/ai.py, docs/engine/ai.md)
     mode_look: bool = False         # Brain mode 0xb: the idle look-around (`FUN_0056e5bc`) of a computer-owned unit
     tweak: int = 0                  # difficulty mode applied at load (`FUN_00561bf9` 0x561e20): 0 none, 1 easy, 3 hard (docs/engine/ai.md 10)
+    # spell casting (docs/data/spells.md 9c; sim/spells.py)
+    mode_cast: bool = False         # Brain mode 8 (cast with approach, `FUN_0056ebc0`)
+    cast_target: int = None         # brain+0x28 target of the cast order / mode
+    cast_wrapper: object = None     # brain+0x30 the `spells.Wrapper` of the cast order
+    cast: object = None             # `SpellCast` of the cast in progress (unit +0x5c/+0x64/+0x68)
+    spellbook: int = None           # unit+0x140 learned-spell bit mask (bit n = spell n); None: derived from the template (`spells.known_mask`)
 
     def __post_init__(self):
         if self.mover.target_facing < 0:
@@ -434,6 +487,9 @@ class World:
         self.events = []            # NoWay ...: for the UI, not part of dump()/the hash
         self.fight_log = []         # Damage / Died entries (sim/combat.py), drained by the UI, not part of the dump
         self.item_table = None      # allods2.formats.itemdefs.ItemTable (from_map); combat stats read it
+        self.spell_table = None     # allods2.formats.spelldefs.SpellTable (from_map); the cast code reads it
+        self.carriers = []          # Carrier, in creation order (sim/spells.py); part of dump() only while non-empty
+        self._next_carrier = 1
         self._next_group = 1
         self.ai_sleep = True        # server+0xbbe8 == 0: squads far from every human unit sleep (sim/ai.py `wake`, ai.md 15)
         self.ai_on = False          # sim/ai.py `enable`: the squads are in `ai_groups` and the state is part of dump()
@@ -676,6 +732,11 @@ class World:
         self._index_add(self._ucells, u)
         return u.id
 
+    def next_carrier_id(self):
+        n = self._next_carrier
+        self._next_carrier += 1
+        return n
+
     def find_unit(self, uid):
         """A unit by id, living or dead (the exe's object lookup: a ground corpse keeps its id until its death stage 5)."""
         u = self.units.get(uid)
@@ -771,6 +832,8 @@ class World:
             w.set_costs(costs)
         if hasattr(assets, "items"):
             w.item_table = assets.items()
+        if hasattr(assets, "spells"):
+            w.spell_table = assets.spells()
         stats = assets.databin().structures
         reg = assets.objects_reg()
         rep = w.report
@@ -979,6 +1042,8 @@ class World:
                                for g in self.groups.values()]} if self.groups else {}),
                 **({"corpses": [[u.id, u.x, u.y, u.sub_x, u.sub_y, u.facing, u.hp, u.type_id, u.owner, u.death_tick]
                                 for _, u in sorted(self.corpses.items())]} if self.corpses else {}),
+                **({"carriers": [[c.uid, c.kind, c.caster, c.target, c.spell, c.level, c.ticks_left, c.born, int(c.hostile)]
+                                  for c in self.carriers]} if self.carriers else {}),
                 **({"ai": self._ai_dump()} if self.ai_on else {}),
                 **({"rng": self.rng.state} if self.rng.state != self.seed else {})}
 
@@ -1006,7 +1071,8 @@ class World:
         m = u.mover
         fight = World._fight_state(u)
         death = World._death_state(u)
-        if fight is None and death is None and not (u.order or u.state or u.path or u.odometer or m.steps or m.turning or u.order_group
+        cast = World._cast_state(u)
+        if fight is None and death is None and cast is None and not (u.order or u.state or u.path or u.odometer or m.steps or m.turning or u.order_group
                                   or u.stopped or m.waiting or m.parked or m.target_facing != u.facing):
             return []
         d = {"order": u.order, "state": u.state, "path": [list(c) for c in u.path],
@@ -1030,6 +1096,8 @@ class World:
             d["fight"] = fight
         if death is not None:
             d["death"] = death
+        if cast is not None:
+            d["cast"] = cast
         return [d]
 
     @staticmethod
@@ -1040,6 +1108,15 @@ class World:
             return None
         return [int(u.death_seen), u.death_tick, u.step_end, u.hp_acc, u.mana_acc, u.mana, list(u.skills),
                 list(u.xp), u.xp_total, [list(k) for k in u.kill_list]]
+
+    @staticmethod
+    def _cast_state(u):
+        """Spell-cast state as a list, None while the unit never cast or got a cast order (old goldens stay valid)."""
+        c, w = u.cast, u.cast_wrapper
+        if c is None and w is None and not u.mode_cast and u.cast_target is None and u.spellbook is None:
+            return None
+        return [int(u.mode_cast), u.cast_target, [w.number, w.item_count] if w is not None else None,
+                [c.spell, c.target, list(c.cell) if c.cell else None, c.item_count] if c is not None else None, u.spellbook]
 
     @staticmethod
     def _fight_state(u):

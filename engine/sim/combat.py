@@ -5,7 +5,7 @@ Spec: docs/engine/combat.md (C§ numbers in the comments); routine addresses are
 
 from typing import NamedTuple
 
-from engine.world import DEAD, Damage, Died
+from engine.world import DEAD, Damage, Died, SpellCast
 
 from . import movement as mv        # movement reaches back into this module only at call time (`_tick_unit`, `follow_drive`)
 from .combatstats import CombatStats, u8, unit_combat_stats
@@ -188,7 +188,7 @@ def set_attack(world, u, t):
     u.order = mv.ATTACK_ORDER
     u.target = t.id
     u.range = combat_stats(world, u).range
-    u.mode_go = u.mode_attack = False
+    u.mode_go = u.mode_attack = u.mode_cast = False
     u.anchor = None
     u.mover.waiting = u.mover.parked = False
 
@@ -243,6 +243,11 @@ def swing_tick(world, u):
     """State 3 of the creature tick (`FUN_0050f12c`): phase 0 starts the swing, phase 5 counts the wind-up down and resolves the hit at 0,
     phase 7 counts the recovery down and sets the done flag.  The timer is a byte."""
     st = combat_stats(world, u)
+    if st.weapon_spell is not None and st.mage:     # state 3 phases 0 and 5: a mage whose weapon has a castSpell casts it instead of hitting
+        if (u.phase == PHASE_START or (u.cast is None and u.phase == PHASE_WINDUP)) and u.swing_target is not None:
+            u.cast = SpellCast(st.weapon_spell[0], target=u.swing_target, item_count=st.weapon_spell[1])    # +0x64 = weapon+0x84, +0x68 = weapon
+        spells.cast_tick(world, u)
+        return
     t = world.find_unit(u.swing_target)
     if u.phase == PHASE_START:
         extra = 0
@@ -289,4 +294,4 @@ def resolve_attack(world, a, t, st):
         log(world, Died(world.tick, t.id, a.id))
 
 
-from . import ai, xp    # noqa: E402  xp reads `combat_stats` and `log` from this module: bound at the end (circular on purpose)
+from . import ai, spells, xp    # noqa: E402  xp reads `combat_stats` and `log` from this module: bound at the end (circular on purpose)

@@ -650,11 +650,29 @@ corpses are drawn before living units; a body is pickable and has a minimap dot 
 
 ## 14. Spell casts (I4a)
 
-Research: [spells §9c](../data/spells.md#9c-the-cast-chain-of-a-unit-target-spell-i4a-research-rea-of-the-gog-exe) (CONFIRMED chain: order `0xd`, brain mode 8, states
-`0xd`/`0xe` on the swing's phase machine, `FUN_00519998` mana, `FUN_00519db8` release, missile and point carriers). Design: [spec](../superpowers/specs/2026-10-19-spell-cast-design.md),
-plan [I4a](../superpowers/plans/2026-10-19-i4a-spell-cast-sim.md). Files: `engine/sim/spells.py`, `engine/sim/commands.py` (`CastSpell`), `engine/world.py`
-(`SpellCast`, `Carrier`, `World.carriers`, events `CastStarted`), tests `tests/test_engine_spells_*.py`. The mapping table is completed at the end of I4a; VERIFY IN GAME items are
-in spells §9c.4.
+Research: [spells §9c](../data/spells.md#9c-the-cast-chain-of-a-unit-target-spell-i4a-research-rea-of-the-gog-exe) (CONFIRMED chain). Design: [spec](../superpowers/specs/2026-10-19-spell-cast-design.md),
+plan [I4a](../superpowers/plans/2026-10-19-i4a-spell-cast-sim.md). Files: `engine/sim/spells.py`, `engine/sim/commands.py` (`CastSpell`), `engine/world.py` (`SpellCast`, `Carrier`, `World.carriers`,
+`World.spell_table`, `Unit.cast/cast_target/cast_wrapper/mode_cast/spellbook`, events `CastStarted`, `CastReleased`), `engine/sim/combatstats.py` (`CombatStats.weapon_spell`), tests
+`tests/test_engine_spells_math.py`, `tests/test_engine_spells_cast.py`, helper `tests/spell_helpers.py` (a synthetic Fire Arrow, no install).
+
+| Rule (spells §9c) | Engine |
+|---|---|
+| 9c.1 command `0x1e`, order `0xd` | `CastSpell(player_id, unit_ids, spell_id, target_id)`; `orders.orders_system` -> `intake` (a new group), `spells.cast_group`: `_cancel_group`, then per member that has the spell in its book (`spells.wrapper_of`, `known_mask`) `spells.set_cast` (cancel, order `0xd`, `cast_target`, `cast_wrapper`, `range` = wrapper range, Brain mode 0). Members without the spell are only cancelled |
+| 9c.1 group pass | `orders._pass_orders`: order `0xd` -> `spells.refresh_cast` (Brain mode 8 = `Unit.mode_cast`, range refreshed); at `tick & 15 == 6` like an attack |
+| 9c.2 mode 8 | `movement._tick_inner` -> `spells.cast_mode`: out of range (facing + gap level, `in_cast_range`, the melee test) -> `follow_drive` and state 1; else `brain_order = 2`, `Unit.cast = SpellCast`, then `stop_unit` (state 0, order `0xc`) |
+| 9c.2 brain order 2 | `spells.brain_cast`: state `0xd`, count, ends when count > 2 and the done flag is set (a Stop or a new order cannot interrupt it) |
+| 9c.2 phases | `spells.cast_tick` (state `0xd` of `movement._tick_unit`, and state 3 for a staff mage via `combat.swing_tick`): phase 0 `cast_start` (mana check and spend for a mage's learned spell, `CastStarted`, `step_end := tick`), phase 5 windup (`CombatStats.windup`) then `cast_release`, phase 7 recovery `st.recovery + hero_delay + rand(0..3) + complication` (the complication only for a learned spell) |
+| 9c.3 release | `cast_release`: cast XP (`xp.award(int(0.5 * mana + 0.5), school = sphere)`, learned spells of mages), level (`unit_level` or the item count), a missile `Carrier` with `flight_ticks` of the distance **now**, `CastReleased` |
+| 9c.3 carriers | `spells.carrier_system` runs **before** `movement_system` (carriers pass, then creature pass); a missile counts down and appends a point carrier to the same pass, `apply_point`: `take_hit_detail` with the elemental record (`spell_record`), HP, last attacker, `ai.on_hit`, `xp.damage_credit`, `Damage` / `Died` |
+| Staff | `CombatStats.weapon_spell` = `(spell, count)` from the wielded weapon's `castSpell=` effect; `combat.swing_tick` hands a mage's swing to `cast_tick` (level = count, no mana, no complication) |
+
+Timeline (tests): order at tick T0; the next `tick & 15 == 6` is `P`; `CastStarted` at `P + 1`; `CastReleased` at `P + 1 + windup`; the damage at `release + max(flight, 1)` with
+`flight = trunc(sqrt(dx^2 + dy^2)) / speed` (positions in 1/256 cell, Fire Arrow speed 200: 8 ticks at 7 cells).
+
+Decisions (INFERRED unless marked): the cast order has no cell variant yet (`0xe`, `0x1f`: phase K); a missing target id stops the unit like an attack does; a caster is "gone" when it left `world.units`;
+spell damage goes through the exe's own `take_hit_detail` (the to-hit roll is drawn even for a spell, CONFIRMED structure of `FUN_00516f6f`); level of a monster caster is 0 (`spell_power`/skills are not
+loaded for monsters, AI casting is phase K); the target `brain+0xa4/+0xa8` stamps (AI buff logic) and the Invisibility break of the caster (`FUN_005106d2(0xc)`) need the effect system and are not modelled;
+a staff has no charge counter; pack items (scroll command `0x25`) do not exist yet. VERIFY IN GAME: spells §9c.4.
 
 ## Open questions
 

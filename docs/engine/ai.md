@@ -272,6 +272,8 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
 
 ## 12. Phase K list (ranged and casters)
 
+Moved here from I4 (the player-side cast is built, combat.md §14): special attacks `FUN_0056a981` (rolls over the three spell slots), structures as spell/attack targets, the cast order for cells (`FUN_0056969c`, mode 9, command `0x1f`), summon and the non-damage spell handlers (`FUN_00519db8` cases), the AI's `ai=True` flag of `CastSpell`.
+
 `FUN_0056bc7b` (caster scan: heal `0x18`, `0x1b`, buffs `0x14/0x15`, attack spells `0xd/0x13/4/8/0xc` with mana gates 5/10/40), `FUN_0056c592`/
 `FUN_0056c72b`/`FUN_0056969c` (cast executors), `FUN_0056a981` (special attack rolls), `FUN_0056b059`, `FUN_0056bb0d/53/2e`, the caster lists
 (`server+0xaa8` / `0xac8`), `FUN_0056eff3` mode 6 for ranged units (the melee driver is reused),, `FUN_0057a769` / `FUN_0057a999`, the cast branches of the other group orders ([§14](#14-the-other-group-orders)).

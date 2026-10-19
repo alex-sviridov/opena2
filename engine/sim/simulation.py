@@ -4,6 +4,7 @@ from . import ai as ai_mod
 from .movement import movement_system
 from .orders import orders_system
 from .selection import selection_system
+from .spells import carrier_system
 from .vitals import vitals_system
 
 
@@ -19,7 +20,7 @@ class Simulation:
 
     def __init__(self, world, systems=None, ai=False):
         self.world = world
-        self.systems = [vitals_system, orders_system, selection_system, movement_system] if systems is None else list(systems)
+        self.systems = [vitals_system, orders_system, selection_system, carrier_system, movement_system] if systems is None else list(systems)
         if ai:                                  # the monsters think at tick & 15 == 6, before the drain (docs/engine/ai.md 10)
             if not world.ai_on:
                 ai_mod.enable(world)

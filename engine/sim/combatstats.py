@@ -9,7 +9,7 @@ the way the exe's fields do (`lo`, `sp` are u8, `skill`, `defence`, `absorb`, `p
 from dataclasses import dataclass, field
 
 from allods2.formats import progression as prog
-from allods2.formats.itemdefs import ARMOUR, ELEMENT_DAMAGE, SHIELD, STAT_DAMAGE, STAT_DAMAGE_BONUS, WEAPON
+from allods2.formats.itemdefs import ARMOUR, ELEMENT_DAMAGE, SHIELD, STAT_CAST, STAT_DAMAGE, STAT_DAMAGE_BONUS, WEAPON
 
 HUMAN_WINDUP, HUMAN_RECOVERY = 8, 4         # constructor defaults of a human (`FUN_0050ec60`), kept for a -1 param
 SURE_HIT_KIND = 3                           # monster damage kind 3: creature flag +0x4c |= 0x10
@@ -77,6 +77,7 @@ class CombatStats:
     recovery: int = HUMAN_RECOVERY      # +0x135
     has_weapon: bool = False    # +0x74 != 0
     weapon_weight: int = 0      # weapon +0x4a, for the hero delay
+    weapon_spell: tuple = None  # (spell number, count) of the wielded weapon's `castSpell=` effect (weapon +0x84 != 0, `FUN_00542580`), else None
     reaction: int = 0           # +0x86, humans only (hero delay)
 
 
@@ -95,6 +96,7 @@ class _Bonus:
         self.windup = self.recovery = None
         self.weight = 0
         self.weapon = False
+        self.weapon_spell = None
 
 
 def _apply_effects(bonus, effects):
@@ -152,6 +154,7 @@ def _equip_weapon(bonus, item, general_skill, human):
     bonus.range += s.range - 1
     bonus.weight = s.weight
     bonus.weapon = True
+    bonus.weapon_spell = next(((e.value, e.count) for e in item.effects if e.kind == STAT_CAST), None)
     if human:
         w, r = d.fields.get("windup", -1), d.fields.get("recovery", -1)
         if w != -1:
@@ -230,7 +233,7 @@ def monster_stats(t, items=None, hard=False):
     _merge(rec, block, bonus)
     rec.kind = bonus.kind
     st.range = 1 + bonus.range
-    st.weapon_weight, st.has_weapon = bonus.weight, bonus.weapon
+    st.weapon_weight, st.has_weapon, st.weapon_spell = bonus.weight, bonus.weapon, bonus.weapon_spell
     if hard:                                        # difficulty mode 3 (`0x561ea6`): words +0xa6 and +0xbe += 0x32; the merge is additive
         rec.skill = s16(rec.skill + HARD_BONUS)
         block.defence = s16(block.defence + HARD_BONUS)
@@ -285,7 +288,7 @@ def human_stats(t, items=None, skills=None):
     st = CombatStats(rec, block, human=True, mage=mage, range=1 + bonus.range, reaction=reaction,
                      windup=bonus.windup if bonus.windup is not None else _param(t, "windup", HUMAN_WINDUP),
                      recovery=bonus.recovery if bonus.recovery is not None else _param(t, "recovery", HUMAN_RECOVERY),
-                     weapon_weight=bonus.weight, has_weapon=bonus.weapon)
+                     weapon_weight=bonus.weight, has_weapon=bonus.weapon, weapon_spell=bonus.weapon_spell)
     return st
 
 
