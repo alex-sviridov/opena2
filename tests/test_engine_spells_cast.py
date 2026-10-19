@@ -221,3 +221,22 @@ def test_second_cast_waits_for_the_first_one_to_finish():
     starts = events(w, CastStarted)
     assert len(starts) == 2 and starts[1].tick - starts[0].tick >= 5 + 4 + 3        # windup + recovery + complication at least
     assert c.mana == 10 - 6 and len(events(w, CastReleased)) == 2
+
+
+def test_carrier_records_start_and_flight():
+    w = world()
+    sim = Simulation(w)
+    c, t = caster(w, 1, 10, 15), fighter(w, 2, 17, 15, owner=2, hp=1000)
+    cast(sim, c, t)
+    until(sim, lambda: w.carriers)
+    (m,) = w.carriers
+    assert m.kind == "missile" and m.flight == 8 and m.start == (10 * 256 + c.sub_x, 15 * 256 + c.sub_y) and m.born == events(w, CastReleased)[0].tick
+
+
+def test_cast_start_plays_the_attack_animation():
+    w = world()
+    sim = Simulation(w)
+    c, t = caster(w, 1, 10, 15), fighter(w, 2, 17, 15, owner=2, hp=1000)
+    cast(sim, c, t)
+    until(sim, lambda: events(w, CastStarted))
+    assert c.action == "attack" and c.action_start_tick == events(w, CastStarted)[0].tick

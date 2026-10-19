@@ -214,6 +214,7 @@ def cast_start(world, u, c, st):
     from .combat import log
     log(world, CastStarted(world.tick, u.id, t.id, c.spell, client_flight_ticks(spell, bx - ax, by - ay)))
     u.step_end = world.tick         # the client message `FUN_005041d6` stores the server tick in unit +0x138
+    u.action, u.action_start_tick = mv.ATTACK, world.tick      # client action 8 plays the shared attack block (animation.md 2.4)
     return True
 
 
@@ -239,10 +240,11 @@ def cast_release(world, u, c, st):
         dx = (t.x * 256 + t.sub_x) - (u.x * 256 + u.sub_x)
         dy = (t.y * 256 + t.sub_y) - (u.y * 256 + u.sub_y)
         carrier = world.next_carrier_id()
-        world.carriers.append(Carrier(carrier, "missile", u.id, t.id, c.spell, level, flight_ticks(spell, dx, dy) & 0xFFFF, world.tick))
+        n = flight_ticks(spell, dx, dy) & 0xFFFF
+        world.carriers.append(Carrier(carrier, "missile", u.id, t.id, c.spell, level, n, world.tick, True, (u.x * 256 + u.sub_x, u.y * 256 + u.sub_y), n))
     else:
         carrier = world.next_carrier_id()
-        world.carriers.append(Carrier(carrier, "point", u.id, t.id, c.spell, level, 0, world.tick))
+        world.carriers.append(Carrier(carrier, "point", u.id, t.id, c.spell, level, 0, world.tick, True, (u.x * 256 + u.sub_x, u.y * 256 + u.sub_y), 0))
     log(world, CastReleased(world.tick, u.id, t.id, c.spell, level, carrier))
 
 
@@ -287,7 +289,7 @@ def carrier_system(world, commands):
         if c.kind == "missile":
             c.ticks_left -= 1
             if c.ticks_left < 1:
-                world.carriers.append(Carrier(world.next_carrier_id(), "point", c.caster, c.target, c.spell, c.level, 0, c.born, c.hostile))
+                world.carriers.append(Carrier(world.next_carrier_id(), "point", c.caster, c.target, c.spell, c.level, 0, c.born, c.hostile, c.start, c.flight))
                 done.add(c.uid)
         else:
             apply_point(world, c)

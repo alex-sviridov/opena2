@@ -233,6 +233,8 @@ class Carrier:
     ticks_left: int = 0
     born: int = 0
     hostile: bool = True            # carrier +0x41: attacker credit and AI alert
+    start: tuple = (0, 0)           # caster position (x, y) in 1/256 cell at the release: the view derives the missile position from it
+    flight: int = 0                 # ticks the missile was created with (view only)
 
 
 @dataclass(frozen=True)
@@ -1042,7 +1044,7 @@ class World:
                                for g in self.groups.values()]} if self.groups else {}),
                 **({"corpses": [[u.id, u.x, u.y, u.sub_x, u.sub_y, u.facing, u.hp, u.type_id, u.owner, u.death_tick]
                                 for _, u in sorted(self.corpses.items())]} if self.corpses else {}),
-                **({"carriers": [[c.uid, c.kind, c.caster, c.target, c.spell, c.level, c.ticks_left, c.born, int(c.hostile)]
+                **({"carriers": [[c.uid, c.kind, c.caster, c.target, c.spell, c.level, c.ticks_left, c.born, int(c.hostile), list(c.start), c.flight]
                                   for c in self.carriers]} if self.carriers else {}),
                 **({"ai": self._ai_dump()} if self.ai_on else {}),
                 **({"rng": self.rng.state} if self.rng.state != self.seed else {})}
