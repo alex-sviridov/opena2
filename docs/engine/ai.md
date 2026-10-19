@@ -166,13 +166,15 @@ penalises ghosts only through 1 -> cand class 2 (value 1). The smallest score wi
 
 ## 6. Attack and return execution (CONFIRMED)
 
-`FUN_0056acc8(m, t)` (the member has a target): if the target's `+0x4c & 8` (player-hero flag) is set -> guard scan `FUN_0056afac(m, 0)`; special
+`FUN_0056acc8(m, t)` (the member has a target): if the target's `+0x4c & 8` is set -> guard scan `FUN_0056afac(m, 0)`. **Bit 8 = the unit is off the map** (CONFIRMED: set only by `FUN_005102a3` = remove from the grid `FUN_00553891` + `|= 8` + two `FUN_005053a8` view calls; cleared by `FUN_00510318` / `FUN_005103ae` = put back on the map, which log "Unit can't enter / return to map"; callers in the scenario/group code `0x521099`, `0x52f813` (`FUN_0052f8e2`), `0x57821e`, `0x57824e`, `0x5787f2`; any creature class, not a hero flag, not an immunity); the engine has no off-map units, so the test never fires (nothing to model); special
 attacks (spell slots `brain+0x7c+4i`, probability `rand15 < brain+0x88+4i`, last slot that passes; `FUN_0056a981`) -> **phase K**; if no spell:
-`m == t` -> no target; target 0 -> `FUN_00567988` (nearest enemies list) -> guard scan; a unit with a spell list (`FUN_0053a5a0`) first tries the cast path (human owner,
+`m == t` -> no target; target 0 -> `FUN_00567988` (nearest enemies list) -> guard scan; a **mage** (`FUN_0053a5a0` = `return +0x4c & 4`, CONFIRMED; see below) first tries the cast path (human owner,
 `owner+0x2c == 0`: `FUN_0056b059`; computer owner: `FUN_0057a769`; phase K); otherwise (every melee unit): `brain mode := 5`, `brain+0xc := t`, `brain+0x14 := FUN_0056ac5b(m)`
-(range); a **ranged** unit (`FUN_0053a5a0`, range byte `< 2`) calls `FUN_0056bc7b` (caster scan: phase K). Mode 5 is the I1 melee driver
+(range); a **mage** with range byte `< 2` calls `FUN_0056bc7b` (caster scan: phase K). Mode 5 is the I1 melee driver
 (`attack_mode`, [combat §2.3](combat.md)); the follow planner stamps `brain+0x16` when the target is out of reach (§3). Order, anchor and group of
 the unit are unchanged (an AI attack is **not** order 3).
+
+**`+0x4c` creature flags (CONFIRMED)**: bit 2 = has a spell list (monster: template `spell_1` (p48) `> 0`, `0x511c0a`; human: spellbook built, `0x51203b`); bit 4 = **mage** (monster: template `known_spells` (p56) neither 0 nor -1, written `|= 6` at `0x511dd6`; human: `maxMana +0x9c != 0`, `0x514907` / `0x512050`); bit 8 = off the map (above); bit 0x10 = sure hit (monster damage kind 3). Bit 1 is set by no creature writer. `FUN_0053a5a0` is therefore *not* "has a spell list": the 38 `.4` / `.5` template variants with `spell_1 > 0` (`Goblin_Pike.4`, `Ogre.5`, ...) have bit 2 only and use `FUN_0056a981` (special attacks), not the mage path. **Goblin_Pike (`spell_1` -1, `known_spells` 0) and every other melee monster: always 0.** Mage templates (64 of 241 monster records: Dragon, Orc_Shaman, `M_Skeleton.3-5`, Necromancer, Druid*, Necro*, Succubus*, MercenaryDruid*) and every human with mana are the units that reach `FUN_0056bc7b` / `FUN_0056c840` / `FUN_0056b025` (phase K). The map unit `behaviour` bits (`+0x194/+0x19c/+0x198/+0x1a0`) are unrelated to `+0x4c`.
 
 Returning: `go(m, anchor)` every pass until `cell == anchor` at a centre; then `FUN_0056afd9` (§6.1).
 
@@ -182,7 +184,7 @@ Returning: `go(m, anchor)` every pass until `cell == anchor` at a centre; then `
 mover+1` (target facing): if `cur == tgt`: when `brain+0x54 == 0` and `rand15() > 0xcc` (99.4 % of the ticks) the state is 0 and nothing else happens;
 otherwise `tgt := cur + 0x21 + rand15 * 0xbe / 0x8000` (byte), `brain+0x54 := 0`, start the turn (`FUN_00556454`), state 1. If `cur != tgt` the turn continues,
 state 1. So an idle monster turns on the spot about every 165 ticks by 33..222 units of 256, and **at once** after a hit (`brain+0x54 := 1`, §8). This is
-the only per-tick RNG use of the AI: one `rand15` per settled idle monster per tick, in creature order (the divisor `0x8000` is INFERRED: it is the object's first word).
+the only per-tick RNG use of the AI: one `rand15` per settled idle monster per tick, in creature order (the divisor `0x8000` is CONFIRMED: the order manager's embedded RNG helper is constructed by `0x57af80` (called from the manager ctor at `0x568143`), which stores `0x8000` at offset 0 and seeds `srand(time)`; `FUN_0057afd0(n) = rand15 * n / [this]`, `rand15` = MSVC LCG `0x343fd`/`0x269ec3`, `>> 16 & 0x7fff`; nothing else writes it; `engine/sim/ai.py` already uses `rand15 * 0xbe >> 15`).
 
 ### 6.2 Mover event and auto scan (`0x56e1b0`, `FUN_0056ed4e`, CONFIRMED)
 
@@ -234,7 +236,11 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
 * Deviations (all invisible in the 46 maps' normal play, none changes the rules above): an event-raised mode (§6.2) runs its body one tick later than the
   exe's direct call; (a go cell is passed raw, as the exe does: cell (0, 0) for a never-hit unit, §3); a target that
   disappears ends mode 5 without stopping the unit (INFERRED, the exe's pointer); casters (units with spells) and the effect bits `0x1000` / `0x40000`
-  are not modelled; the difficulty tweak of `brain+0x44` is not applied; the target flag `+0x4c & 8` test of `FUN_0056acc8` is not modelled (meaning unknown).
+  are not modelled; the difficulty tweak is implemented behind `World.from_map(difficulty=...)` (default 2 = off, section 10.1); the target flag `+0x4c & 8` test of `FUN_0056acc8` is not modelled (off-map units do not exist in the engine).
+### 10.1 Difficulty tweak (`FUN_00561bf9` `0x561e20`-`0x561f0b`, CONFIRMED)
+
+`[0x6044c4+0xd8]` is the game option "difficulty": the server ctor `0x4e97bf` stores **2**; the only setter is `0x493d80`, called from the game-setup window `0x4891d8` (`0x48972f`) with `selector + 1` (the selector control is filled from the chosen list entry, `0x4899e3`; the whole server state is also saved/loaded as 1..3 by `0x4ec732`). Nothing else writes it, so a game that never visits that window keeps **2 = normal = no tweak** (INFERRED: that the single-player campaign start does not run the window; the default itself is CONFIRMED). It is not the map header: `field_88` is only the multiplayer advert level ([map.md](../formats/map.md)). The tweak runs only for units whose map flag `0x10` is clear (monsters; heroes take the other branch), when the mode is not 2 and settings `+0x74 == 0` (single-player map, `field_84 == 1`). Mode 1 (easy): max HP = trunc(template HP x 0.5 `0x5d1b00`), HP = max HP, brain `+0x44` (wimpy) `>>= 1`. Mode 3 (hard; the code branch is "else", so 0 would act the same, never stored): to-hit `+0xa6` and defence `+0xbe` += `0x32`, max HP = trunc(x 1.5 `0x5d1b08`). It scales the template value; a map HP override replaces it afterwards, and the monster recompute is additive so the +50 survives. Engine: `World.from_map(m, assets, difficulty=2)` (`DEFAULT_DIFFICULTY`), `Unit.tweak` (0 / 1 / 3), `combatstats.monster_stats(hard=)`, `ai.post_step` (wimpy). Default 2 changes nothing: no golden or hash moves. Not modelled: the client-side damage scaling (x0.5 easy / x1.5 hard, `FUN_00502019`) and the `[0x6044c4+0x174]` multiplayer filter.
+
 * Optimisation allowed by "1:1, but faster": the sight flood is memoised per pass per (cell, scan, height field) and written with numpy-free integer
   loops; the pool is built from the spatial index (`world.units`) restricted to the group's visible cells, not by scanning all creatures. Results are identical.
 * RNG: the only draw is `rand(-1..1)` at the first pass of each group (§3.5), in group creation order.
@@ -313,4 +319,5 @@ driver (as for monsters); spell-list units (casters) take the non-caster branch;
 
 * Is the event list `server+0xbbec` read anywhere (indirect list walkers)? No direct reader found; INFERRED unused.
 * Group orders 1, 2, 5, `0x11`, `0x13`, `0xff` for the engine: decoded in §14, not implemented (needs the G / L / swarm commands `0x17`, `0x12`, `0x1a`, and the Scenario instants, `FUN_00577cee`); the sacks/pickup order of computer players (the L / `P` keys, `FUN_00419f2a`) is not part of the group handlers.
-* Which map-object effect sends a group to the object with order 2 (`FUN_0052f8e2` cases `0xb`/`0xc`) and what the `+0x48` / `+0x4c` group flags mean (written by `520a5e` / `560d9b` from the summon record); start at `FUN_0052f8e2`.
+* Which dialog path sets difficulty != 2 in a single-player game (`0x4891d8` window: lobby only, or also the new-game screens?). Start: callers of `0x48ab76`.
+* Which map-object effect sends a group to the object with order 2 (`FUN_0052f8e2` cases `0xb`/`0xc`) and what the `+0x48` group flag means (written by `520a5e` / `560d9b` from the summon record; the creature `+0x4c` flags are answered in section 6); start at `FUN_0052f8e2`.

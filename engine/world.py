@@ -28,6 +28,7 @@ UNIT_ID_BASE = 0x6000           # unit id = 0x6000 + uid: the exe's client view 
                                 # (CONFIRMED map.md part 5; uids never collide with structure uids in the 46 maps)
 ITEM_ID_BASE = 0x30000          # ground piles: 0x30000 + index of the section 8 group (ours; the file has no id)
 PILE_ID_BASE = 0x38000          # piles created at run time (loot): ours, above any section 8 group index
+DEFAULT_DIFFICULTY = 2          # `[0x6044c4+0xd8]` set by the server ctor 0x4e97bf: normal, no tweak (ai.md section 10)
 DEAD = 0x10                     # unit state / order 0x10: removed from the world after the dying countdown (combat.md section 12)
 UNIT_ANGLE_MIN, UNIT_ANGLE_SPAN = 0x40, 128     # creature ctor: angle = 0x40 + rand(128) (CONFIRMED map.md part 5)
 IDLE = "idle"                   # logical action of a unit that does nothing; the view picks idle or stand
@@ -319,6 +320,7 @@ class Unit:
     kill_list: list = field(default_factory=list)       # +0x1a8 repeat-kill list of a hero: up to 5 [server_id, count]
     ai: AiState = field(default_factory=AiState)        # Brain AI fields (sim/ai.py, docs/engine/ai.md)
     mode_look: bool = False         # Brain mode 0xb: the idle look-around (`FUN_0056e5bc`) of a computer-owned unit
+    tweak: int = 0                  # difficulty mode applied at load (`FUN_00561bf9` 0x561e20): 0 none, 1 easy, 3 hard (docs/engine/ai.md 10)
 
     def __post_init__(self):
         if self.mover.target_facing < 0:
@@ -726,13 +728,14 @@ class World:
     # --- loading -------------------------------------------------------------------
 
     @classmethod
-    def from_map(cls, m, assets, facing=None, seed=DEFAULT_SEED):
+    def from_map(cls, m, assets, facing=None, seed=DEFAULT_SEED, difficulty=DEFAULT_DIFFICULTY):
         """From an `allods2.formats.Map` and an `AssetCache` (spec "World").
         Structures first in record order, then section 3 cells row-major;
         bulk-added, then one full block build; then players, units and ground piles in
         record order.  `facing`: None gives each unit the exe's start angle 0x40 + [0, 128)
         (the exe's rand, here a fixed hash of the uid so a map always loads the same);
-        an int puts every unit at that angle byte (0x80 = front view, as `map render`)."""
+        an int puts every unit at that angle byte (0x80 = front view, as `map render`).
+        `difficulty`: the game option `[0x6044c4+0xd8]` (1 easy, 2 normal = the ctor default of `0x4e97bf`, 3 hard); see `_load_units`."""
         w = cls(m.runtime_terrain(), m.heights_i8, m.name, terrain=m.terrain, seed=seed)
         if hasattr(assets, "map_reg"):                  # test doubles keep the defaults
             costs, w.speed_multiplier = assets.map_reg()
@@ -770,7 +773,7 @@ class World:
         rep.ignored_outside_window = int(np.count_nonzero(m.objects)) - len(placed)
         w._resolve(list(w._cells))
         w._load_players(m)
-        w._load_units(m, assets, facing)
+        w._load_units(m, assets, facing, difficulty)
         w._load_items(m)
         return w
 
@@ -779,12 +782,18 @@ class World:
             self.players[p.index] = Player(p.index, p.colour, p.name, p.flags, p.money,
                                            tuple(p.relations), human=p.index == 1)
 
-    def _load_units(self, m, assets, facing):
+    def _load_units(self, m, assets, facing, difficulty=DEFAULT_DIFFICULTY):
         """Section 6 in record order.  Unknown types (no units.reg set or no data.bin record)
         are kept with `known=False` and listed in `report.unknown_units`; an owner that is not
         a section 5 record is an error (the exe logs "Can't resolve player" and skips the unit,
-        never the case in the 46 maps)."""
+        never the case in the 46 maps).
+
+        Difficulty tweak (`FUN_00561bf9` 0x561e20-0x561f0b, CONFIRMED; ai.md section 10): for every unit whose record flag 0x10 is clear
+        (monsters), only when the mode is not 2 and the map is a single-player map (`field_84 <= 1`, settings `+0x74 == 0`):
+        mode 1: template max HP = trunc(x 0.5), the wimpy threshold `>>= 1`; any other mode (3): to-hit and defence +50, max HP =
+        trunc(x 1.5).  It acts on the template value, so a map HP override is not scaled."""
         types = assets.unit_stats()
+        tweak_on = difficulty != 2 and getattr(m, "field_84", 1) <= 1
         rep = self.report
         for rec in m.units:
             if rec.owner not in self.players:
@@ -794,6 +803,10 @@ class World:
             if rec.is_human and hp_max != fent.NO_HP and hp_max == hp:
                 hp = hp_max = fent.NO_HP                    # FUN_00561bf9 0x562013: a human at full HP = default = the recomputed maximum
             base = tpl.hp_max if tpl is not None else 0     # map overrides replace the template value
+            tweak = 0
+            if tweak_on and not rec.is_human:
+                tweak = 1 if difficulty == 1 else 3
+                base = int(base * (0.5 if tweak == 1 else 1.5))     # fild * 0x5d1b00 / 0x5d1b08, ftol truncates
             mana_max = 0
             if rec.is_human and tpl is not None:            # FUN_0051366b: a human never uses the template healthMax
                 base, mana_max = prog.derived_vitals(tpl)
@@ -806,6 +819,7 @@ class World:
                      rec.x & 255, rec.y & 255, unit_angle(rec.uid, facing), IDLE, 0, hp, hp_max,
                      rec.uid, rec.server_id, rec.is_human, rec.behaviour, move, face, rec.squad, rec.group, known,
                      stats=tpl)
+            u.tweak = tweak
             if tpl is not None and not rec.is_human:
                 u.mover.turn_rate = max(1, tpl.turn_rate)       # mover+0xa: monster p9; humans: the speed stat (sim/movement.py)
             if rec.is_human and tpl is not None:        # docs/data/progression.md section 4: no award logic yet

@@ -491,3 +491,16 @@ def test_nothing_changes_for_the_human_when_the_ai_is_off():
     sim = Simulation(w)
     run(sim, 100)
     assert not damages(w) and not w.groups and not h.mode_attack
+
+
+def test_easy_difficulty_halves_the_wimpy_threshold():
+    w = world()
+    m = unit(w, 1, 20, 20, 2, 1, hp=40, wimpy=10)
+    m.hp, m.tweak = 8, 1                                          # 8 > 10 >> 1: not wimpy any more
+    hero(w, 2, 24, 20)
+    sim = Simulation(w, ai=True)
+    run(sim, 7)
+    assert not (m.mode_go and m.mover.goal == (17, 20))
+    m.hp = 5
+    run(sim, 16)
+    assert m.mode_go and m.mover.goal[0] < m.x                    # 5 <= 10 >> 1: it flees west, away from the hero

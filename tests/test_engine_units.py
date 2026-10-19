@@ -168,3 +168,24 @@ def test_unknown_unit_types_are_reported_not_dropped(assets):
     assert len(w.units) == len(m.units)
     assert w.report.unknown_units and w.report.unknown_units[0][1] == 9999
     assert not w.units[UNIT_ID_BASE + bad.uid].known
+
+
+@needs_maps
+def test_difficulty_tweak_scales_monsters_only_and_the_default_is_neutral(assets):
+    """`FUN_00561bf9` 0x561e20: mode 2 (the server ctor default) skips; 1 = x0.5 template HP, 3 = x1.5; humans and map overrides are not scaled."""
+    m = open_map(MAPS[0], GFS)
+    base = World.from_map(m, assets)
+    assert World.from_map(m, assets, difficulty=2).dump() == base.dump()
+    assert all(u.tweak == 0 for u in base.units.values())
+    easy, hard = World.from_map(m, assets, difficulty=1), World.from_map(m, assets, difficulty=3)
+    seen = 0
+    for r, b, e, h in zip(m.units, base.units.values(), easy.units.values(), hard.units.values()):
+        if r.is_human:
+            assert (e.hp_max, h.hp_max, e.tweak, h.tweak) == (b.hp_max, b.hp_max, 0, 0)
+        elif r.max_hp == 0xFFFF and b.stats is not None:
+            assert e.hp_max == int(b.stats.hp_max * 0.5) and h.hp_max == int(b.stats.hp_max * 1.5)
+            assert (e.tweak, h.tweak) == (1, 3)
+            seen += 1
+        elif r.max_hp != 0xFFFF:
+            assert e.hp_max == h.hp_max == r.max_hp
+    assert seen

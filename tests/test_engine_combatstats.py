@@ -222,3 +222,9 @@ def test_attribute_extremes_stay_in_byte_and_word_range():
     assert st.block.prot[1] == 46 // 2
     tiny = human_stats(human(body=0, reaction=0, spirit=0))
     assert (tiny.record.skill, tiny.record.lo, tiny.block.defence, tiny.block.prot[1]) == (0, 0, 0, 0)
+
+
+def test_hard_difficulty_adds_50_to_to_hit_and_defence_of_a_monster():
+    st = monster_stats(monster(), hard=True)
+    assert (st.record.skill, st.block.defence) == (15 + 0x32, 30 + 0x32)
+    assert monster_stats(monster()).record.skill == 15

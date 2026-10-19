@@ -43,7 +43,7 @@ Other creation sites (all `Creature`/`Leaf`): 0x4f312a (server spawn of a type l
 
 ### Hierarchy / class order of the creature creation path (map load, FUN_00561bf9)
 1. owner: `FUN_0051680d(0x68d2c4 player mgr, mapunit+0x14 as word)`; missing -> error log + skip. If `[0x6044c4+0x174]` and `player+0x2c` both set -> skip (`player+0x2c` = computer-controlled, CONFIRMED [progression](../data/progression.md#4-xp-sources); the skip is a multiplayer filter, INFERRED).
-2. alloc + ctor by template name (above). Difficulty tweak (`[0x6044c4+0xd8]`: 2 skip; 1: maxHP*=const `0x5d1b00`, HP=maxHP, brain+0x44>>=1; else +0x32 to words +0xa6,+0xbe and maxHP*=`0x5d1b08`). CONFIRMED 0x561e20-0x561f0b (meaning of the +0xd8 modes INFERRED).
+2. alloc + ctor by template name (above). Difficulty tweak (`[0x6044c4+0xd8]`: 2 skip; 1: maxHP*=const `0x5d1b00`, HP=maxHP, brain+0x44>>=1; else +0x32 to words +0xa6,+0xbe and maxHP*=`0x5d1b08`). CONFIRMED 0x561e20-0x561f0b ; modes: 1 easy, 2 normal (server ctor default `0x4e97bf`), 3 hard, setter `0x493d80` from window `0x4891d8`: [ai §10.1](ai.md#101-difficulty-tweak-fun_00561bf9-0x561e200x561f0b-confirmed) CONFIRMED.
 3. `mapunit+0x50` bits -> creature dwords: bit0 -> +0x194, bit1 -> +0x19c, bit2 -> +0x198, bit3 -> +0x1a0 (0/1). CONFIRMED 0x561f0f-0x561f77.
 4. if word +0xe == 0 -> error "bad unit" and delete. vtable +0x58 (recompute from template; 0x5118be for monsters).
 5. HP: if human bit and mapunit s16 +0x22 != -1 and == s16 +0x20 -> both set to -1. then `+0x96 = mapunit.s16(+0x22)` if != -1; `+0x94 = mapunit.s16(+0x20)` if != -1 else `+0x94 = +0x96`. CONFIRMED 0x562013-0x562099. (so file+36 = HP, file+38 = maxHP override, -1 = template value)
@@ -73,7 +73,7 @@ Offsets from the constructors 0x50d493, 0x50dc2b, init 0x50e173, copy 0x50e48e (
 | +0x49 | 1 | param (monster 31 / human 21 TokenSize) | CONFIRMED loader (0x514f37) |
 | +0x4a | 1 | param (monster 32 / human 22 MovementType); `>1` => HP set to -1000 in death (0x50f273) | CONFIRMED |
 | +0x4b | 1 | param face / palette variant (human 17, monster 30); bit 7 |= gender (0x514bdc) and `|=0x80` when item[0x12] nonzero (0x4a4be3) | CONFIRMED |
-| +0x4c | 1 | caster flags: |=2/4/6 if maxMana (+0x9c) > 0 | CONFIRMED 0x514907/0x4a4c93 |
+| +0x4c | 1 | creature flags: 2 = has a spell list (monster `spell_1` > 0 `0x511c0a`; human spellbook), 4 = mage (monster `known_spells` not 0/-1 `0x511dd6`; human maxMana +0x9c != 0 `0x514907`), 8 = off the map (`FUN_005102a3` sets, `FUN_00510318`/`FUN_005103ae` clear), 0x10 = sure hit; `FUN_0053a5a0` returns `& 4` | CONFIRMED ([ai §6](ai.md#6-attack-and-return-execution-confirmed)) |
 | +0x50 | 4 | current **order id** (0 none, 1 and 0xa special-cased by AI 0x56e1d3/0x56e1ed; 0xb at 0x50ec6a; 0x10 on removal) | CONFIRMED set sites; per-value meaning INFERRED |
 | +0x54 | 4 | **state** executed by tick FUN_0050f12c: 0 idle, 1 move step, 2 pick up item at cell, 3 melee attack, 0xd cast/shoot at target object (+0x5c), 0xe cast at cell (+0x60,+0x61), 0xf use structure at cell, 0x10 dead/removed, 0x1b AI wait | CONFIRMED jump table 0x50fc17 / byte table 0x50fc2f; writers 0x56ddb4,0x56de25 etc. |
 | +0x58 | 4 | attack sub-phase: 0 start, 5 wind-up counting, 7 recovery | CONFIRMED 0x50f3b3-0x50f68c |

@@ -215,7 +215,7 @@ code `engine/world.py`; map facts in [map.md parts 3-4](../formats/map.md).
   x, y` (cell) `+ sub_x, sub_y` (1/256, 128 = centre), `facing` (mover angle byte, 0 up, clockwise, draw direction
   `>> 4`), `action` (`"idle"`), `action_start_tick`, `hp, hp_max, uid, server_id, human, behaviour, move_type, face,
   squad, group, known`. HP: file override else data.bin `healthMax`; a human with `hp == max_hp` resets to the default
-  (`0x562013`); difficulty scaling is not applied. **Facing**: the file has none; `from_map(facing=None)` gives each unit
+  (`0x562013`); difficulty scaling is off by default (mode 2) and implemented for modes 1 / 3 via `from_map(difficulty=)` ([ai §10.1](ai.md#101-difficulty-tweak-fun_00561bf9-0x561e200x561f0b-confirmed)). **Facing**: the file has none; `from_map(facing=None)` gives each unit
   `0x40 + rand(128)` like the creature constructor (CONFIRMED), the random draw replaced by a hash of the uid
   (DECISION: deterministic); `facing=int` fixes the angle (E5 uses `0x80`). Players: `Player(id, colour, name,
   flags, money, relations, human)`, human = record 1.

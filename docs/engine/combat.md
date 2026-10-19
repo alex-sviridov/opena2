@@ -62,7 +62,7 @@ has status bit `0x40000`); a player's order uses only the zero test.
 At `tick & 15 == 6` (before the command drain of that tick) the group pass runs the executor of every member of a group whose
 order is 0. For order 3: if the target's state is `0x10` (removed) the unit is stopped (`FUN_0056dbc6`: cancel, order `0xc`,
 anchor = own cell, `brain+0x50 := 1`); then `FUN_0056acc8(unit, target)`:
-- target flag `+0x4c & 8` (immune): guard scan instead (not modelled);
+- target flag `+0x4c & 8` (off the map, [ai §6](ai.md#6-attack-and-return-execution-confirmed)): guard scan instead (no such units in the engine);
 - monsters only: up to three special attacks (`brain+0x7c..0x84`, probabilities `+0x88..+0x90` against a raw `rand()`) may take
   over (spells: phase K);
 - otherwise **Brain mode := 5, `brain+0xc := target`, `brain+0x14 := FUN_0056ac5b`** (range). Mages (`+0x4c & 4`) and
@@ -198,7 +198,7 @@ Inputs: the attacker's **attack record** (creature `+0xa6`, 0x18 bytes) and the 
 | absorption `Ab` | `+0xc0` s16 | |
 | protection `P[e]` | `+0xc4 +2(e-1)` s16 | fire, water, air, earth, astral (`+0xc2` physical is never read) |
 | resistance `Rs[k]` | `+0xce + k` u8 | percent per attack type 1..5 (monsters' `res_blade` ... `res_shooting`; `+0xce` is always 0) |
-| flag `+0x4c & 8` | | immune: returns 0 at once |
+| flag `+0x4c & 8` | | off the map: returns 0 at once |
 
 Attacker flags: `+0x4c & 0x10` ("sure hit", monster damage kind 3: bats, bees, spiders) and the status effects Bless (spell
 bit 20) / Curse (bit 28) with their chance `c` (`effect +0x40`). `human(a)` = attacker vtable `+0x30`.
@@ -321,8 +321,7 @@ Files: `engine/rng.py`, `engine/sim/combatstats.py`, `engine/sim/combat.py`, `en
    and attackers keep hitting the body until the executor sees state `0x10` (12.2, section 13).
 2. **Retaliation, XP, weapon spells, mage spells, structure targets, ranged hit sound/arrows:** not in I1 (section 10).
 3. **Pathing failure under order 3:** mode 0 (no auto scan), restored by the executor.
-4. **Difficulty:** the map-load tweak of monster to-hit/defence (`[0x6044c4+0xd8]`, [unit-struct §1](unit-struct.md)) is not applied
-   (normal difficulty, mode 2 = skip).
+4. **Difficulty:** the map-load tweak of monster to-hit/defence (`[0x6044c4+0xd8]`, [unit-struct §1](unit-struct.md)) is implemented as an option (hard: to-hit and defence +50 via `monster_stats(hard=)`); the default is mode 2 = skip, so the shipped behaviour is unchanged ([ai §10.1](ai.md#101-difficulty-tweak-fun_00561bf9-0x561e200x561f0b-confirmed)).
 5. **Seed:** per game, explicit (section 2 of simulation §10).
 6. **Ranged attacks** (range > 1) use the same code: wind-up + `extra`, no projectile in the simulation; the visual arrow is a view matter (not drawn yet).
 7. **Stats are built lazily** (`combat_stats(world, unit)`, from `Unit.stats`, `World.item_table`, `Unit.skills`) and cached in `Unit.combat`; a skill-up or an

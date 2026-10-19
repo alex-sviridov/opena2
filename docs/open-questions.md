@@ -41,7 +41,7 @@ from both places when answered).
 
 - Monster damage = template + equipped weapon: confirm in play. [combat](engine/combat.md#open-questions)
 - Special attacks (`FUN_0056a981`), mage casting (`FUN_0056b059`, `FUN_0056bc7b`), the caster lists `server+0xaa8`/`0xac8` (answered in the doc, spell use is phase K). [ai](engine/ai.md#11-phase-k-list-ranged-and-casters)
-- AI: group orders 1, 2, 5, `0x11`, `0x13`, `0xff` are decoded but not built (need commands `0x17`/`0x12`/`0x1a` and the Scenario instants); object-effect order 2 (`FUN_0052f8e2`) and the `+0x48`/`+0x4c` group flags. [ai](engine/ai.md#open-questions)
+- AI: group orders 1, 2, 5, `0x11`, `0x13`, `0xff` are decoded but not built (need commands `0x17`/`0x12`/`0x1a` and the Scenario instants); object-effect order 2 (`FUN_0052f8e2`) and the `+0x48` group flag; which window path sets difficulty != 2 in single player (default 2 = off is confirmed, creature `+0x4c` flags, `FUN_0053a5a0` = mage, the `0x8000` RNG divisor and the difficulty tweak are answered in ai §6 / §10.1). [ai](engine/ai.md#open-questions)
 - Client reaction on message `0x73` beyond the number (view unit vtable `+0x74`); the recovery-timer byte wrap. [combat](engine/combat.md#open-questions)
 
 ## Not started (from the reversing plan)

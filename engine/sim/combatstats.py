@@ -179,12 +179,15 @@ def _merge(rec, block, bonus):
     block.add(bonus.block)
 
 
+HARD_BONUS = 0x32                                   # difficulty mode 3: added to to-hit (+0xa6) and defence (+0xbe) of monsters
+
+
 def _param(t, name, default=0):
     v = t.get(name, -1)
     return default if v is None or v < 0 else v
 
 
-def monster_stats(t, items=None):
+def monster_stats(t, items=None, hard=False):
     """Monster template -> `CombatStats` (`FUN_005114f3` loader, equipment, merge).  `items`: the item table; without it the weapon
     strings are ignored (template numbers only)."""
     rec = AttackRecord(skill=s16(_param(t, "to_hit")))
@@ -228,6 +231,9 @@ def monster_stats(t, items=None):
     rec.kind = bonus.kind
     st.range = 1 + bonus.range
     st.weapon_weight, st.has_weapon = bonus.weight, bonus.weapon
+    if hard:                                        # difficulty mode 3 (`0x561ea6`): words +0xa6 and +0xbe += 0x32; the merge is additive
+        rec.skill = s16(rec.skill + HARD_BONUS)
+        block.defence = s16(block.defence + HARD_BONUS)
     return st
 
 
@@ -283,11 +289,11 @@ def human_stats(t, items=None, skills=None):
     return st
 
 
-def unit_combat_stats(t, items=None, skills=None):
+def unit_combat_stats(t, items=None, skills=None, hard=False):
     """Dispatch on the template kind (`unitstats.MONSTER` / `HUMAN`); None for an unknown template."""
     if t is None:
         return None
-    return human_stats(t, items, skills) if t.kind == prog.unitstats.HUMAN else monster_stats(t, items)
+    return human_stats(t, items, skills) if t.kind == prog.unitstats.HUMAN else monster_stats(t, items, hard)
 
 
 def item_code(item):

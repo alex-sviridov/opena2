@@ -540,6 +540,8 @@ def post_step(world, g, m):
     if m.stats is None or m.hp <= 0:
         return
     wimpy, withdraw = int(m.stats.get("wimpy", 0) or 0), int(m.stats.get("withdraw", 0) or 0)
+    if m.tweak == 1:
+        wimpy >>= 1                                                                # easy mode halves brain+0x44 at load (0x561e96)
     if m.hp <= wimpy and _enemies(world, m, WIMPY_RADIUS):
         near = [c for c in _enemies(world, m, WIMPY_RADIUS) if c.hp > 0]          # FUN_0056c9bc counts the living
     elif m.hp <= withdraw and _enemies(world, m, WITHDRAW_RADIUS):

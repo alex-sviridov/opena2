@@ -106,7 +106,7 @@ equipped weapon, defence from `defence` + armour, and the 0x254 constructor (`FU
 
 Each row's "Struct" column is the field the value initialises. Map section 6 replaces only
 **HP**: `hp`/`max_hp` (-1 = template, §4 of [unit-struct](../engine/unit-struct.md#hierarchy--class-order-of-the-creature-creation-path-map-load-fun_00561bf9)),
-a human (flag `0x10`) with `hp == max_hp` is reset to default and keeps the *recomputed* maximum ([progression §6](progression.md#6-hero-start): the template `healthMax` of humans is never used), `behaviour` bits set `+0x194…+0x1a0`, and the difficulty tweak scales
+a human (flag `0x10`) with `hp == max_hp` is reset to default and keeps the *recomputed* maximum ([progression §6](progression.md#6-hero-start): the template `healthMax` of humans is never used), `behaviour` bits set `+0x194…+0x1a0`, and the difficulty tweak (easy: HP x0.5 and wimpy halved; hard: HP x1.5, to-hit and defence +50; **default normal = off**, [ai §10.1](../engine/ai.md#101-difficulty-tweak-fun_00561bf9-0x561e200x561f0b-confirmed); implemented behind `World.from_map(difficulty=)`) scales
 max HP and halves the brain's `+0x44` (wimpy). Nothing else in the record is overridden by the map (CONFIRMED
 `0x562013-0x562099`, `0x561e20-0x561f0b`). `World._load_units` reproduces the HP rule (humans take `progression.derived_vitals`, see progression §6) and keeps the full
 template in `Unit.stats` for the later systems (movement, combat, AI, loot).

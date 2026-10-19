@@ -163,7 +163,7 @@ def combat_stats(world, u):
     """The unit's `CombatStats`, built from its template and the item table on first use (None template: all zeros)."""
     st = u.combat
     if st is None:
-        st = unit_combat_stats(u.stats, world.item_table, u.skills or None) or CombatStats()
+        st = unit_combat_stats(u.stats, world.item_table, u.skills or None, hard=u.tweak == 3) or CombatStats()
         u.combat = st
     return st
 
