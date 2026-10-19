@@ -648,6 +648,14 @@ Decisions and assumptions (INFERRED unless marked): `Unit.step_end` is written b
 is always on the unit's own cell (CONFIRMED, no search; refused on a blocked cell); a level-up keeps the current HP / mana; a hero of the human player that reaches state 0x10 logs `HeroDied` (message `0xb4`, 12.3a) and sets `Player.defeat_dialog` / `death_code`, the main hero (`Player.main_hero`, INFERRED = first hero of the human at load) also counts `hero_deaths` and gets HP -50; the modal dialog and the sim freeze are UI work, not engine; the selection drop (CONFIRMED stage >= 2, plus a DECISION to drop at removal, <= 32 ticks early);
 corpses are drawn before living units; a body is pickable and has a minimap dot while its death stage is < 2 (CONFIRMED). HP stays a Python int (the exe's s16 never wraps within the HP range of play).
 
+## 14. Spell casts (I4a)
+
+Research: [spells §9c](../data/spells.md#9c-the-cast-chain-of-a-unit-target-spell-i4a-research-rea-of-the-gog-exe) (CONFIRMED chain: order `0xd`, brain mode 8, states
+`0xd`/`0xe` on the swing's phase machine, `FUN_00519998` mana, `FUN_00519db8` release, missile and point carriers). Design: [spec](../superpowers/specs/2026-10-19-spell-cast-design.md),
+plan [I4a](../superpowers/plans/2026-10-19-i4a-spell-cast-sim.md). Files: `engine/sim/spells.py`, `engine/sim/commands.py` (`CastSpell`), `engine/world.py`
+(`SpellCast`, `Carrier`, `World.carriers`, events `CastStarted`), tests `tests/test_engine_spells_*.py`. The mapping table is completed at the end of I4a; VERIFY IN GAME items are
+in spells §9c.4.
+
 ## Open questions
 
 1. Monster weapon bonuses: confirm in play that `damage = template + weapon` (11.1); the code order says yes.

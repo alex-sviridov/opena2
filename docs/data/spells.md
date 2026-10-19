@@ -254,6 +254,55 @@ Everything it depends on:
 
 Damage example, hero staff (L=1): `5 + rand(0..5)`; Orc_Shaman.5 (`:99`): `21 + rand(0..22)` before protection.
 
+## 9c. The cast chain of a unit-target spell (I4a research, REA of the GOG exe)
+
+CONFIRMED by decompilation unless tagged. `unit+0x1c4` = brain, `unit+0x54` state, `+0x58` phase, `+0x6c` countdown, `+0x134` windup byte, `+0x135`
+recovery byte, `+0x136` done flag, `+0x5c` target, `+0x60/+0x61` target cell, `+0x64` spell wrapper being cast, `+0x68` item the cast comes from
+(0 = a learned spell), `+0x74` wielded weapon. Wrapper (`FUN_0051c391(n)` / item wrapper `FUN_0051906d`): `+4` spell record, `+8` spell number,
+`+9` scaled range, `+0xc` mana cost, `+0xe/+0xf` scaled damage min' / spread' (bytes).
+
+### 9c.1 Command and order (client -> server)
+
+| Fact | Where | Tag |
+|---|---|---|
+| Client, cast at a unit: `FUN_004195fa(target unit id, spell button)` builds command `0x1e` (operand byte `+0x10` = button, ids = the selected units whose cast mask has bit `button-1`). Nothing is sent unless `FUN_004c70b9(button-1)` (view `+0xd0` object, mask `+0x148`) is set; the item variant (`FUN_004c70fe`, mask `+0x150`) sends `0x25`. The masks are the greyed/enabled state of the spell buttons: **there is no "out of mana" or "out of range" message in this path, the button is simply not usable**. How the mask is built from the spellbook and mana: not traced | `0x4195fa`-`0x419a53`, `0x4c70b9`, `0x4c70fe` | CONFIRMED path; mask writer INFERRED (mana and known bits) |
+| Server intake `FUN_004f515d`: command `0x1e` / `0x1f` first maps the button to a spell number (table `0x5f8120`, stride 4), then for **every** group member with a spellbook (`+0x140 != 0`): `member+0x44 = FUN_0051c391(spell)` (the unit's wrapper, 0 when it does not know the spell). Cast at a unit (`0x1e`): `FUN_005702be(group, target)` with no further test. Cast at a cell (`0x1f`): only if `FUN_0051941a()` (spell targets a cell) | `0x4f5a22` ff. | CONFIRMED |
+| `FUN_005702be`: per member with `+0x44 != 0`: `FUN_0056d3e6(member, target, wrapper)` = cancel (`FUN_0056dbfb`), **order `+0x50 = 0xd`**, brain `+0x28` = target, `+0x30` = wrapper, `+0x14` (range) = wrapper `+9`, brain mode `+8 = 0`; then `+0x44 = 0`. A member with `+0x44 == 0` gets a different call (decompiled as `ReleaseAccessors`, unresolved; INFERRED: it does nothing useful). Group order byte `+0x20` cleared | `0x5702be`, `0x56d3e6` | CONFIRMED |
+| Group pass (`tick & 15 == 6`) per-member dispatcher `FUN_00569321`, **order `0xd`** -> `FUN_0056c72b(unit, brain+0x28, brain+0x30)`: brain mode `+8 = 8`, target and wrapper stored again, the **target's** `brain+0xa4` = spell number and `brain+0xa8` = server tick (used by the AI buff logic), final `brain+0x14 = wrapper+9`. Order `0xe` (cell) -> `FUN_0056969c` (mode 9). So a cast starts at the next `tick & 15 == 6`, like an attack | `0x569321`, `0x56c72b` | CONFIRMED |
+| Item casts: `0x25` (unit) / `0x26` (cell) set `member+0x68 = item` and `member+0x44 = FUN_0051906d` (a wrapper built from the item, level = the item's count), then the same `FUN_005702be`; on a refused cell cast the item reference is dropped | `0x4f5a22`... `case 0x25` | CONFIRMED |
+
+### 9c.2 Brain mode 8 and the state machine
+
+| Fact | Where | Tag |
+|---|---|---|
+| Brain tick `FUN_0056dca2`, mode 8 -> `FUN_0056ebc0`: `unit != target` and not (`FUN_0055532d(unit, target, brain+0x14) != 0`) -> `FUN_0056ea52` (the follow driver of melee, turns and walks) and `state = 1`; else `FUN_0056e906` (start). `FUN_0055532d` = facing (`mover[0]`) equals `FUN_005568e4(unit, target)` (the octant to the target) **and** `FUN_00556dcd(unit, target) <= range`: the **same facing + gap-level test as the melee attack** (`combat.attack_mode`, `ai.reach_gap`), with the spell range instead of the weapon range. No line-of-sight, no fog, no mana test here | `0x56ebc0`, `0x55532d` | CONFIRMED |
+| `FUN_0056e906` (unit target): brain order `+9 = 2` (cast in progress), count `+0x15 = 0`, **state `0xd`**, `+0x5c` = target, `+0x64` = wrapper, brain `+0x5c = 1`; if brain `+0x60 == 0` -> stop `FUN_0056dbc6`. `FUN_0056e986` (cell): state `0xe`, cell in `+0x60/+0x61`, brain `+0x5c = 0` | `0x56e906`, `0x56e986` | CONFIRMED |
+| Brain order 2 (`FUN_0056dca2` else-branch, same shape as the swing's order 1): state := `0xd` if brain `+0x5c` else `0xe`, count `+0x15` += 1; once count > 2 and the done flag `+0x136` is set: brain order 0, state 0, and the `+0x4d+2` ... (the done byte). While brain order != 0 the mode executors do not run, so **a new order cannot interrupt a cast in progress** (the order is stored and takes effect after) | `0x56dca2` | CONFIRMED structure |
+| Creature tick `FUN_0050f12c`, states 3 / `0xd` / `0xe` share one phase machine on `+0x58`. **Phase 0**: state `0xd` -> `FUN_00519998(unit, target, 0, 0)` (`0xe`: cell); if it returns non-zero: done flag := 0, phase := 5, countdown := **windup byte `+0x134`** (no arrow-flight extra as in melee). If it returns 0 (mana short) nothing changes: the phase stays 0 and the brain order ends after 3 ticks (done flag still set), mode 8 restarts the cast at once: a **silent retry loop** without messages. **Phase 5**: countdown -= 1; at 0: state `0xd` -> `FUN_00519d7f(unit, target)` -> `FUN_00519db8` (the effect: §9c.3); then (item casts) the item and wrapper are cleared and a **scroll** (`FUN_0053bff0() == 0xe`) is deleted; phase := 7. **Phase 7**: countdown -= 1; at 0: phase 0, done flag := 1 | `0x50f12c` | CONFIRMED |
+| Recovery countdown set at the end of phase 5: `L = 0`; if the unit has a weapon `+0x74` and the vtable `+0x30` test (hero) holds: `L = clamp((weapon.weight(+0x4a) + (30 - Reaction(+0x86)) * 5) / 12, 0, 12)` (same as `combat.hero_delay`); `L += FUN_0051fa25(3)` (the engine's `rand(3)`, 0..3); countdown = `+0x135 + L`; **plus the spell's `complication_level` (param 0) when `+0x64` is still set**, i.e. for a learned spell, not for a weapon / item cast (its `+0x64` was just cleared) | `0x50f12c` | CONFIRMED |
+| **Mana** (`FUN_00519998`, at phase 0, the first tick of the cast): only if the caster is a mage (`+0x4c & 4`, `FUN_0053a5a0`) **and** `+0x68 == 0` (not an item cast): `mana (s16 +0x9a) < cost` -> return 0 (nothing spent); else `mana -= cost`. A non-mage with a spell pays nothing; an item cast pays nothing. Also: a caster with `+0x74` weapon equal to `+0x68` and not a mage returns 1 at once (no effect; INFERRED the weapon-spell bookkeeping) | `0x519998` | CONFIRMED |
+| Same function, for the client visual: `n = trunc(sqrt(dx^2 + dy^2)) / speed` for missile delivery (`param[5] == 2`), 5 for spells 10 and 11, positions in 1/256 cell; message `0x86` (target unit, `FUN_005041d6`) or `0x8b` (cell, `FUN_005042ba`) with projectile id `2n+8` and the flight ticks. A target with footprint size > 1 is aimed at its centre `- 1` in both axes (`FUN_0050d884/0d8c0`). Casting at another unit clears Invisibility (effect kind `0xc`, `+0x42 := 1`, `FUN_005106d2(0xc)`) | `0x519998` | CONFIRMED |
+| Hero flags: `+0x4c & 2` (`FUN_00543130`, the "has a spell list" bit) gates the cast XP (`vtable +0x70`, spells.md §4 XP row) for learned-spell casts | `0x519db8` | CONFIRMED test, XP row as §4 |
+
+### 9c.3 Release, carriers, damage
+
+| Fact | Where | Tag |
+|---|---|---|
+| `FUN_00519db8(unit, target, x, y)`: **level** (re-computed at release): learned spell `clamp(skill[sphere](s16 +0xa8+2*sphere) - 30 + s16 +0x88, 0, 255)` (the code caps at 255 and floors at 0, both as `level_of`); item cast (`+0x68 != 0`) the count `s16 item(+0x42)` (`FUN_005238c5`) | `0x519db8` | CONFIRMED |
+| Target test: a target with vtable `+0x2c != 0` and flag `+0x4c & 8` (off the map) -> the cast ends **with no effect** (mana already spent, recovery still runs) | `0x519db8` | CONFIRMED |
+| Damage branch (min' + spread' != 0, spell not 0x18 / 0x1a): an elemental `Effect_DirectDamage` (`FUN_0051e505`) with the caster pointer in `+0x44`, element by sphere (`FUN_00543040/70/a0/d0/100`), min' / spread' from the wrapper; a **point carrier** (`FUN_005178d4`, `PointEffect`) holds target + effect; its caster pointer `+0x3c`, hostile flag `+0x41 = (wrapper+10 == 0)`. `distribution == 1`: `delivery == 1` -> appended to the active list at once; `delivery == 2` -> a **missile carrier** `FUN_00518d1e(point carrier, caster pos, speed)` with `+0x50 = (s16) (FUN_00516aae / speed)` ticks (distance **at release**, caster `unit+0x10` position to the target position as above), set to **10** for spells 10 / 11, appended instead | `0x519db8` | CONFIRMED |
+| Carrier list: `FUN_004f04cf` -> `FUN_0052c279` calls vtable `+0x18` of each carrier in list (creation) order, **before the creature pass** `FUN_0052b459` of the same server tick; a carrier is removed when its byte `+0x40` is set. Missile tick `FUN_00518efd`: `+0x50 -= 1`; if `< 1`: `FUN_00542e60(point carrier)` appends it to the **tail of the same list** (visited later in the same pass), `+0x40 := 1`. So a cast released in the creature pass of tick `T` with `N` flight ticks first ticks at `T+1`, the damage is applied at tick `T + max(N, 1)` | `0x4f04cf`, `0x52c279`, `0x518efd`, `0x542e80` | CONFIRMED |
+| Point carrier tick `FUN_00517949`: the effect's caster `+0x44` is cleared when the caster object's `+0x14 == 0` (the caster is gone). A target creature is hit **only if its `+0x14 != 0`** (alive in the world): effect apply (vtable `+0x3c`) = `FUN_0051e65b` (§5: `min' + rand(0..spread')`, protection, HP). Then, when the carrier has a caster and the hostile flag: victim `+0x40` (last attacker) := caster (if the caster is still valid) and `+0x48` := spell number, and `FUN_0056e6b8(caster, victim, 0)` (the AI hit reaction) when both are valid. Structures take the `vtable +0x34` branch | `0x517949` | CONFIRMED |
+| Nothing in the chain tests the **target's HP**: a unit at HP <= 0 that is still in the world (dying, `+0x14 != 0`) is hit again (same as melee, combat.md 12.2) | `0x517949` | CONFIRMED (absence) |
+
+### 9c.4 Engine mapping and VERIFY IN GAME (I4a)
+
+- Order `0xd` is the cast analogue of the attack order: group pass at `tick & 15 == 6`, then mode 8 with the melee approach (`combat.attack_mode` conditions), `Unit.spell_cast` holds the phase machine, `spells.cast_tick` mirrors `combat.swing_tick`.
+- The silent retry loop for insufficient mana is reproduced as is (no event); the "no mana / out of range" feedback the user sees is the disabled button (I4b).
+- Carriers: `World.carriers`; `spells.carrier_system` runs **before** `movement_system` (carriers pass, then creature pass); a missile with `N` flight ticks delivers `max(N, 1)` ticks after the release tick; the point carrier's damage is applied in the same pass.
+- INFERRED: casters are "gone" when removed from `world.units`; a caster that dies between release and delivery still lets the carrier hit (the missile is independent), only the attacker credit is dropped.
+- VERIFY IN GAME: (1) a hero with the start staff casts Fire Arrow with no mana change; (2) a learned-spell cast with 2 mana left of 3 does nothing and retries silently; (3) the delay between the cast animation start and the first damage number at 7 cells (windup + 8 ticks); (4) Stop pressed during the windup: the cast completes (INFERRED from the brain order structure, `FUN_0056dbc6` not traced); (5) a scroll is consumed, a staff is not.
+
 ## 9b. Field carriers, summons, raising, tooltip
 
 All CONFIRMED in allods2.exe unless tagged. Code: `spelldefs.py` constants and functions named below.
@@ -315,6 +364,6 @@ Display names come from `spell.txt`, descriptions only for these 24 spells (no e
 
 ## 11. Open questions
 
-- Client cast command path: cursor / spell button -> messages `0x1e`/`0x1f`, `0x25`/`0x26` (`FUN_005702be`, `FUN_0057033d`), range / mana / known-spell checks on the client; start `FUN_005702be`.
+- Spell button mask (view `+0xd0` object `+0x148` / `+0x150`, 9c.1): how the enabled bits follow the spellbook and mana; cell-target command `0x1f` (`FUN_0057033d`); Stop (`FUN_0056dbc6`) during a cast.
 - Brain registration of minions: Summon uses `FUN_005709d9` (brain byte `+0x20` = 1), Control Spirit `FUN_00570b8b` (`+0x20` = 3); meaning of the modes.
 - Spellbook tooltip arrays for the rows Speed (0xb6), Sight (0xb8) and which spell fills them (`FUN_00416615` ff., `FUN_004c628f`).

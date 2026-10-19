@@ -31,8 +31,7 @@ from both places when answered).
 
 ## Spells
 
-- Client cast command path (range / mana / known-spell checks before messages `0x1e`/`0x1f`, `0x25`/`0x26`). Start `FUN_005702be`.
-  [spells](data/spells.md#11-open-questions)
+- Spell button enable masks (view `+0xd0` object `+0x148` / `+0x150`: how the bits follow the spellbook and mana), cell-target command `0x1f` (`FUN_0057033d`), Stop (`FUN_0056dbc6`) during a cast. [spells](data/spells.md#11-open-questions)
 - Minion brain modes (`brain+0x20` 1 = Summon, 3 = Control Spirit). Start `FUN_005709d9`, `FUN_00570b8b`.
   [spells](data/spells.md#11-open-questions)
 - Spellbook tooltip rows Speed / Sight array pairing. Start `FUN_00416615`, `FUN_004c628f`. [spells](data/spells.md#11-open-questions)
