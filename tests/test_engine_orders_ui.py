@@ -105,7 +105,7 @@ def make(sel=(10, 11), state="own", formation=1):
 @pytest.mark.parametrize("cursor,hover_unit,cmd", [
     (S.MOVE, False, True), (S.MOVE, True, True),                     # alt over an enemy unit walks
     (S.ATTACK, False, True), (S.ATTACK, True, False),                # attack over ground / structure = move
-    (S.SWARM, False, False), (S.PATROL, False, False), (S.DEFEND, True, False), (S.PICKUP, False, False),
+    (S.PATROL, False, False), (S.DEFEND, True, False), (S.PICKUP, False, False),
     (S.TOWN, False, False), (S.CAST, False, False), (S.DEFAULT, False, False), (S.ARROW_N, False, False),
 ])
 def test_release_dispatch(cursor, hover_unit, cmd):
@@ -115,6 +115,28 @@ def test_release_dispatch(cursor, hover_unit, cmd):
     assert what == "order"
     assert got == (MoveUnits(ME, (10, 11), (20, 30)) if cmd else None)
     assert oi.pending == 0                                           # reset after every dispatch
+
+
+def test_swarm_cursor_orders_a_swarm_at_the_cell_even_over_a_unit():
+    from engine.sim import Swarm
+    oi, _ = make()
+    oi.pending = 6
+    assert oi.release(S.SWARM, (20, 30), False) == ("order", Swarm(ME, (10, 11), (20, 30)))
+    assert oi.pending == 0
+    assert oi.release(S.SWARM, (20, 30), 0x6007) == ("order", Swarm(ME, (10, 11), (20, 30)))
+    oi, _ = make(state="foreign")
+    assert oi.release(S.SWARM, (20, 30), False) == ("order", None)
+
+
+def test_guard_and_stand_still_keys_issue_their_commands_for_an_own_selection():
+    from engine.sim import Guard, StandStill
+    oi, _ = make()
+    oi.pending = 2
+    assert oi.key("g") == (Guard(ME, (10, 11)), None) and oi.pending == 0      # btn 3 clears the armed mode
+    oi.pending = 2
+    assert oi.key("l") == (StandStill(ME, (10, 11)), None) and oi.pending == 2    # FUN_00419ffd leaves view+0x9b4 alone
+    oi, _ = make(state="foreign")
+    assert oi.key("g") == (None, None) and oi.key("l") == (None, None)
 
 
 def test_release_select_cursor_defers_to_selection():

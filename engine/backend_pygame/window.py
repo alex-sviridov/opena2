@@ -24,7 +24,7 @@ from .surfaces import SurfaceCache
 MAX_FRAME_MS = 250
 DEBUG_KEYS = {pygame.K_F1: "passability", pygame.K_F2: "markers", pygame.K_F3: "depth", pygame.K_F4: "paths", pygame.K_F5: "ai"}
 FLYING_TEXT = 0x66                                                   # main.txt 0x66 + state: "Flying damage is Off" / "On"
-ORDER_KEYS = {pygame.K_m: "m", pygame.K_a: "a", pygame.K_d: "d", pygame.K_s: "s", pygame.K_t: "t"}
+ORDER_KEYS = {pygame.K_m: "m", pygame.K_a: "a", pygame.K_d: "d", pygame.K_s: "s", pygame.K_t: "t", pygame.K_g: "g", pygame.K_l: "l"}
 KEYS = {pygame.K_LEFT: "left", pygame.K_RIGHT: "right", pygame.K_UP: "up", pygame.K_DOWN: "down"}
 PLAYER_ID = 1       # single player: the human is record 1 (map.md part 5)
 

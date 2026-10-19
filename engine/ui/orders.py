@@ -4,7 +4,7 @@ clicks, hotkeys and minimap clicks into commands.  The pending target mode is `v
 A left release with a click on a non-empty selection dispatches on the cursor chosen at the release (R 1.2);
 the pending mode is reset after every such dispatch, also when nothing was ordered."""
 
-from engine.sim import AttackUnit, MoveUnits, SelectUnits, SetFormation, Stop
+from engine.sim import AttackUnit, Guard, MoveUnits, SelectUnits, SetFormation, StandStill, Stop, Swarm
 from allods2.text import decode_text
 
 from .cursor import CursorState as S
@@ -67,6 +67,11 @@ class OrderInput:
         if name == "t":                     # stand ground, immediate (btn 7): cmd 0x18, mode cleared
             self.pending = 0
             return Stop(self.player_id, tuple(self.selection_fn())), None
+        if name == "g":                     # guard, immediate (btn 3): cmd 0x17, mode cleared
+            self.pending = 0
+            return Guard(self.player_id, tuple(self.selection_fn())), None
+        if name == "l":                     # stand still (FUN_00419ffd, a key, not via FUN_00418a02): cmd 0x12; the pending mode is left alone
+            return StandStill(self.player_id, tuple(self.selection_fn())), None
         return None, None
 
     # -- left button --------------------------------------------------------------------------------------
@@ -96,7 +101,9 @@ class OrderInput:
         elif cursor is S.ATTACK and isinstance(hover_unit, int) and not isinstance(hover_unit, bool):
             if self.state_fn() == "own" and sel:
                 cmd = AttackUnit(self.player_id, sel, hover_unit)
-        # swarm, patrol, defend, pickup, town, cast: phases J/K, no order yet
+        elif cursor is S.SWARM and movable:         # cmd 0x1a at the cell under the pointer, also over a unit (R 1.3)
+            cmd = Swarm(self.player_id, sel, cell)
+        # patrol, defend, pickup, town, cast: phases J/K, no order yet
         self.pending = 0
         return "order", cmd
 
