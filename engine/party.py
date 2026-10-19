@@ -8,9 +8,11 @@ others in the radius `max(5, trunc(sqrt(n) + 4))` of it, every search by `FUN_00
 """
 
 import math
+from dataclasses import replace
 from types import SimpleNamespace
 
 from allods2.formats import entities as E
+from allods2.formats import progression as prog
 
 from .sim.triggers import find_place
 
@@ -45,8 +47,50 @@ def drop_cell(world, drops):
     return x & 0xFF, y & 0xFF
 
 
-def place_party(world, assets, drops, count=1, start="MF", owner=None):
+_PROG = prog.Progression()
+ATTRS = ("body", "reaction", "mind", "spirit")
+
+
+def start_key(record):
+    """`MF`/`MM`/`FF`/`FM` of a character record: the template `Start_xx` chosen by `identity.flags & 0xc0` (FUN_004ea6ab)."""
+    return record.identity.template[-2:]
+
+
+def apply_record(unit, owner, record):
+    """Rebuild a freshly created `Start_*` hero from a decoded character record, in the order of FUN_004ea6ab (docs/formats/saves.md
+    section 3): the four base attributes, the five school XP pools (skills 1..5 = `thr` inverse of the pools, skill 0 stays),
+    the best school, the spell book mask, then the recompute (HP and mana at their maxima), the player's gold and statistics, and
+    the 12 equipped items / the pack.  Equipment effects on the stats are not modelled yet (the engine has no equip system)."""
+    st = record.stats
+    tpl = unit.stats
+    if tpl is not None:
+        fields = dict(tpl.fields)
+        fields.update(zip(ATTRS, st.attributes))
+        tpl = replace(tpl, fields=fields)
+        unit.stats = tpl
+    unit.xp = tuple(st.school_xp)
+    unit.xp_total = sum(unit.xp)
+    base = unit.skills or (0,) * 6
+    unit.skills = (base[0],) + tuple(_PROG.level_of(x) for x in unit.xp)
+    unit.best_school = record.identity.school
+    unit.spellbook = st.spells
+    if tpl is not None:
+        unit.hp_max, unit.mana_max = prog.derived_vitals(tpl, unit.skills, total=unit.xp_total)
+    unit.hp, unit.mana = unit.hp_max, unit.mana_max
+    unit.equipment = tuple(record.equipment.items) if record.equipment else ()
+    unit.pack = tuple(record.pack.items) if record.pack else ()
+    unit.carried = tuple(i.code for i in unit.pack)
+    owner.gold = st.gold
+    owner.hero_deaths = st.hero_deaths
+    owner.kills_monsters, owner.kills_players = st.kills_monsters, st.kills_players
+    return unit
+
+
+def place_party(world, assets, drops, count=1, start="MF", owner=None, record=None):
     """Create the party of the human player and place it at the drop cells; returns the list of placed units (main hero first).
+
+    `record` (a `saves.Character`): the main hero is built from the character record instead of the fresh start template
+    (template from the record's flags, `apply_record`); the other members stay the recruitable heroes.
 
     Does nothing (returns []) when the player already has a main hero.  Sets `Player.main_hero`.  The exe's unit uid is a free
     network id; here `max(unit / structure uid) + 1 + k` (DECISION), the scenario hero number comes from the template (+0x14c)."""
@@ -55,6 +99,8 @@ def place_party(world, assets, drops, count=1, start="MF", owner=None):
     if owner is None or owner.main_hero:
         return []
     types = assets.unit_stats()
+    if record is not None:
+        start = start_key(record)
     ids = party_ids(count, start)
     uid0 = 1 + max([u.uid for u in world.units.values()] + [o.uid for o in world.objects.values()] + [0])
     n = len([u for u in world.units.values() if u.owner == owner.id]) + len(ids)
@@ -77,5 +123,7 @@ def place_party(world, assets, drops, count=1, start="MF", owner=None):
         u = world.units[0x6000 + uid0 + k]
         if k == 0:
             owner.main_hero = u.id          # FUN_004f254b: owner+0x38 := the new hero
+            if record is not None:
+                apply_record(u, owner, record)
         placed.append(u)
     return placed

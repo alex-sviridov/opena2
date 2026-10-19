@@ -9,7 +9,8 @@ The company is legally entitled to recreate the game.
   `DirFS`, `ChainFS`, `OS`; zero-copy `memoryview` reads
 - `allods2/` core library (formats, decoders, data models; no pygame); every
   loader is `load(path, fs)` on game paths (`graphics/units/units.reg`)
-- `allods2/formats/` decoded views of data files (`Map`); `allods2/alm.py` is the .alm container
+- `allods2/formats/` decoded views of data files (`Map`); `allods2/alm.py` is the .alm container;
+  `formats/saves.py` = `.a2c` characters, `famehall.dat`, `game%d.sav` (docs/formats/saves.md)
 - `engine/` the game (world, sim, view, ui, `backend_pygame`; only the backend imports
   pygame-ce), built on the core; `allods2/assets.py` asset cache; docs/engine/
 - `docs/{formats,mechanics,data,...}/<name>.md` specs; each folder's README.md is its index
@@ -180,7 +181,7 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   exe `0x40 + rand(128)` (engine: hash of uid). Also answered: exe scrolls whole cells within the 8-cell border; cell effects =
   spell-area sprites (fire/earth wall, poison cloud); server drops units on blocked cells (9 in the install), HP-0 walkers stay
   corpses; ShadowY +-20000 has no gate. docs/engine/rendering.md §13, architecture.md §9
-- Not started: saves, Scenario.dll (only GetVar / SetVar = a plain i32 array are known).
+- Saves done (docs/formats/saves.md, `allods2/formats/saves.py`): `.a2c` = chunk file (magic `0x04507989`; identity / stats / settings / 12 equipped items / pack / hotkeys; checksum `h=2h+b`, xor stream cipher keyed by the chunk flags, byte RLE) read by `FUN_004ea6ab`, the network hero record; **single player keeps the party in server memory** across missions (`FUN_004ebd5f` end-of-mission: effects cleared, summons deleted, heroes HP / mana to max, gold and XP kept), an existing `.a2c` only supplies attributes / school / class to the creation message `0x48`; `game%d.sav` = `0x26677342`, version `0x0BAD0002`, word-RLE server stream (tick `+4` then block `+0` counters resume as saved) + client tail (description, `.reg` tree, mission list, ScenarioSave block = 1024 variables + shop table + locations, 9 hotkeys); `famehall.dat` decoded exactly; `engine/party.py place_party(record=)`. The creature / map serialisers inside the server stream are open. Scenario.dll state machine beyond the shop table still open.
 - Triggers (map sections 7, 10-12) decoded, engine subset built (docs/engine/triggers.md, map.md part 6): section 7 = instants / checks (796-byte records:
   type, id, 10 args with kinds int/group(squad no.)/player/unit(uid, 10001+k = party hero k)/X/Y/const/item/building(uid)) + 184-byte triggers (3 check pairs with
   ops == != > < >= <=, 4 instants, once flag); compiled at map start (`FUN_00562745`, quirks: failed refs map to slot / instant 0), evaluated in the group pass
@@ -188,7 +189,7 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   "attacked" event (HP / Brain mode 5); victory / defeat `FUN_004f856a` at the end of every 16-tick block (dying main hero, fail cause, complete counter; messages
   0xb4 / 0xb5); section 10 repop (unused), 11 = multiplayer inns / shops + signposts (`Pointer` runs an instant), 12 = music zones. `allods2/formats/scenario.py`,
   `tools/validate_scenario.py`, `engine/sim/triggers.py` (`triggers.enable(world, map)`, `Simulation(triggers=True)`; unimplemented kinds counted), tests
-  `test_scenario.py`, `test_engine_triggers*.py`. Party at the drop cell (`FUN_004f2c83`, `engine/party.py`, `triggers.enable(.., assets=)`, `--party`); open: roster of later maps (save), mission-complete screen flow, item / spell / patrol instants.
+  `test_scenario.py`, `test_engine_triggers*.py`. Party at the drop cell (`FUN_004f2c83`, `engine/party.py`, `triggers.enable(.., assets=)`, `--party`); roster of later maps = server memory / saves (saves.md); open: mission-complete screen flow, item / spell / patrol instants.
 - Engine G3b (interface, cursor, selection) done: `engine/ui/layout.py` (three modes, one table citing exe routines),
   original cursors (`choose_cursor`: 8 arrows by the screen-border rule, select, pickup), rectangle picking (exe: per-object
   `Selection` rect, last registered first, 3x3 box; drag > screenW*10/640 px, overlap > 10 px^2), `SelectUnits` command +

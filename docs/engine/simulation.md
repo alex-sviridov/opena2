@@ -53,7 +53,8 @@ after: DECISION, only an offset of one for display).
   at 0 and increments it to 1: the pass first runs in the 7th step (counter before increment 6), then every 16. Engine: `world.tick`
   starts at 0 = the exe's value; `Simulation.block` = `(world.tick + 1) >> 4` is `server+0` (incremented at `0x4f0ab7` after the
   step whose counter after the increment is 15 mod 16, together with the per-player pass `FUN_004f8967`). With a loaded save the
-  counters come from the save (path `FUN_004e9b95`, not decoded: Open questions).
+  counters come from the save: `FUN_004e9b95` -> the server stream `FUN_004ec732` reads `server+4` (tick) then `server+0` (block) as its first two words and nothing re-derives
+  them ([saves §6.2](../formats/saves.md#62-the-server-stream-fun_004ec732-the-same-routine-saves-and-loads-mfc-archive-little-endian), CONFIRMED).
 
 ## 2. Update order inside a server tick
 
@@ -965,7 +966,6 @@ The state is part of `World.dump()` once it differs from its initial value (old 
    the retreat post step `FUN_00573713` is decoded (§9 hook); its spell branches and the hidden-enemy detection `FUN_00556dcd` remain.
 5. The stored occupant/stamp slots with their release quirks (7.4 "Cell record"): `FUN_0055073f` clears a slot of any unit, so a first-come loser loses its record when the winner leaves; the engine derives the occupant instead. Starting routine `FUN_0055be86` callers `0x558b7c`, `0x56a5df` (how often a standing unit re-stamps, which decides how long such a cell stays unowned).
 6. The x87 control word at run time (precision / exception mask) for the slope in `FUN_00557f08`: only the follower-on-target-centre case (`0/0`) depends on it (7.4 step 3). Starting routine CRT start-up before `0x557f08`; DirectDraw init.
-7. `FUN_004e9b95` (loading a saved game, the branch of `FUN_004eb715` that skips `server+0 := 0; server+4 := 0`): which tick counter and block counter a loaded game restarts with (phase of the group pass after a load).
 8. `FUN_005728fa` (group order 0x12 handler, reader of `brain+0x16`): the full per-tick behaviour of guarding computer-player groups and the home-cell restart (`FUN_0056c8af`, `brain+0x9c`).
 9. `FUN_004f515d` on a client type-100 message (value 1, sent after every client command by `FUN_00504bb7`): confirm that the server ignores it (nothing in the order path depends on it).
 10. `FUN_0051c391` / spell record `+9`, `+0xc`: confirm that they are spell range and mana cost (used by `FUN_0056ac5b`).

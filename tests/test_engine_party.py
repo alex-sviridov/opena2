@@ -105,3 +105,51 @@ def test_enable_without_drop_cells_places_nobody():
     w = world()
     T.enable(w, SimpleNamespace(instants=(), checks=(), triggers=()), assets=Assets())
     assert w.units == {} and w.players[1].main_hero == 0
+
+
+# --- the party from a character record (docs/formats/saves.md section 3) ---------------------------------------------------
+
+def record(flags=0x00, school=1, xp=(1000, 20, 30, 40, 50), attrs=(40, 30, 20, 17), gold=1234):
+    from allods2.formats import saves as S
+    return S.Character(identity=S.Identity((1, 2), 0, "Hero", flags, 4, school),
+                       stats=S.Stats(5, 6, 7, 2, gold, attrs, 0b110, 3, xp),
+                       settings=bytes(2560),
+                       equipment=S.ItemPacket([S.Item(0x1111, 1)] + [S.Item(0, 0)] * 11),
+                       pack=S.ItemPacket([S.Item(0x0E11, 5), S.Item(0x2222, 1)], count=2))
+
+
+def test_party_from_a_record_takes_template_attributes_pools_and_items():
+    from allods2.formats import progression as P
+    w = world()
+    placed = PT.place_party(w, Assets(), [(20, 24)], record=record())
+    u = placed[0]
+    assert u.server_id == 10210 and w.players[1].main_hero == u.id            # flags & 0xc0 == 0: Start_MF
+    assert [u.stats.fields[k] for k in PT.ATTRS] == [40, 30, 20, 17]
+    assert u.xp == (1000, 20, 30, 40, 50) and u.xp_total == 1140
+    thr = P.Progression()
+    assert u.skills[1:] == tuple(thr.level_of(x) for x in u.xp) and u.skills[0] == 0
+    assert u.best_school == 1 and u.spellbook == 0b110
+    assert u.hp == u.hp_max and u.hp_max == P.derived_vitals(u.stats, u.skills, total=1140)[0] and u.mana == u.mana_max
+    assert [i.code for i in u.equipment][:2] == [0x1111, 0] and len(u.equipment) == 12
+    assert u.carried == (0x0E11, 0x2222) and len(u.pack) == 2
+    p = w.players[1]
+    assert (p.gold, p.hero_deaths, p.kills_monsters, p.kills_players) == (1234, 2, 5, 6)
+
+
+def test_record_flags_choose_the_start_template():
+    assert [PT.start_key(record(f)) for f in (0, 0x40, 0x80, 0xC0)] == ["MF", "MM", "FF", "FM"]
+
+
+def test_record_mage_hero_gets_mana_and_a_fresh_character_stays_unchanged():
+    w = world()
+    types = Types()
+    types.t[10212] = human("Start_MM", 10212, skill_blade=20, mana_max=70, gender=0, movement_type=1, face=1)
+
+    class A(Assets):
+        def __init__(self):
+            self.types = types
+    placed = PT.place_party(w, A(), [(20, 24)], record=record(0x40, school=5))
+    assert placed[0].server_id == 10212 and placed[0].mana_max > 0 and placed[0].best_school == 5
+    w2 = world()
+    fresh = PT.place_party(w2, Assets(), [(20, 24)])[0]
+    assert fresh.equipment == () and fresh.spellbook is None and w2.players[1].gold == 0

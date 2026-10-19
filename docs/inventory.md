@@ -143,7 +143,7 @@ bytes beyond its declared 644. IDs always in order 0, 1, 2, 3, 5, 11, 4,
 |---|---|
 | `world/data/itemname.bin` (982 B) | 491 u16 item codes, line order of `itemname.txt` ([items](data/items.md)) |
 | `world/data/itemname.pkt` (7,763 B) | 491 item packets: code, price, stat pairs ([items §8](data/items.md#8-names-icons-packets)) |
-| `famehall.dat` (228 B, loose) | u32 count?, records `{u32 len, name\0, u32 score, …}`: hall of fame |
+| `famehall.dat` (228 B, loose) | u32 count, records `{u32 len, name\0, u32 a, u32 b, u32 c}`: hall of fame ([saves](formats/saves.md)) |
 | `main/text/*.txt` | cp1251; one string per line (`main.txt`, `itemname.txt`) or `#key` sections (`town.txt` `#tips1`, `quest.txt`, `globalmap.txt`, `mission%d.txt` `#briefing`, `#failure2`, `===` comments) |
 | `video/*/NN.reg` | `Common/Fading1…`, `startx/starty/nFadings/startframe/endframe/startfade/endfade` |
 
@@ -162,10 +162,8 @@ Small bounded formats first, dependencies before dependants. Done:
 4. **Campaign flow**: `Scenario.dll` exports, `World\Mission\scr_`
    scripts, mission texts.
 5. **`.a2c` characters / `game*.sav` saves** (incl. the `Scenario.dll`
-   chunk; INFERRED, not yet checked in this DLL: `ScenarioLoad` reads a
-   0x1000-byte variable block, 4 × 4 records of 0x14 bytes, u32 N + N
-   list entries, u32 cursor): need data.bin and `.alm`.
-6. **`famehall.dat`**: tiny, self-contained, low priority.
+   chunk): done, [saves](formats/saves.md) (the server stream's object serialisers are open).
+6. **`famehall.dat`**: done, [saves §5](formats/saves.md#5-famehalldat-confirmed-the-installs-file-decodes-exactly).
 
 Not planned as formats: `.smk` (standard Smacker), `.wav` (standard
 RIFF), the network protocol.

@@ -288,8 +288,10 @@ Reconstructed from the GOG exe (sha256 in [formats/README](../formats/README.md)
    added to the owner's list; difficulty tweak, [progression](../data/progression.md)), `FUN_00562745` (script compile: the drop cells
    go into the word array `game+0xc0` = scenario object `+0x28`, `CWordArray::Add(y << 8 | x)`, §2.4) and `FUN_00564072`.
 2. The human's **roster** is the player's unit list `player+0x24` and the main hero `player+0x38`, both built *before* the map load
-   (hero refs of §2.1 search that list, so the scripts compile against units that are not yet on the map): from the campaign player
-   record (`FUN_004ea472` -> `FUN_004ea6ab`, writer `0x4eab4a`) or, for a fresh character, `FUN_004f254b` (§9.3).
+   (hero refs of §2.1 search that list, so the scripts compile against units that are not yet on the map): single player keeps the roster in server
+   memory across the missions (`FUN_004ebd5f` at the end of each, [saves §4](../formats/saves.md#4-carry-over-between-campaign-maps-single-player-confirmed)) and
+   creates the first hero with `FUN_004f254b` (§9.3, message `0x48` from the character screen); `FUN_004ea472` -> `FUN_004ea6ab` (the `.a2c` record) is the
+   network path only ([saves §3.6](../formats/saves.md#36-building-a-hero-from-a-record-fun_004ea6ab-confirmed-order)).
 3. The ready message (net message type **4**, jump table `0x4f82da` index 1 = `0x4f7ea3`; posted by `FUN_0041c50d(flag)`, the UI window
    routine `FUN_0048c8a3`) calls `FUN_004f1d9c(player, flag = (msg+0xa == 0))`: no main hero is an error ("Oops ... no main hero",
    `0x5fca60`); with `flag` set and `player+0x41 == 0` it calls **`FUN_004f2c83(player)`**, then sets `+0x41 = 1`. Single player runs through
@@ -334,7 +336,7 @@ Callers: the creation message (type `0x48`, `0x4f6af6`), the multiplayer "invali
 the templates as the maps use them, DECISION: the attributes of the creation screen are not modelled, so the template's own attributes
 stand in for the player's choice), draws the cell as §9.2, places the main hero at radius 0 then 5.., the others at `r`, sets
 `Player.main_hero`; uids `max(uid) + 1 + k` (DECISION; the exe's id is a free network id). `stand ground` is not issued (a human unit with no
-order is idle either way, INFERRED). Fresh start = one hero; the recruited ones come from the save (open question).
+order is idle either way, INFERRED). Fresh start = one hero; `record=` (a decoded `.a2c`, `saves.Character`) builds the main hero from the record instead (`apply_record`, [saves §3.6](../formats/saves.md)); the recruited heroes of later maps are units that stay in the player's list (saves §4), a save restores them from the server stream (its creature serialiser is an open question).
 
 ### 9.5 The hero look-up filter (`FUN_00562518`, CONFIRMED `0x562518`-`0x562632`)
 
@@ -347,8 +349,6 @@ campaign maps do not need it: scripts that name a hero not in the party change i
 ## Open questions
 
 * `FUN_005563ca` / `FUN_0055c5a0` (the free-cell test of `FUN_00510089`).
-* The party roster of a later map (hero state, recruited heroes, companions): the player record read by `FUN_004ea472` -> `FUN_004ea6ab`
-  (blob parser `FUN_004ee7cb`), writer `0x4eab4a`; and the creation screen that sends message `0x48` (§9.3: default attributes, school, name).
 * Where single player posts the ready message (type 4, `FUN_0041c50d` <- UI window `FUN_0048c8a3`) relative to the first tick; the "already on
   the map" test `FUN_0055641c` / `FUN_00551edb` of §9.2; the second loop of `FUN_00562518` for units by name (§9.5).
 * The window message `0x41d` and the mission-complete dialog's buttons (`0x486ddb`); Scenario variable `0x300`.

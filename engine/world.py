@@ -78,6 +78,9 @@ class Player:
     formation: int = 1              # client option [GameOptions] Formation: 0 off, 1 auto (default), 2 on (R 4.1)
     main_hero: int = 0              # unit id of the owner's main hero (exe owner+0x38; 0 = none); INFERRED: the first hero of the human at load
     hero_deaths: int = 0            # exe owner+0xa54: +1 when the main hero reaches state 0x10 (a statistics counter, in the saves)
+    gold: int = 0                   # exe owner+0x3c: the player's gold (trigger instant 23; the character file's stats +0x10)
+    kills_monsters: int = 0         # exe owner+0xa48 (statistics, character file stats +0x00)
+    kills_players: int = 0          # exe owner+0xa4c (stats +0x04)
     death_code: int = 0             # exe owner+0x40 (byte): `server_id - 0x13` of the last hero of the human that died (message 0xb4)
     defeat_dialog: bool = False     # the client opens the hero-died dialog (combat.md 12.3a); the UI clears it
 
@@ -405,6 +408,8 @@ class Unit:
     cast_wrapper: object = None     # brain+0x30 the `spells.Wrapper` of the cast order
     cast: object = None             # `SpellCast` of the cast in progress (unit +0x5c/+0x64/+0x68)
     spellbook: int = None           # unit+0x140 learned-spell bit mask (bit n = spell n); None: derived from the template (`spells.known_mask`)
+    equipment: tuple = ()           # humans loaded from a character record: the 12 equipped items in slot order (saves.Item; empty slot = code 0)
+    pack: tuple = ()                # humans loaded from a character record: the backpack items (saves.Item); `carried` holds their codes
 
     def __post_init__(self):
         if self.mover.target_facing < 0:

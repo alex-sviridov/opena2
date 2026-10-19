@@ -147,4 +147,4 @@ pairs resolve (exclusion list empty), range checks (HP > 0 except `ManMage_Unarm
 ## Open questions
 
 - Damage kinds 1/2 and the record layout are answered by [combat §5.2, §6](../engine/combat.md#52-take_hit-fun_00516f6f-confirmed-vtable-54-of-every-creature-class) (no monster uses kind 1 or 2; kind 3 = sure hit).
-- Hero state between campaign maps. Start: `FUN_00514920`. (Equipment strings are resolved: [items §9](items.md#9-equipment-strings).)
+- None open for the hero carry-over: single player keeps the heroes in memory, the `.a2c` record is [saves](../formats/saves.md). (Equipment strings are resolved: [items §9](items.md#9-equipment-strings).)

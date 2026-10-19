@@ -22,6 +22,7 @@ file) or INFERRED, with the routines they came from.
 | Paper doll: inventory figure layer order | [paperdoll.md](paperdoll.md) | CONFIRMED |
 | `fontN.dat` + `.16`/`.16a` fonts, `~` hotkeys | [fonts.md](fonts.md) | CONFIRMED, all 4 fonts |
 | `.reg` registry | [reg.md](reg.md) | CONFIRMED, all 17 files |
+| `.a2c` characters, `famehall.dat`, `game%d.sav` saved games (client `.reg` tree, Scenario.dll block, server stream head) | [saves.md](saves.md) | CONFIRMED in the exe (readers and writers); `famehall.dat` decodes exactly; no `.a2c` / `.sav` in the install (synthetic tests) |
 | `units.reg`, unit frame blocks, facing, placement | [units.md](units.md) | CONFIRMED, 59/61 types + 30/30 hero files |
 | `world/data/data.bin` game database: records, monster/item/spell parameters, modifier text | [databin.md](databin.md) | CONFIRMED container (file consumed exactly); maps partial |
 | Animation: sources, unit layout, timing, `allods2/anim` API, whole-install check, combat handoff | [animation.md](animation.md) | CONFIRMED; 546 sets, 668/740 multi-frame files + 72 listed exclusions (47 town/world-map files open) |

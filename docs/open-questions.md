@@ -18,15 +18,13 @@ from both places when answered).
 - Human and structure fields in code (`FUN_004a65b0`, `FUN_004a65d0`
   users; column names known). [databin](formats/databin.md#open-questions)
 
-- Unit stat table: hero carry-over. [units](data/units.md#open-questions)
-
 ## Progression
 
-- Hero state between campaign maps (saves, `.a2c`). Start: `FUN_00514920`, `FUN_004ea6ab` (record -> hero), `FUN_004ee7cb` (blob parser), writer `0x4eab4a`. [progression](data/progression.md#open-questions)
+- Equipment effects of a loaded hero (the engine keeps `Unit.equipment` / `Unit.pack` but has no equip system): [saves §3.6](formats/saves.md#36-building-a-hero-from-a-record-fun_004ea6ab-confirmed-order).
 
 ## Items
 
-- None open. Related and not started: `.a2c` characters and saves, the `Scenario.dll` state machine beyond the shop table.
+- None open. Related and not started: the `Scenario.dll` state machine beyond the shop table and the save block.
   [items](data/items.md#open-questions)
 
 ## Spells
@@ -59,9 +57,7 @@ from both places when answered).
 - Structure registration at load: does a unit-made cell record exist before the structures (then
   `FUN_00559890` skips the refresh)? `FUN_005508a0` callers.
   [map](formats/map.md#open-questions)
-- `famehall.dat`, saves (`game%d.sav`; the
-  client state is a [`.reg`](formats/reg.md#writing) tree, `FUN_0048dc9f`), `.a2c`
-  characters. [inventory §6](inventory.md#6-plan-custom-formats-to-reverse-in-order)
+- Saves ([saves](formats/saves.md#open-questions)): the server stream's object serialisers (`FUN_0052d16b`, `FUN_0052c3da`, `FUN_0052d5cb`, `FUN_00550008`, `FUN_0052d5b2`, `FUN_0053bbd0`, `FUN_0057a951`, start `FUN_004ec732`) and its 11 option words; which server messages make the client rewrite the `.a2c` (message pump sites `0x411aa2`, `0x4122d7`, `0x41054f`, `0x414a9c`, `0x40ee51`), the `0xa00` settings block and the `+0x2f` byte; whether single player ever uses a stored character's items (VERIFY IN GAME); `famehall.dat` fields `b`, `c` and its writer's caller; save slot roles (`game9998/9999/0000`, `FUN_004f515d` -> `FUN_004e9816` at `0x4f723d`).
 - Text conventions of `main/text/*.txt` (line lists, `#key` sections,
   `mission%d.txt`). [inventory §6](inventory.md#6-plan-custom-formats-to-reverse-in-order)
 
@@ -82,7 +78,7 @@ from both places when answered).
 - Movement and orders (H1, H3) [simulation](engine/simulation.md#open-questions): the empty-dynamic-list step at a centre after a failed hop (`FUN_00555c7e`) and whether a stale dynamic list (turn over 32 ticks) occurs with real turn rates;
   Haste/Slow vs the group speed byte (phase I); group
   the engine side of the group orders 1, 2, 5, 0x11, 0x13 (decoded, [ai §14](engine/ai.md#14-the-other-group-orders)),
-  tick counters after loading a save (`FUN_004e9b95`, branch of `FUN_004eb715`); the server's handling of the client's type-100 message (`FUN_004f515d`).
+  the server's handling of the client's type-100 message (`FUN_004f515d`).
 - Handoff to combat (phase I) [simulation §9](engine/simulation.md#9-handoff-to-combat-phase-i): wiring the decoded follow driver (7.4: `follow_fallback`, `FUN_0055574d`) to brain modes 4/5/6/8 and orders `0x19`/`0x1b`, orders `0x17`/`0x19`..`0x1d` and their group handlers, voice, the consolidated VERIFY IN GAME list (§9 items 1-10).
 - Order planning spike (H3 bench) [simulation §8.7](engine/simulation.md#87-tests-end-states-measured): a 20-unit order on the 256 x 256 map costs ~0.46 s in one tick (pure-Python planner); worker-thread or faster planner, results must stay bit-identical.
 - x87 control word for the follow-fallback slope [simulation §7.4](engine/simulation.md#74-read-but-not-implemented-needs-ordersai-of-phase-i): only the follower-on-target-centre `0/0` case depends on it; starting routine CRT start-up before `FUN_00557f08`.
@@ -93,4 +89,4 @@ from both places when answered).
 - Cell record effect fields `+0x34..+0x39` (Teleport `0x17` -> `brain+0xb0`, `FUN_0055a96c`; no writer found) [unit-struct](engine/unit-struct.md#open-questions): starting routine `FUN_0055f3e0` callers that copy a record from a stream (`0x55f6b0`).
 - Phantom units (9 on blocked cells, never created by the server) and HP-0 units: engine keeps and draws them; decide with the phase H sim. [architecture §9](engine/architecture.md#9-world-state)
 - Death/corpses/loot (I2) [combat §12.11](engine/combat.md#1211-open-questions): the quest kinds that listen to the server event queue (event 4 = unit removed, `FUN_0052e198`, `FUN_0052eac8`; not the triggers); hero-death follow-ups ([combat §12.11](engine/combat.md#1211-open-questions) 1: `owner+0x38` writer, dialog latch `[this+0x3e8]` reset; start: callers of `FUN_00505347`); summon-cap job `+0x148` draw order (CMap iteration order, `0x545a60` hash; `FUN_0052bbb7`); item effects (`{castSpell=..}`) of dropped template equipment are lost in the 16-bit pile code (what the pile / pickup keeps for an item with effects: start `FUN_00529ac2`, `FUN_0052a71d`); sound tables (unit sound set entries, hero voices, UI sound `0x627740[0xf]`; [combat §12.11](engine/combat.md#1211-open-questions) 4).
-- Triggers [triggers](engine/triggers.md#open-questions): the party roster of later maps and the creation screen's message `0x48` ([§9](engine/triggers.md#9-the-party-at-map-start-fun_004f2c83), start `FUN_004ea6ab`, `FUN_004f6af6` case); where single player posts the ready message (`FUN_0041c50d`); `FUN_0055641c`; the by-name second loop of `FUN_00562518`; the free-cell test `FUN_005563ca` / `FUN_0055c5a0` of `FUN_00510089`; the window message `0x41d` and the mission-complete dialog (`0x486ddb`, Scenario variable `0x300`); the text of message `0xb6` values (`0x433` handler); Scenario.dll initial variables (`ScenarioNewGame`) and campaign use; the member loop of instant 22 (`FUN_005782ba` over a list `FUN_004f0568` changes).
+- Triggers [triggers](engine/triggers.md#open-questions): where single player posts the ready message (`FUN_0041c50d`); `FUN_0055641c`; the by-name second loop of `FUN_00562518`; the free-cell test `FUN_005563ca` / `FUN_0055c5a0` of `FUN_00510089`; the window message `0x41d` and the mission-complete dialog (`0x486ddb`, Scenario variable `0x300`); the text of message `0xb6` values (`0x433` handler); Scenario.dll initial variables (`ScenarioNewGame`) and campaign use; the member loop of instant 22 (`FUN_005782ba` over a list `FUN_004f0568` changes).

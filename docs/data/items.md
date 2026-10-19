@@ -411,8 +411,8 @@ count word is at least the required `+0x1c` and the ids match, and then **overwr
 
 **Payout** (`FUN_005325ee`): `v` = the done record's `+0x24`, 0 without a record, clamped to 250 .. 16,382,000 (§11 magic_cap
 readers: the upgrade of the equipped items and the 75-point attribute rule). The hero (and so the upgraded items) is stored in the
-character file (`.a2c`, §12 message `0xbe` loads it with the wire item format `FUN_004ed5f5`), which is how the upgrade persists
-between maps; the file format itself is part of the saves work ([open questions](../open-questions.md)).
+character file (`.a2c`, §12 message `0xbe` loads it with the wire item format `FUN_004ed5f5`; the file format is [saves §3](../formats/saves.md#3-the-a2c-character-file)), which is how the upgrade persists
+in the network case; in single player the upgraded item simply stays in the hero's pack in server memory ([saves §4](../formats/saves.md)).
 
 ## VERIFY IN GAME
 
@@ -424,5 +424,5 @@ between maps; the file format itself is part of the saves work ([open questions]
 
 ## Open questions
 
-- None open for items. Left outside this spec: the `.a2c` character and save formats (hero state between maps) and the Scenario.dll
-  campaign state machine beyond the shop table (§13).
+- None open for items. The `.a2c` item stream is decoded in [saves §3.4](../formats/saves.md#34-item-chunks-confirmed); left outside this spec: the Scenario.dll
+  campaign state machine beyond the shop table (§13; its save block is [saves §6.3](../formats/saves.md#63-the-client-tail-confirmed-fun_0048dc9f-writes-fun_0048c2e9-reads-from-offset-4--0x100)).
