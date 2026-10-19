@@ -19,7 +19,8 @@ NO_WAY_MS = 3000
 LEVEL_UP_TEXT = 0x81                                              # main.txt 0x81 + school (fighters), 0x86 + school (mages)
 LEVEL_UP_MAGE_TEXT = 0x86                                         # (R combat.md 12.7, `FUN_0040d9b2` case 0x92 sub 2)
 LEVEL_UP_MS = 3000
-FORMATION_MS = 2000                                                # INFERRED: palettes.md "option toggles (2000 ms)"
+HEALTH_TEXT = 0x64                                                 # main.txt 0x64 + show-health flag (Ctrl+H, FUN_0041f0e0)
+FORMATION_MS = 2000                                                # CONFIRMED: `push 0x7d0` before FUN_004021fe at 0x40cf3e (Ctrl+F), 0x40ced7 (Ctrl+W), 0x40cf86 (Ctrl+H)
 RIGHT_SCROLL_DIV = 8
 
 
@@ -164,17 +165,48 @@ def target_cell(mx, camera_cell_x, row):
 
 
 class MessageLine:
-    """The view's message line: one text at a time with its own lifetime (FUN_004021fe; "No way" 3000 ms)."""
+    """The view's message list (`FUN_004021fe` add, `FUN_00402585` ageing, `FUN_0040261a` draw; CONFIRMED).  A queue of lines, each with its own
+    colour table and lifetime, drawn top-down from (8, 8) of the view in font1 with the `0x5f17f4` table (`0x61fa80`, the grey 17i ramp), one line
+    every `font height + 2` pixels.  `show` wraps the text to the view width (`wrap`), appends its lines (when the queue was empty the clock
+    starts: `last = now`, `age = 0`) and drops the oldest lines beyond `max_lines` (`(view height / (font height + 2)) / 2`).  The ageing runs
+    once per frame: `age += now - last`; only the FIRST line has a clock, it is removed when `age > its lifetime` and `age` restarts at 0 for the
+    next one, so a second message lives its own time after the first has gone.  "No way", the formation / retreat / health / flying-damage
+    texts and the level-up lines all use it (`ui-layout.md`, `click-to-move-research.md` 6.3)."""
 
-    def __init__(self):
-        self.text, self.until, self.colour = "", 0, None
+    def __init__(self, max_lines=None, wrap=None):
+        self.queue = []                         # [text, lifetime ms, colour] oldest first (the exe's three lists)
+        self.last = self.age = 0                # +0x40 time of the last ageing, +0x44 age of the first line
+        self.max_lines, self.wrap = max_lines, wrap
 
     def show(self, text, now_ms, duration_ms, colour=None):
-        if text:
-            self.text, self.until, self.colour = text, now_ms + duration_ms, colour
+        if not text:
+            return
+        if not self.queue:
+            self.last, self.age = now_ms, 0
+        for line in (self.wrap(text) if self.wrap else [text]):
+            self.queue.append([line, duration_ms, colour])
+        while self.max_lines is not None and len(self.queue) > self.max_lines:
+            del self.queue[0]
+
+    def tick(self, now_ms):
+        """`FUN_00402585`."""
+        if not self.queue:
+            return
+        self.age += now_ms - self.last
+        self.last = now_ms
+        if self.age > self.queue[0][1]:
+            self.age = 0
+            del self.queue[0]
+
+    def lines(self, now_ms):
+        """The live lines after this frame's ageing, oldest (top) first."""
+        self.tick(now_ms)
+        return tuple(q[0] for q in self.queue)
 
     def current(self, now_ms):
-        return self.text if self.text and now_ms < self.until else None
+        """The first (oldest) live line or None."""
+        lines = self.lines(now_ms)
+        return lines[0] if lines else None
 
 
 class MainText:

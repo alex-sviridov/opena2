@@ -441,6 +441,7 @@ def phase_out(world, script, u):
         return
     world._index_del(world._ucells, u)
     del world.units[u.id]
+    world.release(u)                                    # FUN_005102a3 -> FUN_00553891: the stamps and the occupant slots
     g = world.groups.get(u.order_group)
     if g is not None and u.id in g.members:
         g.members.remove(u.id)
@@ -486,7 +487,7 @@ def _enter(world, script, u, cell):
     u.x, u.y, u.sub_x, u.sub_y = cell[0], cell[1], 128, 128
     world.units[u.id] = u
     world._index_add(world._ucells, u)
-    u.cell_seq, world._next_cell_seq = world._next_cell_seq, world._next_cell_seq + 1
+    world.slots.place(u)                                # FUN_00510089: occupant slots (first come) and the own stamp
     groups = [world.groups.get(u.order_group)] if u.order_group else [world.ai_groups.get((u.owner, u.squad))]
     for g in groups:
         if g is not None and u.id not in g.members:

@@ -22,7 +22,7 @@ Code: `engine/ui/layout.py`, `cursor.py`, `selection.py`, `engine/sim/commands.p
 | unit info | 7 | `FUN_004adf45` / `FUN_004af3bf` | (0, 238, 160, 480) |
 | extra / text | 8 | `FUN_004b0823` / `FUN_004b0a10` | (0, 480, 160, H) (height H-480: 0 / 120 / 288) |
 | bottom bars (inventory 2, spell book 3) | 2, 3 | `FUN_004a2bba`, `FUN_004c61e7` | (0, H-90, W-160, H) in the view, both the same rect, one shown |
-| top strip | 0x4b0 | `FUN_0043b219` | (0, 0, W-160, 30); purpose INFERRED (message line) |
+| top strip | 0x4b0 | `FUN_0043b219` | (0, 0, W-160, 30); the message list is drawn from (8, 8) (CONFIRMED, rendering §14) |
 
 - The view's 16 px **left strips** are drawn by the view itself, inside its rect, at x = W-176 (`FUN_00406f43`
   `0x40a6xx`-`0x40a8xx`), over the terrain. CONFIRMED.

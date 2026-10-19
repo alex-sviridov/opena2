@@ -1,4 +1,4 @@
-"""Scripted order scenarios against tests/golden.json["orders"] (synthetic worlds, always run).
+"""Scripted order scenarios against tests/golden.json["orders_slots"] (synthetic worlds, always run).
 Regenerate with tools/update_golden.py when a change of the order or movement rules is intended."""
 
 import json
@@ -9,7 +9,7 @@ import pytest
 from orders_scenarios import SCENARIOS
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GOLD = json.load(open(os.path.join(ROOT, "tests", "golden.json")))["orders"]
+GOLD = json.load(open(os.path.join(ROOT, "tests", "golden.json")))["orders_slots"]
 
 
 @pytest.mark.parametrize("name", sorted(SCENARIOS))

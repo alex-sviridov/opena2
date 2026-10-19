@@ -192,3 +192,16 @@ def test_main_loop_click_selects_unit_and_right_click_clears():
     pygame.event.post(ev(pygame.MOUSEBUTTONUP, pos=(x, y), button=3))
     window.run(w, tv, cam, lay, assets=assets, max_frames=8)
     assert w.players[1].selection == ()
+
+
+def test_message_list_is_drawn_top_down_from_8_8_in_font1_with_the_17i_table():
+    """`FUN_0040261a`: x = 8, y = 8 + n * (font height + 2), font `0x61fac0` = font1, colour table `0x61fa80` (palettes.md 6)."""
+    from engine.backend_pygame import interface
+    assert interface.MESSAGE_POS == (8, 8) and interface.MESSAGE_FONT == 1 and interface.MESSAGE_COLOUR == "highlight"
+    pitch = interface.message_pitch()
+    assert pitch >= 17 and pitch == interface.message_pitch()           # font1 cell height 15 + 2 (15 without an install)
+    win = pygame.Surface((200, 100))
+    art_less = object.__new__(Interface)
+    interface.Interface.draw_message(art_less, win, ("one", "two"))
+    rows = [any(win.get_at((x, y))[:3] != (0, 0, 0) for x in range(200)) for y in range(100)]
+    assert any(rows[8:8 + pitch]) and any(rows[8 + pitch:8 + 2 * pitch]) and not any(rows[:8])

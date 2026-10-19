@@ -54,3 +54,16 @@ def test_pickup():
     assert choose_cursor(ci(100, 100, **{**kw, "selected_count": 2})) is S.MOVE
     assert choose_cursor(ci(100, 100, **{**kw, "selection": "foreign"})) is S.DEFAULT
     assert choose_cursor(ci(100, 100, **{**kw, "selection": "none"})) is S.DEFAULT
+
+
+def test_pending_modes_without_a_cursor_keep_the_previous_cursor():
+    """`FUN_0040b2b8`: the local cursor starts at 0 (`0x40b30e`); modes 3 and 7 (guard, stand ground: the immediate commands) have no
+    entry in the jump table (`0x40bcb8`, `ja 0x40b551`), and the epilogue (`0x40bc99`) sets a cursor only when it is non-zero."""
+    for mode in (3, 7):
+        inp = ci(100, 100, in_viewport=True, pending=mode, selection="own", selected_count=1, hover_unit=True)
+        assert choose_cursor(inp, S.ATTACK) is S.ATTACK            # unchanged
+        assert choose_cursor(inp, S.SWARM) is S.SWARM
+        assert choose_cursor(inp) is S.DEFAULT                     # nothing before: the default
+    inp = ci(100, 100, in_viewport=True, pending=2)
+    assert choose_cursor(inp, S.ATTACK) is S.MOVE                  # a mode with a cursor ignores the previous one
+    assert choose_cursor(ci(0, 100, in_viewport=True, pending=3), S.ATTACK) is S.ARROW_W   # the border arrows come first

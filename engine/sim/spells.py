@@ -121,7 +121,7 @@ def cast_level(u, spell, item_count=None):
 def set_cast(world, u, target, wrapper):
     """`FUN_0056d3e6(unit, target, wrapper)`: cancel, order 0xd, brain `+0x28` / `+0x30`, range `+0x14` = wrapper `+9`, Brain mode 0."""
     spell = world.spell_table.get(wrapper.number)
-    mv.cancel(u)
+    mv.cancel(u, world)
     u.order = CAST_ORDER
     u.cast_target = target.id
     u.cast_wrapper = wrapper
@@ -172,8 +172,8 @@ def cast_mode(world, u):
     if t is not u and not in_cast_range(u, t):
         step = mv.follow_drive(world, u, t)
         u.state = mv.MOVE_STATE
-        if step and u.path:
-            mv._start_step(world, u)
+        if step:
+            mv._step_or_turn(world, u)
         elif not u.mover.turning:
             mv._set_action(world, u, mv.IDLE)
         return

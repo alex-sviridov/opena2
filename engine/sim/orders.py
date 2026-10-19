@@ -89,10 +89,11 @@ def _clamp(world, x, y):
 
 
 def _cancel_group(world, g):
-    """`FUN_00570e83`: cancel every member, group order := 0."""
+    """`FUN_00570e83`: cancel every member, group order := 0 (record `+0x20`) and the group speed byte := 0 (`+0x44`, `0x570e6f`)."""
     for i in g.members:
-        cancel(world.units[i])
+        cancel(world.units[i], world)
     g.order = 0
+    g.speed = 0
 
 
 def move_group(world, g, x, y, raw=False, swarm=False):

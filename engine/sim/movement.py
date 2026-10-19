@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 from allods2.formats import progression as prog
 
+from engine.cellslots import pack
 from engine.world import NoWay
 
 from .commands import Command
@@ -203,14 +204,17 @@ def _advance(world, u):
     if (nx >> 8, ny >> 8) == (u.x, u.y):
         u.sub_x, u.sub_y = nx & 255, ny & 255
     else:
-        world.move_unit(u.id, nx >> 8, ny >> 8, nx & 255, ny & 255)
+        world.move_unit(u.id, nx >> 8, ny >> 8, nx & 255, ny & 255, crossing=True)
     if m.steps >= m.step_ticks:
         u.sub_x = u.sub_y = CENTRE
     u.odometer = int(u.odometer + math.hypot(m.dx, m.dy))
 
 
-def _end_step(u):
+def _end_step(world, u):
+    """`FUN_00555b38` at the centre: counters cleared, `FUN_0055be86` mode 2 then mode 1 (the origin stamp is dropped, the own cell stamped)."""
     m = u.mover
+    world.slots.be86(u, 0, 2)
+    world.slots.be86(u, 0, 1)
     u.state = IDLE_STATE            # the Brain tick clears the state at a centre (R 3.4); the next step sets it again
     m.step_len = m.step_ticks = m.steps = 0
     m.step_target = m.step_from = None
@@ -222,6 +226,8 @@ def _start_step(world, u):
     m = u.mover
     here = (u.x, u.y)
     target = u.path[0]
+    world.slots.be86(u, 0, 2)                                   # FUN_00555c7e 0x555cee-0x555d15, before the facing test: every call with a
+    world.slots.be86(u, pack(*target), 0)                       # waypoint (also a turn tick) stamps the next cell and the own cell
     face = facing_to(here, target)
     m.target_facing = face
     if u.facing != face:
@@ -240,6 +246,23 @@ def _start_step(world, u):
     u.step_end = world.tick + m.step_ticks              # +0x138 (message 0x6b): the regeneration rest test
     _set_action(world, u, MOVE)
     _advance(world, u)
+
+
+def _step_or_turn(world, u):
+    """`FUN_00555c7e`: with a waypoint in the dynamic list start the step (`_start_step`); with an EMPTY list (the hop plan found no cell,
+    or a follow driver skipped the plan while the facing differs from the target facing) the routine runs one tick of `FUN_005551ef`
+    towards `mover+1` and nothing else: no step, no turn bookkeeping (`turning` / `turn_ticks` untouched).  At a centre with
+    facing == target facing that is a no-op (docs/engine/simulation.md 7.2)."""
+    if u.path:
+        _start_step(world, u)
+        return
+    old = u.facing
+    _turn_step(u)
+    if u.facing != old:
+        u.state = MOVE_STATE
+        _set_action(world, u, TURN)
+    elif not u.mover.turning:
+        _set_action(world, u, IDLE)
 
 
 def _in_map(world, c):
@@ -299,26 +322,17 @@ def _footprint(o, cell):
 
 
 def live_cells(world, u):
-    """Cells the other units stamp into the live layer as seen by mover `u` (CONFIRMED
-    docs/engine/simulation.md 7.3, 7.4): every other unit holds its `size x size` footprint at its cell and, while
-    a step is in progress, at the other end of the step: the cell it is entering until it crosses the border,
-    the cell it left after (FUN_00554fd2 0x555173: `FUN_0055be86(unit, old cell, 0)` after the move, so the old
-    cell is held until the step end, FUN_00555b38).  The stamp is 0x40 (ground classes) or 0x80 (flyers), so only
-    movers whose mask contains it (0x41/0x44 resp. 0x82) are blocked.  A unit with HP <= 0 keeps its stamps until
-    it is removed (FUN_00510a70 -> FUN_00553891 is the only release, at state 0x10).  The exe's first-come slot
-    per cell does not change the set of blocked cells, only who owns the record (`_blocker`)."""
+    """Cells the other units stamp into the live layer as seen by mover `u` (CONFIRMED docs/engine/simulation.md 7.3, 7.4): the stamp
+    slots of the cell records (`World.cells.stamp`, rec+0x2c ground / rec+0x30 flyers), whoever holds them; the unit's own are left out
+    (it releases them before it plans).  The slots are filled and cleared by `FUN_0055be86` as the exe does it (step start, border
+    crossing, step end, planner, removal: `engine/cellslots.py`), so a unit that lost a first-come race holds nothing and a cell can be free
+    while the loser stands on it.  The stamp is 0x40 (ground classes) or 0x80 (flyers): only movers whose mask contains it are blocked.
+    A unit with HP <= 0 keeps its stamps until it is removed (FUN_00510a70 -> FUN_00553891)."""
     seen = pas.MOVE_MASK.get(u.move_type, pas.MOVE_MASK[1])
     out = set()
-    for o in world.units.values():
-        if o is u or not (unit_stamp(o) & seen):
-            continue
-        origins = [(o.x, o.y)]
-        if o.mover.step_target:
-            origins.append(tuple(o.mover.step_target))
-        if o.mover.step_from:
-            origins.append(tuple(o.mover.step_from))
-        for origin in origins:
-            out.update(_footprint(o, origin))
+    for air, bit in ((0, UNIT_STAMP_GROUND), (1, UNIT_STAMP_AIR)):
+        if bit & seen:
+            out.update((idx & 255, idx >> 8) for idx, h in world.slots.stamp[air].items() if h != u.id)
     return out
 
 
@@ -367,9 +381,11 @@ def _hop_plan(world, u, follow=None):
         final = False
     else:
         goal, final = m.tail, True
+    world.slots.be86(u, 0, 2)                           # FUN_0054d76e dynamic mode 0x54dd04: the unit's own ring is released for the wave ...
     grid = path_grid(world, u.move_type).with_blocked(live_cells(world, u))
     res = plan_dynamic(grid, here, goal, size=unit_size(u), walker=u.move_type == 1,
                        follow=None if follow is None else (foot(u), foot(follow)))
+    world.slots.be86(u, 0, 1)                           # ... and the own cell stamped again before the walk back (0x54e109)
     # FUN_0054e886 push-fronts the new cells onto the list it is given and never clears it (only the static
     # plan, mode != 0, clears its list first, FUN_0054d76e 0x54d7be): a non-empty dynamic list (a turn in
     # progress at the centre re-planning after DynamicRefreshRate ticks) keeps its old cells behind the hop.
@@ -383,20 +399,21 @@ def _hop_plan(world, u, follow=None):
 
 
 def _occupants(world, cells, skip=None):
-    """Units whose cell-record occupant slot (rec+4, FUN_005503af / FUN_00551edb) covers one of `cells`: ground
-    classes (1, 2) only (class 3 uses rec+8, which FUN_00551edb never reads), at the current `size x size` footprint
-    only (the slot moves at the border crossing, not with the live stamps), dead units included.  Several units
-    on one cell: the one that entered it first keeps the slot (`Unit.cell_seq`)."""
-    want = set(cells)
-    found = [o for o in world.units.values()
-             if o is not skip and o.move_type != 3 and want.intersection(_footprint(o, (o.x, o.y)))]
-    found.sort(key=lambda o: o.cell_seq)
-    return found
+    """The units `FUN_00551edb` returns for `cells`, one entry per cell, in order: the ground occupant slot (rec+4, ground classes 1, 2
+    only: class 3 uses rec+8, which nothing reads) of each cell, dead units included.  A unit that only stamps a cell (entering it, or
+    leaving it after the border), or that lost the first-come race for it, is no occupant; a sized unit appears once per footprint cell
+    it holds."""
+    out = []
+    for c in cells:
+        uid = world.slots.occupant(pack(c[0], c[1]))
+        o = world.units.get(uid) if uid is not None else None
+        if o is not None and o is not skip:
+            out.append(o)
+    return out
 
 
 def _blocker(world, u, cell):
-    """`FUN_00551edb(cell)`: the occupant of the cell record (the first-come unit whose current footprint holds
-    `cell`), or None.  A unit that only stamps the cell (entering it, or leaving it after the border) is not one."""
+    """`FUN_00551edb(cell)`: the occupant of the cell record, or None."""
     found = _occupants(world, [tuple(cell)], skip=u)
     return found[0] if found else None
 
@@ -490,7 +507,16 @@ def _drive(world, u):
     return True
 
 
-def cancel(u):
+def restamp_displaced(world, u):
+    """The tail of `FUN_0056d969` (0x56d9a7-0x56da01) and of the guard scan `FUN_0056a1fb` (0x56a592-0x56a5f0): a unit at a cell centre whose
+    stamp cell (`mover+0x80`) is neither 0 nor its own cell stamps its own cell again (`FUN_00558b75` = `FUN_0055be86(unit, 0, 1)`), which
+    releases the next-cell stamp a turning unit took."""
+    m = u.mover
+    if (u.sub_x, u.sub_y) == (CENTRE, CENTRE) and m.stamp_cell and m.stamp_cell != pack(u.x, u.y):
+        world.slots.be86(u, 0, 1)
+
+
+def cancel(u, world=None):
     """`FUN_0056dbfb` = `FUN_0056d969` + `brain+0x50 := 0` (R 3.4): the target facing becomes the facing (a turn in
     progress stops where it is), the state is 0.  A step in progress is NOT aborted (the Brain tick keeps running
     it) and a reservation is kept mid-step; at a centre the engine has no reservation to release (the live layer is
@@ -499,13 +525,15 @@ def cancel(u):
     u.mover.follow = None                       # FUN_0056d969: mover+0x7c := 0
     u.state = IDLE_STATE
     u.stopped = False
+    if world is not None:
+        restamp_displaced(world, u)
 
 
 def stop_unit(world, u):
     """`FUN_0056dbc6`: cancel, then order 0xc with the anchor on the own cell and Brain mode 0 (`FUN_0056dba1` ->
     `FUN_0056d52b`), and `brain+0x50 := 1`.  Used by the group pass at arrival (the only caller of the move
     group's handler, `FUN_00573198`)."""
-    cancel(u)
+    cancel(u, world)
     set_stand(world, u)
     u.stopped = True
 
@@ -514,13 +542,13 @@ def fail_stop(world, u):
     """`FUN_0056dc24` (the failure of an order 1, `0x56e1d9`): `FUN_0056d969` then `FUN_0056dba1` = cancel (which
     clears `brain+0x50`) and `FUN_0056d52b`.  Unlike `FUN_0056dbc6` it does NOT set `brain+0x50` (CONFIRMED
     asm 0x56dc24-0x56dc46, 0x56dba1-0x56dbc3): the group pass will restart the unit (unit-struct 8.1)."""
-    cancel(u)
+    cancel(u, world)
     set_stand(world, u)
 
 
 def set_stand(world, u):
     """`FUN_0056d52b`: order 0xc (stand/guard), anchor = the own cell, mode 0."""
-    cancel(u)
+    cancel(u, world)
     u.mode_go = False
     u.mode_attack = u.mode_cast = False
     u.order = STAND_ORDER
@@ -531,7 +559,7 @@ def set_stand(world, u):
 
 
 def _set_post(world, u, order, anchor):
-    cancel(u)
+    cancel(u, world)
     u.mode_go = False
     u.mode_attack = u.mode_cast = False
     u.mode_look = False
@@ -558,7 +586,7 @@ def set_still(world, u):
 def set_move(world, u, x, y):
     """`FUN_0056d032` after the clamp: order 1, destination (x, y), `mover+0x90` (arrived) and the failure flag
     cleared, Brain mode 1.  The cancel comes first."""
-    cancel(u)
+    cancel(u, world)
     m = u.mover
     u.order = MOVE_ORDER
     u.mode_go = True
@@ -618,7 +646,7 @@ def _tick_inner(world, u):
         u.state = MOVE_STATE
         _advance(world, u)
         if (u.sub_x, u.sub_y) == (CENTRE, CENTRE):
-            _end_step(u)
+            _end_step(world, u)
             if m.goal is not None:
                 u.path = []             # FUN_00555b38 clears the dynamic list (+0x1e4) at every step end
         return
@@ -652,9 +680,9 @@ def _tick_inner(world, u):
         u.order, u.state = NO_ORDER, IDLE_STATE
         m.target_facing = u.facing
         _set_action(world, u, IDLE)
-    else:                                               # no hop yet: wait for the next tick's driver
+    else:                                               # the hop plan found nothing: FUN_00555c7e's empty-list turn tick
         u.state = IDLE_STATE
-        _set_action(world, u, IDLE)
+        _step_or_turn(world, u)
 
 
 def follow_drive(world, u, t):

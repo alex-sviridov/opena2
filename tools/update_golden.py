@@ -188,7 +188,7 @@ def main(argv):
     out["spells"] = spells_hash(install)
     out["progression"] = progression_hash(install)
     out["paths"] = path_hashes(install)
-    out["orders"] = orders_summaries()
+    out["orders_slots"] = orders_summaries()      # was "orders" before the cell-record slots (simulation 7.4); old key dropped on regeneration
     out["casts"] = casts_summaries()
     with open(GOLDEN, "w", encoding="ascii") as f:
         json.dump(out, f, indent=1, sort_keys=True)

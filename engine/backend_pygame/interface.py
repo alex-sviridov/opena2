@@ -7,12 +7,20 @@ import pygame
 from allods2.graphics.bmp import load_bmp
 
 from .render import draw_frame, draw_numbers
-from .text import draw_text
+from .text import draw_text, game_font
 
 INFO_TEXT = (255, 255, 255)
-MESSAGE_COLOUR = (192, 192, 192)    # text slot 0x5f17f4 = table 0x61fa80 "grey 17i": INFERRED RGB
-MESSAGE_POS = (8, 8)
+MESSAGE_COLOUR = "highlight"        # text slot 0x5f17f4 = table 0x61fa80 (17i, 17i, 17i): CONFIRMED (palettes.md 6, `FUN_0040261a` list colour)
+MESSAGE_POS = (8, 8)                # `FUN_0040261a` 0x402640 / 0x402647 (game mode 2; mode 3: (0, 0xdc))
+MESSAGE_FONT = 1                    # `ds:0x61fac0` = font1 (fonts.md); mode 3 uses font2
+MESSAGE_GAP = 2                     # pitch = font height + 2 (`FUN_0040261a` 0x40278e)
 BALL = "graphics/interface/Ball.bmp"
+
+
+def message_pitch():
+    """Pixels between two message lines: the height of font1 plus 2 (`FUN_00402a90`, `0x40278e`)."""
+    f = game_font(MESSAGE_FONT)
+    return (f.cell_height() if f is not None else 15) + MESSAGE_GAP
 
 
 def selection_state(world, player_id):
@@ -87,11 +95,13 @@ class Interface:
             window.blit(rgb_surface(img), (panel.left, panel.top))
         self.draw_info(window, world, player_id, unit_title, hover)
         if message:
-            self.draw_message(window, *message)
+            self.draw_message(window, message)
 
-    def draw_message(self, window, text, colour=MESSAGE_COLOUR):
-        """The message line: top strip of the view (0, 0, W-160, 30), purpose INFERRED (ui-layout.md section 1)."""
-        draw_text(window, text, MESSAGE_POS[0], MESSAGE_POS[1], colour)
+    def draw_message(self, window, lines, colour=MESSAGE_COLOUR):
+        """The message list (`FUN_0040261a`): the live lines top-down from (8, 8) of the view, `font height + 2` apart, font1, shadowed."""
+        pitch = message_pitch()
+        for i, text in enumerate(lines):
+            draw_text(window, text, MESSAGE_POS[0], MESSAGE_POS[1] + i * pitch, colour, font=MESSAGE_FONT)
 
     def draw_info(self, window, world, player_id, unit_title=None, hover=None):
         """Info panel texts (ui-layout.md section 10; DECISIONs in the design spec).  The hovered unit wins over the selection

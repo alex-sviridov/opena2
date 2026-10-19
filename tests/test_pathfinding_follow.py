@@ -147,9 +147,16 @@ def test_sized_follower_and_target_box():
 
 
 def test_same_centre_does_not_raise():
-    # compass 14 -> side 4 and 0 / 0 = NaN: FISTP gives the integer indefinite (low dword 0), no FP trap assumed
-    r = follow_fallback(full(), Foot(50, 50), T)
-    assert r is None or len(r) == 2
+    """The CRT start-up leaves the x87 control word at 0x27F (`_cinit` 0x589580 -> 0x582990 -> `fninit`, `_controlfp(_PC_53, _MCW_PC)` at
+    0x58abc0): all exceptions masked, so compass 14 -> side 4 and 0 / 0 = QNaN; FISTP (`FUN_00582c0c`, 64-bit store) gives the integer
+    indefinite 0x8000000000000000, whose low dword (EAX) is 0.  b = 0, the entry column is 0 >> 8 = 0, row y0 = Ty - 1."""
+    assert follow_fallback(full(), Foot(50, 50), T) == (0, 49)
+
+
+def test_ftol_is_truncation_and_the_indefinite_is_zero():
+    from engine.sim.pathfinding import _ftol
+    assert (_ftol(2.9), _ftol(-2.9), _ftol(0.99)) == (2, -2, 0)             # control word | 0xc00: round toward zero
+    assert _ftol(float("nan")) == 0 and _ftol(float("inf")) == 0           # integer indefinite, low dword
 
 
 def test_entry_point_matches_the_exact_line_within_one_cell():

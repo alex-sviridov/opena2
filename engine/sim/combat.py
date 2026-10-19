@@ -184,7 +184,7 @@ def set_attack(world, u, t):
     if u is t:
         mv.fail_stop(world, u)
         return
-    mv.cancel(u)
+    mv.cancel(u, world)
     u.order = mv.ATTACK_ORDER
     u.target = t.id
     u.range = combat_stats(world, u).range
@@ -224,8 +224,8 @@ def attack_mode(world, u):
         return
     step = mv.follow_drive(world, u, t)
     u.state = mv.MOVE_STATE
-    if step and u.path:
-        mv._start_step(world, u)
+    if step:
+        mv._step_or_turn(world, u)
     elif not u.mover.turning:
         mv._set_action(world, u, mv.IDLE)
 

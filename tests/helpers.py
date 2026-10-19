@@ -73,3 +73,11 @@ def projectile(pid, sprites=None, **kw):
                Palette=1, Flip=0, A16=1)
     rec.update(kw)
     return ProjectileSet(rec, sprites=sprites or {"main": sprite_file(64)})
+
+
+def set_move_type(world, u, move_type):
+    """Change a placed unit's movement class the way the engine would see it from the start: lift its slots, change, place again
+    (the occupant and stamp slots of a cell record are per class: simulation.md 7.4)."""
+    world.release(u)
+    u.move_type = move_type
+    world.slots.place(u)

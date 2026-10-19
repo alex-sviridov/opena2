@@ -12,6 +12,8 @@ from engine.sim import ai
 from engine.sim.combatstats import ArmourBlock, AttackRecord, CombatStats
 from engine.world import UNIT_ID_BASE, Damage, Player, Unit, World
 
+from helpers import set_move_type
+
 EAST = 64
 
 
@@ -559,7 +561,7 @@ def test_the_flee_list_holds_ground_occupants_only_once_per_footprint_cell_and_n
     m = unit(w, 1, 20, 20, 2, 1)
     big = hero(w, 2, 24, 20, token=2)                    # footprint 24..25 x 20..21: 4 cells inside the square, listed 4 times
     fly = hero(w, 3, 20, 24, move=3)
-    fly.move_type = 3                     # a flyer holds rec+8, never read by FUN_00551edb
+    set_move_type(w, fly, 3)              # a flyer holds rec+8, never read by FUN_00551edb
     small = hero(w, 4, 20, 16)
     near = ai._enemies(w, m, 10)
     assert [c.id for c in near].count(big.id) == 4

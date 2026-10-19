@@ -7,9 +7,9 @@ import pygame
 from engine.sim import DEFAULT_SPEED, CommandQueue, Simulation, tick_period_ms
 from engine.sim import ai as ai_mod
 from allods2.common import as_fs
-from engine.ui import (CursorInput, DebugFlags, Layout, MainText, MessageLine, MinimapPanel, OrderInput, ScrollInput,
+from engine.ui import (CursorInput, CursorState, DebugFlags, Layout, MainText, MessageLine, MinimapPanel, OrderInput, ScrollInput,
                        SelectionInput, choose_cursor, choose_minimap_cursor, drain_no_way, level_up_messages, target_cell)
-from engine.ui.orders import FORMATION_MS, FORMATION_TEXT, castable_spell, minimap_move_cell
+from engine.ui.orders import FORMATION_MS, FORMATION_TEXT, HEALTH_TEXT, castable_spell, minimap_move_cell
 from engine.view import DrawOptions, Projection, build_draw_list, build_terrain_items
 from engine.view.damage import FloatingDamage, unit_anchor
 from engine.world import Damage, Died, LevelUp, Loot, Removed
@@ -134,6 +134,17 @@ def ai_overlay(world, debug, selection):
     return {uid: ai_mod.overlay(world, world.units[uid]) for uid in selection if uid in world.units}
 
 
+def message_line(layout):
+    """The view's message list: wrapped to the view width in font1, at most `(view height / (font height + 2)) / 2` lines
+    (`FUN_0040212b` 0x40219e-0x4021c3)."""
+    from .interface import message_pitch
+    from .text import game_font
+    from allods2.text import font_bytes
+    font, rect = game_font(1), layout.viewport
+    wrap = None if font is None else (lambda t: font.wrap(font_bytes(t), rect.w))       # lines are font bytes: draw_text takes them as they are
+    return MessageLine(max_lines=(rect.h // message_pitch()) // 2, wrap=wrap)
+
+
 def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Allods 2", max_frames=None,
         assets=None, options=None, debug=None, minimap=None, player_id=PLAYER_ID, commands=(), ai=True):
     """Accumulator main loop: fixed-step sim, variable-rate drawing.  Returns the `Simulation` when the window
@@ -155,7 +166,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     cursors = CursorSprites(fs)
     title_of = unit_title_fn(assets)
     texts = MainText.load(as_fs(fs))
-    messages = MessageLine()
+    messages = message_line(layout)
     panel = MinimapPanel.from_layout(minimap.geometry, layout) if minimap else None
     sim, queue, scroll = Simulation(world, ai=ai, triggers=world.script is not None), CommandQueue(), ScrollInput()
     for cmd in commands:
@@ -186,6 +197,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
         panel.center_camera(camera, *pos)
 
     running = True
+    state = CursorState.DEFAULT                 # the cursor of the previous frame (a pending mode without a cursor keeps it)
     while running:
         dt = clock.tick(60)
         acc += min(dt, MAX_FRAME_MS)
@@ -193,7 +205,8 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
             if ev.type == pygame.QUIT or (ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE):
                 running = False
             elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_h and ev.mod & pygame.KMOD_CTRL:
-                options = dataclasses.replace(options, health_bars=not options.health_bars)
+                options = dataclasses.replace(options, health_bars=not options.health_bars)     # FUN_0041f0e0 + text 0x64/0x65
+                messages.show(texts.line(HEALTH_TEXT + int(options.health_bars)), pygame.time.get_ticks(), FORMATION_MS)
             elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_l and ev.mod & pygame.KMOD_CTRL:
                 options = dataclasses.replace(options, flying_damage=not options.flying_damage)     # FUN_0041f120 + text 0x66/0x67
                 messages.show(texts.line(FLYING_TEXT + int(options.flying_damage)), pygame.time.get_ticks(), FORMATION_MS)
@@ -249,7 +262,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
                         ci = cursor_input(world, camera, layout, picks, ev.pos, player_id, projection,
                                           ordering.pending, mods)
                         cell, hover_unit = click_target(world, camera, layout, picks, ev.pos, projection)
-                        what, cmd = ordering.release(choose_cursor(ci), cell, hover_unit)
+                        what, cmd = ordering.release(choose_cursor(ci, state), cell, hover_unit)
                         if what == "select":
                             cmd = selecting.release(*ev.pos, shift=mods[2])
                             if cmd is not None:
@@ -278,15 +291,15 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
         hover = pick_at(items.picks, *mouse) if mouse is not None and layout.viewport.contains(*mouse) else None
         items = build_draw_list(world, camera, world.tick, assets, options, debug, player.selection, hover,
                                 ai_info=ai_overlay(world, debug, player.selection))
-        text = messages.current(now)
+        lines = messages.lines(now)
         numbers = floating_entries(world, floats, camera, assets, fs, now) if options.flying_damage else ()
         ui.draw(screen, caches, build_terrain_items(terrain_view, camera, world.tick), items, camera,
-                world, player_id, minimap, panel, title_of, (text,) if text else None, numbers, hover)
+                world, player_id, minimap, panel, title_of, lines or None, numbers, hover)
         if panel and mouse is not None and panel.contains(*mouse):
             state = choose_minimap_cursor(True, selection_state(world, player_id), ordering.pending)
         else:
             state = choose_cursor(cursor_input(world, camera, layout, items.picks, mouse, player_id, projection,
-                                               ordering.pending, modifiers()))
+                                               ordering.pending, modifiers()), state)
         draw_cursor(screen, cursors, state, mouse, now)
         pygame.display.flip()
         frames += 1

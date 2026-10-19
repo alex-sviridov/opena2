@@ -74,11 +74,14 @@ MINIMAP_PENDING = {1: CursorState.SATTACK, 6: CursorState.SATTACK, 2: CursorStat
                    5: CursorState.SCAST, 8: CursorState.SPATROL}
 
 
-def choose_cursor(inp):
+def choose_cursor(inp, previous=None):
     """Cursor state of `FUN_0040b2b8` (CONFIRMED, asm 0x40b2b8-0x40bcb7; research 1.3): border arrows first, nothing
     over the panels, then the pending mode (hover flags and modifiers ignored), else the table by selection,
-    hover and Ctrl / Alt.  A mode without a cursor (3, 7) gives DEFAULT here (the exe keeps the previous
-    cursor: DECISION).  The spellbook cast branch and the open-window / carried-item overrides are out of scope."""
+    hover and Ctrl / Alt.  A mode without a cursor (3, 7) leaves the chooser's local cursor at its initial 0
+    (`0x40b30e`), and the epilogue (`0x40bc99`) sets a cursor only when it is non-zero, so the cursor stays the
+    one of the previous frame (CONFIRMED): `previous`, DEFAULT when there is none.  (Modes 3 and 7 are cleared in
+    the call that arms them, so the UI never shows this.)  The spellbook cast branch and the open-window /
+    carried-item overrides are out of scope."""
     S = CursorState
     if inp.mouse is None:
         return S.DEFAULT
@@ -88,7 +91,9 @@ def choose_cursor(inp):
     if not inp.in_viewport:
         return S.DEFAULT
     if inp.pending:
-        cur = PENDING_CURSORS.get(inp.pending, S.DEFAULT)
+        cur = PENDING_CURSORS.get(inp.pending)
+        if cur is None:                                 # modes 3 and 7 (any value without a table entry): the cursor is not touched
+            return previous if previous is not None else S.DEFAULT
         return S.MOVE if cur is S.CAST and inp.hover_fogged else cur
     own = inp.selection == "own"
     if not own:                         # nothing, foreign or structure selection: no orders

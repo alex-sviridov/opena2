@@ -95,7 +95,7 @@ template is enterable), `4` hovered owner hostile, `0x40` visible item on the ce
    - finally, while a left capture is open with a non-empty drag rect: default (the rubber-band state); at the release the
      capture is already closed, so the real cursor stands.
 4. **Pending mode**: cursor by `view+0x9b4`: 1 attack, 2 move, 4 defend, 5 cast (fogged `h & 0x400` -> move), 6 swarm,
-   8 patrol; other values (3, 7) leave the cursor unchanged. Hover flags, Ctrl and Alt are ignored.
+   8 patrol; other values (3, 7) leave the cursor unchanged: the chooser's local cursor starts at 0 (`0x40b30e`) and the epilogue (`0x40bc99`) sets one only when non-zero, so the previous cursor stays (engine `choose_cursor(inp, previous)`; the modes are cleared in the call that arms them, so the UI never shows it). Hover flags, Ctrl and Alt are ignored.
 5. Open dialog windows 2/3 under the pointer: default. A carried item (`client+0x3f4`): the item's cursor (`+0x400`), the
    backpack cursor `0x626d24` over the hero.
 6. `FUN_0047b8f5(cursor)` sets it only when it differs from the current one (animation frame reset).
@@ -477,9 +477,7 @@ by `FUN_0056dbc6` (arrival and the group pass: the same plus `brain+0x50 := 1`).
   no marker/target sprite). The only visible reaction is the units walking, the voice, and the command-bar highlight clearing.
 
 ### 6.2 Acknowledgement voice
-`FUN_0041da16(view)` picks one unit of the selection (living, HP `obj+0x104 > 0`; heroes (`obj+0x1b8 & 1`) first, then units flagged
-`0x10`, then units with `obj+0x1dc` in 1..20; random pick `rand * count / 0x7fff` inside the first non-empty class: INFERRED reading of
-`0x41da95`-`0x41dce0`). After a move/patrol/swarm/etc. order the picked unit's vtable method plays its voice (`move`: slot `+0x6c` =
+`FUN_0041da16(view)` (CONFIRMED asm `0x41da16`-`0x41dcdb`) returns 0 unless the game mode `+0x5d8 == 2` and the voice option `0x622778` is on; else it walks the selection set (`view+0x9d0`, hash order), living objects only (HP `obj+0x104 > 0`), into three lists: A = heroes (`+0x1b8 & 1`); for others, while A is still empty and `+0x1b8 & 0x10`: B if `obj+0x188 != 0`, else C when B is still empty; otherwise B when `obj+0x1dc` (word) is in 1..20. The result is a random member of the first non-empty list A, B, C: `list[rand() * n / 0x7fff]` (CRT `rand`, `FUN_00583290`). After a move/patrol/swarm/etc. order the picked unit's vtable method plays its voice (`move`: slot `+0x6c` =
 `0x4682a6`; swarm `+0x70`, attack `+0x68`, stand `+0x78`, pickup `+0x84`). `0x4682a6`: at most once per 3000 ms per unit
 (`obj+0x1bc`), random sample from the template list (`template+0x64` entries at `+0x24`), pan/volume from the unit's position relative to the
 view. For the move order the call is skipped when `voice_obj+0x78 == 1` (`0x418c99`). Out of scope for now (no sound engine in the recreation yet).
@@ -490,16 +488,16 @@ is posted by the **static** planner (`FUN_0054d76e`, `0x54e1fd`/`0x54e230`) when
 more than 1 cell from the target (more than 2 when the target cell is a building cell, `FUN_00559bc9`), i.e. at every static re-plan of
 every affected unit (also each unit of a formation, and AI units; the message is addressed to the owner id). Client handler `0x40e21d`,
 sub-code 1 (`0x40e266`): if `DAT_00622810 != 0` (**constant 1**, its only writer is `0x48128d`; so always) it shows `main.txt` line `0x81` =
-**"No way"** in the message line of the view (`FUN_004021fe`, colour `0x5f17f4`, **3000 ms**). It does not change the route and plays no sound.
+**"No way"** in the message list of the view (`FUN_004021fe`, colour slot `0x5f17f4` = table `0x61fa80`, **3000 ms**; list model in rendering §14). It does not change the route and plays no sound.
 **Recipient (CONFIRMED asm):** `FUN_005052d2` is called on the **server** session object `0x6831a8` (host flag `+0x18b0 = 1`,
 built by `0x5019d0`; the client session `0x670e50` is built with flag 0 by `0x501a11`); `FUN_00505347` writes `+7` = word at
 `[owner player object + 4]` (0 when the pointer is null) and posts via `FUN_0050164f`: `+7 == 0` goes to every connection of the
 list `+0x18b8`; otherwise `FUN_0050155f(+7)` finds the connection whose player id (`client+0x108`, `FUN_0044f5b0`) equals `+7`,
 and **no match is dropped** (the fallback to the local connection `+0x18b4` only exists when the host flag is 0). The client
 handler `0x40e21d`/`0x40e266` has no player test of its own. So an AI player's "No way" is shown only if that player has a
-connection in the list; in single player only the human's has (INFERRED, sub-question in §9), hence the engine shows the local
+connection in the list; in single player the server hub has one local connection whose id is bound to the human's slot (`player+4` = 1) by the join handler, so computer players' messages (other slots) are dropped (simulation §11.5; the binding itself INFERRED), hence the engine shows the local
 player's (and broadcast id 0) messages and drops the rest (`drain_no_way`).
-`main.txt` also holds `0x61`-`0x63` (formation) and `0x5e`-`0x60` (retreat mode) shown by `Ctrl+F` / `Ctrl+W`.
+`main.txt` also holds `0x61`-`0x63` (formation, `Ctrl+F` = `FUN_0041f040`, option message `0x46`/2), `0x5e`-`0x60` (retreat mode, `Ctrl+W` = `FUN_0041f090`, `0x46`/1) and `0x64`/`0x65` ("Show Health", `Ctrl+H` = `FUN_0041f0e0`, a client-only toggle of `+0xab8`), each shown for **2000 ms** (`push 0x7d0` at `0x40cf3e`, `0x40ced7`, `0x40cf86`).
 
 ## 7. Other dynamic details
 
@@ -529,9 +527,7 @@ player's (and broadcast id 0) messages and drops the rest (`drain_no_way`).
 
 1. Group handlers for orders 5 (swarm `572e1e`), 1/3/0x13 (`57275f`, `57309d`, `57311c`) and the computer players' branch of the pass.
 2. `FUN_00556dcd` (detection level used by `FUN_00567a16` for hidden enemies) and the spell branches of the post step (`FUN_0056bb0d` kind `0x17`, `FUN_0056cb8c`, `FUN_0056969c`).
-3. Voice-unit selection `FUN_0041da16` and the per-order voice slots (class lists, exact rule).
-4. `FUN_0041f090`/`41f0e0`: neighbours of `Ctrl+F` (`FUN_0041f040`).
-5. `FUN_005018cd`/`FUN_00500f0e`, `0x50155f`: which connections the single-player server holds in `+0x18b8` (only the human's? makes the AI "No way" drop CONFIRMED).
+3. The per-order voice slots beyond the unit pick (sound engine, out of scope).
 6. `FUN_00582a10` heap: the block after the `+0xb8` table (`(H+10)(W+6)` dwords); the last-row read of `FUN_00417f31` for panel column `W+3`/`W+4` (INFERRED skipped, result `H+4`).
 
 ## 10. Corrections to the existing docs (applied)

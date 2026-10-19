@@ -6,6 +6,8 @@ import numpy as np
 from engine.sim import MoveTo, Simulation, replay
 from engine.world import UNIT_ID_BASE, Player, Unit, World
 
+from helpers import set_move_type
+
 EAST = 64
 
 
@@ -207,23 +209,27 @@ def test_live_layer_unit_stamps_are_class_specific():
     walker = unit(w, 1, 5, 5)
     ghost = unit(w, 2, 9, 9)
     flyer = unit(w, 3, 12, 12)
-    ghost.move_type, flyer.move_type = 2, 3
+    set_move_type(w, ghost, 2)
+    set_move_type(w, flyer, 3)
     assert unit_stamp(walker) == 0x40 and unit_stamp(ghost) == 0x40 and unit_stamp(flyer) == 0x80
     assert live_cells(w, walker) == {(9, 9)}     # the flyer is invisible to ground
     assert live_cells(w, ghost) == {(5, 5)}
     assert live_cells(w, flyer) == set()                                # a flyer sees no ground unit
     other = unit(w, 4, 20, 20)
-    other.move_type = 3
+    set_move_type(w, other, 3)
     assert live_cells(w, flyer) == {(20, 20)}                           # but sees another flyer
 
 
 def test_live_layer_holds_footprint_and_entered_cell_of_others_only():
+    from engine.cellslots import pack
     from engine.sim.movement import live_cells
     w = world()
     me = unit(w, 1, 5, 5)
-    big = unit(w, 2, 10, 10)
+    big = Unit(UNIT_ID_BASE + 2, 1, 1, 10, 10, uid=2, hp=10, hp_max=10, facing=EAST, speed_mod=24)
     big.stats = type("S", (), {"token_size": 2})()
-    big.mover.step_target = (11, 10)
+    w.add_unit(big)
+    assert live_cells(w, me) == {(x, y) for x in (10, 11) for y in (10, 11)}
+    w.slots.be86(big, pack(11, 10), 0)                                  # a step to (11, 10): the footprint at the next cell as well
     assert live_cells(w, me) == {(x, y) for x in (10, 11, 12) for y in (10, 11)}
     assert (5, 5) not in live_cells(w, me)                              # own footprint released
     big.hp = 0                                                          # a dying unit keeps its stamps (FUN_00510a70)
@@ -483,15 +489,16 @@ def test_since_hop_is_a_wrapping_byte():
 def test_previous_cell_is_held_after_the_border_crossing_until_the_step_end():
     """FUN_00554fd2 0x555173: after the move `FUN_0055be86(unit, old cell, 0)` stamps the old cell again; the step
     end (FUN_00555b38) is mode 2 + mode 1 = current cell only."""
-    from engine.sim.movement import live_cells
+    from engine.cellslots import pack
+    from engine.sim.movement import _end_step, live_cells
     w = world()
     me = unit(w, 1, 5, 5)
     b = unit(w, 2, 10, 10)
-    b.mover.step_from, b.mover.step_target = (10, 10), (11, 10)
+    w.slots.be86(b, pack(11, 10), 0)                                    # step start: the next cell and the own cell
     assert live_cells(w, me) == {(10, 10), (11, 10)}                    # before the crossing
-    w.move_unit(b.id, 11, 10, 20, 128)                                  # crossed: the unit now stands on (11, 10)
+    w.move_unit(b.id, 11, 10, 20, 128, crossing=True)                   # crossed: the unit now stands on (11, 10)
     assert live_cells(w, me) == {(10, 10), (11, 10)}                    # (10, 10) still held
-    b.mover.step_from = b.mover.step_target = None                      # step end
+    _end_step(w, b)                                                     # step end
     assert live_cells(w, me) == {(11, 10)}
 
 
@@ -501,25 +508,60 @@ def test_occupant_is_the_unit_whose_current_footprint_holds_the_cell():
     w = corridor()
     a = unit(w, 1, 10, 10)
     b = unit(w, 2, 12, 10)
-    b.mover.step_from, b.mover.step_target = (12, 10), (11, 10)         # b is entering (11, 10): stamps it, no occupant
+    from engine.cellslots import pack
+    w.slots.be86(b, pack(11, 10), 0)                                    # b is entering (11, 10): stamps it, no occupant
     assert _blocker(w, a, (11, 10)) is None
     assert _blocker(w, a, (12, 10)) is b
-    w.move_unit(b.id, 11, 10, 20, 128)                                  # crossed: the slot moves, (12, 10) is only stamped
+    w.move_unit(b.id, 11, 10, 20, 128, crossing=True)                   # crossed: the slot moves, (12, 10) is only stamped
     assert _blocker(w, a, (11, 10)) is b and _blocker(w, a, (12, 10)) is None
 
 
-def test_occupant_is_the_first_unit_to_enter_the_cell():
-    """FUN_005503af: an occupied slot is not overwritten (first come, first served); list order does not matter."""
-    from engine.sim.movement import _blocker
+def test_occupant_is_the_first_unit_to_enter_the_cell_and_the_loser_stays_unrecorded():
+    """FUN_005503af: an occupied slot is not overwritten (first come, first served); list order does not matter.  The release
+    FUN_0055073f clears the slot of whatever unit holds it, so when the winner leaves, the loser standing on the cell is NOT the
+    occupant (no re-record until it crosses a border again): the quirk of docs/engine/simulation.md 7.4."""
+    from engine.sim.movement import _blocker, live_cells
     w = world()
     a = unit(w, 1, 5, 5)
     late = unit(w, 2, 20, 20)
     early = unit(w, 3, 21, 20)
     w.move_unit(early.id, 10, 10)
-    w.move_unit(late.id, 10, 10)                                        # shares the cell, entered second
+    w.move_unit(late.id, 10, 10)                                        # shares the cell, entered second: no slot
     assert _blocker(w, a, (10, 10)) is early
     w.move_unit(early.id, 11, 10)
-    assert _blocker(w, a, (10, 10)) is late
+    assert _blocker(w, a, (10, 10)) is None                             # the winner's lift emptied the slot; late stands there unseen
+    w.move_unit(late.id, 12, 10)                                        # the loser's own lift finds the slot empty and stops
+    assert _blocker(w, a, (12, 10)) is late and _blocker(w, a, (11, 10)) is early
+
+
+def test_a_losers_departure_clears_the_winners_slot():
+    """FUN_0055073f has no owner test: the loser lifting from the shared cell zeroes the winner's occupant slot."""
+    from engine.sim.movement import _blocker
+    w = world()
+    a = unit(w, 1, 5, 5)
+    win = unit(w, 2, 10, 10)
+    lose = unit(w, 3, 21, 20)
+    w.move_unit(lose.id, 10, 10)
+    assert _blocker(w, a, (10, 10)) is win
+    w.move_unit(lose.id, 11, 10)
+    assert _blocker(w, a, (10, 10)) is None                             # win stands there, no longer recorded
+
+
+def test_a_loser_holds_no_stamp_so_the_cell_looks_free_after_the_winner_leaves():
+    """FUN_0055c2ce: a non-empty stamp slot of another unit means no stamp; FUN_0055c1fe clears only the unit's own.  After the
+    winner's step end the loser's cell is free in the live layer."""
+    from engine.cellslots import pack
+    from engine.sim.movement import _end_step, live_cells
+    w = world()
+    a = unit(w, 1, 5, 5)
+    win = unit(w, 2, 10, 10)
+    lose = unit(w, 3, 21, 20)
+    w.move_unit(lose.id, 10, 10)
+    assert live_cells(w, a) == {(10, 10)}                               # the winner's stamp
+    w.slots.be86(win, pack(11, 10), 0)
+    w.move_unit(win.id, 11, 10, 20, 128, crossing=True)
+    _end_step(w, win)
+    assert live_cells(w, a) == {(11, 10)}                               # (10, 10) is free in the live layer, the loser stands there
 
 
 def test_flyers_hold_no_occupant_slot_of_the_ground_kind():
@@ -528,7 +570,7 @@ def test_flyers_hold_no_occupant_slot_of_the_ground_kind():
     w = world()
     a = unit(w, 1, 5, 5)
     f = unit(w, 2, 10, 10)
-    f.move_type = 3
+    set_move_type(w, f, 3)
     assert _blocker(w, a, (10, 10)) is None
 
 

@@ -193,6 +193,110 @@
    "no_way": 0
   }
  },
+ "orders_slots": {
+  "crossing_off": {
+   "blocker_moved": false,
+   "cells": {
+    "1": [
+     27,
+     18
+    ],
+    "2": [
+     27,
+     19
+    ],
+    "3": [
+     27,
+     20
+    ],
+    "4": [
+     28,
+     19
+    ],
+    "9": [
+     20,
+     19
+    ]
+   },
+   "ended": 254,
+   "hash": "24e489af08a295486267719a88489d3e913a0448d864129d70d86bf3b8d21141",
+   "no_way": 0
+  },
+  "crossing_on": {
+   "blocker_moved": false,
+   "cells": {
+    "1": [
+     27,
+     18
+    ],
+    "2": [
+     29,
+     18
+    ],
+    "3": [
+     27,
+     20
+    ],
+    "4": [
+     29,
+     20
+    ],
+    "9": [
+     20,
+     19
+    ]
+   },
+   "ended": 199,
+   "hash": "544b94cadb7592958f3ca899994fb72597d693fdfd0ea3f003e5144a96e35a34",
+   "no_way": 0
+  },
+  "gap_jam": {
+   "cells": {
+    "1": [
+     27,
+     19
+    ],
+    "2": [
+     29,
+     19
+    ],
+    "3": [
+     27,
+     21
+    ],
+    "4": [
+     29,
+     21
+    ]
+   },
+   "ended": 230,
+   "hash": "cd39e136d5da041073cad2043181a9ec10a9fa0565226c9105b05f4b1ba47b25",
+   "no_way": 0
+  },
+  "unreachable": {
+   "cells": {
+    "1": [
+     18,
+     17
+    ]
+   },
+   "ended": 66,
+   "fallback_ring": 9,
+   "hash": "449e32c773a0190359ba0fbfba202eddfe78b3853335f2df6badbaaffd475669",
+   "no_way": 1
+  },
+  "walk_reorder": {
+   "cells": {
+    "1": [
+     12,
+     24
+    ]
+   },
+   "ended": 119,
+   "hash": "2751b9ab34d34ef6294260256c20982a504cca2ebe005d3cfb637c05b993059c",
+   "no_way": 0
+  }
+ },
  "paths": {
   "10:33,67>69,40": {
    "found": true,

@@ -317,9 +317,35 @@ def text():
 def test_message_lifetime():
     m = MessageLine()
     m.show("No way", 1000, NO_WAY_MS)
-    assert m.current(1000) == "No way" and m.current(3999) == "No way" and m.current(4000) is None
+    assert m.current(1000) == "No way" and m.current(3999) == "No way" and m.current(4000) == "No way"   # `age > lifetime` is strict
+    assert m.current(4001) is None
     m.show("", 5000, 100)                                             # empty text (missing main.txt) shows nothing
     assert m.current(5000) is None
+
+
+def test_message_queue_follows_the_exe():
+    """`FUN_004021fe` / `FUN_00402585`: lines queue up, only the first has a clock; it is removed when its age exceeds its lifetime, then the next one
+    starts at 0 (so it lives its own time AFTER the first); the oldest lines go when the list exceeds `max_lines`."""
+    m = MessageLine(max_lines=3)
+    m.show("a", 0, 2000)
+    m.show("b", 500, 3000)                                            # the queue was not empty: no clock restart
+    assert m.lines(1000) == ("a", "b")
+    assert m.lines(2000) == ("a", "b") and m.lines(2001) == ("b",)    # a: age 2001 > 2000
+    assert m.lines(5001) == ("b",) and m.lines(5002) == ()            # b restarted at 0 when a went (age 3001 at 5002)
+    m.show("c", 6000, 100)                                            # an empty queue restarts the clock
+    m.show("d", 6000, 100)
+    m.show("e", 6000, 100)
+    m.show("f", 6000, 100)                                            # 4 lines > max 3: the oldest goes
+    assert m.lines(6000) == ("d", "e", "f")
+    w = MessageLine(wrap=lambda t: t.split())                         # a wrapping callback splits one message into lines
+    w.show("two words", 0, 1000)
+    assert w.lines(0) == ("two", "words")
+
+
+def test_formation_toggle_text_lifetime_is_2000_ms():
+    """`push 0x7d0` before `FUN_004021fe` in the Ctrl+F / Ctrl+W / Ctrl+H handlers (0x40cf3e, 0x40ced7, 0x40cf86)."""
+    from engine.ui.orders import FORMATION_MS, HEALTH_TEXT
+    assert FORMATION_MS == 0x7D0 and HEALTH_TEXT == 0x64
 
 
 def test_no_way_drain():
@@ -327,7 +353,7 @@ def test_no_way_drain():
     w.events.extend([NoWay(2, 5), NoWay(ME, 6), "other"])
     m = MessageLine()
     assert drain_no_way(w, ME, m, 100, text())
-    assert m.current(100) == "No way" and m.current(3099) == "No way" and m.current(3100) is None
+    assert m.current(100) == "No way" and m.current(3099) == "No way" and m.current(3100) == "No way" and m.current(3101) is None
     assert w.events == ["other"]                                      # NoWay consumed, other events kept
     m2 = MessageLine()
     w.events.append(NoWay(2, 9))
@@ -433,7 +459,7 @@ def test_level_up_line():
     w = NS(fight_log=[LevelUp(1, 5, 1, 7)], find_unit=lambda i: {5: fighter, 6: mage, 7: foreign}.get(i))
     m = MessageLine()
     assert level_up_messages(w, ME, m, 100, t, lambda u: "Hero")
-    assert m.current(100) == "Blade skill improved (Hero)" and m.current(3099) and m.current(3100) is None
+    assert m.current(100) == "Blade skill improved (Hero)" and m.current(3099) and m.current(3100) and m.current(3101) is None
     w.fight_log = [LevelUp(2, 6, 1, 7)]                                 # mage: 0x86 + school
     assert level_up_messages(w, ME, m, 0, t) and m.current(0) == "Fire skill improved"
     w.fight_log = [LevelUp(3, 7, 1, 2)]                                 # another player's hero: nothing

@@ -325,7 +325,7 @@ def init_group(world, g):
     radius = reach, at least the default."""
     mem = [world.units[i] for i in g.members]
     for u in mem:
-        mv.cancel(u)
+        mv.cancel(u, world)
         u.order = GUARD_ORDER
         u.anchor = (u.x, u.y)
         u.mode_go = u.mode_attack = u.mode_look = u.mode_cast = False
@@ -619,6 +619,7 @@ def guard_scan(world, u):
         idle(world, u)
     else:
         attack(world, u, best)
+    mv.restamp_displaced(world, u)                      # 0x56a592-0x56a5f0: a displaced stamp cell is stamped again
 
 
 def auto_scan(world, u):
@@ -691,11 +692,7 @@ def _enemies(world, u, r):
     footprint (a big unit is listed once for each footprint cell inside the square, no de-duplication: it weighs more in the mean position),
     first come per cell.  Hidden units (`Unit.hidden`) need a detector among the unit's group (squad)."""
     cells = [(u.x + dx, u.y + dy) for dy in range(-r, r + 1) for dx in range(-r, r + 1)]
-    slot = {}
-    for o in mv._occupants(world, cells):                                   # sorted by cell_seq: the first to enter a cell holds its slot
-        for c in mv._footprint(o, (o.x, o.y)):
-            slot.setdefault(c, o)
-    out = [slot[c] for c in cells if c in slot]
+    out = mv._occupants(world, cells)                   # the occupant slot of each cell (first come; a loser of the race is missing)
     detectors = [m for m in world.units.values() if m.owner == u.owner and m.squad == u.squad and m.hp > 0] if any(c.hidden for c in out) else ()
     return [c for c in out if at_war(world, u.owner, c.owner) and (not c.hidden or _detected(c, detectors))]
 

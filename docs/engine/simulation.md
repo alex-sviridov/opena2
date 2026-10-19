@@ -462,8 +462,7 @@ as a byte. Goldens unchanged.
   until the border crossing, the cell it left after it, until the step end); bit 0x40 (ground
   classes) is seen by walkers and ghosts, bit 0x80 (class 3) only by flyers (`engine/sim/movement.py
   live_cells`). The unit's own footprint is released before planning (`FUN_0054d76e` calls `FUN_0055be86`
-  mode 2). A unit with hp <= 0 keeps its stamps until removal (CONFIRMED, 7.4 "Cell record"). The first-come
-  occupant of a cell is modelled by `Unit.cell_seq` (7.4), not the stamp slot quirks.
+  mode 2). A unit with hp <= 0 keeps its stamps until removal (CONFIRMED, 7.4 "Cell record"). Occupant and stamp slots are stored, first come first served ("Exe answers" 11.4).
 - `MoveTo(unit_id, x, y)` is the engine-level move order (order 1); the click mapping is H3. It follows steps
   1-6 above with the unit's `Mover` carrying `dest (+0x74)`, `tail (+0x76)`, `consumed (+9)`, `since_hop (+0x78)`,
   `arrived (+0x90)`, `failed (+0x98)`, `static_path`; `Unit.path` is the dynamic list. H3 replaced the H2 rule
@@ -501,8 +500,8 @@ as a byte. Goldens unchanged.
      `fx == 0`, `s = f32(fy / fx)`, `b = trunc(Ty - Tx * s)` (line `y = s x + b`); north/south: `s = f32(fx / fy)` (no zero guard),
      `b = trunc(Tx - Ty * s)` (line `x = s y + b`), `trunc` = `FUN_00582c0c` (FISTP, round toward zero). Every product and sum
      is exact in 53 and in 64 bits of mantissa, so the precision control does not matter; only the unguarded `fy == 0` case
-     (follower on the target's centre: code 14, `0/0`) depends on the FPU exception mask (INFERRED: masked, integer indefinite,
-     low dword 0).
+     (follower on the target's centre: code 14, `0/0`) depends on the FPU exception mask: masked (CONFIRMED, "Exe answers" 11.3), so the
+     result is the integer indefinite, low dword 0.
   4. Box in cells, from the target's cell `(Tx, Ty)`, sizes `Fs`, `Ts`: `x0 = Tx - Fs`, `y0 = Ty - Fs`, `x1 = Tx + Ts`, `y1 = Ty + Ts`
      (the ring of top-left cells where the follower's footprint touches the target's). Attempt `k = 1..8`, while no cell is labelled;
      after each attempt `x0--, y0--, x1++, y1++`.
@@ -634,10 +633,8 @@ as a byte. Goldens unchanged.
     Before the border the occupant is still the start cell and the stamps are start + target cell. Other callers of
     place/lift: `FUN_0055a96c` (lift, set position `FUN_0054fbf7`, place: teleport), `FUN_0054d76e` (`0x54eee7`, lift
     around the planner), `0x554bf8`, creation `0x510089`.
-  - **Engine**: occupant = among the ground-class units whose current footprint holds the cell, the one with the
-    smallest `Unit.cell_seq` (set when the unit enters its cell, `World.add_unit`/`move_unit`); live layer =
-    footprints at the cell, the step target and the step origin (`movement.live_cells`, `_blocker`, `_occupants`).
-    The release quirks above are not modelled (the occupant table is derived, not stored).
+  - **Engine** (since the slot model, "Exe answers" 11.4): `World.slots` (`engine/cellslots.py`) holds the four slot tables and the routines `place` / `lift` / `be86`;
+    the live layer and the occupant are READ from them (`movement.live_cells`, `_occupants`), not derived from positions.
   - **Death** (CONFIRMED): HP <= 0 (`FUN_0050f12c`) sets order 0, state 0, calls `FUN_00510745` (cancels a pending
     spell, `unit+0x68`) and runs the dying countdown; it releases **nothing**. The only release is the removal
     `FUN_00510a70` (state `0x10`, HP <= -10; for movementType > 1 HP := -1000 after the countdown): order/state :=
@@ -734,7 +731,7 @@ order 4, target (x, y) as sent, speed.
   are untouched.
 - **Group speed** (R 4.3): only when the formation is active, `speed` = min over the members of the low byte of the
   signed 16-bit speed stat (start 250; compared signed, stored as a byte); fixed for the group's life (Haste after
-  the order changes nothing). `movement.walk_speed` (the exe's `FUN_0055915a`) = group speed if non-zero else the
+  the order changes nothing: CONFIRMED, "Exe answers" 11.1). `movement.walk_speed` (the exe's `FUN_0055915a`) = group speed if non-zero else the
   stat; `step_length` uses it, `turn_rate` does not.
 
 ### 8.3 Cancel, timeline, group pass, stop (R 3.4, 4.4, 5, 7)
@@ -959,14 +956,29 @@ imports); the view and backend have their own generators. So **our sequence equa
 equal a recorded original session** (seed from the clock + client draws). Draw order inside a hit: [combat §5.2](combat.md#52-take_hit-fun_00516f6f-confirmed-vtable-54-of-every-creature-class).
 The state is part of `World.dump()` once it differs from its initial value (old goldens unchanged).
 
+## 11. Exe answers (follow-up of H1-H3)
+
+### 11.1 Haste / Slow vs the group speed byte (CONFIRMED)
+`group+0x44` has exactly these writers: the record constructor / copy (`0x522e93`, `0x52332f`), `FUN_005703c0` (`0x57060a`, formation move), `FUN_0057063e` (`0x570888`, swarm) and `FUN_00570e83` (`0x570e6f`, := 0 at every group command). Effect application (`FUN_0051d436`, kind 17 on `unit+0x8c` or the bonus `+0xd8` and the recompute `vtable+0x58`) never touches a group, so the byte is **not recomputed** when Haste / Slow starts or ends. `FUN_0055915a` reads it at every step start (non-zero wins over `unit+0x8c`), so in a formation all members walk at the minimum taken at the order; a Haste after the order does not speed the group up, and the turn rate (`mover+0xa`: monsters data.bin, humans the low byte of the speed stat) keeps following the unit's own stat. Engine already did this; fixed: `orders._cancel_group` now clears `g.speed` like `0x570e6f` (test `test_engine_movement_exe.py`).
+
+### 11.2 Empty dynamic list at a centre; stale list (CONFIRMED)
+`FUN_00555c7e` with an empty dynamic list (`FUN_0055f0b0`) calls `FUN_005551ef` and returns: one turn tick towards `mover+1` (snap when `d < rate`, else one rate step), no step, no `FUN_00556454` bookkeeping (`+0xa0` untouched). With facing == target facing it is a no-op. It matters only when the target facing differs: the follow driver skips the hop plan while `facing != mover+1` (an unfinished in-range turn) and the step call then continues the turn. Engine: `movement._step_or_turn` (move driver, `combat.attack_mode`, `spells` approach). The stale-list case (dynamic list alive more than `DynamicRefreshRate` = 32 ticks) needs a turn of more than 32 ticks = rate <= 3: the data.bin monster turn rates are 8..32 (<= 16 ticks for 180 degrees) and the derived human speeds 16..31 (<= 8 ticks), so it is unreachable with real data (test over the install); only a stacked Slow on a human could get there (effects are phase I).
+
+### 11.3 x87 control word (CONFIRMED)
+`_cinit` (`0x589580`, called from the CRT entry `0x585360` at `0x585424`) first calls the pointer at `0x600628` = `0x582990`, which runs `0x58abc0` = `_controlfp(_PC_53, _MCW_PC)` after `fninit` (`0x5935c8`, CW `0x37F`): **CW = `0x27F`**: 53-bit precision, round to nearest, all six exceptions masked. `FUN_00582c0c` (`ftol`) ORs `0xC00` (truncate) around a 64-bit `FISTP`, so `0/0` = QNaN becomes `0x8000000000000000` and the returned `EAX` is 0: the engine's `_ftol` (NaN / inf -> 0). The slope `fdiv` of two float32 values is exact after the float32 store in any precision mode (`>= 50` bits: no double rounding), and the products are exact at 53 bits. DirectDraw is created windowed (`DirectDrawCreate` at `0x4529bd`, `SetCooperativeLevel(hwnd, DDSCL_NORMAL = 8)` at `0x4529ef`, no `FPUPRESERVE`): a DirectDraw that lowers the precision to 24 bits would change about 1 % of the intercepts by one cell on the fallback ring (measured on random geometry); the shim of a modern GOG install decides that and cannot be read from the exe (INFERRED, left as 53 bits). Tests: `test_pathfinding_follow.py::test_same_centre_does_not_raise` (now pins `(0, 49)`), `test_ftol_is_truncation_and_the_indefinite_is_zero`.
+
+### 11.4 Occupant and stamp slots (CONFIRMED, implemented)
+Details are in 7.4 "Cell record". What is observable: a unit that loses a first-come race (a stale hop list started before the other unit stamped its target: the dynamic list lives through the turn ticks, and **`FUN_00555c7e` stamps the next cell and the own cell at every call with a waypoint, also on turn ticks**, before the facing test) ends up on the cell without an occupant slot and without stamps. The winner's lift (`FUN_0055073f`, no owner test) empties the slot, so the loser stands unseen: the blocker verdict, the flee / enemy lists (`FUN_0054ec6a`) and the live layer (a third unit may plan through it) miss it; the loser's own later lift empties the slot of whoever holds it. `FUN_0055be86` call sites, all modelled: step start (mode 2, mode 0 with the head cell), border crossing (`FUN_00554fd2`: mode 2, lift, move, place + mode 1, mode 0 with the old cell), step end (mode 2, mode 1), the dynamic planner (`FUN_0054d76e`: mode 2 before the wave, mode 1 before the walk back; static plans touch nothing), removal / phase-out (mode 2, lift), cancel and the guard scan (`0x56d9a7`, `0x56a592`: mode 1 when `mover+0x80` is neither 0 nor the own cell at a centre: the stamp a turning unit took is dropped). `0x558b7c` is that cancel call, `0x56a5df` the scan's. `FUN_00554bf8` (a second step integrator with float constants) has no caller.
+Effect on the engine: before, a unit that was turning had no reservation, and two units entered one cell in the 46-map random-order runs (1147 ticks of shared cells on map 10); now none does (`tests/test_engine_orders_maps.py` unchanged and green; shared-cell scan over maps 10, 32, 53, 72, 110: 0 ticks). `tests/golden.json["orders"]` (scenarios `crossing_off`, `gap_jam`) no longer matches; the new key `orders_slots` holds the regenerated summaries and the test reads it. The stale `orders` key can be deleted by the next `tools/update_golden.py` run. Tests: `test_engine_pathing.py` (first come, loser stays unrecorded, loser's departure clears the winner, loser holds no stamp, class slots) and `test_engine_movement_exe.py`.
+
+### 11.5 Server side of the command path (CONFIRMED unless marked)
+- **Type 100 from the client**: the client's end-of-tick echo (`FUN_00504bb7(1)`, also appended by `FUN_0050164f` after every non-100 send of a flag-0 hub) is delivered to the server hub and reaches `FUN_004f515d`. The message object is the static `0x68d318`, whose byte `+4` (the "unit count" tested at `0x4f518b`) is never written (no store to `0x68d31c`), so it takes the `msg+4 < 1` branch, the switch on `msg+9` (`0x4f59e7`; case table `0x4f835a`, jump table `0x4f82da`) maps `0x64` to the default exit `0x4f8274`. Nothing happens: the engine's command intake needs no model of it.
+- **Connection list**: `FUN_00500a72` (game start, both hubs) creates ONE local connection (`FUN_00500f0e(-1)`, `0x2a4` bytes, appended to the pending list `+0x28`); the hub poll `FUN_0050101e` (called from the main loop) promotes pending connections to the active list `+0x18b8` (`FUN_00500cc0`, the only appender). So the single-player server hub has exactly one connection, no per-player ones; the intake drains it (`FUN_00501831` over `+0x18b8`) and the command's player id (`msg+5`) is looked up in the player manager, not in connections.
+- **Routing** (`FUN_0050164f`): `msg+7 == 0` broadcasts to every connection (a host hub skips connections whose id `conn+0x108` is 0); otherwise `FUN_0050155f(id)` finds the connection with that id and a host hub drops the message when none matches. `msg+7` of the "No way" message is `player+4` = the **slot** of the player in the manager (bit index 1.. of the allocator `FUN_005165dd`; the human is slot 1, computer players have other slots; the map owner id is `player+8`). The connection id is set only by `0x53da20` from the join handler (`FUN_004f0cbe`, client message type 2 at `0x4f72db`, `conn.id := player+4`). INFERRED: single player runs that join for the human, which makes its messages match and the computer players' ones (slot != 1) match nothing and get dropped, as the engine's `drain_no_way` does. Engine: no change.
+
 ## Open questions
 
-1. What a unit does at a centre with an empty dynamic list after a failed hop plan (`FUN_00555c7e` empty-list "turn step" path, `0x555c7e`) beyond the failure stop; and whether the stale-list case (turn > 32 ticks) is reachable with real data.bin turn rates.
-2. Haste/Slow vs the group speed byte: the byte is fixed (§8.2); the effect system is phase I.
 4. Group orders 1, 2, 5, 0x11, 0x13 and the G / L / swarm commands are built ([ai §14.1](ai.md#141-implementation-and-the-asm-details-it-rests-on-confirmed-unless-marked)); the Scenario instants that would set them are missing;
    the retreat post step `FUN_00573713` is decoded (§9 hook); its spell branches and the hidden-enemy detection `FUN_00556dcd` remain.
-5. The stored occupant/stamp slots with their release quirks (7.4 "Cell record"): `FUN_0055073f` clears a slot of any unit, so a first-come loser loses its record when the winner leaves; the engine derives the occupant instead. Starting routine `FUN_0055be86` callers `0x558b7c`, `0x56a5df` (how often a standing unit re-stamps, which decides how long such a cell stays unowned).
-6. The x87 control word at run time (precision / exception mask) for the slope in `FUN_00557f08`: only the follower-on-target-centre case (`0/0`) depends on it (7.4 step 3). Starting routine CRT start-up before `0x557f08`; DirectDraw init.
 8. `FUN_005728fa` (group order 0x12 handler, reader of `brain+0x16`): the full per-tick behaviour of guarding computer-player groups and the home-cell restart (`FUN_0056c8af`, `brain+0x9c`).
-9. `FUN_004f515d` on a client type-100 message (value 1, sent after every client command by `FUN_00504bb7`): confirm that the server ignores it (nothing in the order path depends on it).
 10. `FUN_0051c391` / spell record `+9`, `+0xc`: confirm that they are spell range and mana cost (used by `FUN_0056ac5b`).

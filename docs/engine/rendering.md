@@ -246,10 +246,12 @@ Code: `engine/ui/layout.py`, `cursor.py`, `selection.py`; `engine/view/pick.py`,
 - **Cursor**: `choose_cursor` (pure) picks arrows / default / select / pickup / move / attack / swarm / town / the pending-mode
   cursors (H3 stage B, table in [ui-layout §6](ui-layout.md)); over the minimap image `choose_minimap_cursor` gives the `s*` cursors; `CursorSprites` decodes the frame of
   `load_cursor_set(name).frame_at` (wall-clock ms) and the window blits it last at `mouse - hotspot`; the OS cursor is hidden.
-- **Message line** (H3 stage B): `Interface.draw(..., message=(text,))` draws one text at (8, 8) of the view's top strip in grey
-  (192, 192, 192), pygame's default font (slot `0x5f17f4`, "grey 17i": RGB and position INFERRED). `engine.ui.MessageLine` holds
-  the current text and its end time (`"No way"` 3000 ms from `NoWay` events, formation text 2000 ms); events are drained in
-  `window.run` each frame. No click marker (CONFIRMED absent).
+- **Message list** (CONFIRMED `FUN_004021fe` add, `FUN_00402585` ageing, `FUN_0040261a` draw, `FUN_0040212b` rect): a queue of lines (text, colour table, lifetime) wrapped
+  to the view width, drawn top-down from (8, 8) of the view (game mode 2; mode 3 (0, 0xdc) with font2) in **font1**, colour table `0x61fa80` (17i grey ramp, white at the top) with the
+  drop shadow, `font height + 2` pixels per line; at most `(view height / pitch) / 2` lines (oldest dropped). Only the first line has a clock (`age += dt`, removed when `age > its lifetime`,
+  then `age := 0`), so a later message lives its own time after the earlier one is gone. Lifetimes: "No way" and level-up lines 3000 ms, option toggles (formation `0x61+`, retreat `0x5e+`,
+  Show Health `0x64/0x65`, Flying damage `0x66/0x67`) **2000 ms** (`push 0x7d0`). Engine: `engine.ui.MessageLine` (queue, `lines(now)`), `Interface.draw(..., message=lines)`, `window.message_line`.
+  No click marker (CONFIRMED absent).
 - Tests: `tests/test_engine_{layout,cursor,pick,selection,selection_input,interface,orders_ui}.py`; golden `["interface"]` (map 10,
   640x480, the human unit selected) is tied to the pinned pygame-ce's bundled font.
 

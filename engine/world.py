@@ -20,6 +20,7 @@ from allods2.formats import passability as pas
 from allods2.formats import progression as prog
 from allods2.formats.objects import MapObject as PlacedObject
 
+from .cellslots import CellSlots, pack
 from .rng import DEFAULT_SEED, Rng
 
 STRUCTURE_ID_BASE = 0x6000      # spec decision 2: runtime object id = 0x6000 + uid (CONFIRMED map.md part 4)
@@ -319,6 +320,7 @@ class Mover:
     static_len: int = 0             # +0x8a length of the static list after the last follow re-plan (0xFF = forced)
     waiting: bool = False           # brain mode 10 (`FUN_00556b2c`/`00555411`): turning to face the blocker
     parked: bool = False            # brain mode 0 under a move order after a wait: no driver restarts it
+    stamp_cell: int = 0             # +0x80 the cell word `FUN_0055be86` last stamped for (0 = none, mode 2); not dumped
     last_plan: object = None        # debug: PathResult of the last static plan (not dumped)
     last_hop: object = None         # debug: PathResult of the last hop plan (not dumped)
     last_hop_goal: tuple = None     # debug: the cell that hop plan aimed at (not dumped)
@@ -358,8 +360,6 @@ class Unit:
     group: int = 0                  # section 8 group index (1-based, 0 none): the carried items
     known: bool = True              # units.reg set and data.bin template both exist
     seq: int = 0                    # insertion order, the depth tie-break
-    cell_seq: int = 0               # order in which the unit last entered its cell (first come, first served: the
-                                    # exe's cell-record occupant slot, simulation.md 7.4); not dumped
     stats: object = None            # allods2.formats.unitstats.UnitType template (None if unknown)
     skills: tuple = ()              # humans: +0xa8..+0xb2 (general, blade, axe, bludgeon, pike, shooting); () for monsters
     xp: tuple = ()                  # humans: XP pools of skills 1..5 (+0x23c+4k), pool = thr[skill] at start
@@ -511,7 +511,7 @@ class World:
         self._ucells = {}           # (x, y) -> set of unit ids   (never part of the block layer)
         self._icells = {}           # (x, y) -> set of item ids
         self._next_seq = 1
-        self._next_cell_seq = 1
+        self.slots = CellSlots()    # occupant and stamp slots of the cell records (simulation.md 7.4); not dumped
         self.costs = pas.DEFAULT_COSTS      # map.reg [Terrain] Cost<name> (from_map loads the install's)
         self.speed_multiplier = 8           # map.reg [Path Finding] SpeedMultiplier (CONFIRMED 8)
         self._cost = None
@@ -736,9 +736,9 @@ class World:
             raise ValueError("duplicate entity id %#x" % u.id)
         self._check_cell(u)
         u.seq, self._next_seq = self._next_seq, self._next_seq + 1
-        u.cell_seq, self._next_cell_seq = self._next_cell_seq, self._next_cell_seq + 1
         self.units[u.id] = u
         self._index_add(self._ucells, u)
+        self.slots.place(u)                                 # FUN_0055020a: occupant slots (first come) and the own stamp
         return u.id
 
     def next_carrier_id(self):
@@ -789,6 +789,7 @@ class World:
     def remove_unit(self, uid):
         u = self.units.pop(uid)
         self._index_del(self._ucells, u)
+        self.release(u)
         g = self.groups.get(u.order_group)
         if g is not None and uid in g.members:
             g.members.remove(uid)
@@ -801,15 +802,29 @@ class World:
         sel = self.players[player_id].selection
         return bool(sel) and self.units[sel[0]].owner != player_id
 
-    def move_unit(self, uid, x, y, sub_x=128, sub_y=128):
-        """Put a unit on cell (x, y); the block layer is untouched."""
+    def release(self, u):
+        """`FUN_00553891`: the release of a unit leaving the world (removal, phase-out): `FUN_0055be86(unit, 0, 2)` (its stamps in the ring),
+        then `FUN_00550697` (the occupant slots, whatever unit holds them)."""
+        self.slots.be86(u, 0, 2)
+        self.slots.lift(u)
+
+    def move_unit(self, uid, x, y, sub_x=128, sub_y=128, crossing=False):
+        """Put a unit on cell (x, y); the block layer is untouched.  A change of cell is the exe's sequence of `FUN_00554fd2` (0x555136): release
+        the ring (`FUN_0055be86` mode 2), lift the occupant slots, move, place (`FUN_0055020a`, with the own stamp); `crossing` (a step border,
+        not a teleport) then stamps the old cell again (`FUN_0055be86(unit, old cell, 0)`, held until the step end)."""
         u = self.units[uid]
         if not (0 <= x < self.width and 0 <= y < self.height):
             raise ValueError("target (%d, %d) is outside the map" % (x, y))
         self._index_del(self._ucells, u)
         if (u.x, u.y) != (x, y):
-            u.cell_seq, self._next_cell_seq = self._next_cell_seq, self._next_cell_seq + 1
-        u.x, u.y, u.sub_x, u.sub_y = x, y, sub_x, sub_y
+            old = pack(u.x, u.y)
+            self.release(u)
+            u.x, u.y, u.sub_x, u.sub_y = x, y, sub_x, sub_y
+            self.slots.place(u)
+            if crossing:
+                self.slots.be86(u, old, 0)
+        else:
+            u.sub_x, u.sub_y = sub_x, sub_y
         self._index_add(self._ucells, u)
 
     def add_item(self, it):
@@ -999,6 +1014,9 @@ class World:
                 g = self.groups.get(u.order_group)
                 if g is None or u.id not in g.members:
                     bad.append("unit %#x names group %d which does not list it" % (u.id, u.order_group))
+        for h in self.slots.holders():
+            if h not in self.units:
+                bad.append("a cell record slot is held by missing unit %#x" % h)
         seen = {}
         for g in self.groups.values():
             for i in g.members:
