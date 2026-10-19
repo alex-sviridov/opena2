@@ -141,7 +141,7 @@ when fogged), 6 swarm, 8 patrol, other values leave the previous cursor (engine:
 (`FUN_004accb4`): outside the map image, or no own non-structure selection: `sdefault`; else `smove`, pending 1/6
 `sattack`, 4 `sdefend`, 5 `scast`, 8 `spatrol` (2, 3, 7 `smove`). The `scast`/cast branch of the spellbook, the
 open-window and carried-item overrides are not modelled. Engine: the eight arrows, default, select, pickup, move, attack,
-swarm, town, the pending cursors and the `s*` minimap cursors; defend/patrol/cast/town/pickup issue no order yet.
+swarm, town, the pending cursors and the `s*` minimap cursors; swarm (`Swarm`, cmd `0x1a`), G (`Guard`) and L (`StandStill`) issue their commands; defend/patrol/cast/town/pickup issue no order yet.
 
 **Pending-mode table (R 1.4, CONFIRMED; engine `OrderInput.key`).** Hotkeys act only with an own non-structure
 selection and no Ctrl:
@@ -192,7 +192,7 @@ click, by a minimap order, and when the selection becomes empty. Hotkeys do not 
 - **Shift**: click or drag *toggles* each own object; only while the selection is not foreign. CONFIRMED.
 - **Left release, engine (H3 stage B)**: `OrderInput.is_order_click` (click, not a drag, non-empty selection) else the
   selection above; dispatch (R 1.2): move -> `MoveUnits`; attack over a non-unit -> `MoveUnits`; attack over a unit,
-  swarm, patrol, defend, pickup, town, cast -> nothing yet; select -> the selection. Target cell `(mx >> 5) + camera
+  swarm -> `Swarm` at the cell (also over a unit); patrol, defend, pickup, town, cast -> nothing yet; select -> the selection. Target cell `(mx >> 5) + camera
   cell x`, row `Projection.hover_cell` (the exe's `FUN_00417f31`), no fog / passability test; no cell (no row matches) =
   no order (DECISION: unreachable inside the view; the exe returns `H + 4`, R 1.6 CONFIRMED).
 - **Right button, engine**: press sets nothing; mouse move with the button held scrolls the camera `delta/8` cells (`(d +

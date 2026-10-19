@@ -263,7 +263,7 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
   loops; the pool is built from the spatial index (`world.units`) restricted to the group's visible cells, not by scanning all creatures. Results are identical.
 * RNG: the only draw is `rand(-1..1)` at the first pass of each group (§3.5), in group creation order.
 * Not modelled (INFERRED needed or phase K): the Invisibility effect that sets `Unit.hidden`, the `0x40000` scan-range effect bit, spells, the second list, caster scan,
-  special attacks `FUN_0056a981`, group orders 1, 2, 5, `0x11`, `0x13` and `0xff` ([§14](#14-the-other-group-orders)).
+  special attacks `FUN_0056a981`. The other group orders are built ([§14.1](#141-implementation-and-the-asm-details-it-rests-on-confirmed-unless-marked)).
 
 ## 11. Tests and code
 
@@ -290,8 +290,14 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
 8. Never-hit unit whose target is unreachable (across water) stamps `+0x16` and walks to the reachable cell nearest the map corner (0, 0) for up to ~10 blocks (CONFIRMED statically, §3): does it look like that?
 9. A melee monster never targets a flyer; a hero on a ridge higher than the monster is noticed later.
 10. Idle monsters turn on the spot about every 3 seconds, and a monster hit from behind turns at once.
+11. G (guard): the selected units stop on their cell (the cell being entered when mid-step), then attack any enemy that comes within about the sight of the group (radius at least 10 cells,
+    +3..5 after the first pass) and walk back to that post afterwards; the default (T) never leaves its cell.
+12. L (stand still): the units never attack on their own and never move after the command, even with an enemy adjacent; they fight only when ordered.
+13. Swarm (S then click, or Ctrl+click): the group walks as in a move, but engages every enemy it sees on the way (stops to fight, then resumes the walk to the clicked cell).
+14. Wander (scripted only, no shipped map known to use it): a squad ordered to wander picks a cell 20 cells away in one of 8 directions every 51 passes or when it is within 9 cells; in the exe
+    the members themselves walk to their own old destination (or the map corner (0, 0)), not to the picked cell (§14.1): does a scripted wander squad visibly walk to a corner?
 
-## 14. The other group orders (CONFIRMED, `FUN_005700f3` dispatch; engine: 3 and 4's scan only)
+## 14. The other group orders (CONFIRMED, `FUN_005700f3` dispatch; engine: implemented, see the end of this section)
 
 Group order = `record+0x20`; the pass `FUN_00570087` visits every player's groups (`FUN_005700f3`: empty group -> `0xff`, handler, then the post step §9 on every
 member). "Pool" = `FUN_00571c4d` over the members (§4), "assign" = `FUN_0057240b` (each member's lowest `FUN_005711ea` score in the pool, §5, no radius filter unless
@@ -309,7 +315,7 @@ stated), "act" = per member in list order: target -> `FUN_0056acc8` (§6), no ta
 | `0x11` wander | `572ec4` | `d` = max Chebyshev distance of the members from `+0x0a`; **if `d < 10` or the counter `+0x15 > 0x32`**: `+0x0a :=` the cell 20 cells away in a random one of the 8 directions (`rand(0..7)`, redrawn until it is inside the playable rectangle), counter := 0; then `572e1e(group, +0x0a)` and counter++ | scripted sub-command 17 (`FUN_005708ff`: `+0x0a :=` the first member's cell, counter := 0) |
 | `0x12` computer guard | `5728fa` | §3 | `FUN_00570aba` at map load (every non-human squad), by `520a5e` (summon: creates the group, then runs the stored instant), `560d9b` (scripted unit creation, likewise), scripted sub-command 18 (radius byte) |
 | `0x13` stand still | `57311c` | `idle` for every member (no pool, no target, no scan: never fights unless attacked and ordered) | cmd `0x12` L (`FUN_00570bde`: members order `0x17` via `FUN_0056d572`) |
-| `0xff` empty / new | `573159` | every member `FUN_0056afac(m, 0)` = guard scan (§7). A fresh group record starts as `0xff` (`FUN_005691c7`, from the group constructor `FUN_00515cd8`) and an empty group is forced to it, so only a member joined before any order is set sees this | - |
+| `0xff` empty | `573159` | every member `FUN_0056afac(m, 0)` = guard scan (§7). An empty group is forced to it (`FUN_005700f3`), so it only runs for a member joined to such a group; a **fresh group record starts at 0** (`FUN_0052b06f` -> ctor `0x52ae43` -> record ctor `0x5690ee`: memset 0, `+0x20 = 0`, `+0x45 = 1`; the earlier reading of `0xff` was the player's own 0x24-byte record, `FUN_005691c7` from the player ctor `FUN_00515cd8`, CONFIRMED) | - |
 
 Scripted orders are the trigger-side "instant" of type 6 (`FUN_00574f3f` switch -> `FUN_00577cee`, sub-command in `+8`; `FUN_00574ba1` runs the instants of the
 triggers whose conditions hold; `Scenario` section 7/10-12 are not decoded). The sub-commands that leave group order 0 or 4 (attack `0xa`, follow `0xb`, patrol-like
@@ -332,6 +338,44 @@ Engine: `ai.stand_pass` (`orders.group_pass`, behind `world.ai_on`), `ai.score_s
 the guard scan for stopped members of move groups (`orders._pass_move`). With the AI off nothing changes. DECISIONS: the human's brain mode 6 of the guard scan is the mode-5
 driver (as for monsters); spell-list units (casters) take the non-caster branch; the `+0x4c & 8` flag test of `FUN_0056acc8` is skipped (§10); the final clause of `FUN_0056a1fb`
 (`FUN_0055be86` re-stamp when `mover+0x80` differs) is not modelled.
+
+### 14.1 Implementation and the asm details it rests on (CONFIRMED unless marked)
+
+Engine: `ai.run_group` (the dispatch `FUN_005700f3` for one non-empty group, then the post step §9 for every member when the AI is on) is called by `ai_system` for the squads
+(`AiGroup`) and by `orders.group_pass` for the command groups (`OrderGroup`; same AI fields `centre/spread/reach/radius/base/seen/passes/counter/target`, dumped only when non-zero).
+Handlers: `ai.guard_pass` (`57275f`), `hold_pass` (`572d57`), `swarm_pass` (`572e1e`), `wander_pass` (`572ec4`), `handler` (`5728fa`), the still pass (`57311c`: `idle` for every member)
+and the empty pass (`573159`: `guard_scan`); 3 and 4 as before. Orders 1 / 2 / 3 / 0x11 / 0x12 / 0x13 / 0xff run only with the AI on (like the stand-ground pass); **5 and 0x11 also with the AI
+off** (the pool is empty then: they walk as a move group, which is what the exe does without enemies). The wake gate (§15.1) applies to the squads as before.
+
+* `57275f` = `5728fa` without the branch table: `56fa63` stats, `571c4d` pool, `567e92(centroid word, +0x2d)`, `57240b`, the `+0x30` / `5726f7` radius growth (`rand(-1..1)`), then per member
+  target -> `56acc8`, else (cell == `brain+0`, at a centre) `56afac(m, 1)` else `56c8af(m, brain+0)`. `572d57(group, +0x0a)`: `571c4d`, `57240b` (no radius, no stats), per member target -> `56acc8`,
+  else cell == dest at a centre -> `56afac(m, 1)` else `go(dest)`. `572e1e`: `571c4d`; pool empty (`44fc20` on `server+0xa68`, after the dead list is put back) -> `573198(group, dest)`, else `57240b` and
+  per member target -> `56acc8` else `56afac(m, 1)`. `57311c`: `56afd9` per member. `573159`: `56afac(m, 0)`.
+* **`573198` goes to `brain+0xa` of each member**, not to its `dest` argument (`0x5732e3`: `56c8af(u, u.brain+0xa)`; `dest` only feeds the blocked-target test `55cd50` and `brain+0xa == dest`).
+  A swarm gives every member its own destination (formation, `56d032`), so it works; a **wander group never writes the members' `brain+0xa`**, so a member that never had a move order
+  walks to cell word 0 = cell (0, 0) (`brain` is memset 0, `0x569003`), the unit that had one keeps walking to its old destination: the retargeting of `+0x0a` only changes which pool-free
+  passes count (`d`, the counter). **Wander as shipped is a half-finished feature** (INFERRED: no shipped map script is known to use sub-command 17, `FUN_005708ff`); the engine copies it
+  (the move pass treats a missing destination as cell (0, 0)).
+* Wander (`572ec4`): `d` = max `558fe9(cell, +0x0a) & 0xff`; `d < 10` or the byte `+0x15 > 0x32` retargets: loop `k = rand(0..7)` (`FUN_0057aff0(0, 7)` = `rand15 * 8 / 0x8000`; engine `rng.rand(7)`, inclusive),
+  `x = byte(+0x0a) + dx[k] * 20`, `y = byte(+0x0b) + dy[k] * 20` with the direction tables `pf+0x58e88 / +0x58e90` = `dx 0,1,1,1,0,-1,-1,-1`, `dy -1,-1,0,1,1,1,0,-1` (up, clockwise; written
+  `0x553e4e`-`0x553eeb`), repeated until `minX <= x <= maxX`, `minY <= y <= maxY` (`pf+0x58eb8..bb` = 8 and size - 9); then `+0x15 := 0`; `572e1e(group, +0x0a)`; `+0x15++`.
+  `5708ff` (scripted): `570e83`, order `0x11`, `+0x0a :=` first member's cell word (`54ff9e`), counter 0.
+* Commands (all `FUN_004f515d`, `0x4f5468` etc.): cmd `0x17` G = `5709d9(group, 0)`: `570e83`, members `56d4ba` (cancel, order `0xb`, anchor `mover+6` when `551383` says off-centre else
+  the own cell, brain mode 0), group order 1, `57026e` (`56f850` stats, `+0x2d = +0x38 := +0x2c`, home word), radius arg 0 -> if `+0x2d < server+0xa8b8` (`MinimalGuardRange`, 10) then
+  `+0x2d = +0x38 := 10`; `+0x39 := 0`. **`570aba` (squads) is the same code with group order `0x12` and the floor 20 (`0x14`)** (`0x570b6d`); a radius byte raises both. Cmd `0x12` L = `570bde`: members `56d572`
+  (order `0x17`, anchor own cell, mode 0), group order `0x13`. Cmd `0x1a` = `5709b8` -> `57063e` = the move code `5703c0` (formation, minspeed) with group order 5 and `+0x0a := y << 8 | x`.
+  Scripted setters (`577d1d`-`577e34`, jump table `0x577e57`): sub-commands 1 `5709d9(radius +0xc)`, 2 `5708bc(x +0xc, y +0x10)`, 3 `570b8b`, 4 `5703c0`, 5 `57063e`, 17 `5708ff`, 18 `570aba(radius +0xc)`.
+  `5708bc`: `570e83`, order 2, `+0x0a := y << 8 | x`; the members keep order and mode.
+* Engine API: commands `Guard`, `StandStill`, `Swarm` (`engine/sim/commands.py`; `orders.intake` + `guard_group` / `still_group` / `move_group(swarm=True)`); `ai.set_group_order(world, group, order, target)`
+  (orders 1 radius, 2 / 4 / 5 `(x, y)`, 3, 0x11, 0x12 radius, 0x13) = the Scenario instant `FUN_00577cee` without the trigger side; `ai.find_squad(world, owner, squad)` finds the group; hotkeys G, L
+  and the swarm click in `engine/ui/orders.py` (`engine/backend_pygame/window.py` maps the keys). Member executors: `movement.set_guard` (0xb), `set_still` (0x17).
+* DECISIONS / deviations: a pool-driven unit (group order 1, 2, 5, 0x11, 0x12) whose target id vanished ends mode 5 and keeps its order (`ai.pool_driven`; the same INFERRED rule as for squads, §10);
+  the exe's `FUN_0056ed4e` auto scan at a mover event runs for every order except 1, `0xa`, `0x18`, the engine does it for order `0xb` only; `ai_system` (squads) and `orders.group_pass` (command
+  groups) are two loops, the exe has one list per owner in creation order (visible only when a player owns both kinds and both draw the dice in one pass); computer-owned command groups never sleep;
+  the retarget loop is capped at 1000 draws (the exe would hang on a map under 40 cells).
+  The AI-off swarm uses `orders._pass_move` (no pool); `stand_pass` still builds its pool without the hidden-unit detectors (no hidden setter yet).
+* Not built: the callers of `570f2b` (cancel + stand ground, `0x4f0637`, `0x4f3105`, `0x4f34d9`, `0x4f39c8`, `0x4f8c6b`, `0x51b1a2`, `0x52fdba`) and the summon spell's `5709d9` (`0x51a8d7`: the summoned
+  creatures get a guard group), the Scenario trigger side that would call `ai.set_group_order`.
 
 ## 15. Sleeping squads (record `+0x45` / `+0x48`) and the quest that sends a group (order 2)
 
@@ -361,6 +405,6 @@ So the "map-object effect" of the earlier INFERRED line does not exist: it is th
 
 ## Open questions
 
-* Group orders 1, 2, 5, `0x11`, `0x13`, `0xff` for the engine: decoded in §14, not implemented (needs the G / L / swarm commands `0x17`, `0x12`, `0x1a`, and the Scenario instants, `FUN_00577cee`); the sacks/pickup order of computer players (the L / `P` keys, `FUN_00419f2a`) is not part of the group handlers.
+* The Scenario instants (`FUN_00577cee`, `FUN_00574f3f`) that would call `ai.set_group_order`, and the other callers of the guard / stand-ground setters (summon `0x51a8d7`, `570f2b` at `0x4f0637` ...): needs the Scenario sections 7 / 10-12 decode; the sacks/pickup order (`P` key, cmd `0x13`, `FUN_00419f2a`) is not a group handler.
 * Which squads the Scenario instants name (record `+0x48 := 1`, [§15.1](#151-the-awake-map-confirmed)): needs the Scenario sections 7 / 10-12 decode (`FUN_00562745`); until then every squad of the engine that no human is near sleeps, where the original keeps scripted squads awake.
 * The quest side of [§15.2](#152-the-quest-that-sends-a-group-order-2): who `this` is (the giver, `hero+0x10`), whether the shipped scripts ever create squads with creation-record bit 8 (kind `0xc`), the completion events of kinds `0xb` / `0xc` (`FUN_0057e87a`), and the three non-group kinds `4`-`6`.

@@ -961,7 +961,7 @@ The state is part of `World.dump()` once it differs from its initial value (old 
 
 1. What a unit does at a centre with an empty dynamic list after a failed hop plan (`FUN_00555c7e` empty-list "turn step" path, `0x555c7e`) beyond the failure stop; and whether the stale-list case (turn > 32 ticks) is reachable with real data.bin turn rates.
 2. Haste/Slow vs the group speed byte: the byte is fixed (§8.2); the effect system is phase I.
-4. Group orders 1, 2, 5, 0x11, 0x13 are decoded ([ai §14](ai.md#14-the-other-group-orders)) but not built (their commands and the Scenario instants are missing);
+4. Group orders 1, 2, 5, 0x11, 0x13 and the G / L / swarm commands are built ([ai §14.1](ai.md#141-implementation-and-the-asm-details-it-rests-on-confirmed-unless-marked)); the Scenario instants that would set them are missing;
    the retreat post step `FUN_00573713` is decoded (§9 hook); its spell branches and the hidden-enemy detection `FUN_00556dcd` remain.
 5. The stored occupant/stamp slots with their release quirks (7.4 "Cell record"): `FUN_0055073f` clears a slot of any unit, so a first-come loser loses its record when the winner leaves; the engine derives the occupant instead. Starting routine `FUN_0055be86` callers `0x558b7c`, `0x56a5df` (how often a standing unit re-stamps, which decides how long such a cell stays unowned).
 6. The x87 control word at run time (precision / exception mask) for the slope in `FUN_00557f08`: only the follower-on-target-centre case (`0/0`) depends on it (7.4 step 3). Starting routine CRT start-up before `0x557f08`; DirectDraw init.
