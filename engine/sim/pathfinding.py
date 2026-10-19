@@ -92,10 +92,22 @@ class PathResult:
     cells: list = field(default_factory=list)
     found: bool = False
     end: tuple = None
-    searched: list = field(default_factory=list)
     limit: int = 0
     levels: int = 0
     reason: str = ""
+    _searched: list = field(default_factory=list, repr=False, compare=False)
+    _raw: list = field(default=None, repr=False, compare=False)       # cell indices, mapped to (x, y) on first use
+
+    @property
+    def searched(self):
+        if self._raw is not None:                           # debug overlay only: not paid for by the planner
+            self._searched = list(map(_xy_table().__getitem__, self._raw))
+            self._raw = None
+        return self._searched
+
+    @searched.setter
+    def searched(self, v):
+        self._searched, self._raw = v, None
 
 
 def chebyshev(a, b):
@@ -168,8 +180,8 @@ def _expander(order, use_cost):
         d = dy * GRID + dx
         straight = dx == 0 or dy == 0
         step = ("cost[n]" if straight else "diag[n]") if use_cost else ("2" if straight else "3")
-        body.append("n = c + %d\nnew = cur + %s\nold = fld[n]\nif new < old:\n"
-                    "    if old == 65535:\n        sappend(n)\n    fld[n] = new\n    nappend(n)\n" % (d, step))
+        body.append("n = c + %d\nif cur + %s < fld[n]:\n"
+                    "    if fld[n] == 65535:\n        sappend(n)\n    fld[n] = cur + %s\n    nappend(n)\n" % (d, step, step))
     slow = []
     for dx, dy in order:
         d = dy * GRID + dx
@@ -178,9 +190,10 @@ def _expander(order, use_cost):
         slow.append("n = (c + %d) & 0xFFFF\nnew = (cur + %s) & 0xFFFF\nold = fld[n]\nif new < old:\n"
                     "    if old == 65535:\n        sappend(n)\n    fld[n] = new\n    nappend(n)\n" % (d, step))
     ind = lambda blocks, n: "".join(" " * n + line + "\n" for b in blocks for line in b.rstrip("\n").split("\n"))
-    src = ("def expand(frontier, fld, cost, diag, sappend):\n"
+    src = ("def expand(frontier, fld, cost, diag, sappend, last):\n"
            " nxt = []\n nappend = nxt.append\n"
            " for c in frontier:\n  cur = fld[c]\n"
+           "  if last[c] == cur:\n   continue\n  last[c] = cur\n"
            "  if cur > 0xF000 or c < 257 or c > 65278:\n" + ind(slow, 3) +
            "  else:\n" + ind(body, 3) + " return nxt\n")
     ns = {}
@@ -246,10 +259,11 @@ def _wave(grid, start, target, size, walker, limit, order, cost):
     sappend = searched.append
     diag = None if cost is None else _diag_costs(cost)
     expand = _expander(tuple(order), cost is not None)
+    last = [-1] * (GRID * GRID)         # label a cell was last expanded with: expanding it again is a no-op
     frontier, it = [sidx], 0
     while frontier and it < limit and (tdead or fld[tidx] == UNSEEN):
-        frontier = expand(frontier, fld, cost, diag, sappend)      # half step A -> B
-        frontier = expand(frontier, fld, cost, diag, sappend)      # then B -> A
+        frontier = expand(frontier, fld, cost, diag, sappend, last)      # half step A -> B
+        frontier = expand(frontier, fld, cost, diag, sappend, last)      # then B -> A
         it += 2
     return fld, searched, it, dead
 
@@ -512,7 +526,7 @@ def _plan(grid, start, target, size, walker, human, static, cfg, radius, follow=
         order = ORDER_SIZED
     cost = grid.cost if (walker and grid.cost is not None) else None
     fld, searched, levels, dead = _wave(grid, start, target, size, walker, limit, order, cost)
-    res.searched = list(map(_xy_table().__getitem__, searched))
+    res._raw = searched
     res.limit, res.levels = limit, levels
     end = target
     tidx, sidx = target[1] * GRID + target[0], start[1] * GRID + start[0]

@@ -659,7 +659,7 @@ as a byte. Goldens unchanged.
 ### 7.5 Measured
 
 `tools/bench_pathfinding.py` (pure Python, 200 random walkable pairs per map, human unit = unbounded search,
-one core of this machine): worst case **168 ms on the largest map** (`110.alm`, 256 x 256, 40,465 labelled
+one core of this machine): worst case **148 ms on the largest map** (168 before the re-expansion skip below) (`110.alm`, 256 x 256, 40,465 labelled
 cells), 44-50 ms on the 144 x 144 maps, typically 2-10 ms for a 50-150 cell route (the first version of
 the planner measured 444 ms and 124-160 ms). The wave labels every cell within the route's cost radius, so cost
 grows with the area, not the route length. Speed-up (results bit-identical, pinned by
@@ -668,7 +668,7 @@ sequential label-correcting order is kept (a cell reads its label when expanded,
 so a numpy level fill cannot reproduce it); blocked / footprint-not-free cells hold label 0 in the working
 field so the strict `<` rejects them with no test (the field template is cached per blocked layer and size),
 the field is a list, and the 8 neighbours are source-generated and unrolled per order. About 2.6-3x faster; the rest
-is the irreducible per-expansion cost (~9 expansions per labelled cell). Still one plan per order and per 17
+is the irreducible per-expansion cost (~9 expansions per labelled cell). A later pass (results still bit-identical, same differential tests) skips an expansion of a cell whose label equals the label it was last expanded with (a `last` list per plan): it is a provable no-op (labels only fall, the step costs are fixed) and 29 % of the expansions were such repeats (duplicates in the frontier from cells lowered twice in one half step); and `PathResult.searched` (debug overlay only) is mapped to (x, y) lazily. A numpy level fill was re-checked and still cannot reproduce the order: with the terrain costs ~40 % of the frontier cells are lowered by an earlier cell of the same half step before their own expansion, and ~1.8 cells are lowered per expansion. Still one plan per order and per 17
 hops; a per-tick plan budget stays a gameplay decision. Golden routes: `tests/golden.json["paths"]`
 (`tests/test_pathfinding_maps.py`, regenerate with `tools/update_golden.py`).
 
@@ -845,14 +845,15 @@ Cost note: such a unit makes a hop plan per tick.
 20 units of player 2 on `110.alm` (256 x 256), formation Auto, a walk of about 60 cells, 600 ticks = 37 s of game time):
 - **Per tick (simulation only):** mean 6.0 ms, p95 13.8 ms, max 52 ms (static re-plans of several units in the same tick;
   hop plans mean 2.4 ms, max 5.6 ms; static plans mean 17 ms, max 41 ms). Tick 0, the order itself, plans all 20 units:
-  **463 ms** in one tick (about 23 ms per unit, the worst-case territory of 7.5).
+  **463 ms** in one tick (about 23 ms per unit, the worst-case territory of 7.5); **after the planner pass of 7.5: 352 ms** (14.6 ms
+  per static plan, same machine and run; the planner micro-benchmark of the 20 plans alone: 395 -> 287 ms, best of 7).
 - **Per frame with rendering** (`window.run`, the clock replaced by one that feeds the simulated frame time): 30 fps
   equivalent: mean 21.4 ms, p95 31.4, max 68 (3 % of frames over the 33 ms budget); 60 fps equivalent: mean 19.2, p95 27.6, max
   62 (70 % over the 16.7 ms budget). Frames that step the simulation cost about 24 ms, the others 17.5 ms (rendering). The first
   second (surface and sprite caches filling) costs mean 37-58 ms, max 540-560 ms.
 - **Steady?** After the warm-up yes: no growth over 20 s, the frame time is dominated by drawing (17 ms), the orders add
   about 6 ms to a stepping frame; the tail (p95 28-31 ms) comes from ticks with several static re-plans. **One real spike: the tick
-  that applies the order of a 20-unit group on the biggest map freezes the window for about half a second** (20 static plans
+  that applies the order of a 20-unit group on the biggest map freezes the window for about a third of a second (was half a second)** (20 static plans
   of 7.5). The plans cannot be moved or shared without changing the result (they read the live layer at that tick, each
   starts from its own cell, and spreading them over ticks shifts the first step of the later units, which breaks 1:1), so no
   fix was applied. Options when it matters: plan in a worker thread against a copy of the layer and apply the result at the
