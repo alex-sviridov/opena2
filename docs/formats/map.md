@@ -1,14 +1,15 @@
 # Campaign maps (`.alm`, "M7R")
 
 Code: `allods2/alm.py` (container), `allods2/formats/map.py` (`Map`,
-`MapHeader`), `allods2/formats/passability.py` (part 3), `allods2/formats/objects.py` (part 4), `allods2/formats/entities.py` (part 5); CLI
+`MapHeader`), `allods2/formats/passability.py` (part 3), `allods2/formats/objects.py` (part 4), `allods2/formats/entities.py` (part 5), `allods2/formats/scenario.py` (part 6); CLI
 `python -m allods2 map info|render`; tests `tests/test_map.py`,
-`tests/test_passability.py`, `tests/test_entities.py`. 46 maps in `scenario.res` (`scenario/<n>.alm`, 80², 144²
+`tests/test_passability.py`, `tests/test_entities.py`, `tests/test_scenario.py`; `tools/validate_scenario.py`. 46 maps in `scenario.res` (`scenario/<n>.alm`, 80², 144²
 or 256² cells). Reader: `FUN_00534ad4` (file → map object, 0x3b8 bytes),
 runtime map builder `FUN_004a449c`. Part 1 is the container, part 2 the
 header and terrain, part 3 heights and passability, part 4 objects (sections
-3 and 4), part 5 players, units and items (sections 5, 6, 8, 9); the trigger sections
-7 and 10–12 stay open.
+3 and 4), part 5 players, units and items (sections 5, 6, 8, 9), part 6 the scenario
+(sections 7 triggers, 10 repop records, 11 inns / shops / signposts, 12 music zones; the runtime is
+[engine/triggers](../engine/triggers.md)).
 
 ## Part 1. Container
 
@@ -44,11 +45,11 @@ lie in the 16 bytes that follow section 0 (the old "section 0 quirk").
 | 0x1c | u32 | `player_count` | records in section 5 (2–9; 7 in 13 maps) |
 | 0x20 | u32 | `n_sec4` | entries of section 4 |
 | 0x24 | u32 | `n_sec6` | records of section 6 |
-| 0x28 | u32 | `n_sec7` | records of section 7 |
+| 0x28 | u32 | `n_sec7` | records of section 7 (sum of its three lists; the reader ignores it, part 6) |
 | 0x2c | u32 | `n_sec8` | records of section 8 |
-| 0x30 | u32 | `n_sec10` | version > 1149; section 10, always 0 |
-| 0x34, 0x38, 0x3c | u32 ×3 | `n_sec11` | version > 1229; three lists of section 11 (12, 0x54 and 12 bytes; the middle list is empty in all 46 maps) |
-| 0x40 | u32 | `n_sec12` | version > 1299; entries of section 12 |
+| 0x30 | u32 | `n_sec10` | version > 1149; section 10 (16-byte repop records), always 0 |
+| 0x34, 0x38, 0x3c | u32 ×3 | `n_sec11` | version > 1229; three lists of section 11 (12-byte inns, 0x54-byte shops, 12-byte signposts; only signposts occur, part 6) |
+| 0x40 | u32 | `n_sec12` | version > 1299; music zones of section 12 (after one default record) |
 | 0x44 | 64 B | `name` | map name |
 | 0x84, 0x88 | i32 ×2 | `field_84`, `field_88` | `field_84` (object `+0xd8`) is 1 in all 46: `FUN_005606aa` (`0x560947`) sets settings `+0x74` = `field_84 > 1` ("multiplayer game", read in about 60 places), so 1 = single-player map. `field_88` (`+0xdc`) is the map difficulty 1–4 (1 in 42 maps, 2 in `52`, 3 in `74`/`95`, 4 in `110`), copied to settings `+0x1cc` (`0x56099d`) and used only for `difficultylevel=%d` of the multiplayer server advert (`0x4ed138`). Both 1 when no section 0. CONFIRMED |
 | 0x8c, 0x90 | i32 ×2 | `field_8c`, `field_90` | version > 1159; `field_8c` 0 in 38 maps, `field_90` 0 in 23 and 60,000,000 in 19 (the loader's reset default); the rest stray memory. Written to object `+0xe0/+0xe4`, copied by `FUN_0053440c`, **never read** (CONFIRMED, bounded search). Note object `+0x8c` is the loader's status code (1–6), not `field_8c`, and `+0x90` is the maximum of the units' `squad` |
@@ -77,9 +78,8 @@ lie in the 16 bytes that follow section 0 (the old "section 0 quirk").
   (`FUN_004a449c` stores `0x1fff`, [terrain](terrain.md#strip-files-fun_00476429mask));
   the mask is the editor's list of sets used.
 - **Counts** CONFIRMED (data): section 5 is `76 · player_count` bytes, section
-  6 `48 · n_sec6`, section 11 `12 · sum(n_sec11)`, section 10 empty, in all
-  46 maps (all sizes and counts of sections 4, 7–9, 12 relate through
-  variable-length records, left to later parts). Players: `player_count`
+  6 `48 · n_sec6`, section 11 `12 · sum(n_sec11)`, section 10 empty, section 12 `28 · (n_sec12 + 1)`, in all
+  46 maps (sections 4, 7–9 have variable-length records: parts 4–6). Players: `player_count`
   records `{u32, u32, u32 (0 or 5000), name[32], u16 × 16}` (INFERRED:
   first record "Self"/"self" = the human; the u16 row is a relation row
   with 18 on the diagonal).
@@ -549,8 +549,7 @@ Code: `allods2/formats/entities.py` (`Player`, `Unit`, `Group`, `Member`, `ItemR
 builds the units in `FUN_00561bf9` (called from the map start, `0x560b42`), the item groups
 in `FUN_00564072`, the client mirrors the unit list in `FUN_004a449c` (`0x4a4a90`–`0x4a52fc`).
 Order at map start: players, units, then groups and section 9 (units must exist first: a
-group is tied to its unit by uid, `FUN_00565080`). Section 7 (3 lists of 0x31c-byte records, the
-trigger scripts) and 10–12 stay raw. Runtime struct: [unit-struct](../engine/unit-struct.md).
+group is tied to its unit by uid, `FUN_00565080`). Sections 7, 10–12: part 6. Runtime struct: [unit-struct](../engine/unit-struct.md).
 Totals over the 46 maps: 251 players, 4,212 units, 51 item groups (32 carried, 19 on the
 ground), 88 section 9 records; every section tiles exactly.
 
@@ -722,6 +721,88 @@ data.bin qualities / materials / armour / shields / weapons / special items / st
 (item codes and section 9 stat ids), `humans/human.pal` (colour rows). Item definitions, equipment strings and the
 item `+0x1c` price: [items](../data/items.md).
 
+## Part 6. Scenario: triggers, repop, inns / shops / signposts, music
+
+Code: `allods2/formats/scenario.py` (`Record`, `Trigger`, `Scenario`, `Repop`, `Inn`, `Shop`, `Pointer`,
+`MusicZone`), `Map.scenario`, `.repops`, `.section11`, `.music`; tests `tests/test_scenario.py`; check
+`tools/validate_scenario.py` (all 46 maps parse with every byte consumed: 1,334 instants, 986 checks, 715
+triggers, 40 signposts, 470 music zones, no section 10 / inn / shop record). Reader `FUN_00534ad4` cases 7,
+10, 11, 12 (CONFIRMED, `0x535ad8`–`0x535df5`, `0x5361da`–`0x5362b5`, `0x5351ff`–`0x5352e5`); what the game
+does with section 7 is [engine/triggers](../engine/triggers.md).
+
+### Section 7: instants, checks, triggers
+
+Three counted lists, each `u32 n` + `n` records (the header's `n_sec7` = the sum and is overwritten by the
+first count, so it is never used; CONFIRMED). List 1 = **instants** (actions, into map `+0x40`), list 2 =
+**checks** (condition values, `+0x5c`), both 796-byte records read field by field into a `0x31c` object
+(ctor `FUN_00536ab0`); list 3 = **triggers** (`+0x78`, an array of `0xb8`-byte elements read in one block).
+
+| File off | Size | Object | `Record` field | Meaning |
+|---|---|---|---|---|
+| 0x000 | 64 B | +0x000 | `name` | editor name (cp1251), e.g. "Send message 1 - start"; not used at run time |
+| 0x040 | i32 | +0x040 | `type` | kind: instants 1–0x27 (`FUN_00574f3f` switch), checks 1–0x1b (`FUN_00574955`); `0x10002` = check "constant" / instant "Drop Location" (`0x10003` repopper, `0x10004` music in the editor, unused) |
+| 0x044 | i32 | +0x044 | `id` | the number triggers use (1-based, unique per list, gaps where records were deleted: 25 maps) |
+| 0x048 | i32 | +0x318 | `flag` | copied to check `+0x74` (default 1, `0x573d6e`); no reader in `0x573000`–`0x57c600` (bounded search) |
+| 0x04c | 10 × i32 | +0x048 | `values` | argument values |
+| 0x074 | 10 × i32 | +0x070 | `kinds` | argument kinds, below |
+| 0x09c | 10 × 64 B | +0x098 | `labels` | the editor's argument labels ("Message number", `<None>`); not used |
+
+**Argument kinds** (CONFIRMED by the compiler `FUN_00562745` switch; names from the editor's
+`Description Checks.ini` / `Description Instants.ini` in the install, INFERRED): 0 none, 1 int, 2 group
+(`Target_Group`), 3 player, 4 unit, 5 X, 6 Y, 7 constant (the "Group Command" sub-command), 8 item,
+9 building. Ids: **group** = squad number (unit record `squad`, the group's `+0x1c`; the last player in the
+player list wins a shared number, none is shared in the install), **player** = 1-based section 5 record,
+**unit** = scenario uid `< 10001`, `10001 + k` = hero `k` of the human party, `>= 11001` a unit found by name
+(table at `0x5f42f4`; no map uses it), **building** = structure uid (section 4), **item** = special item
+`value + 0x18` (code `value + 0xe18`, class 14). Values 8000–9999 in a group / player / unit slot are
+**variable references** (`8xyy` / `9xyy`, slot `yy`); no shipped map has one (CONFIRMED by data). Numeric
+kinds (0, 1, 5, 6, 7) are packed in slot order, objects go to fixed fields: [triggers §2](../engine/triggers.md#2-compilation-at-map-start-fun_00562745).
+
+**Trigger record** (`0xb8` bytes, CONFIRMED by the reader and the compiler `0x563ba9`–`0x563f5c`):
+
+| Off | Size | `Trigger` field | Meaning |
+|---|---|---|---|
+| 0x00 | 64 B | `name` | editor name ("Start", "Ogre is dead") |
+| 0x40 | 64 B | `reserved` | editor memory (identical garbage in all triggers of a map); never read |
+| 0x80 | 3 × (i32, i32) | `pairs` | check ids `(a, b)`; a pair is used only when both are non-zero; a trigger with `pairs[0].a == 0` is not compiled |
+| 0x98 | 4 × i32 | `instants` | instant ids run in order, 0 = empty (an id > 5000 logs "Reference to suspicious instant") |
+| 0xa8 | 3 × i32 | `ops` | operator of each pair: 0 `==`, 1 `!=`, 2 `>`, 3 `<`, 4 `>=`, 5 `<=` (`a op b`) |
+| 0xb4 | i32 | `once` | non-zero: fires at most once (585 triggers), 0: every evaluation while true (130) |
+
+### Section 10: repop records (none in the campaign)
+
+`n_sec10` records of 16 bytes into map `+0x310` (CONFIRMED reader). Read by `FUN_00560d9b` (scripted squad
+creation, the multiplayer "Outpost (Repopper)"): `+0` squad number, `+4` delay in percent (`× [0x690418] / 100`),
+`+8` flags (1: run instant `+0xc`, 2: keep `+0xbc`, 4 / 8: the group-object quest flags `+0x48` / `+0x4c`,
+[ai §15.1](../engine/ai.md#151-the-awake-map-confirmed)), `+0xc` instant position (counted like a signpost's).
+Field meanings past the reader: INFERRED from that routine.
+
+### Section 11: inns, shops, signposts
+
+Three lists, counts `n_sec11` (header `+0x34/+0x38/+0x3c`), CONFIRMED reader; consumed by the structure
+creation `FUN_00561422` per structure **type**, matching the record's first word with the structure **uid**:
+
+| List | Size | Map | Structure types (structures.reg) | Effect (`FUN_00561422`) |
+|---|---|---|---|---|
+| A `Inn` | 12 | `+0x338` | 0x43–0x45, 0x63–0x65, 0x6f–0x71 "Multiplayer … Inn" (class ctor `FUN_0052f635`) | `{uid, flags, value}`: `+0xd4 = flags & 2 ? value : 0`, `+0xc4/+0xc8/+0xcc/+0xd0` = bits 0x10 / 0x20 / 0x40 / 4 |
+| B `Shop` | 84 | `+0x324` | 0x22, 0x23, 0x5d–0x5f, 0x69–0x6b "Multiplayer … Shop" (`FUN_00520ee6`) | `{uid, a[4], b[4], c[4], d[4], e[4]}` -> shop `+0x70 + 0x14·i` = `b, c, d, e, a` |
+| C `Pointer` | 12 | `+0x34c` | 0x46–0x4b "Usable Pointer" (MFC class "Pointer", `FUN_005672c0`) | `{uid, enabled, n}`: if `enabled`, signpost `+0x6c` := runtime index of instant position `n` (= instants of type `< 0x10002` among the first `n`); default `-1` |
+
+Using a signpost (creature state `0xf`, `FUN_0050f12c` `0x50f944`) runs instant `+0x6c` through `FUN_00574f3f`
+when **`+0x6c > 0`** (so the runtime instant 0 is never reachable from a signpost: quirk). All 40 install
+records are list C; 4 of them name a "Usable Altar" (0x4c / 0x4d: `53`, `62`, `76`, `86`), which is built as a
+plain building, so the record is ignored (CONFIRMED by the type tests).
+
+### Section 12: music zones
+
+`28 · (n_sec12 + 1)` bytes: one default record (map `+0x374`), then `n_sec12` zones (`+0x360`), each 7 × i32
+`{x, y, radius, theme[4]}` (`MusicZone`), theme `-1` = none. CONFIRMED consumer: the client copies the default
+record (only if its `theme[0] >= 0`) and the zones to the list `0x622798` (`FUN_004a449c` `0x4a52fc`–
+`0x4a5348`); `FUN_004754e9(x, y)` (position in 1/256 cell) picks the zone with the smallest Euclidean distance
+`< radius << 8` among those with a theme, a `(0, 0)` record only when nothing else matches, and sets the next
+theme `0x5f1a08` to `theme[rand(0..3)]` redrawn until not `-1` (`FUN_0051fa25(3)` = `rand() · 4 >> 15`, the
+client's CRT `rand`). Music playback itself: out of the engine's scope for now.
+
 ## Open questions
 
 - Dirt: the caller of `FUN_00559ce5` (clear), and when the mark disappears.
@@ -730,17 +811,16 @@ item `+0x1c` price: [items](../data/items.md).
   `FUN_00552c28`; callers (`FUN_00552929` has no direct caller: vtable?).
 - Whether the world-map-load order really creates cell records only through structures
   (a record made earlier by a unit makes `FUN_00559890` skip the refresh, see part 4);
-  whether section 7 names structures (section 11 does: keyed by structure uid, CONFIRMED `FUN_00561422`).
+  (section 7 names structures by uid: kind 9, part 6).
 - Block bits 3–7 and the dynamic stamping (`FUN_00550a96`,
   `FUN_0055c500`), the per-class `movementType` result (vtable `+0x20`),
   (the search itself is answered: [simulation §7](../engine/simulation.md#7-pathfinding-phase-h2)).
-- Section 7 (trigger lists, 0x31c-byte records), 10, 11, 12 (the reader `FUN_00534ad4`
-  cases 7, 10–12 are in the exe).
 - Part 5: the event classes of `behaviour` bits 1, 2, 4 (`FUN_005303ed`); section 9 per-cell
-  payload (`FUN_0055ba36`, records with `a`/`b` ≠ 0 and kind < 4; 30 records in `76`, `93`–`96`);
+  payload (`FUN_0055ba36`, records with `a`/`b` ≠ 0 and kind < 4; 30 records in `76`, `93`–`96`; the same routine
+  stores the instant "Set trap" `{spell, power, x, y, x, y}` record, [triggers §4](../engine/triggers.md#4-instants-fun_00574f3f));
   (note: `FUN_005303ed` is the quest generator, [items §14](../data/items.md#14-quests-and-the-item-upgrade-message-0x38)).
   Answered in [items](../data/items.md): gold pickup (hero `+0x3c`, never `Player.money`, §12), `+0x1c` = price,
   the `(41, v)` remap to `0x31` (= 49 `damageBonus`; a pair cannot carry castSpell).
-- Section 12 (28-byte circle zones with four `-1`-or-number values, consumer `0x475500` picks
-  one at random into `0x5f1a08`: INFERRED music/ambience zones; users of the global untraced);
-  sections 7 and 11 key slots by coded numbers 8000–9999 and structure uids.
+- Section 12: the reader of the next-theme global `0x5f1a08` (the music player) and the callers of
+  `FUN_004754e9` (`0x40bd8b`, `0x492688`: camera move?).
+- Section 11 lists A / B (multiplayer inns and shops): what the copied fields mean (none in the campaign).

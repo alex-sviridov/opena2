@@ -127,8 +127,11 @@ def _setup(a):
     seed = getattr(a, "seed", None)
     if seed is None:
         seed = time.time_ns() & 0xFFFFFFFF if a.cmd == "run" else DEFAULT_SEED      # the exe seeds from the clock (simulation.md 10)
-    world = World.from_map(open_map(a.map, a.install), assets, seed=seed,
-                           difficulty=getattr(a, "difficulty", DEFAULT_DIFFICULTY))
+    m = open_map(a.map, a.install)
+    world = World.from_map(m, assets, seed=seed, difficulty=getattr(a, "difficulty", DEFAULT_DIFFICULTY))
+    if getattr(a, "triggers", False):                   # the map script (docs/engine/triggers.md); implies the AI
+        from engine.sim import triggers
+        triggers.enable(world, m)
     tv = TerrainView(world, assets.tileset())
     w, h = a.size
     opts = DrawOptions(shadows=not a.no_shadows, lit=not a.no_light,
@@ -236,6 +239,7 @@ def main(argv=None):
     m.add_argument("--units", action="store_true", help="add the unit dots")
     r.add_argument("--no-minimap", action="store_true")
     r.add_argument("--no-ai", action="store_true", help="monsters do not think (docs/engine/ai.md)")
+    r.add_argument("--triggers", action="store_true", help="run the map script (docs/engine/triggers.md); the party is not placed, so a map without a hero of the human is lost at tick 14")
     r.add_argument("--debug-move", nargs="+", metavar="UID_OR_CELL",
                    help="developer tool: UID X,Y [X,Y ...] walks the unit along straight legs")
     r.add_argument("--debug-moveto", nargs="+", metavar="UID_OR_CELL",
@@ -276,7 +280,7 @@ def main(argv=None):
         except ValueError as e:
             p.error(str(e))
         window.run(world, tv, camera, a.layout, a.speed, "Allods 2 - " + world.name,
-                   assets=assets, options=opts, debug=debug, minimap=mm, commands=commands, ai=not a.no_ai)
+                   assets=assets, options=opts, debug=debug, minimap=mm, commands=commands, ai=not a.no_ai or a.triggers)
     elif a.interface:
         from engine.backend_pygame.interface import screenshot_window
         from engine.world import UNIT_ID_BASE

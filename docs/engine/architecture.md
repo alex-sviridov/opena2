@@ -190,7 +190,7 @@ code `engine/world.py`; map facts in [map.md parts 3-4](../formats/map.md).
 - **Ids**: structures `0x6000 + uid` (CONFIRMED: map.md part 4), section 3 cells
   `0x10000 + n` (row-major index; DECISION, the exe has no id for a layer cell),
   **units `0x6000 + uid`** (CONFIRMED: the client view `+4`, same space as structures; uids never collide with
-  structure uids in the 46 maps, a collision is a `ValueError`; trigger references use this id), ground piles
+  structure uids in the 46 maps, a collision is a `ValueError`; trigger references name the uid, [triggers §2.1](triggers.md#21-look-up-tables-confirmed-0x5627ac-0x562a58)), ground piles
   `0x30000 + index of their first section 8 group` (ours), players the 1-based section 5 record number (the
   value `Unit.owner` holds).
   A duplicate id is a `ValueError`.
@@ -249,7 +249,5 @@ Open: see [open-questions](../open-questions.md#engine).
 - Renderer: 31.6 ms (640x480) / 46 ms (1024x768) on the map 73 fight (combat.md 14.1); `build_draw_list` (~10 ms, per-object work for every tree in the window) is the next target for 30 fps at 1024x768.
 - Scroll hitch of about 27 ms when new cells enter (pre-warm water phases or add a
   flat-cell fast path to `composite`).
-- Trigger references to world ids: section 11 is keyed by structure uid (`0x6000 + uid`, CONFIRMED,
-  `FUN_00561422`); section 7 slots are coded numbers 8000–9999; section 3 cells have no exe id.
 - Removing a structure: the exe clears every present cell, also those held by another structure
   (`FUN_0055995a`); the engine releases only the cells the structure holds.

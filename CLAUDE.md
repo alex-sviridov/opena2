@@ -168,7 +168,7 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   groups = item packs (carried via unit `group`, 19 ground sacks, `extra` = pile gold), section 9 = item
   properties (stat id, value), item codes -> data.bin weapons/shields/armour/special (`decode_item`); 4,212
   units resolve. Header `field_84` = multiplayer flag, `field_88` = difficulty (adverts), `field_0c/8c/90`
-  never read; section 11 keyed by structure uid, section 12 = circle zones. Unit struct: Mover/Brain/orders/
+  never read; sections 7, 10-12: see "Triggers". Unit struct: Mover/Brain/orders/
   states/equipment slots in docs/engine/unit-struct.md. `Map.players/.units/.item_groups/.ground_groups`, `map render --layers all`; runtime unit
   struct (monster 0x208, human 0x254) docs/engine/unit-struct.md. map.md part 5
 - Engine G3a (units) done: `World.players/units/items` from the map in record order (unit id `0x6000 + uid` CONFIRMED,
@@ -180,7 +180,15 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   exe `0x40 + rand(128)` (engine: hash of uid). Also answered: exe scrolls whole cells within the 8-cell border; cell effects =
   spell-area sprites (fire/earth wall, poison cloud); server drops units on blocked cells (9 in the install), HP-0 walkers stay
   corpses; ShadowY +-20000 has no gate. docs/engine/rendering.md §13, architecture.md §9
-- Not started: saves, Scenario.dll, triggers (sections 7, 10-12).
+- Not started: saves, Scenario.dll (only GetVar / SetVar = a plain i32 array are known).
+- Triggers (map sections 7, 10-12) decoded, engine subset built (docs/engine/triggers.md, map.md part 6): section 7 = instants / checks (796-byte records:
+  type, id, 10 args with kinds int/group(squad no.)/player/unit(uid, 10001+k = party hero k)/X/Y/const/item/building(uid)) + 184-byte triggers (3 check pairs with
+  ops == != > < >= <=, 4 instants, once flag); compiled at map start (`FUN_00562745`, quirks: failed refs map to slot / instant 0), evaluated in the group pass
+  (`tick & 15 == 6`, after the wake, before the handlers: checks `FUN_00574899`, triggers `FUN_00574ba1`, instants `FUN_00574f3f`); "killed" = state 0x10, no
+  "attacked" event (HP / Brain mode 5); victory / defeat `FUN_004f856a` at the end of every 16-tick block (dying main hero, fail cause, complete counter; messages
+  0xb4 / 0xb5); section 10 repop (unused), 11 = multiplayer inns / shops + signposts (`Pointer` runs an instant), 12 = music zones. `allods2/formats/scenario.py`,
+  `tools/validate_scenario.py`, `engine/sim/triggers.py` (`triggers.enable(world, map)`, `Simulation(triggers=True)`; unimplemented kinds counted), tests
+  `test_scenario.py`, `test_engine_triggers*.py`. Open: party placement at the drop location, mission-complete screen flow, item / spell / patrol instants.
 - Engine G3b (interface, cursor, selection) done: `engine/ui/layout.py` (three modes, one table citing exe routines),
   original cursors (`choose_cursor`: 8 arrows by the screen-border rule, select, pickup), rectangle picking (exe: per-object
   `Selection` rect, last registered first, 3x3 box; drag > screenW*10/640 px, overlap > 10 px^2), `SelectUnits` command +

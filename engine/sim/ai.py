@@ -381,6 +381,9 @@ def ai_system(world, commands):
     if not world.ai_on or (world.tick & 15) != 6:
         return
     wake(world)
+    if world.script is not None:                        # FUN_0057485b: the scenario triggers, after the awake map, before the handlers
+        from . import triggers
+        triggers.run_pass(world)
     for owner in sorted({g.key[0] for g in world.ai_groups.values()}):
         for g in [g for g in world.ai_groups.values() if g.key[0] == owner]:
             g.members = [i for i in g.members if i in world.units]

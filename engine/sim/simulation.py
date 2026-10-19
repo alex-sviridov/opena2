@@ -1,6 +1,7 @@
 """Fixed-step simulation."""
 
 from . import ai as ai_mod
+from . import triggers as triggers_mod
 from .movement import movement_system
 from .orders import orders_system
 from .selection import selection_system
@@ -11,20 +12,27 @@ from .vitals import vitals_system
 class Simulation:
     """`step(commands)` advances the world one tick: systems run in list
     order, each as `system(world, commands)`; then the tick counter grows.  Every command
-    is appended to `log` as `(tick, command)`.  `systems=None` installs the vitals job (tick & 15 == 12), order, selection and movement systems.
+    is appended to `log` as `(tick, command)`.  `systems=None` installs the vitals job (tick & 15 == 12), order, selection and movement systems;
+    `ai=True` the squads' group pass, `triggers=True` (after `triggers.enable`, implies `ai`) the map script and the victory / defeat pass.
 
     Timing (CONFIRMED, docs/engine/simulation.md 1.1): `world.tick` is the exe's server counter `server+4` *before* its
     increment in `FUN_004f8521`; it starts at 0 on a new game (`FUN_004eb715`, `0x4eba47`).  A command handed to `step`
     is applied by that very step (the exe's loop-back delivers synchronously: no extra tick of latency), so the caller
     puts a command into the next step after it was issued."""
 
-    def __init__(self, world, systems=None, ai=False):
+    def __init__(self, world, systems=None, ai=False, triggers=False):
         self.world = world
+        if triggers:                            # the scenario script (sim/triggers.py) runs inside the AI's group pass
+            if world.script is None:
+                raise ValueError("triggers=True needs triggers.enable(world, map) first")
+            ai = True
         self.systems = [vitals_system, orders_system, selection_system, carrier_system, movement_system] if systems is None else list(systems)
         if ai:                                  # the monsters think at tick & 15 == 6, before the drain (docs/engine/ai.md 10)
             if not world.ai_on:
                 ai_mod.enable(world)
             self.systems.insert(self.systems.index(orders_system) if orders_system in self.systems else 0, ai_mod.ai_system)
+        if triggers:
+            self.systems.append(triggers_mod.mission_system)   # FUN_004f8967 at the end of the step (docs/engine/triggers.md 6)
         self.log = []
 
     @property

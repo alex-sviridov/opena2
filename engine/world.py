@@ -142,7 +142,7 @@ class AiGroup:
     seen: int = 0                   # +0x30 set after the first pass
     passes: int = 0                 # +0x34
     awake: bool = True              # GroupAI record +0x45, recomputed at every group pass (ai.wake, docs/engine/ai.md 15)
-    keep_awake: bool = False        # GroupAI record +0x48: never sleeps (set for squads a Scenario instant refers to; the engine has no scripts)
+    keep_awake: bool = False        # GroupAI record +0x48: never sleeps (set by triggers.enable for squads the map script names)
     target: tuple = (0, 0)          # +0x0a group destination (x, y) of the orders 2, 5, 0x11
     speed: int = 0                  # +0x44 group speed of a formation (orders 4, 5)
     counter: int = 0                # +0x15 wander pass counter (byte)
@@ -498,6 +498,7 @@ class World:
         self.ai_on = False          # sim/ai.py `enable`: the squads are in `ai_groups` and the state is part of dump()
         self.ai_groups = {}         # (owner, squad) -> AiGroup, in creation order
         self.ai_emitted = []        # AI commands since the last drain by `Simulation.step` (the log), not part of dump()
+        self.script = None          # sim/triggers.py `Script` once `triggers.enable` compiled the map's section 7; dumped only then
         self._sight = {}            # (x, y, scan) -> frozenset of visible cells (the heights never change), not part of dump()
         self.report = BuildReport()
         self._cells = {}            # (x, y) -> set of ids over present footprint cells
@@ -1048,6 +1049,7 @@ class World:
                 **({"carriers": [[c.uid, c.kind, c.caster, c.target, c.spell, c.level, c.ticks_left, c.born, int(c.hostile), list(c.start), c.flight, list(c.aim)]
                                   for c in self.carriers]} if self.carriers else {}),
                 **({"ai": self._ai_dump()} if self.ai_on else {}),
+                **({"script": self.script.dump()} if self.script is not None else {}),
                 **({"rng": self.rng.state} if self.rng.state != self.seed else {})}
 
     def _ai_dump(self):

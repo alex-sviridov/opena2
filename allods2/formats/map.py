@@ -3,8 +3,8 @@
 The container walk is allods2/alm.py.  `Map.load` decodes the General block
 the way the game's reader FUN_00534ad4 does (sequential reads with version
 gates) and exposes the Tiles block as a numpy array.  Section 4 is decoded by
-formats/objects.py (`Map.structures`); every other section
-stays raw in `Map.sections` until a later spec decodes it.
+formats/objects.py (`Map.structures`), sections 5-6, 8-9 by formats/entities.py and
+sections 7, 10-12 by formats/scenario.py; the raw bytes stay in `Map.sections`.
 """
 
 import struct
@@ -18,6 +18,7 @@ from ..common import read
 from . import entities as ent
 from . import objects as obj
 from . import passability as pas
+from . import scenario as scn
 from ..text import decode_text as _decode
 
 NAME_SIZE = 0x40           # name buffer
@@ -215,6 +216,32 @@ class Map:
     def items(self):
         """Alias of `ground_groups` plus the carried ones: every item group."""
         return self.item_groups
+
+    @property
+    def scenario(self):
+        """Section 7 as `scenario.Scenario` (instants, checks, triggers); empty lists when the map has none."""
+        def build():
+            raw = self.sections.get(7)
+            return scn.parse_scenario(raw) if raw else scn.Scenario((), (), ())
+        return self._entity("scenario", build)
+
+    @property
+    def repops(self):
+        """Section 10 as `scenario.Repop` records (none in the campaign)."""
+        return self._entity("repops", lambda: scn.parse_repops(self.sections.get(10, b""), self.header.n_sec10))
+
+    @property
+    def section11(self):
+        """Section 11 as (inns, shops, pointers): `scenario.Inn`, `.Shop`, `.Pointer` records."""
+        return self._entity("sec11", lambda: scn.parse_section11(self.sections.get(11, b""), self.header.n_sec11))
+
+    @property
+    def music(self):
+        """Section 12 as (default `scenario.MusicZone`, zones), or (None, ()) without the section."""
+        def build():
+            raw = self.sections.get(12)
+            return scn.parse_music(raw, self.header.n_sec12) if raw else (None, ())
+        return self._entity("music", build)
 
     def placed_objects(self, window=True):
         """The Objects block as `objects.MapObject` records (trees, rocks,

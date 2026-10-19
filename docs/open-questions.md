@@ -41,17 +41,15 @@ from both places when answered).
 - Monster damage = template + equipped weapon: confirm in play. [combat](engine/combat.md#open-questions)
 - Special attacks (`FUN_0056a981`), the AI mage casting (`FUN_0056b059`, `FUN_0056bc7b`), the caster lists `server+0xaa8`/`0xac8` (answered in the doc, AI spell use is phase K; the player-side cast is built, [combat §14](engine/combat.md#14-spell-casts-i4a)). [ai](engine/ai.md#11-phase-k-list-ranged-and-casters)
 - Main shell: which main-menu entry and which screen-state chain lead to state `0x425` (new single-player game; only known entry: state `0x438` index 6..9 of the widget `this+0x134`), and whether the Easy/Medium/Hard radios (panel `this+0x374`, resource `0x466`) share the screen with the name edit of town.txt tips 9/10 (INFERRED); needed before an engine new-game screen. [ai](engine/ai.md#101-difficulty-tweak-fun_00561bf9-0x561e200x561f0b-confirmed)
-- AI: the group orders 1, 2, 5, `0x11`, `0x13`, `0xff` and the G / L / swarm commands are built ([ai §14.1](engine/ai.md#141-implementation-and-the-asm-details-it-rests-on-confirmed-unless-marked)); missing: the Scenario instants that call `ai.set_group_order`, the summon spell's guard group (`0x51a8d7`); the Scenario instants that set the sleeping flag `+0x48` of a squad and the quest-accept path that sends a squad with order 2 ([ai §15](engine/ai.md#15-sleeping-squads-record-0x45--0x48-and-the-quest-that-sends-a-group-order-2)); (creature `+0x4c` flags, `FUN_0053a5a0` = mage, the `0x8000` RNG divisor and the difficulty tweak, including which single-player screen sets it (new game: Easy/Medium/Hard, saved in the save file), are answered in ai §6 / §10.1; the flee list is creature-only, hostile structures never trigger a flee, and the hidden flag `0x1000` is the Invisibility effect: answered in ai §4 / §9, engine `Unit.hidden` has no setter until the effect system). [ai](engine/ai.md#open-questions)
+- AI: the group orders 1, 2, 5, `0x11`, `0x13`, `0xff` and the G / L / swarm commands are built ([ai §14.1](engine/ai.md#141-implementation-and-the-asm-details-it-rests-on-confirmed-unless-marked)); missing: the scripted group sub-commands 10, 11, 14, 15 ([triggers §4](engine/triggers.md#4-instants-fun_00574f3f); 1-5, 17, 18 and the sleeping flag `+0x48` are built), the summon spell's guard group (`0x51a8d7`); the quest-accept path that sends a squad with order 2 ([ai §15](engine/ai.md#15-sleeping-squads-record-0x45--0x48-and-the-quest-that-sends-a-group-order-2)); (creature `+0x4c` flags, `FUN_0053a5a0` = mage, the `0x8000` RNG divisor and the difficulty tweak, including which single-player screen sets it (new game: Easy/Medium/Hard, saved in the save file), are answered in ai §6 / §10.1; the flee list is creature-only, hostile structures never trigger a flee, and the hidden flag `0x1000` is the Invisibility effect: answered in ai §4 / §9, engine `Unit.hidden` has no setter until the effect system). [ai](engine/ai.md#open-questions)
 - Client reaction on message `0x73` beyond the number (view unit vtable `+0x74`); the recovery-timer byte wrap. [combat](engine/combat.md#open-questions)
 
 ## Not started (from the reversing plan)
 
-- `.alm` triggers (sections 7, 10–12); the server reader `FUN_00534ad4` parses all of them
-  (switch on the section id). Sections 0–6, 8, 9 are done. [map](formats/map.md#open-questions)
 - Part 5 leftovers: event classes of unit `behaviour` bits 1, 2, 4, section 9 per-cell payload.
   [map](formats/map.md#open-questions)
-- Section 12 zones (INFERRED music) and the 8000–9999 slot codes of sections 7 and 11.
-  [map](formats/map.md#open-questions)
+- Section 12 music: the reader of the next-theme global `0x5f1a08` and the callers of `FUN_004754e9`; section 11
+  inn / shop fields (multiplayer only). [map](formats/map.md#open-questions)
 - Unit struct: group AI, orders 0x16/0x1a, structure damage `0x516ea0`.
   [unit-struct](engine/unit-struct.md#open-questions)
 - Line of sight tables and the `FUN_00559536` gate; block-layer dynamic bits
@@ -59,7 +57,7 @@ from both places when answered).
 - Dirt mark: caller of the clear `FUN_00559ce5` (the `+0x5c` byte is answered: damage spread, [spells](data/spells.md#4-effect-handlers)).
   [map](formats/map.md#open-questions)
 - Structure registration at load: does a unit-made cell record exist before the structures (then
-  `FUN_00559890` skips the refresh)? Do triggers name only structures? `FUN_005508a0` callers.
+  `FUN_00559890` skips the refresh)? `FUN_005508a0` callers.
   [map](formats/map.md#open-questions)
 - `famehall.dat`, saves (`game%d.sav`; the
   client state is a [`.reg`](formats/reg.md#writing) tree, `FUN_0048dc9f`), `.a2c`
@@ -75,10 +73,6 @@ from both places when answered).
   human panel) and command-bar contents; hover brightness; structure pick rects; order command bytes and the squad
   voice. [ui-layout](engine/ui-layout.md#open-questions); start at `FUN_0040b2b8`, `FUN_004175c7`.
 - Engine terrain scroll hitch (~27 ms per new cell row/column): pre-warm or flat-cell fast path.
-  [architecture](engine/architecture.md#open-questions)
-- Trigger references to world ids: section 11 is keyed by structure uid (`0x6000 + uid`, CONFIRMED),
-  section 7 slots are coded numbers 8000–9999 (INFERRED class × 100 + index), section 3 cells have no exe
-  id (engine ids `0x10000 + n` are ours). Left: decode section 7 (`FUN_00562745` `0x562a88`).
   [architecture](engine/architecture.md#open-questions)
 - Unregistering a structure (`FUN_0055995a`) clears cells held by another structure; engine releases only
   its own cells. [architecture](engine/architecture.md#open-questions)
@@ -98,5 +92,5 @@ from both places when answered).
 - Click to move (H3 research) [research §9](engine/click-to-move-research.md#9-open-questions): voice unit selection `FUN_0041da16`, `FUN_0041f090`/`41f0e0` (neighbours of `Ctrl+F`), single-player server connection list (`FUN_00500f0e`, `0x50155f`; AI "No way" drop), heap block after the `+0xb8` table (`FUN_00582a10`; last-row read of `FUN_00417f31`), detection level `FUN_00556dcd` and the spell branches of the retreat post step `FUN_00573713` (`FUN_0056bb0d` kind `0x17`, `FUN_0056cb8c`).
 - Cell record effect fields `+0x34..+0x39` (Teleport `0x17` -> `brain+0xb0`, `FUN_0055a96c`; no writer found) [unit-struct](engine/unit-struct.md#open-questions): starting routine `FUN_0055f3e0` callers that copy a record from a stream (`0x55f6b0`).
 - Phantom units (9 on blocked cells, never created by the server) and HP-0 units: engine keeps and draws them; decide with the phase H sim. [architecture §9](engine/architecture.md#9-world-state)
-- Death/corpses/loot (I2) [combat §12.11](engine/combat.md#1211-open-questions): map-script listeners of the server event queue (event 4 = unit removed, `FUN_0052e198`, `FUN_0052eac8`); hero-death follow-ups ([combat §12.11](engine/combat.md#1211-open-questions) 1: `owner+0x38` writer, dialog latch `[this+0x3e8]` reset, senders of `0xb5`/`0xb6`, `owner+0x40` reader; start: callers of `FUN_00505347`); summon-cap job `+0x148` draw order (CMap iteration order, `0x545a60` hash; `FUN_0052bbb7`); item effects (`{castSpell=..}`) of dropped template equipment are lost in the 16-bit pile code (what the pile / pickup keeps for an item with effects: start `FUN_00529ac2`, `FUN_0052a71d`); sound tables (unit sound set entries, hero voices, UI sound `0x627740[0xf]`; [combat §12.11](engine/combat.md#1211-open-questions) 4).
-- Triggers: which creature state the Scenario conditions read for 'unit attacked / killed / group attacked' (the event list `server+0xbbec` is write-only, [ai §8](engine/ai.md#8-hit-reaction-fun_0056e6b8attacker-victim-0-confirmed)); start at `FUN_00574ba1` condition dispatch.
+- Death/corpses/loot (I2) [combat §12.11](engine/combat.md#1211-open-questions): the quest kinds that listen to the server event queue (event 4 = unit removed, `FUN_0052e198`, `FUN_0052eac8`; not the triggers); hero-death follow-ups ([combat §12.11](engine/combat.md#1211-open-questions) 1: `owner+0x38` writer, dialog latch `[this+0x3e8]` reset; start: callers of `FUN_00505347`); summon-cap job `+0x148` draw order (CMap iteration order, `0x545a60` hash; `FUN_0052bbb7`); item effects (`{castSpell=..}`) of dropped template equipment are lost in the 16-bit pile code (what the pile / pickup keeps for an item with effects: start `FUN_00529ac2`, `FUN_0052a71d`); sound tables (unit sound set entries, hero voices, UI sound `0x627740[0xf]`; [combat §12.11](engine/combat.md#1211-open-questions) 4).
+- Triggers [triggers](engine/triggers.md#open-questions): the party placement at the "Drop Location" cells (`FUN_00562745` `this+0x28`) and the hero filter `FUN_004029a0` (`FUN_00562518`); the free-cell test `FUN_005563ca` / `FUN_0055c5a0` of `FUN_00510089`; the window message `0x41d` and the mission-complete dialog (`0x486ddb`, Scenario variable `0x300`); the text of message `0xb6` values (`0x433` handler); Scenario.dll initial variables (`ScenarioNewGame`) and campaign use; the member loop of instant 22 (`FUN_005782ba` over a list `FUN_004f0568` changes).

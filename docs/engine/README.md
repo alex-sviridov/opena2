@@ -12,6 +12,7 @@ The recreated game, built on the core library (`allods2/`, `a2res/`).
 | [combat.md](combat.md) | phase I1: the attack order (cmd `0x19`), approach (follow driver), swing timeline, hit resolution `FUN_00516f6f` as math with worked examples, stat building (monster = template + weapon, human recompute), client damage numbers, VERIFY IN GAME | I1 done, CONFIRMED / INFERRED per fact |
 | [ai.md](ai.md) | phase I3: monster AI = squad group order `0x12` handler `FUN_005728fa` every 16 ticks, sight flood, pool, target score, hit reaction, flee post step, engine mapping, VERIFY IN GAME | I3, CONFIRMED / INFERRED per fact |
 | [combat.md §14](combat.md#14-spell-casts-i4a) | phase I4a: the player's spell cast (command, order `0xd`, Brain mode 8, cast phases, carriers, damage), staff casts; REA facts in [spells §9c](../data/spells.md) | I4a done (sim); view/UI = I4b |
+| [triggers.md](triggers.md) | map scripts (section 7): compilation `FUN_00562745`, the check / trigger / instant tables, pass timing (group pass, every 16 ticks), victory and defeat `FUN_004f856a`, engine `sim/triggers.py` | decoded, engine built (subset), CONFIRMED / INFERRED per fact |
 | [unit-struct.md](unit-struct.md) | runtime unit struct of the exe: classes, sizes, allocation sites, field table, per-tick behaviour, client mirror | CONFIRMED / INFERRED / UNKNOWN per field |
 
 Design specs: [../superpowers/specs/](../superpowers/specs/). Format and

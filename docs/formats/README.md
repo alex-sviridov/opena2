@@ -18,7 +18,7 @@ file) or INFERRED, with the routines they came from.
 | Palettes, shade tables, text colours, effect ids | [palettes.md](palettes.md) | CONFIRMED, all 2,854 palettes |
 | `.bmp`, portrait canvas | [bitmaps.md](bitmaps.md) | CONFIRMED |
 | Terrain: tiles, water, dirt, lit and height-displaced blits | [terrain.md](terrain.md) | CONFIRMED, all 46 campaign maps |
-| `.alm` maps: container, General block (header), Tiles/Altitudes/Objects layers, heights and derived passability, objects and structures | [map.md](map.md) | CONFIRMED header, terrain, heights, passability inputs, objects (section 3), structures (section 4, footprints, draw order), players, units, item groups and records (sections 5, 6, 8, 9; part 5) (all 46 campaign maps); trigger sections 7, 10–12 open |
+| `.alm` maps: container, General block (header), Tiles/Altitudes/Objects layers, heights and derived passability, objects and structures | [map.md](map.md) | CONFIRMED header, terrain, heights, passability inputs, objects (section 3), structures (section 4, footprints, draw order), players, units, item groups and records (sections 5, 6, 8, 9; part 5) (all 46 campaign maps); scenario sections 7 (triggers), 10 (repop), 11 (inns, shops, signposts), 12 (music zones), part 6 |
 | Paper doll: inventory figure layer order | [paperdoll.md](paperdoll.md) | CONFIRMED |
 | `fontN.dat` + `.16`/`.16a` fonts, `~` hotkeys | [fonts.md](fonts.md) | CONFIRMED, all 4 fonts |
 | `.reg` registry | [reg.md](reg.md) | CONFIRMED, all 17 files |

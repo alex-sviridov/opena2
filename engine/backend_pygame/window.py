@@ -157,7 +157,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     texts = MainText.load(as_fs(fs))
     messages = MessageLine()
     panel = MinimapPanel.from_layout(minimap.geometry, layout) if minimap else None
-    sim, queue, scroll = Simulation(world, ai=ai), CommandQueue(), ScrollInput()
+    sim, queue, scroll = Simulation(world, ai=ai, triggers=world.script is not None), CommandQueue(), ScrollInput()
     for cmd in commands:
         queue.put(cmd)
     player = world.players[player_id]
