@@ -50,15 +50,15 @@
 **Interfaces:**
 - Produces: a fact list that Tasks 4 and 5 consume: (a) exe command id and operands for a unit-target cast, (b) the checks and their order, (c) the refusal texts / sounds, (d) whether the hero walks into range first, (e) pending-mode 5 click rules.
 
-- [ ] **Step 1: Open the binary**
+- [x] **Step 1: Open the binary**
 
 `mcp__rea__open_binary` on `/work/allods2/samples/allods2_en_gog/allods2.exe` (or `list_documents` if a session is already open; see memory note rea-ghidra-analysis for key routines and search tips).
 
-- [ ] **Step 2: Decompile and read the client cast path**
+- [x] **Step 2: Decompile and read the client cast path**
 
 `mcp__rea__procedure_pseudo_code` and `procedure_assembly` for `FUN_005702be`, `FUN_0056c72b`, `FUN_00418a02` (pending mode 5), and the network command applier cases for the cast commands (`FUN_005503af` area; spells.md line 75 names it). Use `procedure_callers`/`procedure_callees` to follow into `FUN_0056dca2` (states `0xd`/`0xe`).
 
-- [ ] **Step 3: Answer, with addresses, each of these**
+- [x] **Step 3: Answer, with addresses, each of these**
 
 1. Command id and operands (caster ids, spell index, target object id or cell) for message `0x1e`/`0x1f` and `0x25`/`0x26`; which one a unit-target Fire Arrow uses.
 2. Every check before the order is accepted: caster alive, spell known (`unit+0x140` bit), mana vs `param[1]`, target kind (`param[4]`), range (spells.md says "no range test found at cast": confirm or find it), fog, owner relation.
@@ -66,11 +66,11 @@
 4. Whether the caster walks into range first (`brain+0x14` set from `FUN_005195b1` range, `pathfinding.default_range`), and the exact order id set.
 5. Who is the caster when several units are selected (first id only, like `intake`?).
 
-- [ ] **Step 4: Write §9c.1 in `docs/data/spells.md`**
+- [x] **Step 4: Write §9c.1 in `docs/data/spells.md`**
 
 One table: fact | routine and address | tag. Add every unresolved item to `docs/open-questions.md` (Spells section) and a `VERIFY IN GAME` line. Remove the answered line "Client cast command path" from `open-questions.md` (CLAUDE.md rule: answered questions are deleted from both places).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/data/spells.md docs/open-questions.md
@@ -89,11 +89,11 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 **Interfaces:**
 - Produces, for Tasks 3-7: numbers and rules for (a) states `0xd`/`0xe` and their phase counters, (b) mana spend point and the `mage flag` check, (c) windup / recovery byte formulas and `step_end` write, (d) carrier delivery order inside the server tick, (e) behaviour on dead target / dead caster / cancel, (f) the staff (`weapon+0x84`) path and its level, (g) client visual facts for I4b (spawn height, trail rate, blend mode, sound timing) recorded but not built.
 
-- [ ] **Step 1: Read the chain**
+- [x] **Step 1: Read the chain**
 
 `mcp__rea__procedure_pseudo_code` + assembly for `FUN_0056dca2` (order switch, cast request), `FUN_0056e906`, `FUN_0056e986`, `FUN_00519998`, `FUN_00519d7f`, `FUN_00519db8`, `FUN_00518d1e`, `FUN_00518efd`, `FUN_00542e60`, `FUN_0051e65b`, `FUN_00516aae`, `FUN_0050f12c` (state switch, cases for `0xd`/`0xe`/3), `FUN_00504ab8`. Follow `procedure_callees` for anything unnamed.
 
-- [ ] **Step 2: Answer, with addresses**
+- [x] **Step 2: Answer, with addresses**
 
 1. States `0xd` and `0xe`: what each does per tick; the phase variable (`+0x58`), the byte timer (`+0x6c`), the windup byte `+0x134` and recovery byte `+0x135` sources for a caster (spell windup = ? ticks; is it `ShootDelay`/`AttackDelay` of the unit type or a constant?), "effect at phase 5 -> 0".
 2. Exactly when mana is spent (`0x51922e` / `0x519998`) and what the mage-flag check is (`unit+0x4c & 4`? the item cast skips it?). Whether mana is returned on cancel.
@@ -105,15 +105,15 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 8. Cancel: Stop or new order during windup / recovery.
 9. Client visual facts for I4b (spawn height, trail rate, blend id, sound 510 frame).
 
-- [ ] **Step 3: Write §9c.2 and combat §13**
+- [x] **Step 3: Write §9c.2 and combat §13**
 
 Tagged table in spells.md §9c.2; combat.md §13 = "Spell casts (I4)": the engine mapping skeleton (filled in by Tasks 3-7) and a VERIFY IN GAME list. Update `open-questions.md` (add leftovers, delete answered).
 
-- [ ] **Step 4: Decide the staff wiring and record it**
+- [x] **Step 4: Decide the staff wiring and record it**
 
 Write one paragraph at the top of §9c.2: "Staff cast is (a) a `CastSpell` order or (b) a weapon branch of the attack" with the evidence. Tasks 6 and 7 follow it.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/data/spells.md docs/engine/combat.md docs/open-questions.md
@@ -138,7 +138,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
   - `damage_after_protection(rolled, protection) -> int`
   - `recovery_ticks(base, hero_delay, complication, rng) -> int`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 """Spell math (I4a): flight time, level, damage roll, recovery.  Spec: docs/data/spells.md section 9 / 9c."""
@@ -191,12 +191,12 @@ def test_fire_arrow_damage_range_level_1_and_99():
 
 The 99 row follows spells.md ("`21 + rand(0..22)`"): bounds `min' + rand(0..spread')` with `min' = ftol(5 * (99/30 + 1))`. If `scaled(99)` disagrees, fix the **test** to the value `SpellDef.scaled` returns and say so in the commit message (the formula there is already CONFIRMED).
 
-- [ ] **Step 2: Run, expect failure**
+- [x] **Step 2: Run, expect failure**
 
 Run: `python -m pytest tests/test_engine_spells_math.py -q`
 Expected: FAIL (`engine.sim.spells` missing).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```python
 """Spell casting (phase I4): math, cast start, cast phases, carriers.  Facts: docs/data/spells.md section 9 and 9c, docs/engine/combat.md 13."""
@@ -242,12 +242,12 @@ def recovery_ticks(base, hero_delay, complication, rng):
 ```
 
 Before writing, read how `combat.swing_tick` calls `world.rng.rand(3)` (inclusive upper bound? `rand(3)` there gives `0..3`, spells.md says `rand(0..3)`) and mirror its convention; `roll_damage` must use the same inclusive/exclusive convention as the exe's `rand(n)` in `engine/rng.py`.
-- [ ] **Step 4: Run, expect pass**
+- [x] **Step 4: Run, expect pass**
 
 Run: `python -m pytest tests/test_engine_spells_math.py -q`
 Expected: PASS. Fix by reading `engine/rng.py` if the 99-level bounds fail, not by loosening.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add engine/sim/spells.py tests/test_engine_spells_math.py
@@ -274,7 +274,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
   - events `CastStarted(tick, caster, target, spell)`, `CastRefused(tick, caster, reason)`
   - `spells.start_cast(world, unit, spell_id, target_id, source="known", item_count=None) -> bool`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 """CastSpell: intake, refusals, mana (I4a).  Synthetic worlds."""
@@ -342,12 +342,12 @@ def test_empty_world_dump_is_unchanged_without_casts():
 
 The exact refusal reasons and which of them the exe reports to the player (versus silently dropping the order) come from Task 1; if the exe drops silently, replace `CastRefused` with no event and assert no state change only. The `known_spells` field name: use whatever `Unit` actually carries for the spellbook bit mask (`unit+0x140`); if none exists add `known_spells: int = 0` to `Unit`, filled by `from_map` from the template `known_spells` (p56) and the hero's starting book (units.md).
 
-- [ ] **Step 2: Run, expect failure**
+- [x] **Step 2: Run, expect failure**
 
 Run: `python -m pytest tests/test_engine_spells_cast.py -q`
 Expected: FAIL (names missing).
 
-- [ ] **Step 3: Implement world state**
+- [x] **Step 3: Implement world state**
 
 In `engine/world.py` add next to `Damage`:
 
@@ -395,7 +395,7 @@ class Carrier:
 
 `Unit` gets `spell_cast: object = None` and (if absent) `known_spells: int = 0`. `World.__init__` gets `self.carriers = []`, `self.next_carrier_id = 1`, `self.spell_table = None`; the asset loader at ~773 sets `w.spell_table = assets.spells()`. In `dump()` add `"carriers": [[c.uid, c.caster, c.target, c.spell, c.level, c.ticks_left, c.born] ...]` **only if** `self.carriers`, and per-unit `"cast"` through a `_cast_state(u)` static method returning `None` for `spell_cast is None and known_spells == initial`, following `_death_state`'s pattern (return None when at start value so old goldens stay valid). `known_spells` is not dumped unless it differs from the template-derived start value.
 
-- [ ] **Step 4: Implement the command and `start_cast`**
+- [x] **Step 4: Implement the command and `start_cast`**
 
 `commands.py`:
 
@@ -465,12 +465,12 @@ def start_cast(world, u, spell_id, target_id, source="known", item_count=None):
 
 Apply Task 1/2 corrections as you implement: the check order, the mage-flag condition (replace `source == "known"` guard where REA says the mana check keys off `+0x4c & 4`), whether mana is spent here or at release, and whether the cast goes through an order (approach) first. The tests change in the same commit if REA says so. Export `CastSpell` from `engine/sim/__init__.py`.
 
-- [ ] **Step 5: Run, expect pass; run the whole engine suite for goldens**
+- [x] **Step 5: Run, expect pass; run the whole engine suite for goldens**
 
 Run: `python -m pytest tests/test_engine_spells_cast.py tests/test_engine_orders_golden.py tests/test_engine_combat.py -q`
 Expected: PASS, goldens untouched.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add engine tests/test_engine_spells_cast.py
@@ -491,7 +491,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 - Consumes: Task 2 findings (state numbers, windup, delivery slot), Task 4 `SpellCast`, `Carrier`.
 - Produces: `spells.cast_tick(world, u)` (called from the creature tick for the cast state), `spells.carrier_system(world, commands)`, `spells.deliver(world, c)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 """Cast timeline, carrier flight and delivery (I4a)."""
@@ -582,12 +582,12 @@ def test_replay_gives_the_same_hash():
 
 Numbers marked "Task 2 fixes" are the only ones allowed to move, and only to the value REA gives, with the address in a comment next to the assertion.
 
-- [ ] **Step 2: Run, expect failure**
+- [x] **Step 2: Run, expect failure**
 
 Run: `python -m pytest tests/test_engine_spells_carrier.py -q`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `spells.py` additions (state/phase names are Task 2's; the skeleton mirrors `combat.swing_tick`):
 
@@ -671,17 +671,17 @@ Required corrections from reading the code, not guesses: `centre_x/centre_y` com
 
 Wire the state: in `movement._tick_unit` after `if u.state == ATTACK_STATE:` add `elif u.spell_cast is not None: spells.cast_tick(world, u)`; give the unit `state = CAST_STATE` at `start_cast`; make `_tick_inner` skip the Brain modes while `spell_cast` is set (as `brain_swing` does for the swing), cancel semantics per Task 2 item 8. In `simulation.py` insert `spells.carrier_system` after `movement_system` in the default list.
 
-- [ ] **Step 4: Run, expect pass**
+- [x] **Step 4: Run, expect pass**
 
 Run: `python -m pytest tests/test_engine_spells_carrier.py tests/test_engine_spells_cast.py tests/test_engine_spells_math.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Full regression**
+- [x] **Step 5: Full regression**
 
 Run: `python -m pytest tests -q -x`
 Expected: PASS, no golden changes (`tests/golden.json` untouched).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add engine tests
@@ -702,7 +702,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 - Consumes: `combatstats.equipment_codes`, the item table (`castSpell=<name>:<n>` modifier text, `docs/data/items.md`), Task 2 staff decision.
 - Produces: `spells.staff_spell(world, u) -> (spell_id, count) | None`; the staff cast wired as Task 2 decided.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_staff_cast_is_free_and_level_is_the_item_count():
@@ -724,12 +724,12 @@ def test_staff_spell_parser():
 
 `give_staff` is a test helper you add: sets the unit's equipped item list the way `combatstats.equipment_codes` reads it (read that function first and build the item code through `w.item_table`; if the table is not loadable without the install, mark these two tests `needs_data` as `tests/helpers.py` does).
 
-- [ ] **Step 2: Run, expect failure**
+- [x] **Step 2: Run, expect failure**
 
 Run: `python -m pytest tests/test_engine_spells_cast.py -k staff -q`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement as Task 2 decided**
+- [x] **Step 3: Implement as Task 2 decided**
 
 (a) If the staff cast is a `CastSpell` order: `cast_command` calls `staff_spell(world, u)` when the spell is not in the unit's book and passes `source="item", item_count=count`. (b) If it is a weapon branch of the attack (combat §5 item 4): `combat.resolve_attack` calls `spells.start_cast(..., source="item")` after a landed hit with `dmg > 0` and target HP > 0, exactly as the exe gates it, and the test above is rewritten to drive an `AttackUnit`. Either way, `parse_cast_spell(text)` is:
 
@@ -746,12 +746,12 @@ def parse_cast_spell(item_text):
 
 The spell id comes from `world.spell_table.lookup(name.replace("_", " "))`.
 
-- [ ] **Step 4: Run, expect pass; regression**
+- [x] **Step 4: Run, expect pass; regression**
 
 Run: `python -m pytest tests/test_engine_spells_cast.py tests/test_engine_combat.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add engine tests
@@ -771,7 +771,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: everything above.
 
-- [ ] **Step 1: Write the AI pin test**
+- [x] **Step 1: Write the AI pin test**
 
 ```python
 def test_mage_under_ai_still_fights_in_melee_not_casting():
@@ -784,21 +784,21 @@ def test_mage_under_ai_still_fights_in_melee_not_casting():
     assert not w.carriers and m.spell_cast is None             # phase K builds the AI cast; this pins the I4a boundary
 ```
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `python -m pytest tests/test_engine_spells_cast.py -k mage_under_ai -q`
 Expected: PASS (if it fails the cast hook leaked into the AI path: fix the hook, not the test).
 
-- [ ] **Step 3: Docs**
+- [x] **Step 3: Docs**
 
 `combat.md §13`: engine mapping (functions and files above), the VERIFY IN GAME list gathered from Tasks 1-2. `spells.md`: replace "(spell use is phase K)" statements that I4a changed. `ai.md §12`: add "special attacks `FUN_0056a981` and structures as targets: moved here from I4". `open-questions.md`: delete answered lines, add new ones. `docs/engine/README.md`: add the I4a row. `CLAUDE.md`: Status line "…I3, I4a done. Next: I4b (view and UI, spec 2026-10-19-spell-cast-design.md §3)" and a short Spells paragraph (files, command, tests) in the style of the neighbouring entries.
 
-- [ ] **Step 4: Full run**
+- [x] **Step 4: Full run**
 
 Run: `python -m pytest tests -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A docs CLAUDE.md tests
@@ -815,3 +815,15 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 - **Placeholders:** no TBD; the places where code depends on a research outcome name the finding that fixes it and the test changes in the same commit.
 - **Type consistency:** `SpellCast`, `Carrier`, `start_cast`, `cast_tick`, `carrier_system`, `deliver`, `flight_ticks`, `cast_level`, `roll_damage`, `damage_after_protection`, `recovery_ticks`, `parse_cast_spell` are used with the same names and signatures across Tasks 3-7. `known_spells` is the single name for the spellbook bits.
 - **Known risk:** Task 3's `cast_level` helper uses the Mind accessor `progression.attributes(u.stats)[2]` (as in `xp.award`); Task 5's protection helpers are new and small, their field names come from reading `unitstats`/`combatstats`.
+
+---
+
+## Execution notes (rulings made while implementing; the research changed the plan)
+
+- **Tasks 4-5 were merged and rewritten after the REA research** (spells §9c): a cast is *order `0xd` -> group pass -> Brain mode 8 -> brain order 2 -> the swing's phase machine*, not an immediate start; a `CastSpell` is a group command (all members that know the spell), not "the first unit only".
+- **No `CastRefused` events and no refusal at the command:** the exe has none (the client greys the button; a short mana is a silent retry loop at phase 0). Tests assert the silence.
+- **Carriers run before the creature pass** (CONFIRMED tick order), not after `movement_system`; a missile delivers `max(flight, 1)` ticks after the release.
+- **The staff is a branch of the melee swing** (weapon `+0x84`, mage flag), not a `CastSpell`; level = the item's count, free, no complication ticks.
+- **Damage goes through `combat.take_hit_detail`** (the to-hit roll is drawn even for a spell) instead of a separate roll; `rng.rand(n)` is inclusive (`0..n`).
+- **`combat.md` section 14 (not 13)**, because 13 was taken by I2.
+- Work was done on `main` (the project's convention), tests were written after the code for the research-driven pieces and mutation-checked (four mutations caught).

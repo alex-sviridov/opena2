@@ -139,3 +139,28 @@ def test_a_missile_in_flight_changes_the_frame_and_stays_inside_the_view(tmp_pat
     diff = np.argwhere((base != shot).any(axis=2))
     assert len(diff) > 20                                               # the firebolt and its smoke were blended in
     assert diff[:, 0].min() >= 0 and diff[:, 1].max() < 640
+
+
+# --- cost (I4c: "a 15-unit fight with projectiles keeps a steady frame rate") -----------------------------------------------------------------
+
+def test_fifteen_missiles_cost_next_to_nothing_in_the_draw_list_and_the_carrier_pass():
+    import time
+    from engine.sim import Simulation
+    from engine.sim.spells import carrier_system
+    w = world_with(*[unit(i, 8 + i % 8, 8 + i // 8) for i in range(1, 16)])
+    a = assets()
+
+    def mean_ms(fn, n=30):
+        t0 = time.perf_counter()
+        for _ in range(n):
+            fn()
+        return (time.perf_counter() - t0) * 1000 / n
+
+    base = mean_ms(lambda: draw(w, 4, a))
+    for k in range(15):
+        w.carriers.append(missile(uid=k + 1, start=(8 + k % 8, 8), aim=(12, 12 + k % 3), born=0, flight=64))
+    loaded = mean_ms(lambda: draw(w, 4, a))
+    assert len(projectile_items(draw(w, 4, a))) == 15 * 5               # a missile and 4 trail points each at age 4
+    assert loaded - base < 15.0, (base, loaded)                         # generous: 75 sprite items; the budget at 60 fps is 16.7 ms for everything
+    sim_ms = mean_ms(lambda: carrier_system(w, ()), 200)
+    assert sim_ms < 1.0, sim_ms

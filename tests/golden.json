@@ -2,6 +2,84 @@
  "10": "18452bf3c1d970c2c0ce9df054322ca2683b582a81e437a4d25b7b85f397fc2e",
  "20": "38aa1a5ff06876d8e9c39a7ce79e093d4fe7e19ac358f3af163e8317020ee464",
  "52": "b5e37eb4af00cdd1f13f6b3257ab6f81d2261c3fde6a797fd5ad50f49dc72c3d",
+ "casts": {
+  "mana_runs_out": {
+   "damage": [
+    7,
+    6
+   ],
+   "died": [],
+   "ended": null,
+   "hash": "16ec56b96d4b233e8cbfe8ee1b4fa2bc56f15f28168b113b792b7f62cf4df9c9",
+   "hp": {
+    "1": 60,
+    "2": 487
+   },
+   "mana": {
+    "1": 1
+   },
+   "released": 2,
+   "started": 2
+  },
+  "melee_and_cast": {
+   "damage": [
+    6,
+    6,
+    8,
+    6,
+    8,
+    4,
+    6,
+    7,
+    7,
+    7,
+    6,
+    5,
+    4,
+    8,
+    6,
+    8,
+    5,
+    6,
+    8
+   ],
+   "died": [
+    24579
+   ],
+   "ended": 123,
+   "hash": "dc0e32cddfb5a5baf2c3783ce4ad8a4f1f7c47c5e36cb9af267ca85b3c83c750",
+   "hp": {
+    "1": 35,
+    "2": 60,
+    "3": -6
+   },
+   "mana": {
+    "2": 21
+   },
+   "released": 3,
+   "started": 3
+  },
+  "staff_kill": {
+   "damage": [
+    7,
+    6,
+    10,
+    10
+   ],
+   "died": [
+    24578
+   ],
+   "ended": 92,
+   "hash": "70a467461384ad6e51448dfa12f2e23f04fd6bd1911bb8df128f8afaf0c1788e",
+   "hp": {
+    "1": 60,
+    "2": -3
+   },
+   "mana": {},
+   "released": 4,
+   "started": 4
+  }
+ },
  "interface": "4036f630e04175db3bb7ee5bb72ca5d3e71989bb6ef3dc71f5c93389d3f90253",
  "items": {
   "sha256": "067d96e6a9aa5fbf7541f39dd920bbc445bf15aa8b8571bb4215511855e7e85c"

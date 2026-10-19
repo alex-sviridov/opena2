@@ -170,6 +170,13 @@ def orders_summaries():
     return orders_scenarios.all_summaries()
 
 
+def casts_summaries():
+    """{scenario: {hash, ended, hp, mana, ...}} of tests/spell_scenarios.py (synthetic worlds; no install needed)."""
+    sys.path.insert(0, os.path.join(ROOT, "tests"))
+    import spell_scenarios
+    return spell_scenarios.all_summaries()
+
+
 def main(argv):
     install = argv[1] if len(argv) > 1 else None
     out = {m: golden_hash(m, install) for m in MAPS}
@@ -182,6 +189,7 @@ def main(argv):
     out["progression"] = progression_hash(install)
     out["paths"] = path_hashes(install)
     out["orders"] = orders_summaries()
+    out["casts"] = casts_summaries()
     with open(GOLDEN, "w", encoding="ascii") as f:
         json.dump(out, f, indent=1, sort_keys=True)
         f.write("\n")

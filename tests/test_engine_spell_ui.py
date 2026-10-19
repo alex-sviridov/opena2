@@ -95,3 +95,15 @@ def test_a_non_mage_with_a_spell_needs_no_mana():
     u.combat.mage = False
     selected(w, u)
     assert castable_spell(w, 1) == FIRE_ARROW
+
+
+def test_only_the_prototype_missiles_are_offered():
+    from allods2.formats.spelldefs import FIELDS, SpellDef, SpellTable
+    f = dict.fromkeys(FIELDS, -1)
+    f.update(complication_level=0, mana_cost=1, sphere=3, item=0, target=1, delivery=2, max_range=7, speed=60, distribution=1, damage_min=5, damage_max=10)
+    lightning = SpellDef(10, "Lightning", "Lightning", f)          # damage and unit target, but a chain draw: not offered
+    w = base_world()
+    w.spell_table = SpellTable([lightning])
+    u = mage(w, 50, book=1 << 10)
+    selected(w, u)
+    assert castable_spell(w, 1) == 0

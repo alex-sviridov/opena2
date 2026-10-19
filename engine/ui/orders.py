@@ -236,8 +236,11 @@ def level_up_messages(world, player_id, messages, now_ms, text, name_fn=None):
     return shown
 
 
+PROTOTYPE_SPELLS = (1, 5, 16)       # Fire Arrow, Ice Missile, Diamond Dust: the same parameter row, the default missile draw (spells.md 9); Lightning etc. need their own draw
+
+
 def castable_spell(world, player_id):
-    """The spell the selection can cast now: the lowest-numbered unit-target damage spell (the kind the cast code runs) in the book of a selected,
+    """The spell the selection can cast now: the lowest-numbered prototype spell (the unit-target missile kind the cast code and the view run) in the book of a selected,
     living unit that can pay its mana (INFERRED: the exe's button mask `+0x148` follows the spellbook and the mana, spells.md 9c.1); 0 for none."""
     from engine.sim import combat, spells
     from allods2.formats import spelldefs
@@ -252,7 +255,7 @@ def castable_spell(world, player_id):
             continue
         mask, mage = spells.known_mask(u), combat.combat_stats(world, u).mage
         for d in table:
-            if ((mask >> d.number) & 1 and d.targets_unit and d.has_damage and d.distribution == spelldefs.DIST_SINGLE
+            if (d.number in PROTOTYPE_SPELLS and (mask >> d.number) & 1 and d.targets_unit and d.has_damage and d.distribution == spelldefs.DIST_SINGLE
                     and (not mage or u.mana >= d.mana_cost) and (not best or d.number < best)):
                 best = d.number
     return best

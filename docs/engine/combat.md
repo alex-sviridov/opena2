@@ -685,6 +685,36 @@ spell damage goes through the exe's own `take_hit_detail` (the to-hit roll is dr
 loaded for monsters, AI casting is phase K); the target `brain+0xa4/+0xa8` stamps (AI buff logic) and the Invisibility break of the caster (`FUN_005106d2(0xc)`) need the effect system and are not modelled;
 a staff has no charge counter; pack items (scroll command `0x25`) do not exist yet. VERIFY IN GAME: spells §9c.4.
 
+### 14.1 Close-out checks (I4c)
+
+Tests: `tests/test_engine_spells_golden.py` (3 synthetic scenarios in `tests/spell_scenarios.py`, goldens `tests/golden.json["casts"]`: a staff mage kills a target for free, a mage runs out of mana
+(7 mana, 3 per cast: two casts, the third never starts), a fighter and a mage kill a fighter); `tests/test_engine_spells_maps.py` (map 73, needs the install: the party of four knights with the mage
+casting Fire Arrow and the staff's Ice Missile, melee from the others, AI on; the fight ends by itself (all six nearest enemies dead after about 270 ticks), is deterministic, gives the same world
+hash when the same script is driven at 30 and at 60 fps with the draw list built every frame, keeps `World.check_consistency` clean and has no unit hanging mid-step over 1500 ticks);
+`tests/test_engine_spell_draw.py` (15 missiles with trails add nothing measurable to the draw list, the carrier pass costs far below a millisecond). The H integration tests (`test_engine_orders_maps.py`)
+pass unchanged with the carrier system in the default list. Benchmark `tools/bench_fight.py` (88 units on screen, 5 casters, up to 5 missiles in flight, AI on): the simulation takes 0.9 ms per tick on average
+(p95 3.8 ms, max 40 ms: AI plans); a frame (draw list + terrain + sprites, caches warm) takes 66 ms at 640x480 and 120 ms at 1024x768 **with or without** the missiles (the difference is below the noise:
+11 more draw items): the cost is the existing renderer (numpy blends of every smoothing overlay and shadow), not phase I; it must be optimised before the prototype is playable at 30 fps (J).
+
+## 15. Handoff to prototype completion (J)
+
+What phase I delivers: melee and ranged hits, death, corpses, loot, XP and level-ups, regeneration, the monster AI (squads, sight, targets, flee, group orders), the player's spell cast of the
+prototype missiles (Fire Arrow, Ice Missile, Diamond Dust), a mage's staff cast, the missile and trail drawing, the `C` key and the cast click.
+
+**Win and lose conditions.** Only the hero side is known: a dead hero of the human player is `HeroDied` / `Player.defeat_dialog` / `death_code` (combat 12.3a). The Scenario conditions (`.alm` sections
+7 and 10-12, reader `FUN_00534ad4`, evaluation `FUN_00574ba1`: unit killed / attacked, group dead, area, timers, victory and defeat instants) are **not decoded and not built**; the brief's "E6 triggers" do
+not exist yet (map.md "Not started"). Prerequisite of any playable map: decode the condition dispatch, the instants (`ai.set_group_order`, sleeping squads, quest accept, victory / defeat) and which
+creature state the "attacked / killed" conditions read (the event list `server+0xbbec` is write-only, ai.md 8). Until then a scripted scenario (as `tests/test_engine_spells_maps.py`) ends a fight.
+
+**Fog and vision.** The AI has exactly one vision rule, the sight flood (ai.md 4: no cone, no fog, no per-owner knowledge). The view's fog layer is render-only (rendering.md, cell bits `0xc000`); the player's
+side has no vision rule in the simulation (a click on a fogged cell becomes a move, research 1.3). Nothing to build for J besides the draw option.
+
+**UI pieces still missing for J.** The command bar with its buttons (the hotkeys A M D S T G L C exist; `R` retreat `0x14`, `P` pick up all `0x13`, F4-F12 spell shortcuts do not), the spellbook window
+(spell choice and the cast cursor's spell, `FUN_0041f370`; `C` uses a fixed slot), the inventory / backpack and hero screens, the main-hero panel pieces (skills, XP, equipment), the hero-death
+load / quit dialog, the new-game screen (difficulty), the in-game menu, sound (no audio at all: cast sounds `500 + id`, hit sounds), the message line for out-of-range / no-mana feedback (the exe shows none
+for the cast button: it is disabled), town scenes, saves. Phase K: AI casting (ai.md 12), special attacks, cell casts (`0x1f`, order `0xe`), the non-damage spell handlers and the effect system
+(Invisibility sets `Unit.hidden`, Bless / Curse / Haste / Slow), summons and raising, structures as targets, scroll items (`0x25`) and the pack.
+
 ## Open questions
 
 1. Monster weapon bonuses: confirm in play that `damage = template + weapon` (11.1); the code order says yes.
