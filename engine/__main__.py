@@ -131,7 +131,7 @@ def _setup(a):
     world = World.from_map(m, assets, seed=seed, difficulty=getattr(a, "difficulty", DEFAULT_DIFFICULTY))
     if getattr(a, "triggers", False):                   # the map script (docs/engine/triggers.md); implies the AI
         from engine.sim import triggers
-        triggers.enable(world, m)
+        triggers.enable(world, m, assets=assets, party=getattr(a, "party", 0))
     tv = TerrainView(world, assets.tileset())
     w, h = a.size
     opts = DrawOptions(shadows=not a.no_shadows, lit=not a.no_light,
@@ -239,7 +239,8 @@ def main(argv=None):
     m.add_argument("--units", action="store_true", help="add the unit dots")
     r.add_argument("--no-minimap", action="store_true")
     r.add_argument("--no-ai", action="store_true", help="monsters do not think (docs/engine/ai.md)")
-    r.add_argument("--triggers", action="store_true", help="run the map script (docs/engine/triggers.md); the party is not placed, so a map without a hero of the human is lost at tick 14")
+    r.add_argument("--triggers", action="store_true", help="run the map script (docs/engine/triggers.md); a fresh campaign party is placed at the drop cell (--party)")
+    r.add_argument("--party", type=int, default=0, choices=(0, 1, 2, 3), help="with --triggers: heroes placed at map start (Start_MF, Fighter_Hero, Mage_Hero; 0 = as many as the map script names, a fresh campaign has only the first)")
     r.add_argument("--debug-move", nargs="+", metavar="UID_OR_CELL",
                    help="developer tool: UID X,Y [X,Y ...] walks the unit along straight legs")
     r.add_argument("--debug-moveto", nargs="+", metavar="UID_OR_CELL",

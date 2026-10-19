@@ -36,7 +36,7 @@ Resolution (each failure logs and makes the record fail, §2.4):
 
 | Kind | Resolver | Rule |
 |---|---|---|
-| 4 unit | `FUN_00562274` | `< 10001`: creature map by uid ("Can't resolve unit %d"); `10001..11000`: hero `k = id - 10001` = `FUN_00562518(k)`: only in single player, only when the local player has a main hero (`+0x38`), the first unit of the player's list (`+0x24`) with `(u16)(+0x14c) - 0x15 == k`, else the same test over all creatures behind a filter `FUN_004029a0` ("Can't resolve hero %d"); `>= 11001`: a name from the table at `0x5f42f4` (`FUN_0056236c`, unused) |
+| 4 unit | `FUN_00562274` | `< 10001`: creature map by uid ("Can't resolve unit %d"); `10001..11000`: hero `k = id - 10001` = `FUN_00562518(k)`: only in single player, only when the local player has a main hero (`+0x38`), the first unit of the player's list (`+0x24`) with `(u16)(+0x14c) - 0x15 == k`, else the same test over all creatures whose name `+0x80` is non-empty (`FUN_004029a0` = `CString::GetLength` of `creature+0x80`; every named non-matching creature also makes the loop skip the next creature, see §9.5) ("Can't resolve hero %d"); `>= 11001`: a name from the table at `0x5f42f4` (`FUN_0056236c`, unused) |
 | 2 group | `FUN_005626bc` | group map ("Can't resolve group %d") |
 | 3 player | `FUN_00562633` | player map ("Can't resolve player %d") |
 | 9 building | inline | structure map ("Can't resolve building %d.") |
@@ -44,7 +44,7 @@ Resolution (each failure logs and makes the record fail, §2.4):
 
 `+0x14c` is the human's reduced server id (`(v / 10) % 1000`, [units](../data/units.md)): `Start_*` 21 ->
 hero 10001 (the main hero), `Fighter_Hero` 22 -> 10002, `Mage_Hero` 23 -> 10003 (CONFIRMED arithmetic;
-the party is placed at map start, not in the map file: the campaign maps hold 5 human-owned humans, no hero).
+the party is placed at map start, not in the map file, §9).
 
 ### 2.2 Runtime record (instants and checks share it, CONFIRMED by the writes)
 
@@ -77,7 +77,7 @@ object with `S+0xd724[yy]` (first group -> `+0x60`, else `+0x68`; first player -
 ### 2.4 Indices and failures (CONFIRMED)
 
 * Instants: records of type `0x10002` ("Drop Location") are not instants: `CWordArray::Add(this+0x28, y << 8 | x)`
-  (a list of party drop cells; consumer not traced). Other records get consecutive runtime indices; the map
+  (a list of party drop cells; consumer `FUN_004f2c83`, §9). Other records get consecutive runtime indices; the map
   `id -> index` is set only on success, so a trigger naming a failed (or missing) instant gets the default
   **index 0** of the `CMap` (runs instant 0 instead: quirk).
 * Checks: every record gets the slot = its position counter; a constant (`0x10002`) only stores `values[slot] =
@@ -268,19 +268,89 @@ decoded.
 * **Mission**: `Player.death_code` is the `+0x40` byte; §6 sets it, `Player.defeat_dialog` (message `0xb4`) and
   appends `MissionFailed` / `MissionComplete` (`0xb5`) to `world.events`; instant 2 and the sub-objective
   messages append `ScriptMessage`. No dialog or message text is drawn yet.
-* **The campaign maps have no party**: heroes 10001-10003 come from the drop location at map start (not built),
-  and a record naming a missing hero fails and maps to slot / instant 0 (§2.4), which makes some conditions
-  true at once (maps 52, 80, 102 then report a mission complete within 200 ticks). The map tests place
-  `Start_MF`, `Fighter_Hero` and `Mage_Hero` at the first drop cell; then every reference of the 46 scripts
-  resolves.
-* Tests: `tests/test_engine_triggers.py` (synthetic, one per rule), `tests/test_engine_triggers_maps.py` (the 46
-  scripts compile with the party; map 10 sends message 1 at tick 6 and replays; `needs_data`).
+* **The campaign maps have no party**: heroes 10001-10003 come from the player's roster, placed at the drop cell at map start (§9).
+  `enable(world, m, assets=...)` runs `engine.party.place_party` first when the map has a drop cell and the human has no main hero
+  (`engine run --triggers` passes the assets; `--party N`, default 0 = as many heroes as the script names, DECISION: the save that
+  carries the recruited heroes is not read). Without the party a record naming a missing hero fails and maps to slot / instant 0 (§2.4),
+  which made some conditions true at once (maps 52, 80, 102 reported a mission complete within 200 ticks); a fresh start with only
+  the main hero (`party=1`) still does that on maps whose scripts name 10002 / 10003, as in the exe.
+* Tests: `tests/test_engine_triggers.py` (synthetic, one per rule), `tests/test_engine_party.py` (synthetic, the placement),
+  `tests/test_engine_triggers_maps.py` (the 46 scripts compile with the placed party; no fake completion on maps 52, 80, 102; map 10
+  sends message 1 at tick 6 and replays; `needs_data`).
+
+## 9. The party at map start (`FUN_004f2c83`)
+
+Reconstructed from the GOG exe (sha256 in [formats/README](../formats/README.md)); the map file holds no hero of the human.
+
+### 9.1 Chain (CONFIRMED unless noted)
+
+1. `FUN_005606aa` (map load, caller `0x4eba14`) loads the map, runs `FUN_00561bf9` (the map's units: placed by `FUN_00510089(x, y, 0)`,
+   added to the owner's list; difficulty tweak, [progression](../data/progression.md)), `FUN_00562745` (script compile: the drop cells
+   go into the word array `game+0xc0` = scenario object `+0x28`, `CWordArray::Add(y << 8 | x)`, §2.4) and `FUN_00564072`.
+2. The human's **roster** is the player's unit list `player+0x24` and the main hero `player+0x38`, both built *before* the map load
+   (hero refs of §2.1 search that list, so the scripts compile against units that are not yet on the map): from the campaign player
+   record (`FUN_004ea472` -> `FUN_004ea6ab`, writer `0x4eab4a`) or, for a fresh character, `FUN_004f254b` (§9.3).
+3. The ready message (net message type **4**, jump table `0x4f82da` index 1 = `0x4f7ea3`; posted by `FUN_0041c50d(flag)`, the UI window
+   routine `FUN_0048c8a3`) calls `FUN_004f1d9c(player, flag = (msg+0xa == 0))`: no main hero is an error ("Oops ... no main hero",
+   `0x5fca60`); with `flag` set and `player+0x41 == 0` it calls **`FUN_004f2c83(player)`**, then sets `+0x41 = 1`. Single player runs through
+   the same message queue (`0x6831a8`); the exact SP poster of the type-4 message and its tick are not traced (INFERRED: before the first
+   simulation tick).
+
+### 9.2 `FUN_004f2c83(player)` (CONFIRMED, disassembly `0x4f2c83`-`0x4f3127`)
+
+* Groups: the player needs a group (`player+0x28`, "Oops, player has no groups" creates one); empty leading groups are removed
+  while more than one remains.
+* **Cell**: single player (`game+0x74 == 0`): `n = size(game+0xc0)`; if `n > 0`: `i = rand(n - 1)` (`FUN_0051fa25`, uniform `0..n-1`,
+  no draw when `n == 1`), `(x, y) = (word & 0xff, word >> 8)`; empty list: `x = y = 0`. A zero coordinate (`x * y == 0`) logs a warning and
+  uses `x = rand(0x46) + 0x1e`, `y = rand(0x46) + 0x1e`. One cell for the whole party. (Multiplayer: `player+0xa6c` or the list.)
+* **Radius** `r = ftol(max(5.0, sqrt(n) + 4.0))`, `n` = count of the player's unit list `player+0x24` (map-placed units included;
+  constants `0x5d0830` = 4.0, `0x5d0838` = 5.0): 5 for n <= 3, 6 for n = 4..8, 7 for n = 9..15, ...
+* For every unit of the list: skipped when it already stands on the map (`FUN_0055641c(map, unit+0x10) == unit`); else its position
+  record is set to the cell (`FUN_0054f9b9`), then **the main hero** (`unit == player+0x38`) tries `FUN_00510089(x, y, 0)` (exact cell);
+  every other unit, and the main hero when that failed, `FUN_00510089(x, y, r)` ([§8 `find_place`](#8-engine-enginesimtriggerspy)); a
+  failure logs an error and the unit stays off the map. Then `FUN_0052b22a(unit)` (creature manager, update order), new brain objects
+  (`+0x1c0` `FUN_00551346`, `+0x1c4` `FUN_00569003`, keeping the byte `+0x78`) and `FUN_00570f2b` (stand ground). Facing is not touched
+  (the constructor's random angle stays; the engine hashes the uid, `unit_angle`).
+* The order in the roster is the placement order: main hero first (it is created first), then the loaded heroes and units.
+
+### 9.3 A fresh character `FUN_004f254b(player, str, dex, mind, spirit, school, flags)` (CONFIRMED)
+
+Only when `player+0x38 == 0`. `flags & 0x40` clear/set and `flags & 0x80` clear/set pick the template: (clear, clear) **`Start_MF`**,
+(clear, set) `Start_FF`, (set, clear) `Start_MM`, (set, set) `Start_FM` (the same map as the loader `0x4ea6ab`: `byte(+0x2c) & 0xc0` =
+0 / 0x80 / 0x40 / 0xc0 -> MF / FF / MM / FM); `flags & 0x3f` is the name index (`FUN_00439eb0`). The four attributes `+0x84, +0x86, +0x88, +0x8a`
+(body, reaction, mind, spirit) are the arguments when the point budget holds: `0x8c - sum(cost(v)) >= 0` with
+`cost(v) = trunc(0.349 * (v - 1) ^ 1.15 + 0.5)` (`FUN_004f250e`, constants `0x5d0820`, `0x5d0828`), else all four are 25 (`0x19`). `FUN_00514f59(school, 20)`
+then clears the five school skills, sets skill[school] = 20 and the shooting skill `+0xb2` = 10, recomputes the pools (`FUN_00513497`), sets the
+best school `+0x23c` and replaces the weapon: school 1 Iron Long Sword, 2 Iron Axe, 3 Iron Mace, 4 Iron Pike, 5 Uncommon Wood Long Bow;
+a mage gets a "Wood Staff" / "Uncommon Wood Staff" `{castSpell=<Fire Arrow | Ice Missile | Lightning | Diamond Dust | Drain Life>:1}`.
+HP and mana start at the maxima; `unit+4` = a free network id (`FUN_004f8d90`, lowest free bit of the table `0x6c9628`), `unit+0x14` = the
+player, a new command group (`FUN_0052ae43`), `player+0x38 := unit`, and **in single player (`game+0x74 == 0`) `+0x14c := 0x15`**, which makes it
+scenario hero **10001**. `Fighter_Hero` / `Mage_Hero` (10002 / 10003) get `0x16` / `0x17` from their templates' reduced server id (units.md).
+Callers: the creation message (type `0x48`, `0x4f6af6`), the multiplayer "invalid character" fallback (25 25 25 25, school 1; `0x4f7b2c`).
+
+### 9.4 What the engine does (`engine/party.py`)
+
+`place_party(world, assets, drops, count, start)` builds `count` heroes of the human (`Start_MF` unless `start`, then `Fighter_Hero`, `Mage_Hero`:
+the templates as the maps use them, DECISION: the attributes of the creation screen are not modelled, so the template's own attributes
+stand in for the player's choice), draws the cell as §9.2, places the main hero at radius 0 then 5.., the others at `r`, sets
+`Player.main_hero`; uids `max(uid) + 1 + k` (DECISION; the exe's id is a free network id). `stand ground` is not issued (a human unit with no
+order is idle either way, INFERRED). Fresh start = one hero; the recruited ones come from the save (open question).
+
+### 9.5 The hero look-up filter (`FUN_00562518`, CONFIRMED `0x562518`-`0x562632`)
+
+First loop: the player's list, `(u16)(+0x14c) - 0x15 == k`. Second loop (the exe's fallback for a hero that is not in the list, e.g. map 40's
+`Mage_Hero` owned by player 3 until a script gives it to the human): all creatures with a non-empty name (`FUN_004029a0` is
+`CString::GetLength(creature + 0x80)`; the list iterator is advanced once more after every named non-match, so the creature after it is
+skipped). The engine searches the human's units only ([§8](#8-engine-enginesimtriggerspy)); the fallback is not modelled (INFERRED that the
+campaign maps do not need it: scripts that name a hero not in the party change its owner first).
 
 ## Open questions
 
-* The party placement at the "Drop Location" cells (`this+0x28` word array of `FUN_00562745`) and the hero
-  filter `FUN_004029a0` of `FUN_00562518`; without a party no campaign hero (10001-10003) resolves in the engine.
 * `FUN_005563ca` / `FUN_0055c5a0` (the free-cell test of `FUN_00510089`).
+* The party roster of a later map (hero state, recruited heroes, companions): the player record read by `FUN_004ea472` -> `FUN_004ea6ab`
+  (blob parser `FUN_004ee7cb`), writer `0x4eab4a`; and the creation screen that sends message `0x48` (§9.3: default attributes, school, name).
+* Where single player posts the ready message (type 4, `FUN_0041c50d` <- UI window `FUN_0048c8a3`) relative to the first tick; the "already on
+  the map" test `FUN_0055641c` / `FUN_00551edb` of §9.2; the second loop of `FUN_00562518` for units by name (§9.5).
 * The window message `0x41d` and the mission-complete dialog's buttons (`0x486ddb`); Scenario variable `0x300`.
 * The text shown for message `0xb6` values (`0x433` handler, `event_%d`).
 * Scenario.dll: initial variables (`ScenarioNewGame`), which variables the campaign reads (towns, missions).

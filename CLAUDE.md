@@ -188,7 +188,7 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   "attacked" event (HP / Brain mode 5); victory / defeat `FUN_004f856a` at the end of every 16-tick block (dying main hero, fail cause, complete counter; messages
   0xb4 / 0xb5); section 10 repop (unused), 11 = multiplayer inns / shops + signposts (`Pointer` runs an instant), 12 = music zones. `allods2/formats/scenario.py`,
   `tools/validate_scenario.py`, `engine/sim/triggers.py` (`triggers.enable(world, map)`, `Simulation(triggers=True)`; unimplemented kinds counted), tests
-  `test_scenario.py`, `test_engine_triggers*.py`. Open: party placement at the drop location, mission-complete screen flow, item / spell / patrol instants.
+  `test_scenario.py`, `test_engine_triggers*.py`. Party at the drop cell (`FUN_004f2c83`, `engine/party.py`, `triggers.enable(.., assets=)`, `--party`); open: roster of later maps (save), mission-complete screen flow, item / spell / patrol instants.
 - Engine G3b (interface, cursor, selection) done: `engine/ui/layout.py` (three modes, one table citing exe routines),
   original cursors (`choose_cursor`: 8 arrows by the screen-border rule, select, pickup), rectangle picking (exe: per-object
   `Selection` rect, last registered first, 3x3 box; drag > screenW*10/640 px, overlap > 10 px^2), `SelectUnits` command +

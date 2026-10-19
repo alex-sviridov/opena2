@@ -740,7 +740,7 @@ first count, so it is never used; CONFIRMED). List 1 = **instants** (actions, in
 | File off | Size | Object | `Record` field | Meaning |
 |---|---|---|---|---|
 | 0x000 | 64 B | +0x000 | `name` | editor name (cp1251), e.g. "Send message 1 - start"; not used at run time |
-| 0x040 | i32 | +0x040 | `type` | kind: instants 1–0x27 (`FUN_00574f3f` switch), checks 1–0x1b (`FUN_00574955`); `0x10002` = check "constant" / instant "Drop Location" (`0x10003` repopper, `0x10004` music in the editor, unused) |
+| 0x040 | i32 | +0x040 | `type` | kind: instants 1–0x27 (`FUN_00574f3f` switch), checks 1–0x1b (`FUN_00574955`); `0x10002` = check "constant" / instant "Drop Location" (values 0/1 = x, y; the cell the party is placed around at map start, one per campaign map, [triggers §9](../engine/triggers.md#9-the-party-at-map-start-fun_004f2c83); `0x10003` repopper, `0x10004` music in the editor, unused) |
 | 0x044 | i32 | +0x044 | `id` | the number triggers use (1-based, unique per list, gaps where records were deleted: 25 maps) |
 | 0x048 | i32 | +0x318 | `flag` | copied to check `+0x74` (default 1, `0x573d6e`); no reader in `0x573000`–`0x57c600` (bounded search) |
 | 0x04c | 10 × i32 | +0x048 | `values` | argument values |

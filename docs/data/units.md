@@ -24,7 +24,7 @@ Units, monsters and heroes are **separate tables**; a section 6 unit picks one b
 of the 46 campaign maps use 205 distinct (kind, serverID) pairs; every one has a record (no exclusions).
 Heroes have no separate stat source: a hero is a human record (`_Hero`/`Start_` names set the best-school
 field `+0x23c`, CONFIRMED `FUN_00514cf2`), levelled at run time ([progression](progression.md)). Campaign carry-over
-(saves, hero state between maps) is not read here: **UNKNOWN**, phase F saves.
+(saves, hero state between maps) is not read here: **UNKNOWN**, phase F saves; the party is rebuilt from the player record and placed at the map's drop cell ([triggers §9](../engine/triggers.md#9-the-party-at-map-start-fun_004f2c83)).
 
 Records with no params are editor slots and are skipped (61 monster slots). Monster record 241 `Human`
 (`serverID` -1) is a placeholder no map uses; human `ManMage_Unarmed` (serverID 23) has `HealthMax` -1

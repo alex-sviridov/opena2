@@ -205,8 +205,9 @@ template has a `health`/`mana` modifier, only `spirit`, `speed`, `scanRange`, pr
 `Unit.mana_max`, `Unit.mana`; a map `hp` still sets the current HP, a map `max_hp` below the default sets the maximum). Not modelled yet: the equipment /
 effect bonus block (`bonus_hp`/`bonus_mana`, no template has one), re-running the recompute after a skill-up, and the difficulty tweak.
 
-Carry-over of hero state between maps: the maps hold nothing (§6 above), so it must live in the campaign save / `.a2c`: UNKNOWN (out of scope
-until saves are read).
+Carry-over of hero state between maps: the maps hold nothing (§6 above). CONFIRMED that the exe rebuilds the party from the campaign player record
+(`FUN_004ea472` -> `FUN_004ea6ab`: template `Start_MF/FF/MM/FM` by `byte(+0x2c) & 0xc0`, attributes, skills, XP pools, spells, the 12 equipment items), writer `0x4eab4a`;
+the record layout (and so the XP / items of a hero between maps) is UNKNOWN (out of scope until saves are read). A fresh character: [triggers §9.3](../engine/triggers.md#93-a-fresh-character-fun_004f254bplayer-str-dex-mind-spirit-school-flags).
 
 ## 7. Tests
 
@@ -216,4 +217,4 @@ the hero on map 40 and of all humans/monsters (`Unit.skills/xp/xp_total/best_sch
 
 ## Open questions
 
-- Hero state between campaign maps (saves, `.a2c`). Start: `FUN_00514920`.
+- Hero state between campaign maps (saves, `.a2c`). Start: `FUN_00514920`, `FUN_004ea6ab` (record -> hero), `FUN_004ee7cb` (blob parser), writer `0x4eab4a`.
