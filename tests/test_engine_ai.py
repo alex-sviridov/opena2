@@ -1,6 +1,9 @@
 """Monster AI (I3): the squad group handler, sight, target score, hit reaction, flee, determinism.  Synthetic worlds, always run.
 Spec: docs/engine/ai.md (A§ = its sections)."""
 
+import argparse
+
+import pytest
 import numpy as np
 
 from allods2.formats.unitstats import MONSTER, UnitType
@@ -504,6 +507,48 @@ def test_easy_difficulty_halves_the_wimpy_threshold():
     m.hp = 5
     run(sim, 16)
     assert m.mode_go and m.mover.goal[0] < m.x                    # 5 <= 10 >> 1: it flees west, away from the hero
+
+
+def _run_cli_capturing_setup(monkeypatch, argv):
+    import engine.__main__ as cli
+    seen = {}
+
+    def fake_setup(a):
+        seen["difficulty"] = a.difficulty
+        raise ValueError("stop")                                 # main() reports it through argparse
+    with monkeypatch.context() as mp:
+        mp.setattr(cli, "_setup", fake_setup)
+        with pytest.raises(SystemExit):
+            cli.main(argv)
+    return seen
+
+
+def test_cli_run_difficulty_option_defaults_to_medium_and_reaches_the_world(monkeypatch):
+    # `run --difficulty 1|2|3` = Easy / Medium / Hard of the new-game screen (ai.md 10.1); default 2 = no tweak
+    assert _run_cli_capturing_setup(monkeypatch, ["run", "10"]) == {"difficulty": 2}
+    assert _run_cli_capturing_setup(monkeypatch, ["run", "10", "--difficulty", "3"]) == {"difficulty": 3}
+    import engine.__main__ as cli
+    got = {}
+
+    class Stop(Exception):
+        pass
+
+    def fake_from_map(m, assets, **kw):
+        got.update(kw)
+        raise Stop
+    monkeypatch.setattr("allods2.cli.open_map", lambda *a: None)
+    monkeypatch.setattr("allods2.assets.AssetCache", lambda *a: None)
+    monkeypatch.setattr(cli.World, "from_map", staticmethod(fake_from_map))
+    ns = argparse.Namespace(map="10", install=None, cmd="run", seed=1, difficulty=1)
+    with pytest.raises(Stop):
+        cli._setup(ns)
+    assert got["difficulty"] == 1
+
+
+def test_cli_run_rejects_a_difficulty_outside_1_to_3(monkeypatch):
+    import engine.__main__ as cli
+    with pytest.raises(SystemExit):
+        cli.main(["run", "10", "--difficulty", "4"])
 
 
 # --- the flee list FUN_0054ec6a + FUN_00567a16 (A§9) and the hidden-unit clause ----------------------------------------------

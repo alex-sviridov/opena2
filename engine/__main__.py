@@ -25,6 +25,7 @@ through the given cells: each leg must be straight or diagonal from the previous
 cell first); no pathfinding, no blocking.  `run --debug-moveto UID X,Y` orders a `MoveTo` (the original's
 path finding); with `--debug paths` and the unit selected the overlay shows searched cells (blue), the static
 path (yellow) and the current hop (green).  docs/engine/simulation.md.
+`run --difficulty 1|2|3` = Easy/Medium(default)/Hard of the new-game screen (monster HP / to-hit / defence tweak, docs/engine/ai.md 10.1).
 `run --debug-attack UID UID` (developer tool) makes the first unit attack the second; `--debug combat` prints one console line per blow; `--seed N`
 fixes the RNG (default the clock, printed).  docs/engine/combat.md.
 """
@@ -35,7 +36,7 @@ import sys
 import time
 
 from engine.rng import DEFAULT_SEED
-from engine.world import World
+from engine.world import DEFAULT_DIFFICULTY, World
 
 
 BORDER_CELLS = 8        # the camera never shows the 8-cell map border (ui-layout.md section 3)
@@ -126,7 +127,8 @@ def _setup(a):
     seed = getattr(a, "seed", None)
     if seed is None:
         seed = time.time_ns() & 0xFFFFFFFF if a.cmd == "run" else DEFAULT_SEED      # the exe seeds from the clock (simulation.md 10)
-    world = World.from_map(open_map(a.map, a.install), assets, seed=seed)
+    world = World.from_map(open_map(a.map, a.install), assets, seed=seed,
+                           difficulty=getattr(a, "difficulty", DEFAULT_DIFFICULTY))
     tv = TerrainView(world, assets.tileset())
     w, h = a.size
     opts = DrawOptions(shadows=not a.no_shadows, lit=not a.no_light,
@@ -239,6 +241,9 @@ def main(argv=None):
     r.add_argument("--debug-moveto", nargs="+", metavar="UID_OR_CELL",
                    help="developer tool: UID X,Y orders a path-found move (use with --debug paths)")
     r.add_argument("--debug-attack", nargs=2, metavar="UID", help="developer tool: the first unit attacks the second (use with --debug combat)")
+    r.add_argument("--difficulty", type=int, choices=(1, 2, 3), default=DEFAULT_DIFFICULTY,
+                   help="game difficulty option 1 easy, 2 medium (default, no tweak), 3 hard: the new-game screen's "
+                        "Easy/Medium/Hard (docs/engine/ai.md 10.1)")
     r.add_argument("--seed", type=int, help="RNG seed (default: the clock, printed; the exe seeds from it too)")
     a = p.parse_args(argv)
     if a.cmd == "minimap":
