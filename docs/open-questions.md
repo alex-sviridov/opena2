@@ -40,8 +40,8 @@ from both places when answered).
 ## Combat (I1)
 
 - Monster damage = template + equipped weapon: confirm in play. [combat](engine/combat.md#open-questions)
-- AI reaction on being hit (`FUN_0056e6b8`), guard and auto target scans (`FUN_0056a1fb`, `FUN_0056ed4e`), special attacks (`FUN_0056a981`),
-  mage casting (`FUN_0056b059`). [combat](engine/combat.md#10-not-modelled-kept-for-later-phases)
+- Special attacks (`FUN_0056a981`), mage casting (`FUN_0056b059`, `FUN_0056bc7b`), the second pool list `server+0xa88`: phase K. [ai](engine/ai.md#11-phase-k-list-ranged-and-casters)
+- AI: never-hit unit with a failed pursuit walks to `hitcell` 0; group orders `0x11`/`0x13`. [ai](engine/ai.md#open-questions)
 - Client reaction on message `0x73` beyond the number (view unit vtable `+0x74`); the recovery-timer byte wrap. [combat](engine/combat.md#open-questions)
 
 ## Not started (from the reversing plan)
