@@ -22,8 +22,8 @@ from allods2.graphics.terrain import TILE
 from .pick import PickRect
 
 CELL = TILE
-PASS_SHADOW, PASS_FLAT, PASS_GROUND_ITEMS, PASS_CELL, PASS_FLYER_SHADOW, PASS_FLYER, PASS_OVERLAY, PASS_DEBUG = \
-    0, 1, 2, 3, 4, 7, 8, 9
+PASS_SHADOW, PASS_FLAT, PASS_GROUND_ITEMS, PASS_CELL, PASS_FLYER_SHADOW, PASS_PROJECTILE, PASS_FLYER, PASS_OVERLAY, PASS_DEBUG = \
+    0, 1, 2, 3, 4, 6, 7, 8, 9
 SLOT_STRUCTURE, SLOT_UNIT, SLOT_STEAM, SLOT_OBJECT, SLOT_FIRE = range(5)
 SLOT_CORPSE, SLOT_BACKPACK = 0, 1           # inside P2
 BACKPACK = "graphics/backpack/sprites"       # + .256 / b.256, 6 frames (FUN_00461292)
@@ -387,6 +387,82 @@ def _unit(ctx, u):
                    dep + (0, 3), "half", ref.mirrored, remap)
 
 
+MISSILE_Z = 28              # px above the ground at the shooter and the target (DECISION: chest height; the exe adds the unit's shoot offset, INFERRED)
+
+
+def missile_position(c, target, age):
+    """Position (x, y) in 1/256 cell of the missile of carrier `c` after `age` ticks: the straight line from the release position to the target's
+    CURRENT position (a projectile steers at its target each tick, animation.md 4.4); `age >= flight` is the target itself.  `target` None: the
+    position the target had at the release."""
+    tx, ty = c.aim if target is None else target
+    n = max(c.flight, 1)
+    k = min(age, c.flight) if c.flight else 1
+    return (c.start[0] + _trunc((tx - c.start[0]) * k / n), c.start[1] + _trunc((ty - c.start[1]) * k / n))
+
+
+def missile_facing(dx, dy):
+    """The 16-direction facing (0 north, 4 east, `ProjectileSet.frame_at`) nearest to the direction (dx, dy) (INFERRED: the exe's rounding is not traced)."""
+    byte = round(math.atan2(dx, -dy) / (2 * math.pi) * 256) & 255
+    return ((byte + 8) >> 4) & 15
+
+
+class _Carrier:
+    """The `ent` of a carrier's draw items: only an id."""
+
+    def __init__(self, c):
+        self.id = c.uid
+
+
+def _carriers(ctx):
+    """P6: the missile of every missile carrier and its smoke trail (`FUN_0046cb7b`, trail 0x46cf31-0x46d062): the 6 previous positions as frames 0..5 of
+    the trail file, oldest first and drawn after the missile body (CONFIRMED order of the draw routine), the missile frame by facing and age (`ProjectileSet.frame_at`, age0 -1)."""
+    w = ctx.world
+    for c in w.carriers:
+        if c.kind != "missile":
+            continue
+        pset = ctx.assets.projectile_set(c.spell * 2 + 8)
+        if pset is None:
+            ctx.items.missing += 1
+            continue
+        t = w.find_unit(c.target)
+        tpos = None if t is None else ((t.x << 8) | t.sub_x, (t.y << 8) | t.sub_y)
+        age = max(ctx.tick - c.born, 0)
+        pos = missile_position(c, tpos, age)
+        cx, cy = pos[0] >> 8, pos[1] >> 8
+        if not in_window(ctx.win, cx, cy):
+            ctx.items.culled += 1
+            continue
+        end = tpos or c.aim
+        facing = missile_facing(end[0] - c.start[0], end[1] - c.start[1])
+        ent = _Carrier(c)
+        rec = pset.rec
+        a16 = bool(rec["A16"])
+        if pset.has_trail:
+            points = [missile_position(c, tpos, k) for k in range(max(age - 6, 0), age)]
+        ref = pset.frame_at("flight", facing, age, age0=-1)
+        dep = (PASS_PROJECTILE, cy, -cx, 0, c.uid)      # one object: the whole draw call of `FUN_0046cb7b` sorts at the missile's cell
+        _projectile_item(ctx, ent, c, pset, ref, pos, dep + (0, 0), "alpha" if a16 else "opaque", "main")
+        if not a16 and rec["Palette"]:                  # the b.256 smoothing overlay at 50 % (animation.md 4.4)
+            _projectile_item(ctx, ent, c, pset, ref, pos, dep + (1, 0), "half", "main_b")
+        if pset.has_trail:                              # after the body (the trail loop at 0x46cf31 follows the body draws)
+            points = [missile_position(c, tpos, k) for k in range(max(age - 6, 0), age)]
+            for i, (tref, _) in enumerate(pset.trail([((y << 16) | x) & 0xFFFFFFFF for x, y in points])):
+                _projectile_item(ctx, ent, c, pset, tref, points[i], dep + (2 + i, 0), "alpha", "trail")
+
+
+def _projectile_item(ctx, ent, c, pset, ref, pos, depth, blend, source):
+    wh = pset.size(source if source != "main_b" else "main_b", ref.index)
+    if wh is None:
+        ctx.items.missing += 1
+        return
+    z = fobj.ground_height(ctx.world.heights, pos[0], pos[1], 1, 1) + MISSILE_Z
+    px, py = (pos[0] * CELL) >> 8, (pos[1] * CELL) >> 8
+    sx, sy = px - ref.hotspot[0] - ctx.cx, py - ref.hotspot[1] - z - ctx.cy
+    if ctx.visible(sx, sy, wh[0], wh[1]):
+        ctx.items.append(DrawItem("sprite", ent.id, ("projectile", pset.pid, source), ref.index, sx, sy, wh[0], wh[1],
+                                  mirrored=ref.mirrored, blend=blend, light_row=None, depth=depth))
+
+
 def backpack_frame(gold):
     """Frame of a pile: `min(5, floor(log10(total)))` (FUN_0052a895 sent in message 0x7a; the
     items' own `+0x1c` is not decoded, so only the gold counts), 0 when empty."""
@@ -567,6 +643,7 @@ def build_draw_list(world, camera, tick, assets, options=None, debug=None, selec
             _unit(ctx, u)
         for u in world.units.values():
             _unit(ctx, u)
+        _carriers(ctx)
     ctx.items.sort(key=lambda i: i.depth)
     ctx.items.picks = [r for _, r in sorted(ctx.picks, key=lambda p: p[0] + (0, 2))]
     ctx.items.extend(_bars(ctx, selection, hover))

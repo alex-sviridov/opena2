@@ -1,0 +1,141 @@
+"""Missiles and their smoke trails in the draw list (I4b).  Synthetic assets, always run.
+Spec: docs/formats/animation.md 4.4, docs/engine/rendering.md section 2 (pass 6)."""
+
+import pytest
+
+from engine.view import DrawOptions, build_draw_list
+from engine.view import drawlist as dl
+from engine.world import Carrier
+
+from helpers import projectile, sprite_file
+from test_engine_unit_draw import UnitAssets, uassets, unit, world_with
+from test_engine_objects import cam
+
+C = 256
+POS = lambda x, y: (x * C + 128, y * C + 128)       # a cell centre in 1/256 cell
+
+
+class MissileAssets(UnitAssets):
+    def __init__(self, base, pset):
+        super().__init__(base.units, objects=base.objects, structures=base.structures)
+        self.pset = pset
+
+    def projectile_set(self, pid):
+        return self.pset if pid == self.pset.pid else None
+
+
+def assets(**rec):
+    pset = projectile(10, sprites={"main": sprite_file(64), "trail": sprite_file(6)}, **rec)
+    return MissileAssets(uassets(), pset)
+
+
+def missile(uid=1, start=(10, 10), aim=(17, 10), born=0, flight=8, target=0):
+    return Carrier(uid, "missile", 0, target, 1, 1, flight, born, True, POS(*start), flight, POS(*aim))
+
+
+def draw(w, tick, a=None):
+    return build_draw_list(w, cam(), tick, a or assets(), DrawOptions(shadows=False))
+
+
+def projectile_items(items):
+    return [i for i in items if i.kind == "sprite" and i.sprite[0] == "projectile"]
+
+
+def test_position_is_a_straight_line_to_the_target_and_clamps_at_the_end():
+    c = missile()
+    assert dl.missile_position(c, None, 0) == POS(10, 10)
+    assert dl.missile_position(c, None, 4) == (14 * C, 10 * C + 128)                     # halfway between 10.5 and 17.5 cells
+    assert dl.missile_position(c, None, 8) == POS(17, 10)
+    assert dl.missile_position(c, None, 99) == POS(17, 10)             # past the flight: the target
+    assert dl.missile_position(c, POS(17, 14), 8) == POS(17, 14)        # the target moved: the missile steers at its current position
+
+
+def test_flight_zero_is_at_the_target_at_once():
+    c = missile(flight=0)
+    assert dl.missile_position(c, None, 0) == POS(17, 10)
+
+
+def test_facing_16_directions():
+    assert dl.missile_facing(0, -5) == 0 and dl.missile_facing(5, 0) == 4 and dl.missile_facing(0, 5) == 8 and dl.missile_facing(-5, 0) == 12
+    assert dl.missile_facing(5, -5) == 2
+
+
+def test_age_three_draws_three_trail_points_and_the_missile():
+    w = world_with(unit(1, 10, 10))
+    w.carriers.append(missile())
+    items = projectile_items(draw(w, tick=3))
+    assert [i.sprite[2] for i in sorted(items, key=lambda i: i.depth)] == ["main", "trail", "trail", "trail"]     # the trail follows the body
+    main = [i for i in items if i.sprite[2] == "main"][0]
+    assert main.blend == "alpha" and main.light_row is None and main.sprite[:2] == ("projectile", 10)
+    assert main.frame == (3 // 2) % 4 + 4 * ((4 - 8) & 15)             # east: direction 4 -> row 12; phase (age / 2) mod Phases
+    trail = sorted((i for i in items if i.sprite[2] == "trail"), key=lambda i: i.depth)
+    assert [i.frame for i in trail] == [0, 1, 2]                        # frame i at point i, oldest first
+
+
+def test_the_trail_keeps_the_last_six_points():
+    w = world_with(unit(1, 10, 10))
+    w.carriers.append(missile())
+    assert len([i for i in projectile_items(draw(w, tick=7)) if i.sprite[2] == "trail"]) == 6
+    assert len([i for i in projectile_items(draw(w, tick=0)) if i.sprite[2] == "trail"]) == 0
+
+
+def test_the_missile_is_drawn_after_units_of_its_cell():
+    u = unit(1, 10, 10)
+    w = world_with(u)
+    w.carriers.append(missile(start=(10, 10), aim=(10, 10)))
+    items = [i for i in draw(w, tick=2) if i.kind == "sprite" and i.blend != "half"]
+    order = [i.entity for i in items]
+    assert order.index(u.id) < order.index(projectile_items(items)[-1].entity)
+
+
+def test_outside_the_window_is_culled_and_a_vanished_target_keeps_its_line():
+    w = world_with(unit(1, 10, 10))
+    w.carriers.append(missile(start=(100, 100), aim=(101, 100)))
+    out = draw(w, tick=2)
+    assert not projectile_items(out) and out.culled >= 1
+    w2 = world_with(unit(1, 10, 10))
+    w2.carriers.append(missile(target=0xDEAD))                          # no such unit: the aim position of the release
+    assert projectile_items(draw(w2, tick=4))
+
+
+def test_point_carriers_and_unknown_projectile_ids_draw_nothing():
+    w = world_with(unit(1, 10, 10))
+    c = missile()
+    c.kind = "point"
+    w.carriers.append(c)
+    assert not projectile_items(draw(w, tick=2))
+    w.carriers[:] = [missile()]
+    w.carriers[0].spell = 9                                              # projectile 26: absent from the fake assets
+    out = draw(w, tick=2)
+    assert not projectile_items(out) and out.missing >= 1
+
+
+# --- the real firebolt on a real map (needs the install) ---------------------------------------------------------------
+
+from helpers import GFS, needs_graphics
+
+
+@needs_graphics
+def test_a_missile_in_flight_changes_the_frame_and_stays_inside_the_view(tmp_path):
+    import numpy as np
+    from allods2.assets import AssetCache
+    from allods2.cli import open_map
+    from engine.backend_pygame import render
+    from engine.backend_pygame.sprites import SpriteCache
+    from engine.backend_pygame.surfaces import SurfaceCache
+    from engine.view import Camera, TerrainView
+    from engine.world import World
+
+    a = AssetCache(GFS)
+    w = World.from_map(open_map("10"), a, seed=1)
+    tv = TerrainView(w, a.tileset())
+    u = next(iter(w.units.values()))
+    cam_ = Camera(640, 480, w.width, w.height, max(u.x * 32 - 320, 0), max(u.y * 32 - 240, 0))
+    tc, sc = SurfaceCache(tv), SpriteCache(a)
+    base = render.screenshot(tv, cam_, 0, None, tc, a, DrawOptions(), None, sc)
+    sx, sy = (u.x << 8) | u.sub_x, (u.y << 8) | u.sub_y
+    w.carriers.append(Carrier(1, "missile", u.id, 0, 1, 1, 8, 0, True, (sx, sy), 8, (sx + 4 * 256, sy)))
+    shot = render.screenshot(tv, cam_, 4, str(tmp_path / "missile.png"), tc, a, DrawOptions(), None, sc)
+    diff = np.argwhere((base != shot).any(axis=2))
+    assert len(diff) > 20                                               # the firebolt and its smoke were blended in
+    assert diff[:, 0].min() >= 0 and diff[:, 1].max() < 640

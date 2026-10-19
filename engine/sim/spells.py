@@ -241,10 +241,11 @@ def cast_release(world, u, c, st):
         dy = (t.y * 256 + t.sub_y) - (u.y * 256 + u.sub_y)
         carrier = world.next_carrier_id()
         n = flight_ticks(spell, dx, dy) & 0xFFFF
-        world.carriers.append(Carrier(carrier, "missile", u.id, t.id, c.spell, level, n, world.tick, True, (u.x * 256 + u.sub_x, u.y * 256 + u.sub_y), n))
+        world.carriers.append(Carrier(carrier, "missile", u.id, t.id, c.spell, level, n, world.tick, True, (u.x * 256 + u.sub_x, u.y * 256 + u.sub_y), n,
+                                      (t.x * 256 + t.sub_x, t.y * 256 + t.sub_y)))
     else:
         carrier = world.next_carrier_id()
-        world.carriers.append(Carrier(carrier, "point", u.id, t.id, c.spell, level, 0, world.tick, True, (u.x * 256 + u.sub_x, u.y * 256 + u.sub_y), 0))
+        world.carriers.append(Carrier(carrier, "point", u.id, t.id, c.spell, level, 0, world.tick, True, (u.x * 256 + u.sub_x, u.y * 256 + u.sub_y), 0, (t.x * 256 + t.sub_x, t.y * 256 + t.sub_y)))
     log(world, CastReleased(world.tick, u.id, t.id, c.spell, level, carrier))
 
 
@@ -289,7 +290,7 @@ def carrier_system(world, commands):
         if c.kind == "missile":
             c.ticks_left -= 1
             if c.ticks_left < 1:
-                world.carriers.append(Carrier(world.next_carrier_id(), "point", c.caster, c.target, c.spell, c.level, 0, c.born, c.hostile, c.start, c.flight))
+                world.carriers.append(Carrier(world.next_carrier_id(), "point", c.caster, c.target, c.spell, c.level, 0, c.born, c.hostile, c.start, c.flight, c.aim))
                 done.add(c.uid)
         else:
             apply_point(world, c)
