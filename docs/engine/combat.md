@@ -666,6 +666,17 @@ plan [I4a](../superpowers/plans/2026-10-19-i4a-spell-cast-sim.md). Files: `engin
 | 9c.3 carriers | `spells.carrier_system` runs **before** `movement_system` (carriers pass, then creature pass); a missile counts down and appends a point carrier to the same pass, `apply_point`: `take_hit_detail` with the elemental record (`spell_record`), HP, last attacker, `ai.on_hit`, `xp.damage_credit`, `Damage` / `Died` |
 | Staff | `CombatStats.weapon_spell` = `(spell, count)` from the wielded weapon's `castSpell=` effect; `combat.swing_tick` hands a mage's swing to `cast_tick` (level = count, no mana, no complication) |
 
+View and UI (I4b, plan [I4b](../superpowers/plans/2026-10-19-i4b-spell-cast-view-ui.md)): `Carrier.start` / `flight` / `aim` make the missile a pure function of the tick;
+`drawlist._carriers` (pass 6 = projectiles, `PASS_PROJECTILE`) draws the missile (`ProjectileSet.frame_at("flight", facing16, age, age0=-1)`, `.16a` alpha blend of
+`SpriteCache` / `sprites.blend_alpha`: `min(src * (a + 1) / 16 + dst * (15 - a) / 16, 255)`) and its 6-point smoke trail (frames 0..5 of the smoke file, oldest first, **after the body**: the trail
+loop at `0x46cf31` follows the body draws, CONFIRMED by call order); the position is the straight line from the release position to the target's current position over `flight` ticks
+(`missile_position`), age = `tick - born`, so the missile reaches the target on the last tick before the damage. `AssetCache.projectile_set(pid)`; projectile id = `2 * spell + 8`. The cast animation is
+the attack action restarted at the cast start (`cast_start`: `action = "attack"`, animation.md 2.4 shares the block). UI: `C` (the original key of button 5) arms `pending = CAST` with the spell
+`castable_spell` finds (the lowest unit-target damage spell in a selected unit's book that its mana pays; the spellbook window is a J item), the cast cursor exists already, a click on a unit sends
+`CastSpell` (`OrderInput.release`, cmd `0x1e`), a click on the ground sends nothing (cell casts are phase K) and the mode resets either way, right release cancels it and keeps the selection (R 1.5).
+There is no clickable command bar in the engine yet: the panel button of the spec belongs to the command bar of J1. VERIFY IN GAME (INFERRED here): missile spawn height (`MISSILE_Z` = 28 px) and
+facing rounding, the trail not drawn when the carrier is younger than one tick, that the cast button is disabled when the mana is short, `C` + click instead of the spellbook.
+
 Timeline (tests): order at tick T0; the next `tick & 15 == 6` is `P`; `CastStarted` at `P + 1`; `CastReleased` at `P + 1 + windup`; the damage at `release + max(flight, 1)` with
 `flight = trunc(sqrt(dx^2 + dy^2)) / speed` (positions in 1/256 cell, Fire Arrow speed 200: 8 ticks at 7 cells).
 

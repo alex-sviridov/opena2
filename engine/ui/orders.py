@@ -4,7 +4,7 @@ clicks, hotkeys and minimap clicks into commands.  The pending target mode is `v
 A left release with a click on a non-empty selection dispatches on the cursor chosen at the release (R 1.2);
 the pending mode is reset after every such dispatch, also when nothing was ordered."""
 
-from engine.sim import AttackUnit, Guard, MoveUnits, SelectUnits, SetFormation, StandStill, Stop, Swarm
+from engine.sim import AttackUnit, CastSpell, Guard, MoveUnits, SelectUnits, SetFormation, StandStill, Stop, Swarm
 from allods2.text import decode_text
 
 from .cursor import CursorState as S
@@ -32,9 +32,11 @@ class OrderInput:
     """`selection_fn()` -> the player's selection tuple; `state_fn()` -> 'none' | 'own' | 'foreign';
     `formation` the player's current client mode."""
 
-    def __init__(self, player_id, screen_w, selection_fn, state_fn, formation=1):
+    def __init__(self, player_id, screen_w, selection_fn, state_fn, formation=1, spell_fn=None):
         self.player_id, self.screen_w = player_id, screen_w
         self.selection_fn, self.state_fn = selection_fn, state_fn
+        self.spell_fn = spell_fn            # () -> the spell number the selection can cast now, 0 for none (`castable_spell`)
+        self.spell = 0                      # the spell armed by `C` (the exe's selected spellbook entry, FUN_0041f370)
         self.pending = 0
         self.formation = formation
         self.right_dragged = False          # view+0xd8
@@ -63,6 +65,11 @@ class OrderInput:
             return None, None
         if name in HOTKEYS:
             self.pending = HOTKEYS[name]    # mask 0xef: buttons 1, 2, 4, 6 enabled
+            return None, None
+        if name == "c":                     # btn 5: enabled only when the selection has a castable spell (view+0x148 / 0x150, mask 0x10)
+            n = self.spell_fn() if self.spell_fn else 0
+            if n:
+                self.pending, self.spell = CAST, n      # the spellbook window (J) is replaced by a fixed spell slot (DECISION)
             return None, None
         if name == "t":                     # stand ground, immediate (btn 7): cmd 0x18, mode cleared
             self.pending = 0
@@ -103,7 +110,10 @@ class OrderInput:
                 cmd = AttackUnit(self.player_id, sel, hover_unit)
         elif cursor is S.SWARM and movable:         # cmd 0x1a at the cell under the pointer, also over a unit (R 1.3)
             cmd = Swarm(self.player_id, sel, cell)
-        # patrol, defend, pickup, town, cast: phases J/K, no order yet
+        elif cursor is S.CAST:                      # cmd 0x1e on the hovered unit (FUN_004195fa); a cell cast (0x1f) is phase K
+            if self.spell and self.state_fn() == "own" and sel and isinstance(hover_unit, int) and not isinstance(hover_unit, bool):
+                cmd = CastSpell(self.player_id, sel, self.spell, hover_unit)
+        # patrol, defend, pickup, town: phases J/K, no order yet
         self.pending = 0
         return "order", cmd
 
@@ -224,3 +234,25 @@ def level_up_messages(world, player_id, messages, now_ms, text, name_fn=None):
             messages.show(line, now_ms, LEVEL_UP_MS)
             shown = True
     return shown
+
+
+def castable_spell(world, player_id):
+    """The spell the selection can cast now: the lowest-numbered unit-target damage spell (the kind the cast code runs) in the book of a selected,
+    living unit that can pay its mana (INFERRED: the exe's button mask `+0x148` follows the spellbook and the mana, spells.md 9c.1); 0 for none."""
+    from engine.sim import combat, spells
+    from allods2.formats import spelldefs
+    table = world.spell_table
+    p = world.players.get(player_id)
+    if table is None or p is None:
+        return 0
+    best = 0
+    for uid in p.selection:
+        u = world.units.get(uid)
+        if u is None or u.hp <= 0:
+            continue
+        mask, mage = spells.known_mask(u), combat.combat_stats(world, u).mage
+        for d in table:
+            if ((mask >> d.number) & 1 and d.targets_unit and d.has_damage and d.distribution == spelldefs.DIST_SINGLE
+                    and (not mage or u.mana >= d.mana_cost) and (not best or d.number < best)):
+                best = d.number
+    return best

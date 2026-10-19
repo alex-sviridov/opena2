@@ -9,7 +9,7 @@ from engine.sim import ai as ai_mod
 from allods2.common import as_fs
 from engine.ui import (CursorInput, DebugFlags, Layout, MainText, MessageLine, MinimapPanel, OrderInput, ScrollInput,
                        SelectionInput, choose_cursor, choose_minimap_cursor, drain_no_way, level_up_messages, target_cell)
-from engine.ui.orders import FORMATION_MS, FORMATION_TEXT, minimap_move_cell
+from engine.ui.orders import FORMATION_MS, FORMATION_TEXT, castable_spell, minimap_move_cell
 from engine.view import DrawOptions, Projection, build_draw_list, build_terrain_items
 from engine.view.damage import FloatingDamage, unit_anchor
 from engine.world import Damage, Died, LevelUp, Loot, Removed
@@ -24,7 +24,7 @@ from .surfaces import SurfaceCache
 MAX_FRAME_MS = 250
 DEBUG_KEYS = {pygame.K_F1: "passability", pygame.K_F2: "markers", pygame.K_F3: "depth", pygame.K_F4: "paths", pygame.K_F5: "ai"}
 FLYING_TEXT = 0x66                                                   # main.txt 0x66 + state: "Flying damage is Off" / "On"
-ORDER_KEYS = {pygame.K_m: "m", pygame.K_a: "a", pygame.K_d: "d", pygame.K_s: "s", pygame.K_t: "t", pygame.K_g: "g", pygame.K_l: "l"}
+ORDER_KEYS = {pygame.K_m: "m", pygame.K_a: "a", pygame.K_d: "d", pygame.K_s: "s", pygame.K_t: "t", pygame.K_g: "g", pygame.K_l: "l", pygame.K_c: "c"}
 KEYS = {pygame.K_LEFT: "left", pygame.K_RIGHT: "right", pygame.K_UP: "up", pygame.K_DOWN: "down"}
 PLAYER_ID = 1       # single player: the human is record 1 (map.md part 5)
 
@@ -166,7 +166,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
                                lambda e: world.units[e].owner if e in world.units else None,
                                lambda: player.selection, hostile_to(world, player_id))
     ordering = OrderInput(player_id, layout.screen.w, lambda: player.selection,
-                          lambda: selection_state(world, player_id), player.formation)
+                          lambda: selection_state(world, player_id), player.formation, lambda: castable_spell(world, player_id))
     caches = Caches(SurfaceCache(terrain_view), SpriteCache(assets))
     period = tick_period_ms(speed)
     clock = pygame.time.Clock()
