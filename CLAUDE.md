@@ -63,6 +63,11 @@ The company is legally entitled to recreate the game.
 - Tests: `.venv/bin/pytest`. Game-file tests read the install's archives
   (`tests/helpers.GFS`) and skip when missing; synthetic tests build small streams
   in code, one per spec rule, and always run.
+- Native planner (docs/engine/simulation.md 7.5): `engine/native/planner.c` is compiled on first use
+  with `gcc -O2 -shared -fPIC` into the gitignored `engine/native/_planner.so` (rebuilt when the source is
+  newer; no compiler = the pure-Python planner, silently). `ALLODS2_NATIVE=0` forces Python, `=1` requires
+  native. Planner changes: edit both, then run the planner tests in both modes:
+  `for m in 0 1; do ALLODS2_NATIVE=$m .venv/bin/pytest -q tests/test_pathfinding*.py tests/test_engine_pathing.py tests/test_engine_orders*.py; done`.
 - A decoder is done when its validate tool passes on the full install
   (e.g. `tools/validate_sprites.py`; animation API: `tools/validate_anim.py`).
 
@@ -225,8 +230,8 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   human player's units to a free cell; costs 2/3 or terrain cost for walkers, no corner rule, strict `<`) and a backward walk with the exe's
   tie rule (`<=` orthogonal, `<` diagonal), unreachable -> cheapest labelled cell of the first ring around the target; two layers: a static
   plan (re-planned on target change or after 16 hops) and 3-4 cell dynamic hops over the live layer (every 32 ticks or when empty);
-  `engine/sim/pathfinding.py` (pure), `MoveTo` order, overlay `--debug paths` (Shift+F4), `tools/bench_pathfinding.py`
-  (168 ms worst, 256x256; was 444), goldens `["paths"]`. Blocker wait (no swap: the first human size-1 unit turns to a walking friend and stops until re-ordered, 7.4) modelled; follow-target decoded (7.4: `follow_fallback`, `follow_distance`; not wired, no follow order yet). docs/engine/simulation.md §7
+  `engine/sim/pathfinding.py` (pure; optional bit-identical C port `engine/native/planner.c` via ctypes, `ALLODS2_NATIVE`), `MoveTo` order, overlay `--debug paths` (Shift+F4), `tools/bench_pathfinding.py`
+  (worst 256x256: Python 132 ms, native 6.9 ms; was 444), goldens `["paths"]`. Blocker wait (no swap: the first human size-1 unit turns to a walking friend and stops until re-ordered, 7.4) modelled; follow-target decoded (7.4: `follow_fallback`, `follow_distance`; not wired, no follow order yet). docs/engine/simulation.md §7
 - Orders (H3) done: click to move, REA-checked (docs/engine/click-to-move-research.md): left release dispatches on the cursor chosen at release
   (move; attack over ground = move), right release = cancel pending mode / deselect, right drag scrolls, minimap left click = move; no Stop
   message (T = cmd 0x18, order 0xc), no click marker, "No way" text; every command makes a new group, formation Off/Auto/On = rigid translation

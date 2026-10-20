@@ -669,6 +669,26 @@ is the irreducible per-expansion cost (~9 expansions per labelled cell). A later
 hops; a per-tick plan budget stays a gameplay decision. Golden routes: `tests/golden.json["paths"]`
 (`tests/test_pathfinding_maps.py`, regenerate with `tools/update_golden.py`).
 
+**Native accelerator (DECISION, user).** `engine/native/planner.c` is a C99 port of `_plan` after its prelude (the
+wave fill of `_wave_ref` with the `last` re-expansion skip, the ring scan `_nearest_reached` and the backward walk
+`_walk_back`; 16-bit labels and packed indices wrap modulo 0x10000 exactly as in Python). It uses the plain field
+(UNSEEN = unlabelled, a footprint test per neighbour), not the dead-cell-0 trick, so it needs no `dead` layer. Flat
+interface: `a2_plan(blocked, cost|NULL, sx, sy, tx, ty, size, limit, radius, follow, fld, searched, route, out)`;
+`out` = searched count, levels, status (found / fallback / unreachable / too long / follow needed), end index, route
+length. A plan with a follow target stops after the wave; Python runs `follow_fallback` on the returned field and
+calls `a2_walk_back`. `_plan` computes limit, order and cost in Python and dispatches; cells outside the 256 grid or
+layers that are not 65536 bytes stay on the Python path. Loading: `engine/native/__init__.py` (ctypes, no new
+dependency) compiles the source with `gcc -O2 -shared -fPIC -std=c99` (`$CC`, else `gcc`, else `cc`) on first use
+when `_planner.so` is missing or older than the source, into `engine/native/` (or `~/.cache/allods2/native` when it
+is read-only; temp file + rename); a version function rejects a stale library. Any failure = the Python planner,
+silently. `ALLODS2_NATIVE=0` forces Python, `=1` requires the library (RuntimeError), unset = auto. The Python
+planner stays the reference: `tests/test_pathfinding_native.py` compares every `PathResult` field (random grids
+of sizes 1-3, walker / human flags, scan-ahead configs, radii, follow targets, wrap-around labels, open 256 grids,
+"too long"; plus maps 10, 32, 53, 110 for movement classes 1-3 with live layers and follow plans), and the
+existing differential / golden tests run in both modes. **Measured** (same machine): `tools/bench_pathfinding.py`
+worst case 132 ms (Python) -> **6.9 ms** (native) on `110.alm` (40,465 labelled cells, about 19x), 144 x 144 maps
+48 -> under 2 ms.
+
 ### 7.6 VERIFY IN GAME (pathfinding)
 
 1. **Corner cutting.** Two blocked cells touching at a corner (e.g. two trees on a diagonal): order a walker
@@ -844,12 +864,15 @@ Cost note: such a unit makes a hop plan per tick.
   hop plans mean 2.4 ms, max 5.6 ms; static plans mean 17 ms, max 41 ms). Tick 0, the order itself, plans all 20 units:
   **463 ms** in one tick (about 23 ms per unit, the worst-case territory of 7.5); **after the planner pass of 7.5: 352 ms** (14.6 ms
   per static plan, same machine and run; the planner micro-benchmark of the 20 plans alone: 395 -> 287 ms, best of 7).
+  **With the native planner (7.5): tick 0 = 21-25 ms** (20 static plans mean 0.8 ms, max 1.6 ms; the rest is the live
+  layer and slot glue), mean tick 1.2-1.3 ms over `--ticks 40` (hop plans 0.04 ms); with `ALLODS2_NATIVE=0`: tick 0 = 346-358
+  ms, mean 11.4-11.6 ms. The spike below is therefore gone when the library builds; the Python numbers stay valid for the fallback.
 - **Per frame with rendering** (`window.run`, the clock replaced by one that feeds the simulated frame time): 30 fps
   equivalent: mean 21.4 ms, p95 31.4, max 68 (3 % of frames over the 33 ms budget); 60 fps equivalent: mean 19.2, p95 27.6, max
   62 (70 % over the 16.7 ms budget). Frames that step the simulation cost about 24 ms, the others 17.5 ms (rendering). The first
   second (surface and sprite caches filling) costs mean 37-58 ms, max 540-560 ms.
 - **Steady?** After the warm-up yes: no growth over 20 s, the frame time is dominated by drawing (17 ms), the orders add
-  about 6 ms to a stepping frame; the tail (p95 28-31 ms) comes from ticks with several static re-plans. **One real spike: the tick
+  about 6 ms to a stepping frame; the tail (p95 28-31 ms) comes from ticks with several static re-plans. **One real spike (pure-Python planner only; gone with the native planner of 7.5): the tick
   that applies the order of a 20-unit group on the biggest map freezes the window for about a third of a second (was half a second)** (20 static plans
   of 7.5). The plans cannot be moved or shared without changing the result (they read the live layer at that tick, each
   starts from its own cell, and spreading them over ticks shifts the first step of the later units, which breaks 1:1), so no
@@ -930,7 +953,7 @@ filtered by recipient (`drain_no_way`, research 6.3 CONFIRMED routing).
    facing where it was.
 9. Gridlock (8.7): send a column of computer-owned units through a one-cell gap: the units that cannot plan give up after
    about `len - 5` ticks (human units wait first); a lone unit boxed in by friends keeps order 1.
-10. Order spike (8.7): ordering 20+ units over 60 cells in one click is instantaneous in the exe (native planner).
+10. Order spike (8.7): ordering 20+ units over 60 cells in one click is instantaneous in the exe (the engine: about 25 ms with the native planner of 7.5).
 11. Combat (I1): the eight items of [combat §11](combat.md#11-verify-in-game) (monster damage = template + weapon, hero hit/miss/damage counts over 20 blows, 0-15 tick start latency, flyer refusal, reach rule, Ctrl+L numbers, absorbed hits show no number, sure-hit monsters).
 
 ## 10. RNG

@@ -30,3 +30,9 @@ htmlcov/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Native accelerators built on demand from engine/native/*.c (docs/engine/simulation.md 7.5)
+/engine/native/*.so
+/engine/native/*.dylib
+/engine/native/*.dll
+/engine/native/*.tmp

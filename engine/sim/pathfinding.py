@@ -7,13 +7,20 @@ The search is the exe's, not A*: a label-correcting wave fill over a distance fi
 with the expanders `FUN_0055d010` / `FUN_0055c6f0` / `FUN_0055e050` / `FUN_0055cb30`), then a
 backward walk from the end cell (`FUN_0054e58c` / `FUN_0054e886`).  Cells are indexed `y * 256 + x`
 as in the exe's 256 x 256 grids; the 8-cell map border is blocked, so a plan never leaves the map.
+
+`_plan` dispatches to the optional C port `engine/native/planner.c` (7.5: same results field for field) when
+it builds; this Python code is the reference and the fallback (`ALLODS2_NATIVE=0` forces it).
 """
 
+import ctypes
+import threading
 from array import array
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
 import numpy as np
+
+from .. import native as _native
 
 GRID = 256
 UNSEEN = 0xFFFF
@@ -525,6 +532,16 @@ def _plan(grid, start, target, size, walker, human, static, cfg, radius, follow=
         limit = dist + (cfg.static_scan_ahead if static else cfg.dynamic_scan_ahead)
         order = ORDER_SIZED
     cost = grid.cost if (walker and grid.cost is not None) else None
+    if radius is None:
+        radius = quarter + 4 if static else 8
+    lib = _native.planner()
+    if lib is not None and _native_ok(grid, start, target, cost):
+        return _plan_native(lib, res, grid, start, target, size, limit, cost, radius, follow)
+    return _plan_py(res, grid, start, target, size, walker, limit, order, cost, radius, follow)
+
+
+def _plan_py(res, grid, start, target, size, walker, limit, order, cost, radius, follow):
+    """The reference planner after the prelude of `_plan` (wave, end cell, backward walk)."""
     fld, searched, levels, dead = _wave(grid, start, target, size, walker, limit, order, cost)
     res._raw = searched
     res.limit, res.levels = limit, levels
@@ -534,8 +551,7 @@ def _plan(grid, start, target, size, walker, human, static, cfg, radius, follow=
         if follow is not None:                              # 0x54e30f: a unit target, FUN_00557f08
             end = follow_fallback(fld, follow[0], follow[1], dead, sidx)
         else:
-            end = _nearest_reached(fld, target, radius if radius is not None else (quarter + 4 if static else 8),
-                                   dead, sidx)
+            end = _nearest_reached(fld, target, radius, dead, sidx)
         if end is None:
             res.reason = "unreachable"
             return res
@@ -547,6 +563,70 @@ def _plan(grid, start, target, size, walker, human, static, cfg, radius, follow=
         res.found, res.reason = False, "too long"
         return res
     res.cells, res.end = route, end
+    return res
+
+
+# --- Native accelerator (engine/native/planner.c, spec 7.5): same results, field for field --------------------
+_ST_FOUND, _ST_FALLBACK, _ST_UNREACHABLE, _ST_TOO_LONG, _ST_NEED_FOLLOW = range(5)
+_scratch = threading.local()
+
+
+def _native_ok(grid, start, target, cost):
+    """Inputs the C planner takes: cells inside the 256 x 256 grid, 65536-byte layers (anything else, e.g. a
+    hand-made grid, runs the Python planner)."""
+    return (0 <= start[0] < GRID and 0 <= start[1] < GRID and 0 <= target[0] < GRID and 0 <= target[1] < GRID
+            and len(grid.blocked) == GRID * GRID and (cost is None or len(cost) == GRID * GRID))
+
+
+def _addr(buf):
+    """Address of a 65536-byte layer (copied when it is not a writable buffer, e.g. bytes)."""
+    if not isinstance(buf, bytearray):
+        buf = bytearray(buf)
+    return ctypes.addressof((ctypes.c_char * len(buf)).from_buffer(buf)), buf
+
+
+def _plan_native(lib, res, grid, start, target, size, limit, cost, radius, follow):
+    s = _scratch.__dict__
+    if not s:
+        s["fld"] = array("H", bytes(2 * GRID * GRID))
+        s["searched"] = array("i", bytes(4 * GRID * GRID))
+        s["route"] = array("i", bytes(4 * (MAX_STEPS + 1)))
+        s["out"] = array("i", bytes(4 * 5))
+        s["addr"] = tuple(s[k].buffer_info()[0] for k in ("fld", "searched", "route", "out"))
+    fld, searched, route, out = s["fld"], s["searched"], s["route"], s["out"]
+    a_fld, a_searched, a_route, a_out = s["addr"]
+    a_blk, keep_b = _addr(grid.blocked)                    # keep_*: the buffers stay alive across the call
+    a_cost, keep_c = _addr(cost) if cost is not None else (None, None)
+    st = lib.a2_plan(a_blk, a_cost, start[0], start[1], target[0], target[1], size, limit, radius,
+                     1 if follow is not None else 0, a_fld, a_searched, a_route, a_out)
+    if st > _ST_NEED_FOLLOW:
+        raise MemoryError("native planner: out of memory")
+    res._raw = searched[:out[0]]
+    res.limit, res.levels = limit, out[1]
+    if st == _ST_NEED_FOLLOW:                               # 0x54e30f: a unit target, FUN_00557f08
+        end = follow_fallback(fld, follow[0], follow[1])
+        if end is None:
+            res.reason = "unreachable"
+            return res
+        res.reason = "fallback"
+        n = lib.a2_walk_back(a_fld, a_cost, 1 if cost is not None else 0, start[0], start[1], end[0], end[1], a_route)
+        if n < 0:
+            res.found, res.reason = False, "too long"
+            return res
+    elif st == _ST_UNREACHABLE:
+        res.reason = "unreachable"
+        return res
+    elif st == _ST_TOO_LONG:
+        res.found, res.reason = False, "too long"
+        return res
+    else:
+        n = out[4]
+        end = (out[3] & 255, out[3] >> 8)
+        if st == _ST_FOUND:
+            res.found, res.reason = True, "found"
+        else:
+            res.reason = "fallback"
+    res.cells, res.end = [(i & 255, i >> 8) for i in route[:n]], end
     return res
 
 
