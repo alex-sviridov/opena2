@@ -7,6 +7,7 @@ the pending mode is reset after every such dispatch, also when nothing was order
 from engine.sim import AttackUnit, CastSpell, Guard, MoveUnits, SelectUnits, SetFormation, StandStill, Stop, Swarm
 from allods2.text import decode_text
 
+from . import spellbook
 from .cursor import CursorState as S
 from .selection import drag_threshold
 
@@ -22,6 +23,7 @@ LEVEL_UP_MS = 3000
 HEALTH_TEXT = 0x64                                                 # main.txt 0x64 + show-health flag (Ctrl+H, FUN_0041f0e0)
 FORMATION_MS = 2000                                                # CONFIRMED: `push 0x7d0` before FUN_004021fe at 0x40cf3e (Ctrl+F), 0x40ced7 (Ctrl+W), 0x40cf86 (Ctrl+H)
 RIGHT_SCROLL_DIV = 8
+FKEYS = 9                                                          # F4..F12: the client's spell / item hotkey table (`client+0x4dc`, 9 entries of 12 bytes)
 
 
 def right_drag_cells(d):
@@ -33,11 +35,14 @@ class OrderInput:
     """`selection_fn()` -> the player's selection tuple; `state_fn()` -> 'none' | 'own' | 'foreign';
     `formation` the player's current client mode."""
 
-    def __init__(self, player_id, screen_w, selection_fn, state_fn, formation=1, spell_fn=None):
+    def __init__(self, player_id, screen_w, selection_fn, state_fn, formation=1, spell_fn=None, mask_fn=None):
         self.player_id, self.screen_w = player_id, screen_w
         self.selection_fn, self.state_fn = selection_fn, state_fn
-        self.spell_fn = spell_fn            # () -> the spell number the selection can cast now, 0 for none (`castable_spell`)
-        self.spell = 0                      # the spell armed by `C` (the exe's selected spellbook entry, FUN_0041f370)
+        self.spell_fn = spell_fn            # () -> the spell number the selection can cast now, 0 for none (`castable_spell`): the stand-in for the spellbook window's choice
+        self.mask_fn = mask_fn              # () -> the slot mask of the selection (`view+0x148`, `spellbook.selection_slot_mask`); None: not modelled
+        self.spell = 0                      # the spell armed by `C` / F4-F12 (spell of the selected slot, FUN_0041f370)
+        self.slot = -1                      # the spellbook window's selected slot (panel `+0x60`, -1 none); the window (J) sets it with `select_slot`
+        self.hotkeys = [None] * FKEYS       # client table `0x4dc`: per F4..F12 the bound slot (entry type 1) or None (type 0)
         self.pending = 0
         self.formation = formation
         self.right_dragged = False          # view+0xd8
@@ -68,9 +73,14 @@ class OrderInput:
             self.pending = HOTKEYS[name]    # mask 0xef: buttons 1, 2, 4, 6 enabled
             return None, None
         if name == "c":                     # btn 5: enabled only when the selection has a castable spell (view+0x148 / 0x150, mask 0x10)
+            if self.mask_fn is not None and not self.mask_fn():
+                return None, None
+            if self.slot >= 0:                          # the window's selection (a bound F-key or a clicked slot): FUN_0041f370
+                self.pending, self.spell = CAST, spellbook.spell_of_slot(self.slot)
+                return None, None
             n = self.spell_fn() if self.spell_fn else 0
             if n:
-                self.pending, self.spell = CAST, n      # the spellbook window (J) is replaced by a fixed spell slot (DECISION)
+                self.pending, self.spell = CAST, n      # no spellbook window yet (J): without a selected slot a fixed spell stands in (DECISION)
             return None, None
         if name == "t":                     # stand ground, immediate (btn 7): cmd 0x18, mode cleared
             self.pending = 0
@@ -81,6 +91,41 @@ class OrderInput:
         if name == "l":                     # stand still (FUN_00419ffd, a key, not via FUN_00418a02): cmd 0x12; the pending mode is left alone
             return StandStill(self.player_id, tuple(self.selection_fn())), None
         return None, None
+
+    # -- spell slots and the F4-F12 shortcuts (research 1.4; spells.md 9e) ------------------------------------
+    def slot_enabled(self, slot):
+        """The spellbook click rule (`0x4c7580`): a slot is selectable when the selection's mask `view+0x148` has its bit (the item mask `+0x150` is not modelled)."""
+        return self.mask_fn is not None and slot >= 0 and (self.mask_fn() >> slot) & 1 == 1
+
+    def select_slot(self, slot):
+        """The spellbook window's click on a slot: the panel's selection `+0x60` changes only for an enabled slot.  Returns whether it did."""
+        if self.slot_enabled(slot):
+            self.slot = slot
+            return True
+        return False
+
+    def fkey(self, n, ctrl=False, shift=False):
+        """F`n` (4..12), the handler of `FUN_0040c8a0` case `0x40ca16` (CONFIRMED) with the spellbook closed.  The table entry `E = hotkeys[n - 4]`:
+        Ctrl (Shift not held) sends message `0x417` with Ctrl to the spell panel: the selected slot is bound to the key (and unbound from every other key);
+        no Ctrl and `E` bound: the panel's selection becomes `E` (Shift holds back the message).  Then, whatever the keys, a bound `E` whose bit is set in the
+        selection's mask arms the cast mode (btn 9 -> mode 5, which `FUN_00418a02` allows for a non-foreign selection with a castable slot); a disabled slot
+        does nothing more.  Returns None (never a command).  Nothing here needs a selection: binding and choosing work without one."""
+        i = n - 4
+        if not 0 <= i < FKEYS:
+            return None
+        if not shift:
+            if ctrl:
+                if self.slot >= 0:
+                    for j in range(FKEYS):
+                        if j != i and self.hotkeys[j] == self.slot:
+                            self.hotkeys[j] = None
+                    self.hotkeys[i] = self.slot
+            elif self.hotkeys[i] is not None:
+                self.slot = self.hotkeys[i]
+        e = self.hotkeys[i]
+        if e is not None and self.slot_enabled(e) and self.state_fn() != "foreign" and self.selection_fn():
+            self.pending, self.spell = CAST, (spellbook.spell_of_slot(self.slot) if self.slot >= 0 else 0)     # a click with no selected slot casts nothing (0x41784a)
+        return None
 
     # -- left button --------------------------------------------------------------------------------------
     def is_order_click(self, corner, pos):
@@ -112,11 +157,19 @@ class OrderInput:
         elif cursor is S.SWARM and movable:         # cmd 0x1a at the cell under the pointer, also over a unit (R 1.3)
             cmd = Swarm(self.player_id, sel, cell)
         elif cursor is S.CAST:                      # cmd 0x1e on the hovered unit (FUN_004195fa); a cell cast (0x1f) is phase K
-            if self.spell and self.state_fn() == "own" and sel and isinstance(hover_unit, int) and not isinstance(hover_unit, bool):
+            if (self.spell and self.state_fn() == "own" and sel and isinstance(hover_unit, int) and not isinstance(hover_unit, bool)
+                    and self._slot_allows(self.spell)):
                 cmd = CastSpell(self.player_id, sel, self.spell, hover_unit)
         # patrol, defend, pickup, town: phases J/K, no order yet
         self.pending = 0
         return "order", cmd
+
+    def _slot_allows(self, spell):
+        """`FUN_004195fa` sends nothing unless the selection's mask has the bit of the chosen slot (`FUN_004c70b9`).  Without a mask function: allowed."""
+        if self.mask_fn is None:
+            return True
+        slot = spellbook.slot_of_spell(spell)
+        return slot is not None and (self.mask_fn() >> slot) & 1 == 1
 
     # -- right button -------------------------------------------------------------------------------------
     def right_press(self):
@@ -272,22 +325,19 @@ PROTOTYPE_SPELLS = (1, 5, 16)       # Fire Arrow, Ice Missile, Diamond Dust: the
 
 
 def castable_spell(world, player_id):
-    """The spell the selection can cast now: the lowest-numbered prototype spell (the unit-target missile kind the cast code and the view run) in the book of a selected,
-    living unit that can pay its mana (INFERRED: the exe's button mask `+0x148` follows the spellbook and the mana, spells.md 9c.1); 0 for none."""
-    from engine.sim import combat, spells
+    """The spell `C` arms while the spellbook window does not exist: the lowest-numbered prototype spell (the unit-target missile kind the cast code and the
+    view run) whose button is enabled for the selection.  The exe's enable rule is the spellbook only (CONFIRMED, spells.md 9e.1: `view+0x148` = OR of the
+    selected units' slot masks, no mana in it; a mage short of mana starts the cast and retries silently, 9c.2); 0 for none."""
     from allods2.formats import spelldefs
     table = world.spell_table
     p = world.players.get(player_id)
     if table is None or p is None:
         return 0
+    mask = spellbook.selection_slot_mask(world, p.selection)
     best = 0
-    for uid in p.selection:
-        u = world.units.get(uid)
-        if u is None or u.hp <= 0:
-            continue
-        mask, mage = spells.known_mask(u), combat.combat_stats(world, u).mage
-        for d in table:
-            if (d.number in PROTOTYPE_SPELLS and (mask >> d.number) & 1 and d.targets_unit and d.has_damage and d.distribution == spelldefs.DIST_SINGLE
-                    and (not mage or u.mana >= d.mana_cost) and (not best or d.number < best)):
-                best = d.number
+    for d in table:
+        slot = spellbook.slot_of_spell(d.number)
+        if (d.number in PROTOTYPE_SPELLS and slot is not None and (mask >> slot) & 1 and d.targets_unit and d.has_damage
+                and d.distribution == spelldefs.DIST_SINGLE and (not best or d.number < best)):
+            best = d.number
     return best

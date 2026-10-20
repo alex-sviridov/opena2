@@ -130,7 +130,7 @@ switch btn:                                                     # immediate comm
 | `M` move | 2 | arm | 2 -> move cursor | **in scope** |
 | `G` guard | 3 | cmd `0x17` at once | - | stop family (§5) |
 | `D` defend | 4 | arm | 4 -> defend cursor (click on a unit = cmd 0x1b) | I |
-| `C` cast | 5 | spellbook + arm | 5 | K |
+| `C` cast | 5 | spellbook + arm | 5 | K; F4-F12 (btn 9/10) arm mode 5 without the book: [spells 9e.2](../data/spells.md) |
 | `S` swarm | 6 | arm | 6 -> swarm cursor, cmd `0x1a` at the cell | I |
 | `T` stand ground | 7 | cmd `0x18` at once | - | stop family |
 | `R` retreat | 8 | cmd `0x14` at once | - | stop family |

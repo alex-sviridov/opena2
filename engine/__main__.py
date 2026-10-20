@@ -8,7 +8,7 @@
 MAP as for `python -m allods2 map` (10, scenario/10.alm, or a file).  X, Y =
 the viewport's top-left in world pixels (x = 32*col, y = 32*row - height).
 `run` starts at the playable-area corner (256, 256) by default.  Arrow keys
-or the mouse at the window edge scroll; F1/F2/F3/F5 toggle the debug overlays
+or the mouse at the window edge scroll; F1/F2/F3 (Shift+F4 paths, Shift+F5 ai) toggle the debug overlays
 passability / markers / depth, Ctrl+H the health bars of all units, Ctrl+L the floating damage numbers (on by default, as in the game); Esc quits.  --debug takes a comma list of those
 names (screenshot: drawn in the PNG).  Objects and structures are drawn with the
 game's default options; --no-* switch shadows, the BRIGHT2 light row, the b.256

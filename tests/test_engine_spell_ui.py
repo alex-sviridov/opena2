@@ -70,7 +70,7 @@ def selected(w, *units):
     w.players[1].selection = tuple(u.id for u in units)
 
 
-def test_castable_spell_needs_the_book_the_mana_and_a_selection():
+def test_castable_spell_needs_the_book_and_a_selection_not_the_mana():
     w = base_world()
     w.spell_table = spell_table()
     u = mage(w, 3)
@@ -78,7 +78,9 @@ def test_castable_spell_needs_the_book_the_mana_and_a_selection():
     selected(w, u)
     assert castable_spell(w, 1) == FIRE_ARROW
     u.mana = 2
-    assert castable_spell(w, 1) == 0                            # one short of the cost
+    assert castable_spell(w, 1) == FIRE_ARROW                   # one short of the cost: the exe's button mask has no mana in it (spells.md 9e.1)
+    u.mana = 0
+    assert castable_spell(w, 1) == FIRE_ARROW
     u.mana, u.spellbook = 3, 0
     assert castable_spell(w, 1) == 0                            # not in the book
     u.spellbook, u.hp = 1 << FIRE_ARROW, 0

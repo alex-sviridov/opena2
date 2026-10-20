@@ -249,7 +249,7 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
   `ai.emit` (apply at once + `World.ai_emitted`), `Simulation.step` appends them to `Simulation.log` as `(tick, cmd)`. `replay()` of a sim that has the AI drops
   the logged AI commands and regenerates them (same hash, tested); a sim without the AI applies them from the log in the drain (approximate: the
   events of §6.2 happen inside the movement tick, the drain is before it).
-* Opt-in: `Simulation(world, ai=True)`; `engine run` enables it (`--no-ai` disables, F5 / `--debug ai` draws the overlay: sight = the aggro area, the ring at
+* Opt-in: `Simulation(world, ai=True)`; `engine run` enables it (`--no-ai` disables, Shift+F5 / `--debug ai` draws the overlay: sight = the aggro area, the ring at
   the pool radius, the post, the target, a label with mode / order / target uid / radius / stamp). Tests that use monsters as dummies keep the old behaviour.
 * Deviations (all invisible in the 46 maps' normal play, none changes the rules above): an event-raised mode (§6.2) runs its body one tick later than the
   exe's direct call; (a go cell is passed raw, as the exe does: cell (0, 0) for a never-hit unit, §3); a target that

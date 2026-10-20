@@ -9,6 +9,7 @@ from engine.sim import ai as ai_mod
 from allods2.common import as_fs
 from engine.ui import (CursorInput, CursorState, DebugFlags, Layout, MainText, MessageLine, MinimapPanel, OrderInput, ScrollInput,
                        SelectionInput, choose_cursor, choose_minimap_cursor, drain_no_way, level_up_messages, target_cell)
+from engine.ui.spellbook import selection_slot_mask
 from engine.ui.orders import FORMATION_MS, FORMATION_TEXT, HEALTH_TEXT, castable_spell, minimap_move_cell
 from engine.view import DrawOptions, Projection, build_draw_list, build_terrain_items
 from engine.view.damage import FloatingDamage, unit_anchor
@@ -22,7 +23,9 @@ from .sprites import SpriteCache
 from .surfaces import SurfaceCache
 
 MAX_FRAME_MS = 250
-DEBUG_KEYS = {pygame.K_F1: "passability", pygame.K_F2: "markers", pygame.K_F3: "depth", pygame.K_F4: "paths", pygame.K_F5: "ai"}
+DEBUG_KEYS = {pygame.K_F1: "passability", pygame.K_F2: "markers", pygame.K_F3: "depth"}
+DEBUG_SHIFT_KEYS = {pygame.K_F4: "paths", pygame.K_F5: "ai"}       # F4-F12 are the exe's spell shortcuts (research 1.4): the overlays moved to Shift+F4 / Shift+F5
+FKEY_NUMBERS = {getattr(pygame, "K_F%d" % n): n for n in range(4, 13)}
 FLYING_TEXT = 0x66                                                   # main.txt 0x66 + state: "Flying damage is Off" / "On"
 ORDER_KEYS = {pygame.K_m: "m", pygame.K_a: "a", pygame.K_d: "d", pygame.K_s: "s", pygame.K_t: "t", pygame.K_g: "g", pygame.K_l: "l", pygame.K_c: "c"}
 KEYS = {pygame.K_LEFT: "left", pygame.K_RIGHT: "right", pygame.K_UP: "up", pygame.K_DOWN: "down"}
@@ -128,7 +131,7 @@ def minimap_order_target(projection, camera, layout, panel, pos):
 
 
 def ai_overlay(world, debug, selection):
-    """{unit id: `ai.overlay`} for the selected monsters while the `ai` debug flag is on (F5), else None."""
+    """{unit id: `ai.overlay`} for the selected monsters while the `ai` debug flag is on (Shift+F5), else None."""
     if not debug.ai or not world.ai_on:
         return None
     return {uid: ai_mod.overlay(world, world.units[uid]) for uid in selection if uid in world.units}
@@ -149,7 +152,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
         assets=None, options=None, debug=None, minimap=None, player_id=PLAYER_ID, commands=(), ai=True):
     """Accumulator main loop: fixed-step sim, variable-rate drawing.  Returns the `Simulation` when the window
     closes (or after `max_frames`, for tests).  `layout`: `Layout` of the window size (the camera is built from
-    `layout.viewport`).  `ai`: the monsters think (docs/engine/ai.md; `--no-ai` of the CLI).  F1-F5 toggle the debug overlays, Ctrl+H the health bars, Ctrl+F cycles the formation.
+    `layout.viewport`).  `ai`: the monsters think (docs/engine/ai.md; `--no-ai` of the CLI).  F1-F3 and Shift+F4/F5 toggle the debug overlays, F4-F12 are the spell shortcuts, Ctrl+H the health bars, Ctrl+F cycles the formation.
     Left mouse: click / drag selects, a click with a selection orders by the cursor (move, attack over ground),
     Shift toggles; M / A / D / S arm a pending mode, T stands ground; right click cancels the mode or deselects,
     right drag scrolls; the minimap orders a walk (own units selected) or moves the camera; "No way" shows in
@@ -177,7 +180,8 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
                                lambda e: world.units[e].owner if e in world.units else None,
                                lambda: player.selection, hostile_to(world, player_id))
     ordering = OrderInput(player_id, layout.screen.w, lambda: player.selection,
-                          lambda: selection_state(world, player_id), player.formation, lambda: castable_spell(world, player_id))
+                          lambda: selection_state(world, player_id), player.formation, lambda: castable_spell(world, player_id),
+                          lambda: selection_slot_mask(world, player.selection) if selection_state(world, player_id) == "own" else 0)
     caches = Caches(SurfaceCache(terrain_view), SpriteCache(assets))
     period = tick_period_ms(speed)
     clock = pygame.time.Clock()
@@ -214,6 +218,10 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
                 cmd, mode = ordering.key("f", ctrl=True)
                 queue.put(cmd)
                 messages.show(texts.line(FORMATION_TEXT + mode), pygame.time.get_ticks(), FORMATION_MS)
+            elif ev.type == pygame.KEYDOWN and ev.key in DEBUG_SHIFT_KEYS and ev.mod & pygame.KMOD_SHIFT:
+                debug.toggle(DEBUG_SHIFT_KEYS[ev.key])
+            elif ev.type == pygame.KEYDOWN and ev.key in FKEY_NUMBERS:
+                ordering.fkey(FKEY_NUMBERS[ev.key], ctrl=bool(ev.mod & pygame.KMOD_CTRL), shift=bool(ev.mod & pygame.KMOD_SHIFT))
             elif ev.type == pygame.KEYDOWN and ev.key in DEBUG_KEYS:
                 debug.toggle(DEBUG_KEYS[ev.key])
             elif ev.type in (pygame.KEYDOWN, pygame.KEYUP) and ev.key in KEYS:

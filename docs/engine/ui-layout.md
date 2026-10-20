@@ -151,7 +151,8 @@ selection and no Ctrl:
 | `M` (2), `A` (1), `D` (4), `S` (6) | arm the mode (`mask 0xef`); the next click dispatches on the pending cursor |
 | `T` | `Stop` at once, mode cleared |
 | `Ctrl+F` | cycle formation 0 -> 1 -> 2 -> 0, `SetFormation`, message `main.txt` `0x61 + mode`, 2000 ms (INFERRED lifetime) |
-| `G`, `R`, `L`, `P`, `C`, F4-F12 | not implemented (phases I/K) |
+| F4-F12 | spell shortcuts, `OrderInput.fkey` (data.md [spells 9e.2](../data/spells.md#9e-the-spell-panel-slots-enable-masks-hotkeys-tooltip-rea-of-the-gog-exe-phase-j-data-side)); the debug overlays moved to Shift+F4 / Shift+F5 |
+| `G`, `R`, `L`, `P`, `C` | `G`, `L`, `C` exist (`C` casts the panel-selected slot, else a fixed stand-in); `R`, `P` not implemented |
 
 The mode is cleared after every left dispatch (also when nothing is ordered), by a click or drag selection, by a right
 click, by a minimap order, and when the selection becomes empty. Hotkeys do not clear it when blocked.

@@ -29,8 +29,7 @@ from both places when answered).
 
 ## Spells
 
-- Spell button enable masks (view `+0xd0` object `+0x148` / `+0x150`: how the bits follow the spellbook and mana), Stop (`FUN_0056dbc6`) during a cast. [spells](data/spells.md#11-open-questions)
-- Spellbook tooltip rows Speed / Sight array pairing. Start `FUN_00416615`, `FUN_004c628f`. [spells](data/spells.md#11-open-questions)
+- Spell panel leftovers: the tooltip filter `obj+0x24 in {0x17, 0x18}`, the Ctrl+A auto-cast spell (`FUN_0041a727`, cmd `0x46` sub 4), the `0x411` resets of the panel selection, the F-key table's persistence, scroll casts (`0x25`). Start `FUN_004167c2`. [spells](data/spells.md#11-open-questions)
 
 ## Combat (I1)
 

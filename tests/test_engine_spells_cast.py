@@ -106,6 +106,30 @@ def test_cast_in_progress_is_not_interrupted_by_stop():
     assert events(w, CastReleased) and t.hp < 1000
 
 
+@pytest.mark.parametrize("order", ["move", "stop", "guard", "still", "attack", "cast"])
+def test_no_new_order_interrupts_a_cast_in_progress(order):
+    """Stop (`FUN_0056dbc6`, T) and every other order: `FUN_0056d969` / `FUN_0056d52b` write only state 0, order 0xc, the anchor and Brain mode 0 (never brain `+9`, `+0x15`,
+    the target `+0x5c` or the wrapper `+0x64`), and the creature tick runs the Brain (`0x50f357`) before the state switch, whose order 2 puts state 0xd back (spells.md 9c.2)."""
+    from engine.sim import Guard, MoveUnits, StandStill
+    w = world()
+    sim = Simulation(w)
+    c, t, other = caster(w, 1, 10, 15), fighter(w, 2, 17, 15, owner=2, hp=1000), fighter(w, 3, 10, 12, owner=2, hp=1000)
+    cast(sim, c, t)
+    until(sim, lambda: events(w, CastStarted))
+    cmd = {"move": MoveUnits(1, (c.id,), (10, 20)), "stop": Stop(1, (c.id,)), "guard": Guard(1, (c.id,)), "still": StandStill(1, (c.id,)),
+           "attack": AttackUnit(1, (c.id,), other.id), "cast": CastSpell(1, (c.id,), FIRE_ARROW, other.id)}[order]
+    mana = c.mana
+    sim.step([cmd])
+    assert c.brain_order == 2 and c.state == 0xd                # the cast stays in progress, state restored by the Brain in the same tick
+    until(sim, lambda: events(w, CastReleased))
+    run(sim, 30)
+    assert t.hp < 1000                                           # released at the original target
+    if order == "cast":                                          # the new cast waits for the old one (stored in brain +0x28 / +0x30) and then pays its own mana
+        assert c.mana == mana - 3 and other.hp < 1000 and len(events(w, CastStarted)) == 2
+    else:
+        assert c.mana == mana and len(events(w, CastStarted)) == 1
+
+
 def test_recovery_adds_the_complication():
     w = world()
     sim = Simulation(w)

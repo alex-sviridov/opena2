@@ -265,7 +265,7 @@ recovery byte, `+0x136` done flag, `+0x5c` target, `+0x60/+0x61` target cell, `+
 
 | Fact | Where | Tag |
 |---|---|---|
-| Client, cast at a unit: `FUN_004195fa(target unit id, spell button)` builds command `0x1e` (operand byte `+0x10` = button, ids = the selected units whose cast mask has bit `button-1`). Nothing is sent unless `FUN_004c70b9(button-1)` (view `+0xd0` object, mask `+0x148`) is set; the item variant (`FUN_004c70fe`, mask `+0x150`) sends `0x25`. The masks are the greyed/enabled state of the spell buttons: **there is no "out of mana" or "out of range" message in this path, the button is simply not usable**. How the mask is built from the spellbook and mana: not traced | `0x4195fa`-`0x419a53`, `0x4c70b9`, `0x4c70fe` | CONFIRMED path; mask writer INFERRED (mana and known bits) |
+| Client, cast at a unit: `FUN_004195fa(target unit id, spell button)` builds command `0x1e` (operand byte `+0x10` = button, ids = the selected units whose cast mask has bit `button-1`). Nothing is sent unless `FUN_004c70b9(button-1)` (view `+0xd0` object, mask `+0x148`) is set; the item variant (`FUN_004c70fe`, mask `+0x150`) sends `0x25`. The masks are the greyed/enabled state of the spell buttons: **there is no "out of mana" or "out of range" message in this path, the button is simply not usable**. The masks follow the spellbook only, **not the mana** (§9e.1) | `0x4195fa`-`0x419a53`, `0x4c70b9`, `0x4c70fe` | CONFIRMED |
 | Server intake `FUN_004f515d`: command `0x1e` / `0x1f` first maps the button to a spell number (table `0x5f8120`, stride 4), then for **every** group member with a spellbook (`+0x140 != 0`): `member+0x44 = FUN_0051c391(spell)` (the unit's wrapper, 0 when it does not know the spell). Cast at a unit (`0x1e`): `FUN_005702be(group, target)` with no further test. Cast at a cell (`0x1f`): only if `FUN_0051941a()` (spell targets a cell) | `0x4f5a22` ff. | CONFIRMED |
 | `FUN_005702be`: per member with `+0x44 != 0`: `FUN_0056d3e6(member, target, wrapper)` = cancel (`FUN_0056dbfb`), **order `+0x50 = 0xd`**, brain `+0x28` = target, `+0x30` = wrapper, `+0x14` (range) = wrapper `+9`, brain mode `+8 = 0`; then `+0x44 = 0`. A member with `+0x44 == 0` gets a different call (decompiled as `ReleaseAccessors`, unresolved; INFERRED: it does nothing useful). Group order byte `+0x20` cleared | `0x5702be`, `0x56d3e6` | CONFIRMED |
 | Group pass (`tick & 15 == 6`) per-member dispatcher `FUN_00569321`, **order `0xd`** -> `FUN_0056c72b(unit, brain+0x28, brain+0x30)`: brain mode `+8 = 8`, target and wrapper stored again, the **target's** `brain+0xa4` = spell number and `brain+0xa8` = server tick (used by the AI buff logic), final `brain+0x14 = wrapper+9`. Order `0xe` (cell) -> `FUN_0056969c` (mode 9). So a cast starts at the next `tick & 15 == 6`, like an attack | `0x569321`, `0x56c72b` | CONFIRMED |
@@ -301,10 +301,10 @@ recovery byte, `+0x136` done flag, `+0x5c` target, `+0x60/+0x61` target cell, `+
 ### 9c.4 Engine mapping and VERIFY IN GAME (I4a)
 
 - Order `0xd` is the cast analogue of the attack order: group pass at `tick & 15 == 6`, then mode 8 with the melee approach (`combat.attack_mode` conditions), `Unit.spell_cast` holds the phase machine, `spells.cast_tick` mirrors `combat.swing_tick`.
-- The silent retry loop for insufficient mana is reproduced as is (no event); the "no mana / out of range" feedback the user sees is the disabled button (I4b).
+- The silent retry loop for insufficient mana is reproduced as is (no event); there is no "no mana / out of range" feedback at all: the button stays enabled whatever the mana (§9e.1).
 - Carriers: `World.carriers`; `spells.carrier_system` runs **before** `movement_system` (carriers pass, then creature pass); a missile with `N` flight ticks delivers `max(N, 1)` ticks after the release tick; the point carrier's damage is applied in the same pass.
 - INFERRED: casters are "gone" when removed from `world.units`; a caster that dies between release and delivery still lets the carrier hit (the missile is independent), only the attacker credit is dropped.
-- VERIFY IN GAME: (1) a hero with the start staff casts Fire Arrow with no mana change; (2) a learned-spell cast with 2 mana left of 3 does nothing and retries silently; (3) the delay between the cast animation start and the first damage number at 7 cells (windup + 8 ticks); (4) Stop pressed during the windup: the cast completes (INFERRED from the brain order structure, `FUN_0056dbc6` not traced); (5) a scroll is consumed, a staff is not.
+- VERIFY IN GAME: (1) a hero with the start staff casts Fire Arrow with no mana change; (2) a learned-spell cast with 2 mana left of 3 does nothing and retries silently; (3) the delay between the cast animation start and the first damage number at 7 cells (windup + 8 ticks); (4) Stop pressed during the windup: the cast completes (CONFIRMED structure, §9e.3); (5) a scroll is consumed, a staff is not.
 
 ## 9d. AI casts, cell casts and the built handlers (phase K)
 
@@ -375,8 +375,7 @@ and sums / min-maxes the party. Same formula as the server (`level_of`).
 and description, `#` = line break) for spell `SPELLS_TXT_ORDER[k]` (table `0x5f8124`), then rows built from `main.txt` labels, each shown
 as `x` or the party range `x...y`: Mana cost (117), Damage (118, sum over the party), Range (123), Duration (124, ticks/16 s, `%5.1f`),
 Speed (182), Resistance (183, protection `L/2`), Sight (184), Maximum Damage Probability (185, Bless value), rays (186, Prismatic Spray
-`min(7, L/20+2)`), Minimum Damage Probability (187, Curse value), Absorption (217, Shield `L/10+3`). Row-to-array pairing for Speed and
-Sight is INFERRED (spell-number helpers `0x5197e3`..`0x519966` fill the arrays; Stone Curse forces its minimum duration to 0).
+`min(7, L/20+2)`), Minimum Damage Probability (187, Curse value), Absorption (217, Shield `L/10+3`). Row-to-array pairing: CONFIRMED, §9e.4 (Speed = Haste, Sight = Darkness / Light, which have no slot).
 Display names come from `spell.txt`, descriptions only for these 24 spells (no entry for 9, 14, 15, 28, 29).
 
 ## 10. VERIFY IN GAME
@@ -384,8 +383,57 @@ Display names come from `spell.txt`, descriptions only for these 24 spells (no e
 - Fire Arrow damage and flight time against §6/§5 (staff level 1 and a scroll `:50`: 5..10 vs 13..26; rounding of `m`).
 - That the player UI refuses or walks to out-of-range targets (server has no check, §3); Blizzard / Acid Stream stone and cone visuals against §9b.
 
+## 9e. The spell panel: slots, enable masks, hotkeys, tooltip (REA of the GOG exe, phase J data side)
+
+Code: `engine/ui/spellbook.py` (slots, masks, tooltip fields), `engine/ui/orders.py` (`OrderInput.fkey`, `select_slot`, `C`). Tests: `tests/test_engine_spellbook.py`.
+
+### 9e.1 Slots and the enable masks
+
+| Fact | Where | Tag |
+|---|---|---|
+| The panel has **24 slots** (12 columns x 2 rows of 38 px, hit test `FUN_004c6fe0`: `x / 38 + (y / 38) * 12`, `y < 75`, `x <= 0x1c7`). Slot -> spell number = the byte-dword table `0x5f8124` = `SPELLS_TXT_ORDER` (1 2 3 4 24 20 21 26 13 12 11 10 5 6 7 8 25 22 23 27 19 18 17 16); spells 9, 14, 15, 28, 29 have no slot. The command's `button` is `slot + 1` (server table `0x5f8120`) | `0x4c6fe0`, `0x4c7532`, `0x4f515d` | CONFIRMED |
+| `view+0x148` (`FUN_004167c2`, run at every selection change) = **OR of `obj+0x18` over the selected objects** (`FUN_0041eb40 != 0`); `obj+0x18` is a **slot-bit mask**. `obj+0x1c` is the spell-number mask (bit n = spell n) sent by the server (update flag `0x100000`, `0x40fd47`); the client update `0x41035d`-`0x4103f2` sets `obj+0x18 = 0` and, **only for the local player's own objects** (`obj+0x14 == client+0x9cc`) with `+0x1c != 0`, ORs `0x5f8e98[n]` (slot bit of spell n, 0 for 0, 9, 14, 15) for every bit n of `+0x1c`. The server mask is `FUN_0051c4a4` of the spell set `unit+0x140`: bit n for every non-empty entry n = 1..count-1 (`0x4ea04b`, `0x502899`, `0x531d23`, `0x532e43`); dirtied by `0x51e0b5` when a spell is learned. **No mana, level or cost enters any mask**: a spell with a button whose mana is short stays enabled and the cast starts and retries silently (§9c.2) | `0x4167c2`, `0x40fd47`, `0x4103b7`, `0x51c4a4`, `0x51e0b5` | CONFIRMED |
+| `view+0x150` (items): for each backpack item of class `0xe` (scroll; `FUN_0041e9e0 == 0xe`) whose `FUN_0041eb20` (the item's spell number) is non-zero: `+0x150 |= 0x5f8e98[n]` (and `obj+0x20`). Command `0x25`. The engine has no scroll cast: not modelled | `0x4173c6`, `0x4c70fe` | CONFIRMED, not built |
+| `view+0x14c` |= `0x5f8e98[obj+0x118]` (the unit's auto-cast spell byte, set by Ctrl+A: `0x4c74b1` -> `FUN_0041a727(spell)` -> command `0x46` sub 4 for the selected objects that have the spell; the unit then casts by itself, what the server does with it: open) | `0x4167c2`, `0x41a727` | CONFIRMED set; use open |
+| Button 5 (`C`) is enabled by `FUN_0041757b`: 0 for a foreign selection (`view+0x144 & 4`), else `0xef | (0x10 if +0x148 or +0x150)`. The engine: `OrderInput.key("c")` needs a non-empty mask | `0x41757b` | CONFIRMED |
+| The spellbook click (`FUN_004c7580`): the slot under the cursor becomes the panel's selection **only if its bit is in `+0x148 | +0x150`** | `0x4c75a9`-`0x4c75da` | CONFIRMED |
+
+### 9e.2 The selection state the window must keep and the F4-F12 shortcuts
+
+| Fact | Where | Tag |
+|---|---|---|
+| The spell panel object (client `+0xec`, handler `FUN_004c72f5`) holds the **selected slot `+0x60`** (-1 none; message `0x411` resets it) and the item panel's `+0x64` / `+0x68` (`FUN_004c7143` stores the selected backpack entry, `+0x64 = FUN_0041eb20 - 1`). `FUN_0041f370` = `+0x64` if >= 0, else `+0x60`: **the selected button index**; the cast branch of the cursor chooser and the click both use `selected + 1` as `button`. A click on a unit with cursor cast and a selection < 0 does nothing (`0x417856`) | `0x41f370`, `0x41784a`-`0x4178af` | CONFIRMED |
+| Client hotkey table `client+0x4dc`: 9 entries of 12 bytes for F4..F12 (vk `0x73`..`0x7b`), `word +0` = type (0 none, 1 spell slot, 2 item), `word +2` = slot; initial type 0 (`FUN_00493b10` clears); saved with the settings (`0x48c3f9`, `0x48e6b0`: persistence INFERRED) | `0x40ca16`, `0x41dd5e`, `0x493b10` | CONFIRMED |
+| **F`n`** (`0x40ca16`, active in game state 1 with the map, no text focus; no selection needed): `E = table[n-4]`. (a) `E.type != 2 or Ctrl`, and no Shift: message `0x417(index, Ctrl)` to the spell panel: with Ctrl the **selected slot** (`+0x60`; if -1 the slot under the mouse) is bound (`type 1`, slot) and every other entry holding the same slot is cleared (`FUN_0041de8f` compare, `FUN_00493b10` clear); without Ctrl and `E.type == 1`: `+0x60 := E.slot`. (b) the item panel gets the mirror message (type 2, Shift). (c) If `E.type == 1` and the **spellbook is closed**: `FUN_004c70b9(E.slot)` (spell mask) -> `FUN_00418a02(9)`; else `FUN_004c70fe(E.slot)` (item mask) -> `FUN_00418a02(10)`. With the book open nothing is armed. `FUN_00418a02(9/10)`: mode := 5 (the `C` mode), highlight button 5, **the spellbook is not opened** (the switch only opens it for button 5); `10` skips the mask-bit test. The Ctrl bind step (a) also runs (c) | `0x40ca16`-`0x40cb62`, `0x4c72f5`, `0x418a02` | CONFIRMED |
+| So with the book closed F`n` selects the bound slot and arms the cast cursor; the next click on a unit sends `0x1e` with `button = slot + 1` if the selection's `+0x148` has the bit, else nothing. `C` (btn 5) arms mode 5 **and opens the book**, where the slot must be chosen by a click (or the `+0x60` selection of an earlier F`n`) before a click casts | `0x418b91`, `0x4195fa` | CONFIRMED |
+| Engine: `OrderInput.slot` (+0x60), `hotkeys` (type 1 entries), `fkey(n, ctrl, shift)`, `select_slot` (the window's click); the F-key table is not saved. `C` casts the selected slot, else (no window) `castable_spell` (the lowest enabled prototype spell, DECISION). The debug overlays F4 / F5 moved to Shift+F4 / Shift+F5 | | DECISION |
+
+### 9e.3 Stop and other orders during a cast (CONFIRMED)
+
+`FUN_0056dbc6` (the `T` key's per-unit routine is `FUN_0056d52b` via `FUN_00570b8b`) = `FUN_0056d969` (facing, reservation, `brain+0x14`, `brain+0x60 := 0`, `mover+0x7c := 0`, unit state `+0x54 := 0`) + `FUN_0056dba1` (cancel + `FUN_0056d52b`: unit order `+0x50 := 0xc`, anchor = own cell, Brain mode `+8 := 0`) + `brain+0x50 := 1`. **None of them writes the Brain low-level order `brain+9` (2 = cast in progress), its counter `+0x15`, the cast target `unit+0x5c` or the wrapper `unit+0x64`.** The creature tick `FUN_0050f12c` calls the Brain `FUN_0056dca2` (`0x50f357`) *before* the state switch, and Brain order 2 sets state `0xd` / `0xe` again, so the phase machine runs on: the cast **completes** (effect at phase 5, recovery), mana already spent, at the original target; the new order's mode (cast: brain `+0x28` / `+0x30` stored by `FUN_0056d3e6`, the next mode 8) takes effect after the Brain returns to order 0. This is what the engine did; now pinned by `test_no_new_order_interrupts_a_cast_in_progress` (move, stop, guard, stand still, attack, a second cast).
+
+### 9e.4 Tooltip arrays (CONFIRMED; the Speed / Sight pairing)
+
+The view builds the arrays per slot (`FUN_004167c2`, stride 4 bytes, index = slot; `min` starts at 0xffff, `max` at 0 or -65535) from a wrapper made by `FUN_0051906d(spell)` and scaled by `FUN_0051951d(skill, mind)` with `skill = obj+0x156+sphere`, `mind = obj+0x145` (bytes). **The wrapper level is the byte `skill + mind - 30` with wrap-around and no clamp** (an 8-bit add: `5 + 10 - 30` gives 241); the helpers get the clamped level `0..255`. For each selected own object with `obj+0x24` in {0x17, 0x18} (what those are: open) and a non-empty `+0x18`, for every set slot bit:
+
+| Array (min / max) | Value | Tooltip row (`main.txt` line) | Format (`0x5f6414`..) |
+|---|---|---|---|
+| `+0x2d4` (also `+0x334`) | wrapper `+0xc` (s16 mana cost), last unit wins; `>= 0xffff` = no tooltip | Mana cost (117 = 0x75), prefixed by the `spells.txt` line of the slot (`FUN_00474733(slot)`) | `%s#%s: %d` |
+| `+0x154` / `+0x1b4` | **sum** over the units of `min'` (`+0xe`) / `min' + spread'` (`+0xf`) | Damage (118), if `+0x1b4 != 0` | `#%s: %d` or `#%s: %d-%d` |
+| `+0x214` / `+0x274` | min / max of `+9` (range) | Range (123 = 0x7b), if max != 0 | `%d` / `%d-%d` |
+| `+0x394` / `+0x3f4` | min / max of `+0x10` (u16 ticks); the slot of spell 18 (Stone Curse) zeroes the min after every unit | Duration (124 = 0x7c), if max != 0, ticks / 16 | `#%s: %5.1f` / `#%s: %5.1f -%5.1f` |
+| `+0x454` / `+0x4b4` | `FUN_00519966`: spell **21 Haste** `L/15 + 1` | **Speed (182 = 0xb6)**, if max > -65535 | `%d` / `%d...%d` |
+| `+0x514` / `+0x574` | `FUN_0051989f`: spells 4, 8, 13, 19 (the protections) `L/2` | Resistance (183 = 0xb7), if max != 0 | `+%d` / `+%d...+%d` |
+| `+0x5d4` / `+0x634` | `FUN_00519922`: spells 15 Light and 14 Darkness `-1 - L/30` | **Sight (184 = 0xb8)**, if max > -65535 | `%d` / `%d...%d` |
+| `+0x694` / `+0x6f4` | `FUN_00519837`: spell 20 Bless `L*4/5 + 20` | Maximum Damage Probability (185 = 0xb9) | `+%d%%` / `+%d...+%d%%` |
+| `+0x754` / `+0x7b4` | `FUN_0051986b`: spell 28 Curse `L*4/5 + 20` | Minimum Damage Probability (187 = 0xbb) | same |
+| `+0x814` / `+0x874` | `FUN_005197e3`: spell 11 Prismatic Spray `min(7, L/20 + 2)` | rays (186 = 0xba) | `%d` / `%d-%d` |
+| `+0x8d4` / `+0x934` | `FUN_005198f1`: spell 27 Shield `L/10 + 3` | Absorption (217 = 0xd9) | `%d` / `%d-%d` |
+
+The final string is `title+mana, damage, range, duration, helper row` concatenated (`%s%s%s%s%s`); the helper rows share one string, so only one is shown (they are mutually exclusive). The tooltip is built only when the hovered slot's bit is in `+0x148` and the game mode is 1 or has bit 2. Speed is therefore **Haste** and Sight **Light / Darkness** (neither has a slot, so the Sight row and the Curse row can never show in the spellbook; they are dead code for a player). `engine.ui.spellbook.spellbook(world, ids, lines)` lists the entries (`SpellEntry` fields `damage`, `range`, `duration`, `speed`, `resistance`, `sight`, `max_probability`, `min_probability`, `rays`, `absorption`, `mana_cost`, `name`, `text`, `description`) and `tooltip(entry, labels)` renders the exe's string; the descriptions are `spells.txt` line `slot`.
+
 ## 11. Open questions
 
-- Spell button mask (view `+0xd0` object `+0x148` / `+0x150`, 9c.1): how the enabled bits follow the spellbook and mana; Stop (`FUN_0056dbc6`) during a cast.
 - Book wrapper scaling: whether `FUN_00519483` rewrites the spellbook wrapper's `+9` in place (the AI reads `+9` as a range, [ai §12](../engine/ai.md#open-questions)).
-- Spellbook tooltip arrays for the rows Speed (0xb6), Sight (0xb8) and which spell fills them (`FUN_00416615` ff., `FUN_004c628f`).
+- Tooltip filter: the client object type `obj+0x24` must be 0x17 or 0x18 (`FUN_004167c2`) for a unit to contribute (what those types are; the engine counts every own selected unit).
+- Auto-cast spell (Ctrl+A, `FUN_0041a727`, command `0x46` sub 4, client `obj+0x118`): what the server does with it; the `0x411` senders (`0x483537`, `0x580d18`) that reset the panel selection `+0x60`; whether the F-key table is saved (`0x48c3f9`, `0x48e6b0`) and how the item mask `+0x150` / scroll casts (`0x25`) look in the UI.

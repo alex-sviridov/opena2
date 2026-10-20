@@ -715,8 +715,8 @@ Brain mode 5 (the event list `server+0xbbec` is unused). The party at the drop l
 **Fog and vision.** The AI has exactly one vision rule, the sight flood (ai.md 4: no cone, no fog, no per-owner knowledge). The view's fog layer is render-only (rendering.md, cell bits `0xc000`); the player's
 side has no vision rule in the simulation (a click on a fogged cell becomes a move, research 1.3). Nothing to build for J besides the draw option.
 
-**UI pieces still missing for J.** The command bar with its buttons (the hotkeys A M D S T G L C exist; `R` retreat `0x14`, `P` pick up all `0x13`, F4-F12 spell shortcuts do not), the spellbook window
-(spell choice and the cast cursor's spell, `FUN_0041f370`; `C` uses a fixed slot), the inventory / backpack and hero screens, the main-hero panel pieces (skills, XP, equipment), the hero-death
+**UI pieces still missing for J.** The command bar with its buttons (the hotkeys A M D S T G L C exist; `R` retreat `0x14`, `P` pick up all `0x13`, F4-F12 spell shortcuts exist as `OrderInput.fkey`), the spellbook window
+(spell choice and the cast cursor's spell, `FUN_0041f370`: the window calls `OrderInput.select_slot`, lists `engine.ui.spellbook.spellbook(...)` with `tooltip(...)`; enable rule = the slot mask, no mana: spells.md 9e; `C` uses the selected slot, else a fixed stand-in), the inventory / backpack and hero screens, the main-hero panel pieces (skills, XP, equipment), the hero-death
 load / quit dialog, the new-game screen (difficulty), the in-game menu, sound (no audio at all: cast sounds `500 + id`, hit sounds), the message line for out-of-range / no-mana feedback (the exe shows none
 for the cast button: it is disabled), town scenes, saves. Phase K (started: AI casting, special attacks, cell casts, Heal and Drain Life are built, ai.md 12 / spells.md 9d): the human mages' scan `FUN_0056bc7b`, the non-damage spell handlers and the effect system
 (Invisibility sets `Unit.hidden`, Bless / Curse / Haste / Slow), summons and raising, structures as targets, scroll items (`0x25`) and the pack.
