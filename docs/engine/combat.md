@@ -271,7 +271,7 @@ add their armour bonuses and their modifier effects (`defence`, `absorbtion`, `p
 stored scaled (bit 7 set, tiers 5 of the big monsters) the weapon's `min` / `spread` are added to the scaled byte and therefore
 count x15 as well (Orc_Sword.5, 262..517, weapon +9 / +9: stored 0x91 / 17 -> 0x9a / 26 -> 390..780). **Consequence:** a monster hits for
 template damage **plus** its weapon (Orc_Sword 12..24, not 8..16) and its attacks carry the weapon's type, so `res_*` applies. CONFIRMED order; whether the designers' numbers
-already include the weapon is not knowable from the exe: VERIFY IN GAME (section 11, item 1).
+already include the weapon is not knowable from the exe (16.3 re-derives the order and checks five monsters by hand).
 
 **Humans** (recompute `FUN_0051366b`, [progression §3](../data/progression.md#3-what-a-skill-up-changes)): record base `T = ftol((1.1^Body +
 1.1^Reaction) / 5)`, `min = spread = ftol(1.1^Body / 20)`; skills `+0xa8+2s` copied from the permanent skills, clamped to 100, plus the
@@ -334,9 +334,9 @@ Files: `engine/rng.py`, `engine/sim/combatstats.py`, `engine/sim/combat.py`, `en
 
 AI reaction `FUN_0056e6b8` (defender alert message, `brain+0x54/+0x58/+0x94`), the guard scan and auto
 target scan (`FUN_0056a1fb`, `FUN_0056ed4e`), special-attack rolls (`FUN_0056a981`), mage casting (`FUN_0056b059`); effects: Bless / Curse
-bits (the `take_hit` inputs exist, nothing sets them), Invisibility ending on attack (`FUN_00516b2f`: effect kind 12 flag `+0x42 := 1`),
+bits (the `take_hit` inputs exist, nothing sets them), Invisibility ending on attack is built (16.5),
 Haste/Slow; item modifier kinds other than those in section 6 (speed, scan range, mana, regeneration, castSpell on a weapon); equipment
-swapping in play; kill counters, bestiary byte, message `0x94`; the summon-cap job (`+0x148`, 12.6; needs the Summon spell); structure targets (`FUN_00516ea0`); client hit reaction animation (`vtable +0x74` of the view unit); sound.
+swapping in play; kill counters, bestiary byte, message `0x94`; the summon-cap job (`+0x148`, 12.6; needs the Summon spell); structure targets (`FUN_00516ea0`); sound (the `0x73` reaction has no animation, only a sound: 16.1).
 
 ## 11. VERIFY IN GAME
 
@@ -623,7 +623,7 @@ decay `-1` per 32 ticks on even blocks with the stage table of 12.6. Do not rele
 2. Summon-cap job (12.6): MFC `CMap` iteration order decides the order of the per-key RNG draws when two or more masters have minions: CONFIRMED now: table size 17 (`0x5457a5`), hash `key >> 4` mod 17 (`FUN_004a1120`, `0x545a60`), new node at the head of its bucket chain (`0x545a0f`-`0x545a46`). Built with the Summon spell (`spells.minion_job`) with the keys in **first-appearance order** instead, because the key is the master's network id (`unit+4`, a free id of the table `0x6c9628`) which the engine does not assign: exact for one master; open: the `unit+4` ids of map units and heroes, to reproduce the bucket order.
 3. What the pile, pickup and the equip path keep of a dropped template item's effect text (`{castSpell=Fire_Arrow:5}` on shaman staves): the engine's pile code is 16 bits and loses it (start: `FUN_00529ac2`, `FUN_0052a71d`, item object `+0x50` effects).
 4. Sound tables (the engine has no audio): which `.res` / data.bin entries are the unit sound set entries `k + 1` (`FUN_00467e42`, template `+0x24` -> `FUN_00420e30` -> `FUN_00402880`), the hero voice samples (`FUN_00468094 +0x50..+0x58`) and the UI sound `0x627740[0xf]` of the skill-up line (start: `FUN_00420e30`, `FUN_00420eb0`, `0x481967` scenario.dll ordinal loader).
-5. Listeners of the server event queue (`0x68d360 + 0x20`, `FUN_0052e198` vtable `+0x14`): the class of `FUN_0052eac8` (vtable `0x5d1680`, ctor `FUN_00547d50`) is built by the quest accept `FUN_0052f8e2` (`0x530d9c`) and by `FUN_0052e3eb`, so they are quest records (INFERRED from the creation sites); the Scenario triggers never touch the queue (CONFIRMED: no reference in `0x573000`-`0x57c600`, [triggers §7](triggers.md#7-answers-to-the-old-questions)). Left: which quest kinds consume events 4, 5 and 0xf.
+5. Listeners of the server event queue: answered in [16.4](#164-death-the-event-queue-and-the-trigger-runtime) (quest records; kinds listed); the quest system itself is open question 1 at the end.
 
 ## 13. Engine (I2): death, corpses, XP, loot, regeneration
 
@@ -721,11 +721,81 @@ load / quit dialog, the new-game screen (difficulty), the in-game menu, sound (n
 for the cast button: it is disabled), town scenes, saves. Phase K (started: AI casting, special attacks, cell casts, Heal and Drain Life are built, ai.md 12 / spells.md 9d): the human mages' scan `FUN_0056bc7b`, the non-damage spell handlers and the effect system
 (Invisibility sets `Unit.hidden`, Bless / Curse / Haste / Slow), summons and raising, structures as targets, scroll items (`0x25`) and the pack.
 
+## 16. Close-out research (answers to the old open questions; CONFIRMED in the GOG allods2.exe unless marked)
+
+Tests: `tests/test_engine_combat_pins.py`.
+
+### 16.1 Client reaction on message `0x73` (`FUN_0040d9b2` case at `0x412826`-`0x412b49`)
+
+After the optional floating number (section 8) the handler does exactly three things; there is **no pain animation, no flash, no effect sprite**:
+1. **Sound** through the view unit's vtable `+0x74` = `FUN_00467e42(k)`: `HP_new == HP_old` -> `k = 0`; else `HP_new <= -10` -> nothing; else `HP_new < max / 2`
+   (`+0x108`, truncating halving) -> `k = 2`, otherwise `k = 1` (any change counts, a heal too). `k = 1, 2` are dropped when the unit played one less than 1500 ms ago
+   (`timeGetTime() - unit+0x1bc < 0x5dc`). Sound set entries: section 12.7. Engine: `engine/view/damage.hit_sound_kind`, `HitSoundGate` (no audio device yet).
+2. The new HP is stored (`unit+0x104`); when the unit is the one shown in the panel (`view+0x138`) two panel widgets get the refresh message `0x408`.
+3. `unit+0x114 := 1`: the redraw flag (the draw routine `0x463093` invalidates the unit's screen rectangle `FUN_0041e360` and clears it again). Nothing else.
+
+### 16.2 The byte timers and the s16 HP
+
+- `+0x6c` is a byte. Wind-up: start `+0x134 + extra` stored as a byte (`0x50f505`), every tick `dec byte; movsx; test; jne` (`0x50f50d`-`0x50f525`): a start value of **0 wraps to 255 and
+  the hit comes 256 ticks after the swing start** (also a start value > 255 is truncated). Recovery: `+0x135 + L + rand(0..3)` stored as a byte (`0x50f7d3`), same decrement
+  and test (`0x50f814`-`0x50f82c`): a recovery of 0 (with `L = 0` and a draw of 0) waits **256 ticks**. The dying countdown reads the byte **signed** (`movsx; test; jle`, `0x50f253`): values 128..255 count as negative and remove at once (12.1).
+  Engine: already byte arithmetic in `combat.swing_tick` and `death.dying_tick`; pinned by tests (synthetic windup 0 / recovery 0 / 250).
+- Writers of `+0x134` / `+0x135` in the server code: creature init (default 8 / 4: `0x50ed5c`, `0x5122a4`, `0x529505`), the data.bin loader `FUN_005114f3` (raw byte copies from the stream: monsters' windup / recovery, **no -1 handling**: no
+  monster row has -1), the weapon equip `FUN_005290cc` (humans only, only when the weapon param is not -1, `0x529300`, `0x529330`), the object copy `FUN_0050e48e` and `0x4f080e` (1 / 1 on a freshly built unit before its loader). No effect (Haste, Slow, Bless ...) writes them.
+- Real data (install, test `test_no_data_row_can_wrap_a_timer_or_the_hp`): monsters windup 1..21, recovery 1..38; weapons windup 6, 7, 8, 10, 20, recovery 4, 5, 16; no zero, no -1 on a monster; hero delay `L <= 12`; arrow
+  extra `(gap * 256 + 128) / 200` is 25 at the longest weapon range 20; so the largest start timers are about 46 and 53: **nothing in the data wraps a timer**; only a mod or a debugger can. Dying time <= 18.
+- HP is the s16 at `+0x94` (`+0x104` on the client). Data bounds: `hp_max <= 18432` (templates), largest single blow of a monster record (scaled `x 15` included) is far below 22,766,
+  the lowest HP a hit can reach is the corpse floor -10001 minus one blow. So the s16 never wraps in the shipped data and the engine keeps a Python int (a wrap would need a hit above 22,767 or a heal above 32,767).
+
+### 16.3 Monster damage = template + equipped weapon
+
+CONFIRMED structure (the code order, not the play-test): `FUN_00511959` (monster init) calls the stream loader `FUN_005114f3` (reads `+0xa6` to-hit, `+0xb4/+0xb5` physical damage (the scaled branch when `min >= 128` or
+`spread > min + 255`), `+0xb7/+0xb8` (kind 1), `+0xb9/+0xba` (kind 2, negated), kind 3 sets `+0x4c |= 0x10`, defence, absorption, windup, recovery, protections, resistances ...), then for each of the **two**
+equipment strings creates the item (`FUN_00527e23` weapon-class object, or `FUN_00528808` when the string contains "Shield") and calls the creature's equip (vtable `+0x44` -> the item's `FUN_005290cc` for a weapon), **then**
+`FUN_005113e7` merges the bonus block into the record: to-hit and the damage bytes are **added** (`FUN_00515a6c`: word `+0xa6` += `+0xe6`; `+0xb4`, `+0xb5`, `+0xb7`, `+0xb8`, `+0xb9`, `+0xba` byte adds, `+0xbb` element copied), the armour block by `FUN_00515617`.
+`FUN_005290cc` for attack type < 10 adds the weapon's damage min / spread to `+0xf4/+0xf5`, defence to `+0xfe`, to-hit to `+0xe6`, copies its element bytes to `+0xf9..+0xfb`, sets the attack type `+0xb6`;
+for the flame thrower / beam types (`0xb`, `0xc`) it adds the weapon's elemental min / spread, sets the element 1 / 2 and sets `+0xe6 := +0xa8` (the template's own to-hit, which the merge then **adds again**: Dragon to-hit is doubled), attack type 0. A monster
+therefore hits for template + weapon and carries the weapon's type (resistances apply). Whether the designers' numbers were meant to include the weapon is not in the exe.
+
+Hand computation (weapon figures from [items](../data/items.md): `ItemStats`; template from data.bin) against `combatstats.monster_stats`, all equal (test `test_monster_template_plus_weapon`):
+
+| Monster | Template (to-hit, dmg) | Weapon | Record: to-hit | min | spread | type | Range |
+|---|---|---|---|---|---|---|---|
+| Orc_Sword | 50, 8..16 | Bronze Long Sword (3, 4/4) | 53 | 12 | 12 (12..24) | 1 blade | 1 |
+| Goblin_Pike | 15, 4..8 | Bronze Pike (1, 4/4) | 16 | 8 | 8 (8..16) | 4 pike | 1 |
+| Orc_Sword.5 | 420, 262..517 | Uncommon Steel Long Sword (4, 9/9) | 424 | 0x91 + 9 = 0x9a | 17 + 9 = 26 (x15: 390..780) | 1 | 1 |
+| Dragon | 100, 10..15 | Flame Thrower (fire 1/7, range 8) | 200 | 10 | 5 | 0 + fire 1..8 | 8 |
+| Bat_Sonic | 50, 1..4, kind 3 | Sonic Beam (0/0, 5, range 4) | 55 | 1 | 3 | 5 shooting, sure hit | 4 |
+
+Which monsters change: of the 180 monster templates 83 carry no equipment, 97 carry one string. Weapon damage is added for 36 (Orc_Sword x5 tiers, Goblin_Pike x5, Goblin_Sling / Orc_Bow and the other archers 26), the elemental part for 5 (Dragon x5),
+and only the attack type / range / to-hit for 56 (staves and shaman staffs, catapults, Bat_Sonic tiers, Urd ...; the staff's `castSpell` makes a mage cast instead of hit, section 14). Test `test_which_monsters_get_weapon_bonuses`. Still VERIFY IN GAME only for balance, not for the mechanism.
+
+### 16.4 Death, the event queue and the trigger runtime
+
+- Listeners of the server event queue (`0x68d360 + 0x20`, drained by the job `FUN_0052e122`, dispatched by `FUN_0052e198` to each registered record's vtable `+0x14(type, a, b)`) are the **quest records** (the quest accept `FUN_0052f8e2`);
+  the Scenario triggers never touch the queue (12.11 old item 5; [triggers §7](triggers.md#7-answers-to-the-old-questions)). Every quest kind posts event 1 (done, base `FUN_0052dd20` sets map flag `|= 0x20`) or 2 (failed, `|= 0x40`) with the quest id via `FUN_0052e07e`.
+  Event arguments: 4 = unit removed (`a` = unit id, `b` = type | face << 24 | killer owner << 16), 5 = type 5 of the same removal, 6, 7, 8, 9, 10, 0xb, 0xf, 0x10, 0x11 other quest events (senders in the `0x57e5f0`-`0x57edda` range and `FUN_0052b459`).
+  Consumers of the removal events (the quest kinds): `FUN_0052eac8` (event 4: dead unit id == record `+0x14` and type == `+8` -> done), `FUN_0052eb6f` (event 4: killer owner == `+0x14`, type == `+8`, counter `+0x20` reaches `+0x1c` -> done: a
+  "kill N" quest), `FUN_0052ec1d` (event **5**, same test as `0x52eac8`), `FUN_0052ecc4` (4: the unit id `+0x14` died -> failed; 6: done), `FUN_0052ed92` (7), `FUN_0052ee9b` (6, with a wall-clock limit `+0x1c * 1000 / 16` ms from the event `0x10` that stamps the start),
+  `FUN_0052ef86` (4 / 6 / 0xc), `FUN_0052f0d4` (5 / 0xb / 0xd), `FUN_0052f222`, `FUN_0052f2d4`, `FUN_0052f386` (8, 9, 10: an amount threshold `+0x1c`, stores `x^2/5` or `x^2 >> 3`), `FUN_0052f432` (event **0xf**: unit id == `+0x14`, type == `+8` -> done).
+  Names of the quest kinds are INFERRED (kill unit / kill N of a type / escort / item ...); the quest system itself (world map quest board, accept, rewards) is a later phase and the engine has no quest records. The sending conditions are CONFIRMED in 12.3 (d).
+- Hero-death follow-ups: nothing is missing. The defeat dialog and `HeroDied`, the main hero's HP -50 and the `hero_deaths` counter are built (12.3a, section 13). `owner+0x40` and the victory / defeat pass are in `engine/sim/triggers.py` (`Simulation(world, triggers=True)`:
+  a dying (`death_seen`) or missing main hero gives cause 2 at the next 16-tick block end, before the removal).
+- Group member counts (check 1, check 8, check 15) against `engine/sim/death.py`: the unit stays in its group and in the owner's list while dying (HP <= 0 is still a member: check 5 says alive) and leaves both at the removal tick (`FUN_0051618e`, same tick as state `0x10`),
+  which is what `TriggerGroup.live()` (`state != DEAD`, same command group, same owner) and `_units_of` (`world.units` until `World.bury`) compute. A flyer keeps counting until its removal as well. Pinned by `tests/test_engine_triggers_death.py`.
+
+### 16.5 `FUN_005106d2` and `FUN_00516b2f`
+
+- `FUN_005106d2(k)` = `(1 << (k & 0x1f)) & unit+0x144`: "is effect kind `k` active" (the bit mask the effect system keeps). `FUN_005106f4(k)` returns the first effect object of kind `k` in the list `+0x20` (effect word `+0xc`), or null.
+- `take_hit` (`FUN_00516f6f` at `0x517001`-`0x5170c4`): for the attacker (when it has a template): bit `0x14` (Bless) set -> effect of kind 20: missing -> the stale bit is cleared (`& 0xffefffff`), no draw; present -> draw `rand(100)`, if the effect's chance
+  (`+0x40`, s16) is greater: `lo += spread` and no spread draw (maximum damage). Bit `0x1c` (Curse, kind 28): same, a hit of the chance gives the minimum (no spread draw). This is the order already in section 5.2. **No effect system is needed for the mechanism**:
+  engine `Unit.bless` / `Unit.curse` hold the chance (None = absent) and `combat.resolve_attack` passes them to `take_hit_detail`. What the effect system must still provide (K): the Bless / Curse spell handlers writing the chance (spell power), the duration, and removing them.
+- `FUN_00516b2f` (swing start message, 3.3): `if FUN_005106d2(0xc)` (Invisibility active) every effect of kind 12 in the list gets `+0x42 := 1` (finished); the effect pass of the **next** creature tick (step 2 of section 12.1) drops it and clears bit 12. Engine: `Unit.invis_ending` is set at the swing start,
+  `movement._tick_unit` clears `Unit.hidden` at the top of the next tick. (A cast at another unit does the same from `FUN_00519998`, spells §9c.) Tests in `test_engine_combat_pins.py`.
+
 ## Open questions
 
-1. Monster weapon bonuses: confirm in play that `damage = template + weapon` (11.1); the code order says yes.
-2. `FUN_005106d2(0x14/0x1c)` effect lookups and the `FUN_00516b2f` invisibility flag need the effect system (K).
-3. `FUN_0056ed4e` auto scan and `FUN_0056a1fb` guard scan (target choice, visibility) - AI phase.
-4. What the client does on `0x73` besides the number (`vtable +0x74` of the view unit: pain animation or flash).
-5. Whether the timer byte really wraps at 0 (a recovery of 0) - needs a data row or a spell effect that produces it.
-6. I2 open questions are in 12.11; assumptions in section 13 (hero test).
+1. The quest system (accept `FUN_0052f8e2`, the board, rewards) and the exact meaning of the quest events 5-0x11 (start: `FUN_0052e3eb`, the senders in `0x57e5f0`-`0x57edda`).
+2. The effect system: writers of the Bless / Curse chance (`Unit.bless` / `Unit.curse`) and of the Invisibility bit, durations (start: `FUN_0051ce12`, `FUN_00519db8`).
+3. Sound tables (12.11 item 4) and the hit sound set entries (16.1).
+4. I2 open questions are in 12.11; assumptions in section 13.

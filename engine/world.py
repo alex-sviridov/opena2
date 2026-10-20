@@ -388,6 +388,9 @@ class Unit:
     odometer: int = 0               # client walk counter obj+0x9c: map units moved, 16 per walk frame
     order_group: int = 0            # id of the OrderGroup the unit belongs to (unit+0x70), 0 none
     hidden: bool = False            # +0x144 & 0x1000: the Invisibility effect (kind 12, FUN_0051ce12 sets bit 1 << kind); nothing sets it yet
+    invis_ending: bool = False      # an Invisibility effect (kind 12) got `+0x42 := 1` at a swing start (FUN_00516b2f); the effect pass of the next creature tick ends it
+    bless: int = None               # chance 0..100 of the Bless effect (spell 20, effect `+0x40`; `+0x144` bit 20), None when absent (FUN_00516f6f via FUN_005106d2/5106f4)
+    curse: int = None               # same for Curse (spell 28, bit 28)
     stopped: bool = False           # brain+0x50: set by the stop routine FUN_0056dbc6, cleared by every cancel
     mode_go: bool = False           # Brain mode 1 (go to brain+0xa, mover.goal): the move order and the group-pass restart
                                     # (FUN_0056c8af) set it, the stand orders (FUN_0056d52b) and a failure under another order clear it

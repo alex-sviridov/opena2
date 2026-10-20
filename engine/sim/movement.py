@@ -609,6 +609,8 @@ def _tick_unit(world, u):
     The failure event: `mover+0x98` ends an order 1 at once (`0x56e1b0` -> `FUN_0056dc24` = cancel + order `0xc`, `brain+0x50`
     stays 0), unlike arrival, which waits for the group pass.  Under any other order the event sets Brain mode 0 (`0x56e320`: the auto
     target scan `FUN_0056ed4e` finds no enemy; the scan and the computer players' mode 0xb are phase I, combat.md 9.3)."""
+    if u.invis_ending:                                  # step 2 of the creature tick: the effect list; a finished Invisibility effect drops its bit
+        u.invis_ending = u.hidden = False
     if u.hp <= 0:                                       # the HP <= 0 branch replaces the Brain tick and the state switch (combat.md 12.1)
         if death.dying_tick(world, u):
             death.remove_dead(world, u)

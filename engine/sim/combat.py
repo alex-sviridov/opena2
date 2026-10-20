@@ -254,6 +254,8 @@ def swing_tick(world, u):
     if u.phase == PHASE_START:
         extra = 0
         if t is not None and u.hp > 0:              # FUN_00516b2f: the start message needs both units and the attacker's HP
+            if u.hidden:                                                # FUN_00516b2f: `FUN_005106d2(0xc)` -> the Invisibility effects get `+0x42 := 1`
+                u.invis_ending = True
             extra = attack_extra(attack_gap(foot(u), foot(t)))
             u.action, u.action_start_tick = mv.ATTACK, world.tick       # message 0x71: the client restarts the attack animation
             rest = st.windup + st.recovery                              # FUN_00504ab8: +0x138 = tick + +0x134 + +0x135 (the rest test, combat.md 12.5)
@@ -282,7 +284,8 @@ def resolve_attack(world, a, t, st):
     if a.hp <= 0 or not in_attack_range(foot(a), foot(t), a.range):
         return
     ts = combat_stats(world, t)
-    res = take_hit_detail(st.record, ts.block, world.rng, human=st.human, sure_hit=st.sure_hit)
+    res = take_hit_detail(st.record, ts.block, world.rng, human=st.human, sure_hit=st.sure_hit,
+                          bless=a.bless, curse=a.curse)
     before = t.hp
     t.hp = before - res.damage                      # the exe's s16 (no wrap here: HP stays within +-32767 in play)
     if a.stats is not None:

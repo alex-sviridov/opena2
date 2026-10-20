@@ -75,3 +75,34 @@ def unit_anchor(world, camera, assets, u):
     z = fobj.ground_height(world.heights, (u.x << 8) | u.sub_x, (u.y << 8) | u.sub_y, size, size)
     alt = FLYER_ALTITUDE if aset.t.Z else 0
     return ((X * CELL) >> 8) - camera.ix, ((Y * CELL) >> 8) - z - alt - camera.iy, size
+
+
+# --- the unit's reaction sound to the HP message `0x73` (docs/engine/combat.md 8, 12.7; no audio in the engine yet) -----------------------
+
+SOUND_REPEAT_MS = 1500      # `FUN_00467e42`: kinds 1 and 2 are dropped when the unit played one less than 0x5dc ms ago (`unit+0x1bc`)
+
+
+def hit_sound_kind(old_hp, new_hp, hp_max):
+    """The `vtable +0x74` argument the client handler picks after `0x73` (`0x412a58`-`0x412acb`): 0 when the HP did not change, nothing when the
+    new HP is -10 or less, else 2 below half of the maximum (`hp_max / 2` truncating) and 1 otherwise; any change counts, a heal too.
+    There is no pain animation, flash or other visual: the handler stores the HP, refreshes the info panel of the shown unit and marks the
+    unit's screen rectangle dirty (`+0x114 := 1`)."""
+    if new_hp == old_hp:
+        return 0
+    if new_hp <= -10:
+        return None
+    return 2 if new_hp < int(hp_max / 2) else 1
+
+
+class HitSoundGate:
+    """The 1500 ms throttle of kinds 1 and 2 per unit (`FUN_00467e42`: `timeGetTime() - unit+0x1bc < 0x5dc` returns, else stamps)."""
+
+    def __init__(self):
+        self.last = {}
+
+    def allow(self, unit_id, kind, now_ms):
+        if kind in (1, 2):
+            if now_ms - self.last.get(unit_id, -(1 << 31)) < SOUND_REPEAT_MS:
+                return False
+            self.last[unit_id] = now_ms
+        return True
