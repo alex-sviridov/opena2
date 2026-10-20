@@ -4,7 +4,7 @@ Every unit of a map (all players: the command intake accepts any player) is orde
 seeded random cell of its own connected region, first with the formation option Off, then (a second batch of orders
 on the first batch's end state) On.  After the run each ordered unit must be in one of the documented end states,
 no unit may sit mid-step without progress, and the world's indexes must stay consistent (`World.check_consistency`
-every 32 ticks, plus an independent recomputation of the live-layer stamps).
+every 32 ticks, plus an independent model of the stamp slots that feed the live layer: `StampModel`).
 
 End states (docs/engine/simulation.md sections 7.1, 7.3, 7.4, 8.3):
   goal      the unit stands on its (clamped) destination;
@@ -13,12 +13,17 @@ End states (docs/engine/simulation.md sections 7.1, 7.3, 7.4, 8.3):
   limit     the static plan found nothing: a computer player's search (the human's too, to a blocked target) is cut
             at dist + min(5, dist / 4) levels, a sized unit's footprint may not fit; the unit stops on its own cell (7.1, 7.6 item 4);
   blocked   a hop plan towards the (free-at-plan-time) target came out empty because another unit stands on it:
-            the failure stops the order (8.3 "Failure") within a few cells of the target;
+            the failure stops the order (8.3 "Failure") within a few cells of the target.  The failure can happen in the
+            very tick that sets Brain mode 1 (the order, or a group-pass restart, `FUN_00573198`, followed by the creature
+            tick's empty final hop, `FUN_0054d76e`, and `FUN_0056dc24`), so `Watch` records it around each unit's own tick;
   parked    order 1 kept but nothing drives the unit: the blocked-target rule of the group pass (goal not free and
-            within one cell, 8.3) or a blocker wait next to the unit it waits for (7.4 item 5).
+            within one cell, 8.3) or a blocker wait next to the unit it waits for (7.4 item 5);
+  gridlock  a spin (`spinning`): order 1, the hop plan empty every tick; it can last for good, as the static re-plan after
+            more than 16 hops (`FUN_00555411`) restores the static list the hop pops eat;
+  queueing  a batch that hit the tick cap with units still moving (a crowd churning through a chokepoint).
 
 Default run: 4 maps (the largest, 110, and 53, 10 and 32).  All 46 maps: `ALLODS2_ALL_MAPS=1 pytest
-tests/test_engine_orders_maps.py` (about 30 minutes, one process)."""
+tests/test_engine_orders_maps.py` (about 6 minutes with the native planner, 38 with `ALLODS2_NATIVE=0`; one process)."""
 
 import os
 import random
@@ -108,7 +113,8 @@ def spinning(w, u):
     """The documented spin (simulation 8.3): the unit stands at a centre with order 1 and its hop plan comes out
     empty every tick, so it never steps.  Justified independently of the planner: (a) all 8 neighbours blocked in
     the live layer (static block, other units' stamps) = boxed in, or (b) the last hop plan was empty and a flood
-    of the live layer from the unit, run `limit + 2` levels, labels no cell nearer (Chebyshev) to the hop's goal than
+    of the live layer from the unit, run as many levels as the wave (`FUN_0054d76e`, 7.1: two half steps per loop while
+    `it < limit`, so `limit` rounded up to even), labels no cell nearer (Chebyshev) to the hop's goal than
     the unit's own cell, which has the smallest label (0) in the first ring the fallback scan finds (rings 1..7,
     7.1), or none within 7 at all.  A crowd that blocks its own corridor (a column of
     units on a one-wide road) resolves only by a new order."""
@@ -130,7 +136,7 @@ def spinning(w, u):
     def free(c):                                    # a sized unit enters a cell with its footprint's top-left there
         return not any(blocked((c[0] + i, c[1] + j)) for j in range(n) for i in range(n))
     seen, front = {here}, [here]
-    for _ in range(r.limit + 2):
+    for _ in range(r.limit + (r.limit & 1)):
         nxt = []
         for x, y in front:
             for dx in (-1, 0, 1):
@@ -147,10 +153,13 @@ def spinning(w, u):
 class Watch:
     """Movement system with a probe: right after a unit's own tick (the state its hop plan saw, apart from units
     later in the list), a unit that is idle at a centre with an empty hop plan is checked every 16 ticks with
-    `spinning`.  `spin[id]` = tick of the last justified spin; an unjustified one goes to `bad`."""
+    `spinning`.  `spin[id]` = tick of the last justified spin; an unjustified one goes to `bad`.  `fails[id]`: the
+    failures (Brain mode 1 ended without `brain+0x50`: `FUN_0056dc24` under order 1, mode 0 under order 0xc) seen
+    across the unit's own tick, which also catches a failure in the tick that set mode 1 (the pass restarts a failed
+    unit 16 ticks later and a failing retry lands here again)."""
 
     def __init__(self, ordered):
-        self.ordered, self.spin, self.bad = ordered, {}, []
+        self.ordered, self.spin, self.bad, self.fails = ordered, {}, [], {}
 
     def __call__(self, world, commands):
         from engine.sim.movement import FollowPath, _tick_unit, apply_follow_path
@@ -158,8 +167,14 @@ class Watch:
             if isinstance(cmd, FollowPath):
                 apply_follow_path(world, cmd)
         for u in list(world.units.values()):
+            was = u.mode_go
             _tick_unit(world, u)
             m = u.mover
+            if was and not u.mode_go and not u.stopped and u.id in self.ordered and (u.x, u.y) not in (m.goal, m.tail):
+                self.fails[u.id] = {"tick": world.tick, "cell": (u.x, u.y), "tail": m.tail,
+                                    "tail_free": _target_free(world, u, m.tail) if m.tail else None,
+                                    "hop_empty": m.last_hop is not None and not m.last_hop.cells,
+                                    "static_left": len(m.static_path)}
             if (u.id in self.ordered and (world.tick & 15) == 0 and active(u) and not m.step_ticks
                     and m.last_hop is not None and not m.last_hop.cells and m.since_hop == 0):
                 if spinning(world, u):
@@ -176,43 +191,105 @@ def key_of(u):
     return (u.x, u.y, u.sub_x, u.sub_y, u.facing, u.odometer, u.order, u.mode_go, m.parked, m.waiting, m.step_ticks)
 
 
-def stamps_independent(w, u):
-    """The live layer as seen by `u`, recomputed from the rule (7.3): every other unit (dying ones too) of a class whose stamp
-    the mover's mask contains, footprint at its cell, its step target and its step origin."""
-    mask = {1: 0x41, 2: 0x44, 3: 0x82}.get(u.move_type, 0x41)
-    out = set()
-    for o in w.units.values():
-        if o is u or not ((0x80 if o.move_type == 3 else 0x40) & mask):
-            continue
-        n = max(1, int(getattr(o.stats, "token_size", 1) or 1)) if o.stats is not None else 1
-        cells = [(o.x, o.y)] + [tuple(c) for c in (o.mover.step_target, o.mover.step_from) if c]
-        out.update((cx + i, cy + j) for cx, cy in cells for j in range(n) for i in range(n))
-    return out
+def _size(o):
+    return max(1, int(getattr(o.stats, "token_size", 1) or 1)) if o.stats is not None else 1
 
 
-def run_batch(w, sim, watch, ordered, label, report, cap=MAX_TICKS):
+class StampModel:
+    """Independent model of the stamp slots that make the live layer (cell record rec+0x2c for the ground classes, rec+0x30
+    for class 3; simulation.md 7.4 "Live layer" and "Cell record", 11.4), rebuilt from the calls of `FUN_0055be86` alone.
+    The test wraps `CellSlots.be86`; after each call it applies the spec's rule to its own tables, from the call's arguments
+    and the unit's cell, never reading the engine's tables:
+      claim(unit, cell, mode) = the size x size footprint at the unit's cell (modes 0 and 1) and at `cell` (mode 0); mode 2
+      claims nothing; a cell the unit held and does not claim now is released; a claimed cell is taken when free or already
+      the unit's (first come, first served: `FUN_0055c2ce` / `FUN_0055c1fe`), so a race loser holds nothing there, and a
+      cell its winner leaves is free although the loser stands on it.
+    The engine supplies only the call log (who, which cell and mode, in which order).  `check` compares the tables with
+    `World.slots.stamp`, every sampled unit's `live_cells` with the cells the others hold in the table its mask sees
+    (0x40 ground, 0x80 flyers), and the claim of every unit with its visible state, which pins the call sites: a unit holds
+    for its own cell and, mid-step, for the far end of the step (the target before the border crossing, the origin after
+    it); at a centre for its own cell only, or also for the head of its dynamic list (`FUN_00555c7e` stamps the next cell at
+    every call with a waypoint, before the facing test, so a unit turning towards it holds it already)."""
+
+    def __init__(self):
+        self.held = ({}, {})            # [ground, air]: (x, y) -> unit id
+        self.mine = {}                  # unit id -> cells it holds
+        self.anchor = {}                # unit id -> (own cell at the call, second cell or None), None after mode 2
+
+    @staticmethod
+    def air(o):
+        return o.move_type == 3
+
+    def call(self, u, cell, mode):
+        own = (u.x, u.y)
+        second = ((cell & 255, cell >> 8) if mode == 0 else None)
+        self.anchor[u.id] = None if mode == 2 else (own, second)
+        n = _size(u)
+        claim = set()
+        if mode != 2:
+            for cx, cy in [own] + ([second] if second else []):
+                claim.update((cx + i, cy + j) for j in range(n) for i in range(n))
+        t, old = self.held[self.air(u)], self.mine.get(u.id, set())
+        for c in old - claim:
+            if t.get(c) == u.id:
+                del t[c]
+        got = set()
+        for c in claim:
+            if t.get(c, u.id) == u.id:
+                t[c] = u.id
+                got.add(c)
+        self.mine[u.id] = got
+
+    def check(self, w, label, viewers=12):
+        eng = [{(idx & 255, idx >> 8): h for idx, h in d.items()} for d in w.slots.stamp]
+        for k in (0, 1):
+            diff = set(eng[k].items()) ^ set(self.held[k].items())
+            assert not diff, "%s tick %d: stamp slots (%s) differ from the model: %s" % (
+                label, w.tick, ("ground", "air")[k], sorted((c, hex(h)) for c, h in diff)[:6])
+        for u in list(w.units.values())[:: max(1, len(w.units) // viewers)]:
+            sees = {1: 0x41, 2: 0x44, 3: 0x82}.get(u.move_type, 0x41)
+            want = set()
+            for k, bit in ((0, 0x40), (1, 0x80)):
+                if bit & sees:
+                    want.update(c for c, h in self.held[k].items() if h != u.id)
+            assert live_cells(w, u) == want, "%s tick %d: live layer of %#x" % (label, w.tick, u.id)
+        bad = []
+        for o in w.units.values():
+            m, own, a = o.mover, (o.x, o.y), self.anchor.get(o.id)
+            if m.step_ticks:
+                far = m.step_target if own == tuple(m.step_from) else m.step_from
+                ok = a == (own, tuple(far))
+            else:
+                ok = a is not None and a[0] == own and (a[1] is None or (bool(o.path) and a[1] == tuple(o.path[0])))
+            if not ok:
+                bad.append((hex(o.id), own, (o.sub_x, o.sub_y), m.step_from, m.step_target, o.path[:1], a))
+        assert not bad, "%s tick %d: stamp claims off the visible state: %s" % (label, w.tick, bad[:4])
+
+
+@pytest.fixture
+def stamp_model(monkeypatch):
+    """A `StampModel` fed by every `CellSlots.be86` call (world construction included)."""
+    from engine.cellslots import CellSlots
+    model, orig = StampModel(), CellSlots.be86
+
+    def be86(slots, u, cell, mode):
+        orig(slots, u, cell, mode)
+        model.call(u, cell, mode)
+    monkeypatch.setattr(CellSlots, "be86", be86)
+    return model
+
+
+def run_batch(w, sim, watch, ordered, label, report, cap=MAX_TICKS, stamps=None):
     """Step until every ordered unit is stopped or parked for two group-pass periods, or `cap` ticks; checks the
     invariants on the way.  Returns True when everything settled, False at the cap (a crowd still queueing through a chokepoint)."""
     prev, quiet = {}, 0
-    go = {u.id: u.mode_go for u in w.units.values() if u.id in ordered}
-    fails = report.setdefault("fails", {})
     for n in range(1, cap + 1):
         sim.step()
-        for i in list(go):
-            u = w.units[i]
-            was, go[i] = go[i], u.mode_go
-            if was and not u.mode_go and not u.stopped:
-                # Brain mode 1 ended without `brain+0x50`: the failure (FUN_0056dc24 under order 1, mode 0 under order 0xc);
-                # the pass restarts the unit 16 ticks later and a failing retry lands here again
-                m = u.mover
-                if (u.x, u.y) != m.goal and not (u.x, u.y) == m.tail:      # not an arrival
-                    fails[i] = {"tick": w.tick, "cell": (u.x, u.y), "tail": m.tail,
-                                "tail_free": _target_free(w, u, m.tail) if m.tail else None,
-                                "hop_empty": m.last_hop is not None and not m.last_hop.cells,
-                                "static_left": len(m.static_path)}
         if n % 32 == 0:
             bad = w.check_consistency()
             assert not bad, "%s tick %d: %s" % (label, n, bad[:3])
+            if stamps is not None:
+                stamps.check(w, label)
         if n % WINDOW == 0:
             cur = {u.id: key_of(u) for u in w.units.values() if active(u) and u.id in ordered}
             stuck = [i for i, k in cur.items() if prev.get(i) == k and not watch.spinning(w, w.units[i])]
@@ -252,13 +329,13 @@ def classify(w, u, human_ids, report, watch, settled):
     if r is not None and r.reason == "unreachable" and cell == m.tail and r.end is None:
         free_target = not path_grid(w, u.move_type).is_blocked(*m.goal)      # the human's search is unbounded only to a free target
         return "limit" if (u.owner not in human_ids or unit_size(u) > 1 or not free_target) else "LIMIT FOR HUMAN"
-    f = report["fails"].get(u.id)
+    f = watch.fails.get(u.id)
     if f is not None and f["hop_empty"] and f["static_left"] <= STATIC_ISNT_NEEDED and f["cell"] == cell:
         return "blocked" if not f["tail_free"] else "boxed in"
     return "STOPPED ELSEWHERE"
 
 
-def check_batch(w, watch, ordered, label, report, settled):
+def check_batch(w, watch, ordered, label, report, settled, stamps):
     human = {pid for pid, p in w.players.items() if p.human}
     kinds = Counter()
     bad = []
@@ -269,17 +346,16 @@ def check_batch(w, watch, ordered, label, report, settled):
         if k.isupper():
             bad.append((k, hex(i), u.owner, u.move_type, (u.x, u.y), u.mover.goal, u.mover.tail, u.order))
     report[label] = kinds
-    report["fails"] = {}
+    watch.fails = {}
     assert not bad, "%s: %d units in no documented end state: %s" % (label, len(bad), bad[:5])
-    # live layer: every unit's view equals the independent recomputation
-    for u in list(w.units.values())[:: max(1, len(w.units) // 12)]:
-        assert live_cells(w, u) == stamps_independent(w, u), hex(u.id)
+    stamps.check(w, label)                                  # live layer: the independent slot model
 
 
 @pytest.mark.parametrize("spec", _params())
-def test_every_unit_ordered_ends_in_a_documented_state(spec):
+def test_every_unit_ordered_ends_in_a_documented_state(spec, stamp_model):
     w = World.from_map(open_map(spec, GFS), AssetCache(GFS))
     assert not w.check_consistency()
+    stamp_model.check(w, "start")
     sim, report = Simulation(w), {}
     watch = Watch(set())
     sim.systems[-1] = watch
@@ -287,16 +363,16 @@ def test_every_unit_ordered_ends_in_a_documented_state(spec):
     cmds, ordered = make_orders(w, rnd, MAX_UNITS)
     watch.ordered = ordered
     sim.step([SetFormation(p, 0) for p in w.players] + cmds)
-    settled = run_batch(w, sim, watch, ordered, "formation off", report)
-    check_batch(w, watch, ordered, "formation off", report, settled)
+    settled = run_batch(w, sim, watch, ordered, "formation off", report, stamps=stamp_model)
+    check_batch(w, watch, ordered, "formation off", report, settled, stamp_model)
     # second batch from the end state, formation On (rigid shapes: members may target blocked cells -> fallbacks)
     cmds, ordered = make_orders(w, rnd, MAX_UNITS)
     watch.ordered = ordered
     sim.step([SetFormation(p, 2) for p in w.players] + cmds)
-    settled = run_batch(w, sim, watch, ordered, "formation on", report)
-    check_batch(w, watch, ordered, "formation on", report, settled)
+    settled = run_batch(w, sim, watch, ordered, "formation on", report, stamps=stamp_model)
+    check_batch(w, watch, ordered, "formation on", report, settled, stamp_model)
     assert not w.check_consistency()
-    print(spec, {k: dict(v) for k, v in report.items() if k != "fails"})
+    print(spec, {k: dict(v) for k, v in report.items()})
 
 
 # --- World.check_consistency, synthetic --------------------------------------------------------------------

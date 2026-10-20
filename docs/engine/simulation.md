@@ -825,16 +825,34 @@ target; **14.** `T` (stand ground) while a unit turns leaves it facing where it 
   to seeded random cells of the leader's flood-filled region, formation Off, run until settled, then a second batch with
   formation On from the end state. Default run: maps 10, 32, 53 and 110 (the largest), about 40 s. **All 46 maps:**
   `ALLODS2_ALL_MAPS=1 .venv/bin/pytest tests/test_engine_orders_maps.py -s` (targets up to 80 cells away, 3000 ticks per
-  batch; about 30 minutes in one process, all 46 pass, prints the end-state histogram per map). Checks: `World.check_consistency()` every 32
+  batch; about 6 minutes in one process with the native planner, 38 with `ALLODS2_NATIVE=0`; **all 46 pass** since the
+  test fixes below, prints the end-state histogram per map). Checks: `World.check_consistency()` every 32
   ticks (unit/item index = entity cells, sub-cell range, step reservation = `step_target` adjacent to `step_from` and the
-  unit on one end, groups and selections point at living entries), the live layer (`live_cells`) against an independent
-  recomputation, no active unit without progress over 64 ticks, and every ordered unit in a documented end state:
+  unit on one end, groups and selections point at living entries), the stamp slots every 32 ticks and at the end against
+  an independent model (`StampModel`, below), no active unit without progress over 64 ticks, and every ordered unit in a documented end state:
   `goal`; `fallback` (stands on its static plan's end, the first ring; human size-1 units checked against an independent
   flood: no flooded cell nearer the target); `limit` (no static plan: a computer player's search is cut at `dist +
   min(5, dist/4)` levels, a sized unit's footprint may not fit; the unit stays on its cell); `blocked` / `boxed in` (the
   failure rule: the final hop plan came out empty because the plan's end cell is occupied / every route is, checked at the
   failure tick); `parked` (blocked-target rule or a blocker wait with a unit adjacent); `gridlock` (below); `queueing`
   (a crowd still moving at the cap); a unit the failure stopped (order `0xc`, `stopped` 0) counts as mode 1 again while the pass has restarted it.
+  - **Stamp model** (since the stored slots of 11.4): the test wraps `CellSlots.be86` and rebuilds the stamp tables from the
+    call log alone with the rule of 7.4 (claim = footprint at the own cell for modes 0 / 1 plus at `cell` for mode 0, mode 2
+    nothing; unclaimed cells released when held, claimed cells taken when free or own); it asserts the tables equal
+    `World.slots.stamp`, every sampled unit's `live_cells` equals what the others hold in the table its mask sees, and every
+    unit's claim matches its visible state (own cell; mid-step also the far end of the step; at a centre optionally the
+    head of the dynamic list, which `FUN_00555c7e` stamps before the facing test, CONFIRMED asm `0x555cee`-`0x555d5d`).
+  - **The 8 failures after the slot commit** (maps 30, 40, 70, 73, 80, 91, 100, 110, identical with both planners) were all
+    test-side; no engine change. (1) 30, 70, 73, 80, 100, 110: the old independent recomputation (own cell + step ends)
+    predated the turn stamp above; these maps hit the 3000-tick cap with a crowd churning (`queueing`), and a unit turning
+    at a centre at the final check holds its next cell. (2) 40 (`STOPPED ELSEWHERE`): a unit re-ordered next to its
+    occupied fallback tail fails in the very tick the order (and every group-pass restart) sets mode 1; the failure was
+    sampled only between ticks and never seen. Now `Watch` records it around the unit's own tick: `blocked`. (3) 91 ("no
+    progress"): the spin justification flooded `limit + 2` levels, the wave runs `limit` rounded up to even (two half steps
+    per loop while `it < limit`, 7.1); the extra level reached a nearer ring cell and called a real spin unjustified. That
+    spin lasts for good: the static re-plan every 16 hops restores the list the hop pops eat (gridlock, below). Only (1)
+    came with the slot commit: its parent already failed 40 (the same unit) and 91 (the same spin, another unit), so the
+    earlier "all 46 pass" was stale.
 - `tests/test_engine_orders_determinism.py`: a scripted session (selects, moves, mid-walk re-orders, Ctrl+F twice, T,
   right-click deselect) fed through `OrderInput` is recorded at 30 fps; replays driven like `window.run` (frame times
   against `tick_period_ms`, one `step(queue.drain())` per period, logged commands queued before the step of their tick)
@@ -850,7 +868,8 @@ final hop keeps order 1, plans again every tick (dynamic list empty), and `FUN_0
 head is within 3 cells (**CONFIRMED** by REA: the pop `FUN_0055f110` runs whenever the static list is non-empty and
 `d <= DynamicByStaticLookup`, whatever the plan returned; `mover+0x98 := 1` only for an empty plan toward the tail). So a
 blocked unit eats its static list in about `len - 5` ticks, then the final hop plan fails and the order ends (`blocked` in the
-tests); a unit whose own cell is the nearest labelled cell to the hop goal (a column of units in a one-wide road, or boxed in by
+tests), unless the static re-plan comes first: every hop plan counts in `mover+9` and once it exceeds 16 (`StaticRefreshRate`, 7.2 step 2) the static
+plan is made again from the unit's cell, which restores the list (map 91 of the 46-map run: a unit spins this way for good); a unit whose own cell is the nearest labelled cell to the hop goal (a column of units in a one-wide road, or boxed in by
 8 neighbours) plans empty again and again: the dynamic fallback scan sees the start cell (label 0) in the first ring that
 has a labelled cell, so the result is "walk to the own cell" = nothing. The unit is not parked (mode 1) and not waiting
 (the wait is human size-1 only and needs a walking or idle blocker, §7.4), so nothing but the blocker moving, a new order, or
@@ -992,7 +1011,7 @@ The state is part of `World.dump()` once it differs from its initial value (old 
 
 ### 11.4 Occupant and stamp slots (CONFIRMED, implemented)
 Details are in 7.4 "Cell record". What is observable: a unit that loses a first-come race (a stale hop list started before the other unit stamped its target: the dynamic list lives through the turn ticks, and **`FUN_00555c7e` stamps the next cell and the own cell at every call with a waypoint, also on turn ticks**, before the facing test) ends up on the cell without an occupant slot and without stamps. The winner's lift (`FUN_0055073f`, no owner test) empties the slot, so the loser stands unseen: the blocker verdict, the flee / enemy lists (`FUN_0054ec6a`) and the live layer (a third unit may plan through it) miss it; the loser's own later lift empties the slot of whoever holds it. `FUN_0055be86` call sites, all modelled: step start (mode 2, mode 0 with the head cell), border crossing (`FUN_00554fd2`: mode 2, lift, move, place + mode 1, mode 0 with the old cell), step end (mode 2, mode 1), the dynamic planner (`FUN_0054d76e`: mode 2 before the wave, mode 1 before the walk back; static plans touch nothing), removal / phase-out (mode 2, lift), cancel and the guard scan (`0x56d9a7`, `0x56a592`: mode 1 when `mover+0x80` is neither 0 nor the own cell at a centre: the stamp a turning unit took is dropped). `0x558b7c` is that cancel call, `0x56a5df` the scan's. `FUN_00554bf8` (a second step integrator with float constants) has no caller.
-Effect on the engine: before, a unit that was turning had no reservation, and two units entered one cell in the 46-map random-order runs (1147 ticks of shared cells on map 10); now none does (`tests/test_engine_orders_maps.py` unchanged and green; shared-cell scan over maps 10, 32, 53, 72, 110: 0 ticks). `tests/golden.json["orders"]` (scenarios `crossing_off`, `gap_jam`) no longer matches; the new key `orders_slots` holds the regenerated summaries and the test reads it. The stale `orders` key can be deleted by the next `tools/update_golden.py` run. Tests: `test_engine_pathing.py` (first come, loser stays unrecorded, loser's departure clears the winner, loser holds no stamp, class slots) and `test_engine_movement_exe.py`.
+Effect on the engine: before, a unit that was turning had no reservation, and two units entered one cell in the 46-map random-order runs (1147 ticks of shared cells on map 10); now none does (`tests/test_engine_orders_maps.py`: its live-layer check had to learn the turn stamp, 8.7; shared-cell scan over maps 10, 32, 53, 72, 110: 0 ticks). `tests/golden.json["orders"]` (scenarios `crossing_off`, `gap_jam`) no longer matches; the new key `orders_slots` holds the regenerated summaries and the test reads it. The stale `orders` key can be deleted by the next `tools/update_golden.py` run. Tests: `test_engine_pathing.py` (first come, loser stays unrecorded, loser's departure clears the winner, loser holds no stamp, class slots) and `test_engine_movement_exe.py`.
 
 ### 11.5 Server side of the command path (CONFIRMED unless marked)
 - **Type 100 from the client**: the client's end-of-tick echo (`FUN_00504bb7(1)`, also appended by `FUN_0050164f` after every non-100 send of a flag-0 hub) is delivered to the server hub and reaches `FUN_004f515d`. The message object is the static `0x68d318`, whose byte `+4` (the "unit count" tested at `0x4f518b`) is never written (no store to `0x68d31c`), so it takes the `msg+4 < 1` branch, the switch on `msg+9` (`0x4f59e7`; case table `0x4f835a`, jump table `0x4f82da`) maps `0x64` to the default exit `0x4f8274`. Nothing happens: the engine's command intake needs no model of it.
