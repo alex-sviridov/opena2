@@ -114,6 +114,44 @@ class OrderGroup:
 
 
 @dataclass
+class Effect:
+    """A spell effect object (class `0x5d1178`, docs/engine/effects.md 2): `id` = `+0xc` (the spell number, mask bit `1 << id`),
+    `kind` = `+0x3c` (stat index, 0 = none), `flags` = `+0x3d` (1 duration, 2 continuous, 4 charges, 8 single use, 0x80 finished),
+    `value` = `+0x40`, `ticks` = `+0x42` (u16, >= 0x2581 never counts down), `caster` = `+0x44` (unit id or None)."""
+    id: int
+    kind: int = 0
+    flags: int = 0
+    value: int = 0
+    ticks: int = 0
+    caster: int = None
+
+    def copy(self):
+        return Effect(self.id, self.kind, self.flags, self.value, self.ticks, self.caster)
+
+    def dump(self):
+        return [self.id, self.kind, self.flags, self.value, self.ticks, self.caster]
+
+
+@dataclass
+class EffectStats:
+    """What the active effects changed (docs/engine/effects.md 5): monsters' direct fields as deltas (`speed` = `+0x8c`, `absorb` =
+    `+0xc0`, `defence` = `+0xbe`, `scan` = `+0xa4 >> 8`), humans' bonus words (`speed` = `+0xd8`, `absorb` = `+0x100`, `defence` = `+0xfe`,
+    `scan` = `+0xe4 >> 8`, `prot` = `+0x102..+0x10c`); `scan_direct` = the part Darkness adds to a human's `+0xa4` until the next recompute."""
+    speed: int = 0
+    absorb: int = 0
+    defence: int = 0
+    scan: int = 0
+    scan_direct: int = 0
+    prot: list = field(default_factory=lambda: [0] * 6)
+
+    def any(self):
+        return bool(self.speed or self.absorb or self.defence or self.scan or self.scan_direct or any(self.prot))
+
+    def dump(self):
+        return [self.speed, self.absorb, self.defence, self.scan, self.scan_direct, list(self.prot)]
+
+
+@dataclass
 class AiState:
     """Per-unit AI fields of the Brain (docs/engine/ai.md 3, 8): `stamp` = `brain+0x16` (the follow planner's failure stamp, a block
     counter word; ctor 0xffdc), `target` = `+0x20` (the group scan's choice), `hit_by`/`hit_tick`/`hit_cell` = `+0x94/+0x98/+0x9c` (the hit
@@ -129,10 +167,13 @@ class AiState:
     alerted: int = 0
     spell_mark: int = 0             # brain+0xa4: number of the last spell an AI / player cast aimed at this unit (`FUN_0056c72b`), read by `FUN_0056bc7b`
     spell_tick: int = 0             # brain+0xa8: the server tick of that cast order
+    area_hits: int = 0              # brain+0xac: area hits taken from neutral owners (FUN_0057977a with area = 1; docs/engine/effects.md 6.3)
 
     def dump(self):
         d = [self.stamp, self.target, self.hit_by, self.hit_tick, self.hit_cell, self.mark_cell, self.mark_age, self.alerted]
-        return d + [self.spell_mark, self.spell_tick] if self.spell_mark else d      # old AI goldens keep their layout
+        if self.spell_mark or self.area_hits:                                   # old AI goldens keep their layout
+            d += [self.spell_mark, self.spell_tick]
+        return d + [self.area_hits] if self.area_hits else d
 
 
 @dataclass
@@ -253,6 +294,21 @@ class Carrier:
     start: tuple = (0, 0)           # caster position (x, y) in 1/256 cell at the release: the view derives the missile position from it
     flight: int = 0                 # ticks the missile was created with (view only)
     aim: tuple = (0, 0)             # target position (x, y) in 1/256 cell at the release: the missile's line when the target vanishes (view only)
+    # effect and area carriers (docs/engine/effects.md 6); defaults = a damage carrier of phase I
+    effect: object = None           # Effect template of a point / area carrier (None: the spell's damage effect)
+    centre: tuple = None            # area / field carrier: centre cell (x, y); a missile with a centre lands as an area carrier
+    radius: int = 0                 # +0x4d
+    mode: int = 0                   # +8: 0 apply once, 1 lifetime pulse, 2 field
+    life: int = 0                   # +0x50 (s16)
+    stamped: bool = False           # +0x4c
+    direction: int = 0              # +0x4e (8-way)
+    step: int = 0                   # +0x4f
+
+    def area_dump(self):
+        if self.effect is None and self.centre is None:
+            return []
+        return [self.effect.dump() if self.effect is not None else None, list(self.centre) if self.centre else None, self.radius, self.mode,
+                self.life, int(self.stamped), self.direction, self.step]
 
 
 @dataclass(frozen=True)
@@ -380,16 +436,16 @@ class Unit:
     best_school: int = 0            # +0x23c for Hero_/Start_ templates: first highest school 1..5, else 0
     mana: int = 0                   # humans: +0x9a (starts at the maximum)
     mana_max: int = 0               # humans: +0x9c, derived like the max HP (0 for fighters)
-    speed_mod: int = 0              # Haste/Slow effect delta added to the speed stat (+0x8c)
+    speed_mod: int = 0              # a fixed offset added to the speed stat (+0x8c): tests and debug tools (Haste / Slow are `fx.speed`, sim/effects.py)
     order: int = 0                  # +0x50 order id (0 none, 1 move to cell); sim/movement.py
     state: int = 0                  # +0x54 state (0 idle, 1 move step); sim/movement.py
     path: list = field(default_factory=list)    # cells still to enter, front first (the exe's list at +0x1c8)
     mover: Mover = field(default_factory=Mover)
     odometer: int = 0               # client walk counter obj+0x9c: map units moved, 16 per walk frame
     order_group: int = 0            # id of the OrderGroup the unit belongs to (unit+0x70), 0 none
-    hidden: bool = False            # +0x144 & 0x1000: the Invisibility effect (kind 12, FUN_0051ce12 sets bit 1 << kind); nothing sets it yet
+    hidden: bool = False            # +0x144 & 0x1000: the Invisibility effect (id 12); mirrored by sim/effects.py
     invis_ending: bool = False      # an Invisibility effect (kind 12) got `+0x42 := 1` at a swing start (FUN_00516b2f); the effect pass of the next creature tick ends it
-    bless: int = None               # chance 0..100 of the Bless effect (spell 20, effect `+0x40`; `+0x144` bit 20), None when absent (FUN_00516f6f via FUN_005106d2/5106f4)
+    bless: int = None               # chance 0..100 of the Bless effect (spell 20, effect `+0x40`; `+0x144` bit 20), None when absent (FUN_00516f6f via FUN_005106d2/5106f4); mirrored by sim/effects.py
     curse: int = None               # same for Curse (spell 28, bit 28)
     stopped: bool = False           # brain+0x50: set by the stop routine FUN_0056dbc6, cleared by every cancel
     mode_go: bool = False           # Brain mode 1 (go to brain+0xa, mover.goal): the move order and the group-pass restart
@@ -438,6 +494,10 @@ class Unit:
     patrol_walk: bool = False       # brain+4 the previous pass left a walk running
     equipment: tuple = ()           # humans loaded from a character record: the 12 equipped items in slot order (saves.Item; empty slot = code 0)
     pack: tuple = ()                # humans loaded from a character record: the backpack items (saves.Item); `carried` holds their codes
+    # spell effects (docs/engine/effects.md; sim/effects.py)
+    effects: list = field(default_factory=list)     # +0x20 the effect list (Effect), list order
+    effect_mask: int = 0            # +0x144 bit 1 << id of every active effect
+    fx: EffectStats = field(default_factory=EffectStats)    # the stat changes of the effects
 
     def __post_init__(self):
         if self.mover.target_facing < 0:
@@ -542,6 +602,8 @@ class World:
         self._icells = {}           # (x, y) -> set of item ids
         self._next_seq = 1
         self.slots = CellSlots()    # occupant and stamp slots of the cell records (simulation.md 7.4); not dumped
+        self.cell_fx = {}           # (x, y) -> [6 carrier uids or None]: the cell records' effect slots (effects.md 6.4); dumped while non-empty
+        self._fx_saved = {}         # (x, y) -> the cost byte the record saved at creation
         self.costs = pas.DEFAULT_COSTS      # map.reg [Terrain] Cost<name> (from_map loads the install's)
         self.speed_multiplier = 8           # map.reg [Path Finding] SpeedMultiplier (CONFIRMED 8)
         self._cost = None
@@ -558,8 +620,44 @@ class World:
     def cost(self):
         """(h, w) uint8 terrain movement cost (FUN_0055494d / FUN_0055a147), cached."""
         if self._cost is None:
-            self._cost = pas.cost_layer(self.terrain, self.costs)
+            c = pas.cost_layer(self.terrain, self.costs)
+            for (x, y), v in self.cell_fx.items():      # FUN_00550a96 over the effect cells of a rebuilt layer
+                self._fx_saved[(x, y)] = int(c[y, x])
+                c[y, x] = self._fx_cost(x, y, v)
+            self._cost = c
         return self._cost
+
+    _cost_owner = None              # the cost array set_cell_fx copied (and may write)
+
+    WALL_SLOT = 3                   # FUN_00518ba3: Wall of Earth's slot of the cell record
+
+    def _fx_cost(self, x, y, v):
+        """FUN_00550a96: the saved cost byte `<<= 2` (u8) once per used effect slot."""
+        b = self._fx_saved[(x, y)]
+        for k in v:
+            if k is not None:
+                b = (b << 2) & 0xFF
+        return b
+
+    def set_cell_fx(self, x, y, slot, uid):
+        """`FUN_0055a37a` (uid) / `FUN_0055a533` (None) on one slot of the cell record, then `FUN_00550a96`: the cost and the block of the cell are
+        rebuilt; the record saved the cost at creation (`FUN_005508a0`) and restores it when it empties (`FUN_00550966`; effects.md 6.4)."""
+        c = self.cost
+        if self._cost_owner is not c:               # never write into an array another world or a test may share
+            c = self._cost = self._cost_owner = np.array(c, np.uint8)
+        v = self.cell_fx.get((x, y))
+        if v is None:
+            if uid is None:
+                return
+            v = self.cell_fx[(x, y)] = [None] * 6
+            self._fx_saved[(x, y)] = int(c[y, x])
+        v[slot] = uid
+        if any(k is not None for k in v):
+            c[y, x] = self._fx_cost(x, y, v)
+        else:
+            c[y, x] = self._fx_saved.pop((x, y))
+            del self.cell_fx[(x, y)]
+        self._refresh([(x, y)])
 
     def set_costs(self, costs):
         """Install a terrain cost table (index = terrain type, `passability.costs_from_reg`)."""
@@ -605,6 +703,9 @@ class World:
             ob = o[i]
             solid = next(s for dx, dy, s in ob.footprint if (ob.x + dx, ob.y + dy) == (x, y))
             v = v | _SOLID if solid else v & _CLEAR
+        fx = self.cell_fx.get((x, y))
+        if fx is not None and fx[self.WALL_SLOT] is not None:      # FUN_00550a96: a Wall of Earth slot blocks like an object (| 5)
+            v |= pas.B_GROUND | pas.B_OBJECT
         return v
 
     def _refresh(self, cells):
@@ -635,6 +736,9 @@ class World:
             ob = self.objects[i]
             solid = next(s for dx, dy, s in ob.footprint if (ob.x + dx, ob.y + dy) == (x, y))
             blk[y, x] = blk[y, x] | _SOLID if solid else blk[y, x] & _CLEAR
+        for (x, y), v in self.cell_fx.items():
+            if v[self.WALL_SLOT] is not None:
+                blk[y, x] |= pas.B_GROUND | pas.B_OBJECT
         return blk
 
     def _register(self, ob, claim):
@@ -1103,7 +1207,8 @@ class World:
                 **({"corpses": [[u.id, u.x, u.y, u.sub_x, u.sub_y, u.facing, u.hp, u.type_id, u.owner, u.death_tick]
                                 for _, u in sorted(self.corpses.items())]} if self.corpses else {}),
                 **({"carriers": [[c.uid, c.kind, c.caster, c.target, c.spell, c.level, c.ticks_left, c.born, int(c.hostile), list(c.start), c.flight, list(c.aim)]
-                                  for c in self.carriers]} if self.carriers else {}),
+                                  + c.area_dump() for c in self.carriers]} if self.carriers else {}),
+                **({"cell_fx": [[x, y, list(v)] for (x, y), v in sorted(self.cell_fx.items())]} if self.cell_fx else {}),
                 **({"ai": self._ai_dump()} if self.ai_on else {}),
                 **({"script": self.script.dump()} if self.script is not None else {}),
                 **({"rng": self.rng.state} if self.rng.state != self.seed else {})}
@@ -1134,7 +1239,8 @@ class World:
         death = World._death_state(u)
         cast = World._cast_state(u)
         if fight is None and death is None and cast is None and World._follow_state(u) is None and not u.master and not (u.order or u.state or u.path or u.odometer or m.steps or m.turning or u.order_group
-                                  or u.stopped or m.waiting or m.parked or m.target_facing != u.facing):
+                                  or u.stopped or m.waiting or m.parked or m.target_facing != u.facing
+                                  or u.effects or u.effect_mask or u.fx.any()):
             return []
         d = {"order": u.order, "state": u.state, "path": [list(c) for c in u.path],
              "odometer": u.odometer, "target_facing": m.target_facing,
@@ -1164,6 +1270,8 @@ class World:
             d["follow"] = follow
         if u.master:
             d["master"] = u.master
+        if u.effects or u.effect_mask or u.fx.any():                       # only under a spell effect (sim/effects.py)
+            d["effects"] = [[e.dump() for e in u.effects], u.effect_mask, u.fx.dump()]
         return [d]
 
     @staticmethod

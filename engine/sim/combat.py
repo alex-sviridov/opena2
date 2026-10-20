@@ -163,7 +163,8 @@ def combat_stats(world, u):
     """The unit's `CombatStats`, built from its template and the item table on first use (None template: all zeros)."""
     st = u.combat
     if st is None:
-        st = unit_combat_stats(u.stats, world.item_table, u.skills or None, hard=u.tweak == 3) or CombatStats()
+        fx = u.fx if u.fx.any() else None
+        st = unit_combat_stats(u.stats, world.item_table, u.skills or None, hard=u.tweak == 3, fx=fx) or CombatStats()
         u.combat = st
     return st
 
@@ -254,8 +255,8 @@ def swing_tick(world, u):
     if u.phase == PHASE_START:
         extra = 0
         if t is not None and u.hp > 0:              # FUN_00516b2f: the start message needs both units and the attacker's HP
-            if u.hidden:                                                # FUN_00516b2f: `FUN_005106d2(0xc)` -> the Invisibility effects get `+0x42 := 1`
-                u.invis_ending = True
+            from . import effects                                       # FUN_00516b2f: `FUN_005106d2(0xc)` -> the Invisibility effects get `+0x42 := 1`
+            effects.end_invisibility(u)
             extra = attack_extra(attack_gap(foot(u), foot(t)))
             u.action, u.action_start_tick = mv.ATTACK, world.tick       # message 0x71: the client restarts the attack animation
             rest = st.windup + st.recovery                              # FUN_00504ab8: +0x138 = tick + +0x134 + +0x135 (the rest test, combat.md 12.5)

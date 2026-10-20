@@ -26,7 +26,6 @@ from both places when answered).
 - Item effects (`{castSpell=..}`) of dropped template equipment are lost in the 16-bit pile code; what pile / pickup keep (start `FUN_00529ac2`, `FUN_0052a71d`). [combat §12.11](engine/combat.md#1211-open-questions) 3
 - Sound tables (unit sound set entries, hero voices, UI sound `0x627740[0xf]`, the hit sound set); the engine has no audio. [combat §12.11](engine/combat.md#1211-open-questions) 4
 - Structure damage `FUN_00516ea0` (attacks on structures); wire format of `FUN_005040c4`. [unit-struct](engine/unit-struct.md#open-questions)
-- Effect system writers: the Bless / Curse chance (`Unit.bless` / `Unit.curse`), the Invisibility bit (`Unit.hidden` has no setter), durations; start `FUN_0051ce12`, `FUN_00519db8`. [combat](engine/combat.md#open-questions) 2, [combat §16.5](engine/combat.md#165-fun_005106d2-and-fun_00516b2f)
 
 ## AI
 
@@ -37,11 +36,12 @@ from both places when answered).
 
 ## Spells
 
+- [Effects](engine/effects.md#open-questions): the Prismatic Spray chain (`FUN_00519c04` -> `FUN_00579ddf`: the hit reaction first, the caster group's pool `FUN_00571c4d`, distance `FUN_00579d62`, the `min(7, L/20 + 2)` nearest within the range, dying units scored `<< 8`; spell 11 stays a counted no-op); the structure branch of the carriers (`vtable +0x34`, `FUN_00559b7f`); the human scan's recompute triggers besides the stat switch; the client effect messages (`FUN_005044ba`, `FUN_00504498`, `FUN_005045a5`).
 - Spell panel leftovers: the tooltip filter `obj+0x24 in {0x17, 0x18}`, the Ctrl+A auto-cast spell (`FUN_0041a727`, cmd `0x46` sub 4), the `0x411` resets of the panel selection, the F-key table's persistence, scroll casts (`0x25`). Start `FUN_004167c2`. [spells](data/spells.md#11-open-questions)
 
 ## Triggers and scenario
 
-- [Triggers](engine/triggers.md#open-questions): where single player posts the ready message (`FUN_0041c50d`); `FUN_0055641c`; the by-name second loop of `FUN_00562518`; the free-cell test `FUN_005563ca` / `FUN_0055c5a0` of `FUN_00510089`; the window message `0x41d` and the mission-complete dialog (`0x486ddb`, Scenario variable `0x300`); the text of message `0xb6` values (`0x433` handler); Scenario.dll initial variables (`ScenarioNewGame`) and campaign use; the member loop of instant 22 (`FUN_005782ba` over a list `FUN_004f0568` changes); the item rules of `FUN_00529ae2` (instants 11, 12, 28) and the hidden caster of instants 21 / 24 (`FUN_004f06ac`), documented no-ops until the effect system.
+- [Triggers](engine/triggers.md#open-questions): where single player posts the ready message (`FUN_0041c50d`); `FUN_0055641c`; the by-name second loop of `FUN_00562518`; the free-cell test `FUN_005563ca` / `FUN_0055c5a0` of `FUN_00510089`; the window message `0x41d` and the mission-complete dialog (`0x486ddb`, Scenario variable `0x300`); the text of message `0xb6` values (`0x433` handler); Scenario.dll initial variables (`ScenarioNewGame`) and campaign use; the member loop of instant 22 (`FUN_005782ba` over a list `FUN_004f0568` changes); the item rules of `FUN_00529ae2` (instants 11, 12, 28) and the hidden caster of instants 21 / 24 (`FUN_004f06ac`) and the effect-duration instants 29 / 30, documented no-ops (the effect system exists now: [effects](engine/effects.md)).
 - Scenario event classes: unit `behaviour` bits 1, 2, 4 and the three scenario booleans `+0x194` / `+0x198` / `+0x19c` (`FUN_005303ed`). [map](formats/map.md#open-questions), [unit-struct](engine/unit-struct.md#open-questions)
 
 ## Movement and orders
@@ -59,7 +59,7 @@ from both places when answered).
 - Day/night light recomputation in the engine. [architecture](engine/architecture.md#open-questions)
 - Renderer speed: `build_draw_list` is the next target for 30 fps at 1024x768; terrain scroll hitch (~27 ms per new cell row/column): pre-warm or flat-cell fast path. [architecture](engine/architecture.md#open-questions)
 - Unregistering a structure (`FUN_0055995a`) clears cells held by another structure; the engine releases only its own cells. [architecture](engine/architecture.md#open-questions)
-- [Cell effects](engine/rendering.md#open-questions): drawing needs the spell system ([spells §4](data/spells.md#4-effect-handlers)); the cell record feeders are known ([unit-struct](engine/unit-struct.md#cell-record-effect-confirmed)). Unit invisibility / stone curse / hover, message 0x74 (flag 0x80); start at `FUN_004632a1`.
+- [Cell effects](engine/rendering.md#open-questions): drawing (the simulation side is built: [effects §6.4](engine/effects.md#64-cell-effect-slots)); the cell record feeders are known ([unit-struct](engine/unit-struct.md#cell-record-effect-confirmed)). Unit invisibility / stone curse / hover, message 0x74 (flag 0x80); start at `FUN_004632a1`.
 - [Engine object drawing](engine/rendering.md#open-questions): burnt ground, light-map lights on objects; start at `FUN_00404a2a`.
 - [Engine minimap](engine/rendering.md#open-questions): final channel pass `0x4ac030`, fog background surface `DAT_00626be0`, fog gate of the unit dots; start at `FUN_004ac414`.
 

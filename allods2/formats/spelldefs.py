@@ -310,6 +310,23 @@ def acid_cells(center, direction, step):
     return out
 
 
+# Wall shapes (FUN_005182b6 via FUN_00517ec3; tables 0x5f8400 axis, 0x5f84a8 diagonal), (dx, dy) as stored: a 5-cell double row and a 9-cell
+# double diagonal; the carrier radius is not used (docs/engine/effects.md 6.2).
+WALL_AXIS = tuple((i, 1) for i in range(-2, 3)) + tuple((i, 0) for i in range(-2, 3))
+WALL_DIAG = ((-2, 2), (-1, 1), (0, 0), (1, -1), (2, -2), (-1, 2), (0, 1), (1, 0), (2, -1))
+
+
+def wall_cells(center, direction):
+    """Cells of a wall (Wall of Fire, Wall of Earth) for sector `direction` (caster -> centre), the same sign rules as `acid_cells`."""
+    cx, cy = center
+    out = []
+    for a, b in (WALL_AXIS if direction % 2 == 0 else WALL_DIAG):
+        dx, dy = {0: (a, -b), 4: (-a, b), 2: (b, a), 6: (-b, a),
+                  1: (a, -b), 3: (a, b), 5: (-a, b), 7: (-a, -b)}[direction]
+        out.append((cx + dx, cy + dy))
+    return out
+
+
 def blizzard_offset(rand5_x, rand5_y):
     """Offset of one hail stone from the target cell: `rand(0..5) - 2` per axis (FUN_0051806c)."""
     return rand5_x - 2, rand5_y - 2

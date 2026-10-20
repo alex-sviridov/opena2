@@ -400,10 +400,8 @@ def eval_check(world, script, c):
     elif kind == 25:                                    # FUN_005777d3: an area effect in a layer of the cell; the engine has no cell effects
         script.unbuilt[("check", 25)] += 1
         vals[c.index] = 0
-    elif kind == 26:                                    # FUN_00577857: +0x144 bit n0 (effect kind); only Invisibility (12) can be set so far
-        if n[0] != 12:
-            script.unbuilt[("check", 26)] += 1
-        vals[c.index] = int(u.hidden) if n[0] == 12 else 0
+    elif kind == 26:                                    # FUN_00577857: +0x144 bit n0 (the effect mask, sim/effects.py; Unit.hidden for an object-less Invisibility)
+        vals[c.index] = int(bool(u.effect_mask & (1 << (n[0] & 31))) or (n[0] == 12 and u.hidden))
     elif kind == 27:
         vals[c.index] = int(u.x == (n[1] & 0xFF) and u.y == (n[2] & 0xFF) and (u.sub_x, u.sub_y) == (128, 128))
     else:

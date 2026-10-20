@@ -8,9 +8,10 @@ this file), so every action lands in the same log (`Simulation.log`).  State: `U
 import math
 import struct
 
-from engine.world import AiGroup, AiState
+from engine.world import DEAD, AiGroup, AiState
 
 from . import combat as cb
+from . import effects
 from . import movement as mv
 from . import spells
 from .commands import AttackUnit, CastSpell, MoveUnits, Stop
@@ -125,7 +126,9 @@ def at_war(world, owner, other):
 
 
 def _scan_range(u):
-    return int(u.stats.get("scan_range", 0) or 0) if u.stats is not None else 0
+    """The scan byte `+0xa5`: the template's scan range plus the effects' changes (Light, Darkness), wrapped to a byte (docs/engine/effects.md 2.1)."""
+    base = int(u.stats.get("scan_range", 0) or 0) if u.stats is not None else 0
+    return effects.scan_range(u, base) if (u.fx.scan or u.fx.scan_direct) else base
 
 
 def _visible(world, observers):
@@ -208,6 +211,10 @@ def score(world, me, cand):
         s += s >> 1
     elif pref == 4 and small:
         s -= s >> 2
+    if cand.effect_mask & effects.STONE_BIT:            # 0x5713c7: a stoned target scores 0x7f worse (at least 1)
+        s += 0x7F
+        if s < 1:
+            s = 1
     return s
 
 
@@ -741,8 +748,8 @@ def allied(world, owner, other):
 
 
 def effect_active(u, n):
-    """`u+0x144 & 1 << n`: only Invisibility (12, `Unit.hidden`) exists in the engine; every other effect is never active (no effect system)."""
-    return n == spells.INVISIBILITY and u.hidden
+    """`u+0x144 & 1 << n`: the effect mask (`sim/effects.py`); Invisibility also when `Unit.hidden` was set without an effect object."""
+    return effects.active(u, n) or (n == spells.INVISIBILITY and u.hidden)
 
 
 def _ratio(o):
@@ -869,17 +876,27 @@ def _set_war(world, a, b):
         pl.relations = tuple(rel)
 
 
-def declare_war(world, attacker_owner, victim_owner):
-    """`FUN_0057977a(relations, attacker, victim, 0)`: a hit between two neutral owners (relation & 3 == 0) sets the war bit both ways
-    (attacker -> victim first, then victim -> attacker; the exe also posts a notice for a human attacker, not modelled)."""
+def declare_war(world, attacker_owner, victim_owner, area=False, victim=None):
+    """`FUN_0057977a(relations, attacker, victim, area)`: a hit between two neutral owners (relation & 3 == 0) sets the war bit attacker ->
+    victim, then victim -> attacker; for an area hit (`area`, the carriers' `FUN_00518681`) the second only when the victim's counter
+    `brain+0xac > 10`, its HP < max / 2 or it is dead, and every such area hit adds 1 to the counter (docs/engine/effects.md 6.3).  The exe
+    also posts a notice for a human attacker (not modelled)."""
     _set_war(world, attacker_owner, victim_owner)
-    _set_war(world, victim_owner, attacker_owner)
+    if not area or victim is None:
+        _set_war(world, victim_owner, attacker_owner)
+        return
+    pl = world.players.get(victim_owner)
+    if pl is None or not 0 < attacker_owner <= len(pl.relations) or pl.relations[attacker_owner - 1] & 3:
+        return
+    if victim.ai.area_hits > 10 or victim.hp < int(victim.hp_max / 2) or victim.state == DEAD:
+        _set_war(world, victim_owner, attacker_owner)
+    victim.ai.area_hits += 1
 
 
-def on_hit(world, attacker, victim):
+def on_hit(world, attacker, victim, area=False):
     """Called by the fight code for every resolved attack: alert the victim, reveal the attacker's cell to its squad, and store the cell
-    10 cells beyond the victim on the ray attacker -> victim."""
-    declare_war(world, attacker.owner, victim.owner)
+    10 cells beyond the victim on the ray attacker -> victim.  `area`: the third argument 1 of the area carriers (`declare_war`)."""
+    declare_war(world, attacker.owner, victim.owner, area, victim)
     b = victim.ai
     b.alerted = 1
     b.mark_cell = word(attacker.x, attacker.y)

@@ -104,8 +104,8 @@ def test_scripted_casts_and_the_cell_effects_are_documented_no_ops():
     a.hidden = True
     for c in w.script.checks:
         T.eval_check(w, w.script, c)
-    assert w.script.values[0] == 0 and w.script.values[1] == 1 and w.script.values[2] == 0      # bit 12 is Invisibility, bit 4 has no source yet
-    assert w.script.unbuilt[("check", 25)] == 1 and w.script.unbuilt[("check", 26)] == 1
+    assert w.script.values[0] == 0 and w.script.values[1] == 1 and w.script.values[2] == 0      # bit 12 is Invisibility, bit 4 (a protection) is not active
+    assert w.script.unbuilt[("check", 25)] == 1 and w.script.unbuilt[("check", 26)] == 0       # check 26 reads the effect mask (sim/effects.py)
 
 
 def test_instants_31_and_14_have_nothing_to_change():

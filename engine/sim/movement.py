@@ -76,7 +76,7 @@ def expand_line(start, ends):
 def unit_speed(u):
     """Speed stat (+0x8c): monsters the data.bin `speed`; humans the Reaction rule of the
     recompute (`progression.derived_speed`; the load penalty is not modelled); plus `speed_mod`
-    (Haste/Slow effect delta)."""
+    (a test / debug offset) and the effects' `fx.speed` (Haste / Slow: docs/engine/effects.md 5)."""
     t = u.stats
     if t is None:
         base = 0
@@ -84,7 +84,7 @@ def unit_speed(u):
         base = prog.derived_speed(t, u.type_id)
     else:
         base = t.speed
-    return base + u.speed_mod
+    return base + u.speed_mod + u.fx.speed           # Haste / Slow: a monster's +0x8c, a human's bonus +0xd8 (docs/engine/effects.md 5)
 
 
 def walk_speed(world, u):
@@ -609,8 +609,7 @@ def _tick_unit(world, u):
     The failure event: `mover+0x98` ends an order 1 at once (`0x56e1b0` -> `FUN_0056dc24` = cancel + order `0xc`, `brain+0x50`
     stays 0), unlike arrival, which waits for the group pass.  Under any other order the event sets Brain mode 0 (`0x56e320`: the auto
     target scan `FUN_0056ed4e` finds no enemy; the scan and the computer players' mode 0xb are phase I, combat.md 9.3)."""
-    if u.invis_ending:                                  # step 2 of the creature tick: the effect list; a finished Invisibility effect drops its bit
-        u.invis_ending = u.hidden = False
+    effects.tick_unit(world, u)                         # step 2 of the creature tick: the effect list (docs/engine/effects.md 7)
     if u.hp <= 0:                                       # the HP <= 0 branch replaces the Brain tick and the state switch (combat.md 12.1)
         if death.dying_tick(world, u):
             death.remove_dead(world, u)
@@ -622,6 +621,7 @@ def _tick_unit(world, u):
             return
         if u.state == ai.SLEEP_STATE:                   # 0x56dd0b: the Brain tick clears the state unless it is 2 or 0xf
             u.state = IDLE_STATE
+    effects.stone_check(u)                              # 0x56dd24: Stone Curse -> brain order 4
     old_pos, old_face = (u.x, u.y, u.sub_x, u.sub_y), m.target_facing
     _tick_inner(world, u)
     if u.state == MOVE_STATE and m.target_facing != old_face and (u.x, u.y, u.sub_x, u.sub_y) == old_pos:
@@ -644,6 +644,9 @@ def _tick_unit(world, u):
 
 def _tick_inner(world, u):
     m = u.mover
+    if u.brain_order == effects.BRAIN_STONE:            # Brain order 4: state 0x1b while stoned (effects.md 7)
+        effects.brain_stone(u)
+        return
     if u.brain_order == combat.BRAIN_SWING:              # Brain order 1: the swing runs, no mode (FUN_0056dca2 order switch)
         combat.brain_swing(u)
         return
@@ -772,4 +775,4 @@ def movement_system(world, commands):
         _tick_unit(world, u)
 
 
-from . import ai, combat, death, follow, spells    # noqa: E402  the fight code imports this module: bound here, used at call time (circular on purpose)
+from . import ai, combat, death, effects, follow, spells    # noqa: E402  the fight code imports this module: bound here, used at call time (circular on purpose)

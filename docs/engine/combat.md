@@ -681,7 +681,7 @@ Timeline (tests): order at tick T0; the next `tick & 15 == 6` is `P`; `CastStart
 
 Decisions (INFERRED unless marked): the cell cast (`0x1f`, order `0xe`, Brain mode 9, state `0xe`) is built in phase K ([spells §9d](../data/spells.md#9d-ai-casts-cell-casts-and-the-built-handlers-phase-k)); a missing target id stops the unit like an attack does; a caster is "gone" when it left `world.units`;
 spell damage goes through the exe's own `take_hit_detail` (the to-hit roll is drawn even for a spell, CONFIRMED structure of `FUN_00516f6f`); a monster caster's level uses `spell_power` / the mage skills and the
-template mind (phase K, [ai §12.1](ai.md#121-creature-set-up-fun_005114f3-monsters-0x511586-0x511f44)); the target `brain+0xa4/+0xa8` stamps are written (`AiState.spell_mark`); the Invisibility break of the caster (`FUN_005106d2(0xc)`) needs the effect system and is not modelled;
+template mind (phase K, [ai §12.1](ai.md#121-creature-set-up-fun_005114f3-monsters-0x511586-0x511f44)); the target `brain+0xa4/+0xa8` stamps are written (`AiState.spell_mark`); the Invisibility break of the caster (`FUN_005106d2(0xc)`, `0x519a6e`: a cast at another unit) is built in phase K2 (`effects.end_invisibility` in `cast_start`);
 a staff has no charge counter; pack items (scroll command `0x25`) do not exist yet. VERIFY IN GAME: spells §9c.4.
 
 **AI casts (phase K, [ai §12](ai.md#12-casters-and-special-attacks-confirmed-unless-marked-engine-127)).** The AI issues `CastSpell(..., ai=True)` (unit or `cell`), applied at the
@@ -717,7 +717,7 @@ side has no vision rule in the simulation (a click on a fogged cell becomes a mo
 **UI pieces still missing for J.** The command bar with its buttons (the hotkeys A M D S T G L C exist; `R` retreat `0x14`, `P` pick up all `0x13`, F4-F12 spell shortcuts exist as `OrderInput.fkey`), the spellbook window
 (spell choice and the cast cursor's spell, `FUN_0041f370`: the window calls `OrderInput.select_slot`, lists `engine.ui.spellbook.spellbook(...)` with `tooltip(...)`; enable rule = the slot mask, no mana: spells.md 9e; `C` uses the selected slot, else a fixed stand-in), the inventory / backpack and hero screens, the main-hero panel pieces (skills, XP, equipment), the hero-death
 load / quit dialog, the new-game screen (difficulty), the in-game menu, sound (no audio at all: cast sounds `500 + id`, hit sounds), the message line for out-of-range / no-mana feedback (the exe shows none
-for the cast button: it is disabled), town scenes, saves. Phase K (started: AI casting, special attacks, cell casts, Heal and Drain Life are built, ai.md 12 / spells.md 9d): the human mages' scan `FUN_0056bc7b`, the non-damage spell handlers and the effect system
+for the cast button: it is disabled), town scenes, saves. Phase K (started: AI casting, special attacks, cell casts, Heal and Drain Life are built, ai.md 12 / spells.md 9d): the human mages' scan `FUN_0056bc7b` (the non-damage spell handlers and the effect system are built: [effects](effects.md))
 (Invisibility sets `Unit.hidden`, Bless / Curse / Haste / Slow), summons and raising, structures as targets, scroll items (`0x25`) and the pack.
 
 ## 16. Close-out research (answers to the old open questions; CONFIRMED in the GOG allods2.exe unless marked)
@@ -788,13 +788,12 @@ and only the attack type / range / to-hit for 56 (staves and shaman staffs, cata
 - `FUN_005106d2(k)` = `(1 << (k & 0x1f)) & unit+0x144`: "is effect kind `k` active" (the bit mask the effect system keeps). `FUN_005106f4(k)` returns the first effect object of kind `k` in the list `+0x20` (effect word `+0xc`), or null.
 - `take_hit` (`FUN_00516f6f` at `0x517001`-`0x5170c4`): for the attacker (when it has a template): bit `0x14` (Bless) set -> effect of kind 20: missing -> the stale bit is cleared (`& 0xffefffff`), no draw; present -> draw `rand(100)`, if the effect's chance
   (`+0x40`, s16) is greater: `lo += spread` and no spread draw (maximum damage). Bit `0x1c` (Curse, kind 28): same, a hit of the chance gives the minimum (no spread draw). This is the order already in section 5.2. **No effect system is needed for the mechanism**:
-  engine `Unit.bless` / `Unit.curse` hold the chance (None = absent) and `combat.resolve_attack` passes them to `take_hit_detail`. What the effect system must still provide (K): the Bless / Curse spell handlers writing the chance (spell power), the duration, and removing them.
-- `FUN_00516b2f` (swing start message, 3.3): `if FUN_005106d2(0xc)` (Invisibility active) every effect of kind 12 in the list gets `+0x42 := 1` (finished); the effect pass of the **next** creature tick (step 2 of section 12.1) drops it and clears bit 12. Engine: `Unit.invis_ending` is set at the swing start,
+  engine `Unit.bless` / `Unit.curse` hold the chance (None = absent) and `combat.resolve_attack` passes them to `take_hit_detail`. Built in phase K2 ([effects](effects.md)): the Bless / Curse handlers write the chance (`L*4/5 + 20`) into the effect and `Unit.bless` / `Unit.curse` mirror it while the effect lives (they cancel each other, effects §4).
+- `FUN_00516b2f` (swing start message, 3.3): `if FUN_005106d2(0xc)` (Invisibility active) every effect of kind 12 in the list gets `+0x42 := 1` (finished); the effect pass of the **next** creature tick (step 2 of section 12.1) drops it and clears bit 12. Engine (K2): `effects.end_invisibility` sets the effects' ticks to 1 at the swing start and the effect pass of the next creature tick (`effects.tick_unit`) ends them and clears `Unit.hidden` (also for a unit made hidden without an effect object, the `Unit.invis_ending` flag). Tests in `test_engine_combat_pins.py`, `test_engine_effects.py`.
   `movement._tick_unit` clears `Unit.hidden` at the top of the next tick. (A cast at another unit does the same from `FUN_00519998`, spells §9c.) Tests in `test_engine_combat_pins.py`.
 
 ## Open questions
 
 1. The quest system (accept `FUN_0052f8e2`, the board, rewards) and the exact meaning of the quest events 5-0x11 (start: `FUN_0052e3eb`, the senders in `0x57e5f0`-`0x57edda`).
-2. The effect system: writers of the Bless / Curse chance (`Unit.bless` / `Unit.curse`) and of the Invisibility bit, durations (start: `FUN_0051ce12`, `FUN_00519db8`).
-3. Sound tables (12.11 item 4) and the hit sound set entries (16.1).
-4. I2 open questions are in 12.11 (items 1-4); assumptions in section 13.
+2. Sound tables (12.11 item 4) and the hit sound set entries (16.1).
+3. I2 open questions are in 12.11 (items 1-4); assumptions in section 13.

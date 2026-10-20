@@ -412,7 +412,7 @@ a cell centre within `range` only turns to the cell (`FUN_00556da2`), and state 
 **Engine (`engine/sim/ai.py`, `spells.py`)**: `engage` = 12.2 (computer branch built; the human branch keeps mode 5: `FUN_0056b059` is exact as a no-op because the
 engine has no selected spell, `FUN_0056bc7b` is not built), `special_attack` = 12.3, `caster_attack` = 12.4, `mage_idle` / `friend_cast` = 12.5 (called by `idle`), the
 casts are `CastSpell(..., ai=True)` commands (unit or cell) applied by `ai.apply` (mode 8 / 9 with `Unit.ai_cast`), the Brain mode 9 and state `0xe` are
-`spells.cell_mode` / `cast_tick`. Effects: `+0x144` effect bits other than Invisibility do not exist in the engine (no effect system), so "already active" is always false.
+`spells.cell_mode` / `cast_tick`. Effects: `+0x144` is the effect mask of `sim/effects.py` ([effects](effects.md)), so "already active" is real: an active Shield (bit 27) ends the idle recast of 12.5 (the AI cast repeats only until the next pass, 12.7, and the merge then just refreshes the time), a blessed / hasted / protected friend is not buffed again, and a stoned target scores `+0x7f` (`0x5713c7`, effects §7).
 The Teleport flee (12.6) is not built (no shipped template can reach it).
 
 ## 13. VERIFY IN GAME

@@ -350,6 +350,9 @@ def cast_start(world, u, c, st):
         if u.mana < spell.mana_cost:
             return False
         u.mana -= spell.mana_cost
+    if t is not None and t is not u:                # 0x519a6e: a cast at another unit ends the caster's Invisibility (`+0x42 := 1`)
+        from . import effects
+        effects.end_invisibility(u)
     ax, ay = u.x * 256 + u.sub_x, u.y * 256 + u.sub_y
     if t is None:
         bx, by = c.cell[0] * 256 + 128, c.cell[1] * 256 + 128      # INFERRED: the cell centre (only the client's flight time uses it)
@@ -432,7 +435,7 @@ def drain_release(world, u, t, spell, level):
     if amount <= 0:
         return
     before = t.hp
-    xp.damage_credit(world, u, t, amount, before)
+    xp.damage_credit(world, u, t, amount, before, spell=DRAIN_LIFE)
     if world.ai_on:
         ai.on_hit(world, u, t)
     t.hp = before - amount
@@ -553,7 +556,10 @@ def cast_release_cell(world, u, c, st):
     elif spell.number == CONTROL_SPIRIT and world.assets is not None:
         raise_release(world, u, c.cell)
     else:
-        stub_release(world, u, spell.number, cell=c.cell)
+        from . import effects
+        level = cast_level(u, spell, c.item_count)
+        if effects.release(world, u, spell, level, cell=c.cell, learned=c.item_count is None) is None:
+            stub_release(world, u, spell.number, cell=c.cell)
 
 
 def cast_release(world, u, c, st):
@@ -573,6 +579,11 @@ def cast_release(world, u, c, st):
     if spell.number in (HEAL, DRAIN_LIFE):
         (heal_release if spell.number == HEAL else drain_release)(world, u, t, spell, level)
         log(world, CastReleased(world.tick, u.id, t.id, c.spell, level, 0))
+        return
+    from . import effects
+    made = effects.release(world, u, spell, level, t=t, learned=c.item_count is None)
+    if made is not None:                            # effect spells, areas, fields, Teleport (docs/engine/effects.md)
+        log(world, CastReleased(world.tick, u.id, t.id, c.spell, level, made.uid if isinstance(made, Carrier) else 0))
         return
     sc = spell.scaled(level)
     if (sc.damage_min & 0xFF) + (sc.damage_spread & 0xFF) == 0 or spell.distribution != spelldefs.DIST_SINGLE:
@@ -625,7 +636,9 @@ def cast_tick(world, u):
 
 def carrier_system(world, commands):
     """`FUN_0052c279` over the active list in creation order, before the creature pass of the same tick.  A missile counts its flight down and,
-    below 1, appends its point carrier to the tail of the list (visited later in this pass); a point carrier applies the effect on its visit."""
+    below 1, appends its point carrier to the tail of the list (visited later in this pass); a point carrier applies the effect on its visit;
+    area and field carriers tick until they are done (docs/engine/effects.md 6)."""
+    from . import effects
     done = set()
     i = 0
     while i < len(world.carriers):
@@ -633,11 +646,20 @@ def carrier_system(world, commands):
         if c.kind == "missile":
             c.ticks_left -= 1
             if c.ticks_left < 1:
-                world.carriers.append(Carrier(world.next_carrier_id(), "point", c.caster, c.target, c.spell, c.level, 0, c.born, c.hostile, c.start, c.flight, c.aim))
+                world.carriers.append(effects.landed(world, c))
                 done.add(c.uid)
-        else:
-            apply_point(world, c)
+        elif c.kind == "point":
+            if c.effect is not None:
+                effects.point_tick(world, c)
+            else:
+                apply_point(world, c)
             done.add(c.uid)
+        elif c.kind == "area":
+            if effects.area_tick(world, c):
+                done.add(c.uid)
+        elif c.kind == "field":
+            if effects.field_tick(world, c):
+                done.add(c.uid)
         i += 1
     if done:
         world.carriers[:] = [c for c in world.carriers if c.uid not in done]
@@ -665,7 +687,7 @@ def apply_point(world, c):
     if before > 0 or t.hp > -10:
         log(world, Damage(world.tick, c.caster, t.id, res.damage, t.hp, res.roll, True))
     if caster is not None:
-        xp.damage_credit(world, caster, t, res.damage, before)
+        xp.damage_credit(world, caster, t, res.damage, before, spell=c.spell)
     if before > 0 and t.hp <= 0:
         log(world, Died(world.tick, t.id, c.caster))
 

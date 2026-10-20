@@ -78,14 +78,22 @@ def level_up(world, hero, school):
     log(world, LevelUp(world.tick, hero.id, school, hero.skills[school]))
 
 
-def damage_credit(world, attacker, victim, dmg, before):
-    """`FUN_00513128` after a blow: `dmg > 0`, the victim had HP > 0 before and has HP > -10 now, and its owner is computer-controlled
-    (every owner but the human player): `0.5 * victim.xp * dmg / victim.maxHP + 1` through the award."""
+def damage_credit(world, attacker, victim, dmg, before, spell=0):
+    """`FUN_00513128(victim, dmg, spell)` after a blow: `dmg > 0`, the victim had HP > 0 before and has HP > -10 now, and its owner is
+    computer-controlled (every owner but the human player): `0.5 * victim.xp * dmg / victim.maxHP + 1` through the award.  `spell` != 0 (a
+    spell's damage: the damage effect `FUN_0051e65b`, Drain Life, Poison pass the spell number): only a mage (`+0x4c & 4`) earns, into the
+    spell's sphere (`0x513138`-`0x51317d`, docs/engine/effects.md); 0 = a weapon blow (the weapon school)."""
     if dmg <= 0 or before <= 0 or victim.hp <= -10 or victim.hp_max <= 0 or not is_hero(attacker):
         return
+    school = 0
+    if spell:
+        from .combat import combat_stats
+        if not combat_stats(world, attacker).mage or world.spell_table is None:
+            return
+        school = world.spell_table.get(spell).sphere
     if world.players[victim.owner].human or victim.stats is None:
         return
-    award(world, attacker, int(0.5 * victim.stats.get("xp", 0) * dmg / victim.hp_max + 1), 0, victim)
+    award(world, attacker, int(0.5 * victim.stats.get("xp", 0) * dmg / victim.hp_max + 1), school, victim)
 
 
 def kill_credit(world, victim):

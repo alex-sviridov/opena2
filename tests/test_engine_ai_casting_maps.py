@@ -2,11 +2,12 @@
 
 Map 73: the party of four knights walks to the nearest computer-owned spell user; with the AI on, the computer's mages (`2M_Knight3_73`
 with Lightning / Poison Cloud / Shield) and special-attack monsters cast on their own.  Checks: computer-owned units start casts, a damage
-spell of theirs lands, the unbuilt effects are counted (not guessed), the run is deterministic and the world stays consistent.
-Spec: docs/engine/ai.md 12.
+spell of theirs lands, their buffs become effects (Shield once per mage: an active Shield ends the idle recast, ai.md 12.5; Bless on their
+friends), the run is deterministic and the world stays consistent.  Spec: docs/engine/ai.md 12, docs/engine/effects.md.
 """
 
 import math
+from collections import Counter
 
 from allods2.assets import AssetCache
 from allods2.cli import open_map
@@ -32,14 +33,18 @@ def play(seed=3):
     return w, sim
 
 
-def test_computer_casters_cast_on_their_own_and_effects_are_counted():
+def test_computer_casters_cast_on_their_own_and_their_buffs_are_effects():
     w, sim = play()
     computer = {e.caster for e in w.fight_log if isinstance(e, CastStarted) and not w.players[_owner(w, e.caster)].human}
     assert computer, "no computer-owned unit started a cast"
     released = [e for e in w.fight_log if isinstance(e, CastReleased) and e.caster in computer]
     assert released or w.unbuilt_casts
     assert any(isinstance(e, Damage) and e.attacker in computer for e in w.fight_log)
-    assert sum(w.unbuilt_casts.values()) > 0                     # Shield / Poison Cloud ... have no effect system yet: counted, nothing changes
+    shields = Counter(e.caster for e in w.fight_log if isinstance(e, CastStarted) and e.spell == spells.SHIELD and e.caster in computer)
+    assert shields and max(shields.values()) == 1                # the Shield effect bit stops the idle recast (FUN_0057a999)
+    assert any(u.effect_mask & 1 << spells.SHIELD for u in w.units.values())
+    assert any(e.id == 20 for u in w.units.values() for e in u.effects)    # Bless on a friend at full mana
+    assert not w.unbuilt_casts
     assert any(getattr(c, "ai", False) and c.__class__.__name__ == "CastSpell" for _, c in sim.log)
     assert w.check_consistency() == []
 

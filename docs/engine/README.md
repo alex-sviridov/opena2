@@ -13,6 +13,7 @@ The recreated game, built on the core library (`allods2/`, `a2res/`).
 | [ai.md](ai.md) | phase I3: monster AI = squad group order `0x12` handler `FUN_005728fa` every 16 ticks, sight flood, pool, target score, hit reaction, flee post step, engine mapping, VERIFY IN GAME; §12 casters and special attacks (K1) | I3, K1 (AI casting) done, CONFIRMED / INFERRED per fact |
 | [combat.md §14](combat.md#14-spell-casts-i4a) | phase I4a: the player's spell cast (command, order `0xd`, Brain mode 8, cast phases, carriers, damage), staff casts; REA facts in [spells §9c](../data/spells.md) | I4a done (sim); view/UI = I4b |
 | [triggers.md](triggers.md) | map scripts (section 7): compilation `FUN_00562745`, the check / trigger / instant tables, pass timing (group pass, every 16 ticks), victory and defeat `FUN_004f856a`, engine `sim/triggers.py` | decoded, engine built (subset), CONFIRMED / INFERRED per fact |
+| [effects.md](effects.md) | phase K2: spell effect objects (list `unit+0x20`, mask `+0x144`), apply / merge / tick / undo, the stat switch, point / area / field carriers, cell effect slots | CONFIRMED / INFERRED per fact |
 | [unit-struct.md](unit-struct.md) | runtime unit struct of the exe: classes, sizes, allocation sites, field table, per-tick behaviour, client mirror | CONFIRMED / INFERRED / UNKNOWN per field |
 
 Design specs: [../superpowers/specs/](../superpowers/specs/). Format and

@@ -242,8 +242,9 @@ def monster_stats(t, items=None, hard=False):
     return st
 
 
-def human_stats(t, items=None, skills=None):
-    """Human template -> `CombatStats` (the recompute `FUN_0051366b` after the equipment strings)."""
+def human_stats(t, items=None, skills=None, fx=None):
+    """Human template -> `CombatStats` (the recompute `FUN_0051366b` after the equipment strings).  `fx`: the bonus words the spell effects
+    changed (`world.EffectStats`: defence `+0xfe`, absorption `+0x100`, protections `+0x102..`; docs/engine/effects.md 5)."""
     mage = t.get("mana_max", -1) > 0
     female = t.get("gender", 0) == 1
     caps = prog.ATTR_CAPS[(mage, female)]
@@ -269,6 +270,10 @@ def human_stats(t, items=None, skills=None):
                 _equip_weapon(bonus, item, sk[0], human=True)
             elif item.defn.kind in (SHIELD, ARMOUR):
                 _equip_armour(bonus, item)
+    if fx is not None:
+        bonus.block.defence = s16(bonus.block.defence + fx.defence)
+        bonus.block.absorb = max(0, s16(bonus.block.absorb + fx.absorb))
+        bonus.block.prot = [max(0, s16(a + b)) for a, b in zip(bonus.block.prot, fx.prot)]
     body = min(min(raw["body"], caps[0]) + bonus.attr["body"], 100)
     reaction = min(min(raw["reaction"], caps[1]) + bonus.attr["reaction"], 100)
     spirit = min(min(raw["spirit"], caps[3]) + bonus.attr["spirit"], 100)
@@ -294,11 +299,19 @@ def human_stats(t, items=None, skills=None):
     return st
 
 
-def unit_combat_stats(t, items=None, skills=None, hard=False):
-    """Dispatch on the template kind (`unitstats.MONSTER` / `HUMAN`); None for an unknown template."""
+def unit_combat_stats(t, items=None, skills=None, hard=False, fx=None):
+    """Dispatch on the template kind (`unitstats.MONSTER` / `HUMAN`); None for an unknown template.  `fx` (`world.EffectStats`): the effect
+    changes, bonus words for a human (merged by the recompute), direct deltas of defence / absorption for a monster (its recompute
+    `FUN_005118be` leaves them; a monster's protection bonus is never merged: docs/engine/effects.md 5)."""
     if t is None:
         return None
-    return human_stats(t, items, skills) if t.kind == prog.unitstats.HUMAN else monster_stats(t, items, hard)
+    if t.kind == prog.unitstats.HUMAN:
+        return human_stats(t, items, skills, fx)
+    st = monster_stats(t, items, hard)
+    if fx is not None:
+        st.block.defence = s16(st.block.defence + fx.defence)
+        st.block.absorb = s16(st.block.absorb + fx.absorb)
+    return st
 
 
 def item_code(item):

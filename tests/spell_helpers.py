@@ -48,3 +48,29 @@ def spell(n):
 def full_table():
     """All 29 spells (synthetic copies of the data.bin numbers)."""
     return SpellTable([spell(n) for n in sorted(_ROWS)])
+
+
+# The effect numbers of data.bin (docs/engine/effects.md 3; spells.md 2): radius (p9), area_duration (p11), duration (p14), modifier terms
+# (kind, value, mode, time) of the spells whose release builds an effect object or an area.
+_FX = {2: (1, 0, 0, ()), 3: (2, 10, 0, ()), 4: (0, 0, 15, ((21, 30, 1, 30),)), 6: (2, 5, 0, ((6, -2, 2, 8),)), 7: (4, 8, 0, ()),
+       8: (0, 0, 15, ((22, 30, 1, 30),)), 9: (3, 0, 0, ()), 12: (0, 0, 10, ()), 13: (0, 0, 15, ((23, 30, 1, 30),)),
+       14: (4, 15, 0, ((19, -2, 1, 1),)), 15: (4, 15, 0, ((19, 2, 1, 1),)), 17: (2, 10, 0, ()),
+       18: (0, 0, 10, ((16, 5, 1, 8), (15, -20, 1, 8))), 19: (0, 0, 15, ((24, 30, 1, 30),)), 20: (0, 0, 10, ((12, 1, 1, 30),)),
+       21: (0, 0, 10, ((17, 2, 1, 30),)), 27: (0, 0, 20, ((16, 5, 1, 30),)), 28: (0, 0, 10, ((12, -1, 1, 30),)),
+       29: (0, 0, 10, ((17, -2, 1, 30),))}
+
+
+def effect_spell(n):
+    """`spell(n)` with the radius, the durations and the modifier terms (the speed 200 of the missiles)."""
+    from allods2.databin import Modifier
+    s = spell(n)
+    if n not in _FX:
+        return s
+    r, area, dur, mods = _FX[n]
+    f = dict(s.fields)
+    f.update(radius=r, area_duration=area, duration=dur)
+    return SpellDef(n, s.name, s.name, f, modifiers=tuple(Modifier(*m) for m in mods))
+
+
+def effect_table():
+    return SpellTable([effect_spell(n) for n in sorted(_ROWS)])

@@ -37,7 +37,7 @@ was scanned (the by-wrapper pattern `[spell+4]+8` and the direct table `0x68f5cc
 | 6 | `max_range` | cells; wrapper `+9` (`FUN_005195b1`: `+level/30`, Teleport `+level/3`); the AI approach distance (`FUN_0056ac5b`, order `+0x14`) | CONFIRMED use; no range test found at cast (§3) |
 | 7 | `speed` | missile speed 1/256 cell per tick; flight ticks `FUN_00516aae(dist in 1/256) / speed`; Lightning and Prismatic Spray (speed 60) are fixed at 5 (`0x519b41`); -1 on Bless/Haste/Curse/Slow is never read | CONFIRMED |
 | 8 | `distribution` | shape of the effect: 1 single target, 3 diamond area, 4 wall (line), 5 "field" (Blizzard, Acid Stream); `FUN_00518024`, `0x51baba`, `0x51bd1b` | CONFIRMED values 1, 4, 5; 3 = else branch of `FUN_00518024` |
-| 9 | `radius` | `"Radius, Length/2"`: carrier `+0x4d`; diamond = cells with `|dx|+|dy| <= r+1`, wall = `r` cells each way of the centre | CONFIRMED `0x51bbf4`, `0x5183a2`, `0x5182b6` |
+| 9 | `radius` | `"Radius, Length/2"`: carrier `+0x4d`; diamond = cells with `|dx|+|dy| <= r+1` of the square `r`; the wall uses a fixed 10 / 9-cell table and ignores `r` (corrected, [effects §6.2](../engine/effects.md#6-carriers)); the lifetime pulse scans the square `r` | CONFIRMED `0x51bbf4`, `0x5183a2`, `0x5182b6` |
 | 10 | `area_affect` | never read (0 everywhere) | CONFIRMED unread |
 | 11 | `area_duration` | area lifetime in 16-tick units; `ticks = p11*16 + level*16/10` (`0x51bcb7`, `FUN_005195b1`) | CONFIRMED |
 | 12 | `area_frequency` | never read: the area carrier pulses every 16 ticks (`0x517cfe`: `(+0x50 & 0xf) == 0`) | CONFIRMED unread |
@@ -110,7 +110,9 @@ in `FUN_004f3d68`, unit creation from `known_spells` bit n, `FUN_00511959`).
 
 `FUN_00519db8(caster, target, x, y)` (this = wrapper) is the effect routine; the carrier classes are the objects it builds.
 Level `L` = §6. "Carrier" = server object created, then applied to units as an *effect* (`FUN_0051ce12` merges effects of
-the same spell id by max value / max time; Bless and Curse replace each other).
+the same spell id by max value / max time; a Bless on a cursed unit only removes the Curse and vice versa). The effect object model, the merge,
+the per-tick pass, the stat switch and the area / cell rules: [effects](../engine/effects.md) (CONFIRMED). **Engine status** (`engine/sim/effects.py`):
+every row below is built except Prismatic Spray's chain (11, a counted no-op) and the structure targets of the carriers.
 
 | Handler | Spell numbers | Address / case | What it does |
 |---|---|---|---|
@@ -314,13 +316,14 @@ group pass; command `0x1f` = `FUN_0057033d` -> `FUN_0056d446` (order `0xe`, only
 Chebyshev `<=` range, else the move driver with stop distance = range); state `0xe` releases through `FUN_00519db8(caster, 0, x, y)`. Monsters: mana = `manaMax`
 (`0x5115a5`), skills = `spell_power` or `skill*` (mages), the book = the slot spells or the `known_spells` mask, the mage flag from the mask (ai §12.1).
 
-Engine (`engine/sim/spells.py`): the damage branch (I4a), **Heal 24** (`heal_release`, §4 row, `0x51a2b8`: no effect on an at-war target, HP > -10 and `+0x98 != 0`,
+Engine (`engine/sim/spells.py`; since phase K2 also `engine/sim/effects.py`, [effects](../engine/effects.md)): the damage branch (I4a), **Heal 24** (`heal_release`, §4 row, `0x51a2b8`: no effect on an at-war target, HP > -10 and `+0x98 != 0`,
 `min' + rand(1..spread')` capped at `maxHP - HP`, `FUN_00510484` with the revive `FUN_00510534`) and **Drain Life 26** (`drain_release`, `0x51a3f3`: astral protection,
-cap HP + 10, damage XP credit, hit reaction, last attacker, the caster heals the amount) are built; `FUN_0051fa4e(n)` = `rand(n - 1) + 1`. Every other handler (protections,
-Bless / Curse, Haste / Slow, Shield, Invisibility, Stone Curse, the area / field carriers of Fire Ball, Wall of Fire / Earth, Poison Cloud, Blizzard, Acid Stream, Darkness,
-Light, Teleport, the Prismatic Spray chain at cast start) is a **documented no-op**: mana, cast animation, windup and recovery run as in the exe,
-the release changes nothing and is counted in `World.unbuilt_casts` (spell number -> count; `stub_release`). Not a guess of the effect: they need the effect system
-(`FUN_0051ce12`, `+0x144` bits) and the carriers of §4 / §9b. **Summon 25 and Control Spirit 22 are built** (they create units, no effect object: `summon_release`, `raise_release`, [§9b](#9b-field-carriers-summons-raising-tooltip)) when the world carries its asset tables (`World.assets`, set by `from_map`).
+cap HP + 10, damage XP credit, hit reaction, last attacker, the caster heals the amount) are built; `FUN_0051fa4e(n)` = `rand(n - 1) + 1`. Phase K2 built the effect
+system and the other handlers ([effects](../engine/effects.md)): protections, Bless / Curse, Haste / Slow, Shield, Invisibility, Stone Curse (point carriers), Poison Cloud,
+Darkness, Light, Wall of Fire, Wall of Earth (area carriers with the cell slots), Fire Ball (missile + apply-once square), Blizzard and Acid Stream (field carriers),
+Teleport. Still a **documented no-op** counted in `World.unbuilt_casts` (`stub_release`): the Prismatic Spray chain (11, at cast start) and a unit-target Control
+Spirit. The spell-damage XP credit now passes the spell number (`FUN_00513128(victim, dmg, spell)`: a mage earns into the sphere, a non-mage nothing; before, the
+engine paid the weapon school). **Summon 25 and Control Spirit 22 are built** (they create units, no effect object: `summon_release`, `raise_release`, [§9b](#9b-field-carriers-summons-raising-tooltip)) when the world carries its asset tables (`World.assets`, set by `from_map`).
 
 ## 9b. Field carriers, summons, raising, tooltip
 

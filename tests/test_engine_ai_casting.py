@@ -269,7 +269,7 @@ def test_an_ai_cast_repeats_until_the_next_pass_and_a_player_cast_does_not():
     assert len(starts) >= 2 and m.mode_cast and m.mana == 50 - 3 * len(starts)
 
 
-def test_cell_cast_order_mode_9_approaches_turns_and_casts_with_an_unbuilt_effect():
+def test_cell_cast_order_mode_9_approaches_turns_and_casts_a_poison_cloud():
     w = world()
     m = monster(w, 1, 12, 20, known=mask(6), mana=60, mind=30, skills=(30,) * 5)
     sim = Simulation(w, systems=[__import__("engine.sim.movement", fromlist=["x"]).movement_system])
@@ -277,7 +277,9 @@ def test_cell_cast_order_mode_9_approaches_turns_and_casts_with_an_unbuilt_effec
     emitted(w)
     run(sim, 120)
     starts = [e for e in w.fight_log if isinstance(e, CastStarted)]
-    assert starts and starts[0].target is None and m.x == 24 - 7 and w.unbuilt_casts.get(6, 0) >= 1
+    assert starts and starts[0].target is None and m.x == 24 - 7
+    clouds = [c for c in w.carriers if c.kind == "area" and c.spell == 6]      # the release builds the area carrier (effects.md 3); no carrier pass here
+    assert clouds and clouds[0].centre == (24, 20) and not w.unbuilt_casts
     assert m.mana == 60 - 30 * len(starts)
 
 
@@ -290,7 +292,8 @@ def test_player_cell_cast_command_0x1f():
     sim.step([CastSpell(1, (m.id,), 6, None, cell=(22, 20))])
     assert m.order == spells.CELL_ORDER and m.cast_cell == (22, 20)
     run(sim, 40)
-    assert [e for e in w.fight_log if isinstance(e, CastStarted)] and w.unbuilt_casts.get(6) == 1   # a player's cast stops after one
+    assert len([e for e in w.fight_log if isinstance(e, CastStarted)]) == 1   # a player's cast stops after one
+    assert (22, 20) in w.cell_fx and not w.unbuilt_casts                       # the Poison Cloud stamped its cells (effects.md 6.2)
 
 
 # --- Heal and Drain Life (spells.md 4) -----------------------------------------------------------------------------------------------
@@ -350,11 +353,11 @@ def test_drain_life_protection_cap_attacker_and_caster_heal():
 
 def test_unbuilt_releases_are_counted_not_guessed():
     w = world()
-    m = monster(w, 1, 20, 20, known=mask(18), mana=50, mind=30, skills=(30,) * 5)
+    m = monster(w, 1, 20, 20, known=mask(22), mana=50, mind=30, skills=(30,) * 5)
     t = hero(w, 2, 21, 20)
     from engine.world import SpellCast
-    spells.cast_release(w, m, SpellCast(18, target=t.id), m.combat)
-    assert w.unbuilt_casts == {18: 1} and t.hp == 500
+    spells.cast_release(w, m, SpellCast(22, target=t.id), m.combat)            # Control Spirit at a unit: its cell form is built, this one not
+    assert w.unbuilt_casts == {22: 1} and t.hp == 500
     assert not [e for e in w.fight_log if isinstance(e, CastReleased)]
 
 
