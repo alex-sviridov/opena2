@@ -13,7 +13,7 @@ from that layout. Everything marked CONFIRMED is a routine checked in the exe; n
 
 * **Single player keeps the party in memory.** The campaign maps hold no hero of the human ([triggers §9](../engine/triggers.md#9-the-party-at-map-start-fun_004f2c83)).
   The hero is created once (new game: the character screen sends message `0x48` with strength / dexterity / mind / spirit / school /
-  flags, handler `FUN_004f6af6` -> `FUN_004f254b`, [triggers §9.3](../engine/triggers.md#93-a-fresh-character-fun_004f254bplayer-str-dex-mind-spirit-school-flags))
+  flags, handler `FUN_004f6af6` -> `FUN_004f254b`, [triggers §9.3](../engine/triggers.md#93-a-fresh-character-fun_004f254bplayer-str-dex-mind-spirit-school-flags-confirmed))
   and stays in the player's unit list (`player+0x24`, main hero `player+0x38`) across the whole campaign. The server object is not
   rebuilt between missions: the end-of-mission routine `FUN_004ebd5f` (§4) cleans the map and keeps the humans' units.
 * **A saved game** (`game%d.sav`, §6) serialises the whole server (players, creatures with their items, map state, script state) plus the

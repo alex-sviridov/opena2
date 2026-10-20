@@ -43,7 +43,7 @@ Other creation sites (all `Creature`/`Leaf`): 0x4f312a (server spawn of a type l
 
 ### Hierarchy / class order of the creature creation path (map load, FUN_00561bf9)
 1. owner: `FUN_0051680d(0x68d2c4 player mgr, mapunit+0x14 as word)`; missing -> error log + skip. If `[0x6044c4+0x174]` and `player+0x2c` both set -> skip (`player+0x2c` = computer-controlled, CONFIRMED [progression](../data/progression.md#4-xp-sources); the skip is a multiplayer filter, INFERRED).
-2. alloc + ctor by template name (above). Difficulty tweak (`[0x6044c4+0xd8]`: 2 skip; 1: maxHP*=const `0x5d1b00`, HP=maxHP, brain+0x44>>=1; else +0x32 to words +0xa6,+0xbe and maxHP*=`0x5d1b08`). CONFIRMED 0x561e20-0x561f0b ; modes: 1 easy, 2 normal (server ctor default `0x4e97bf`), 3 hard, setter `0x493d80` from window `0x4891d8`: [ai §10.1](ai.md#101-difficulty-tweak-fun_00561bf9-0x561e200x561f0b-confirmed) CONFIRMED.
+2. alloc + ctor by template name (above). Difficulty tweak (`[0x6044c4+0xd8]`: 2 skip; 1: maxHP*=const `0x5d1b00`, HP=maxHP, brain+0x44>>=1; else +0x32 to words +0xa6,+0xbe and maxHP*=`0x5d1b08`). CONFIRMED 0x561e20-0x561f0b ; modes: 1 easy, 2 normal (server ctor default `0x4e97bf`), 3 hard, setter `0x493d80` from window `0x4891d8`: [ai §10.1](ai.md#101-difficulty-tweak-fun_00561bf9-0x561e20-0x561f0b-confirmed) CONFIRMED.
 3. `mapunit+0x50` bits -> creature dwords: bit0 -> +0x194, bit1 -> +0x19c, bit2 -> +0x198, bit3 -> +0x1a0 (0/1). CONFIRMED 0x561f0f-0x561f77.
 4. if word +0xe == 0 -> error "bad unit" and delete. vtable +0x58 (recompute from template; 0x5118be for monsters).
 5. HP: if human bit and mapunit s16 +0x22 != -1 and == s16 +0x20 -> both set to -1. then `+0x96 = mapunit.s16(+0x22)` if != -1; `+0x94 = mapunit.s16(+0x20)` if != -1 else `+0x94 = +0x96`. CONFIRMED 0x562013-0x562099. (so file+36 = HP, file+38 = maxHP override, -1 = template value)
@@ -137,7 +137,7 @@ FUN_00558b3d turn step, FUN_0055be86). Move result is sent as message 0x6d (FUN_
 
 ## 3. Per-tick behaviour (CONFIRMED)
 - vtable +0x18 (0x50f12c, 5d0eb0 slot 0x18): skip if state 0x10; run effects list (+0x20); if HP<=0: order=0, state=0, first time calls 0x510745 + halves defence word, +0x6c = vtable+0x74()-1 (dying time), notify 0x4001; countdown, then HP=-1000 for movementType>1, at HP<=-10 state=0x10 and FUN_00510a70 (remove from world, notify 0x282000). Else dispatch state.
-- vtable +0x14 (0x50fc5a): called once per 16-tick block (job `tick&15==12`); `[0x6044c4]` is the BLOCK counter, so HP regeneration runs when `block&3 == id&3` (every 64 ticks per unit), mana every block; see [combat §12.5](combat.md#125-regeneration-vtable-14-fun_0050fc5a-and-the-open-question-3-of-simulationmd): HP/mana regeneration `(HP*100+acc + maxHP*2*(100+bonus)*k/regen)/100`, k=3 if FUN_0050fc3e > 0x50 else 1; HP<0 loses 1 per 4 blocks (64 ticks). Notify 0x502019 kinds 1 (HP) / 2 (mana).
+- vtable +0x14 (0x50fc5a): called once per 16-tick block (job `tick&15==12`); `[0x6044c4]` is the BLOCK counter, so HP regeneration runs when `block&3 == id&3` (every 64 ticks per unit), mana every block; see [combat §12.5](combat.md#125-regeneration-vtable-0x14-fun_0050fc5a-and-the-open-question-3-of-simulationmd): HP/mana regeneration `(HP*100+acc + maxHP*2*(100+bonus)*k/regen)/100`, k=3 if FUN_0050fc3e > 0x50 else 1; HP<0 loses 1 per 4 blocks (64 ticks). Notify 0x502019 kinds 1 (HP) / 2 (mana).
 - Damage code and client deltas are sent via FUN_00502019(0x6831a8, creature, kind, 0xffb, ...).
 
 ## 4. Client mirror (view unit 0x1e4, built by FUN_004699d2 from the creature) - cross-check
@@ -387,12 +387,12 @@ the player and its colour ([map.md part 5](../formats/map.md#part-5-players-unit
 supplies the item tables for the pack (`+0x7c`), the weapon / second item (`+0x74`, `+0x78`) and
 the 13 equipment slots (human `+0x208`). Id tables: units.reg, data.bin groups 3–6 and 8, item codes.
 
+## Cell record effect (CONFIRMED)
+
+Cell record effect `+0x34..+0x39`: `FUN_0055ba36(cell, effect6)` (`0x55ba36`) copies a 6-byte effect (`FUN_0055b978`) into the record, creating it when missing (`FUN_005508a0`); refused when the live cell has bit 0 set (`+0x20000 & 1`).
+  Its only callers are `0x564280` (map load `FUN_00562745`, from a map record: x/y at `+8`/`+0xc`, effect bytes from the list at `+0x1a`) and `0x57853b` (scenario instant function `FUN_0057847e`, effect from args `+0x18..+0x24`). Readers: place (`0x5503af`, on entering a cell) and step end (`0x555c50`): id `0x17` = Teleport -> `brain+0xb0 = (rec+0x39 << 8) | rec+0x38`, consumed by `FUN_0055a96c`; other ids start a spell via `FUN_00519408` / server `0x4f0832`/`0x4f086f`. `CMap::Serialize` of the record table (`0x55f6b0`, raw `0x3c` bytes per record via `0x55fff0`) has no direct caller (vtable `0x5d1ab8` slot 8 only), so records are not restored from a stream. **Feeders (CONFIRMED by a census of the 46 campaign maps)**: map section 9 per-cell payloads (30 records in maps 76, 93-96, [map](../formats/map.md#open-questions)) and the Set trap instant 25 ([triggers §4](triggers.md#4-instants-fun_00574f3f); 9 records in maps 53, 93-96). The engine has no cell effects (needs the spell system).
+
 ## Open questions
 
-- Not traced: the occupancy stamps (`0x55c1fe`, `0x55c2ce`; the path finder is [simulation §7](simulation.md#7-pathfinding-phase-h2)), the group
-  AI (`0x5691xx`–`0x56c9xx`: `0x56c840`, `0x56a981`, `0x56b059`, `0x56f0bb`), the structure damage `0x516ea0`, the cast request
-  consumer `0x57b210`, order 0x1a (orders 1, 0xc and 3 are done: [simulation §8](simulation.md#8-orders-h3), [combat](combat.md)), the
-  wire format of `FUN_005040c4`. Damage resolution (`0x516ceb`, `0x516f6f`) and the attack order are [combat](combat.md) (I1).
+- Not traced: the structure damage `0x516ea0` (an attack on a structure, [combat](combat.md) section 10), the wire format of `FUN_005040c4` (client message sender; the simulation does not need it).
 - Meaning of the event classes of the three scenario booleans `+0x194`, `+0x198`, `+0x19c` (`FUN_005303ed`).
-- Cell record effect `+0x34..+0x39` (**writer found, CONFIRMED**): `FUN_0055ba36(cell, effect6)` (`0x55ba36`) copies a 6-byte effect (`FUN_0055b978`) into the record, creating it when missing (`FUN_005508a0`); refused when the live cell has bit 0 set (`+0x20000 & 1`).
-  Its only callers are `0x564280` (map load `FUN_00562745`, from a map record: x/y at `+8`/`+0xc`, effect bytes from the list at `+0x1a`) and `0x57853b` (scenario instant function `FUN_0057847e`, effect from args `+0x18..+0x24`). Readers: place (`0x5503af`, on entering a cell) and step end (`0x555c50`): id `0x17` = Teleport -> `brain+0xb0 = (rec+0x39 << 8) | rec+0x38`, consumed by `FUN_0055a96c`; other ids start a spell via `FUN_00519408` / server `0x4f0832`/`0x4f086f`. `CMap::Serialize` of the record table (`0x55f6b0`, raw `0x3c` bytes per record via `0x55fff0`) has no direct caller (vtable `0x5d1ab8` slot 8 only), so records are not restored from a stream. Left open: which map section / scenario instant feeds `0x564280` / `0x57853b` and whether the 46 campaign maps use any (engine has no cell effects; needs the spell system).

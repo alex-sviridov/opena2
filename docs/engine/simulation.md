@@ -933,7 +933,7 @@ HP > 0 test stands in for it, 8.1).
 
 **Orders and group handlers still to build:** `0x17` guard (G), `0x12` (L), `0x14` (R) next to the `0x18` stand ground done here;
 `0x19` attack (`+0xe`, order 3), `0x1a` swarm (formation + group order 5, handler `572e1e`), `0x1b` follow (group `570c84`, orders 8/0x11),
-`0x1d` patrol (0xa). **All group handlers are decoded: [ai §14](ai.md#14-the-other-group-orders)** (1 `57275f`, 2 `572d57`, 3 `57309d`, 5 `572e1e`, `0x11`
+`0x1d` patrol (0xa). **All group handlers are decoded: [ai §14](ai.md#14-the-other-group-orders-confirmed-fun_005700f3-dispatch-engine-implemented-see-the-end-of-this-section)** (1 `57275f`, 2 `572d57`, 3 `57309d`, 5 `572e1e`, `0x11`
 `572ec4`, `0x13` `57311c`, `0xff` `573159`, `0x12` `5728fa`). Implemented with the AI on: order 3 (the stand-ground pass attacks hostiles it sees
 that are adjacent, or in range for ranged units: a pool + score pass, not the guard scan) and the guard scan of the stopped members of a move group (order 4);
 with the AI off the human units still never react (no enemies exist in those sims). Orders 1, 2, 5, `0x11`, `0x13` wait for their commands.
@@ -995,7 +995,7 @@ idle-animation timers such as `FUN_004cae28`, text effects) are interleaved with
 rule), one instance owned by the `World` (`World.rng`), seeded per game (default 1 = an unseeded CRT; `engine run` picks the clock and prints
 it; the session log keeps it). Every system in `sim/` draws from it in update order and nowhere else (no Python `random`; a test scans the
 imports); the view and backend have their own generators. So **our sequence equals the original algorithm's for the same seed; it does not
-equal a recorded original session** (seed from the clock + client draws). Draw order inside a hit: [combat §5.2](combat.md#52-take_hit-fun_00516f6f-confirmed-vtable-54-of-every-creature-class).
+equal a recorded original session** (seed from the clock + client draws). Draw order inside a hit: [combat §5.2](combat.md#52-take_hit-fun_00516f6f-confirmed-vtable-0x54-of-every-creature-class).
 The state is part of `World.dump()` once it differs from its initial value (old goldens unchanged).
 
 ## 11. Exe answers (follow-up of H1-H3)
@@ -1020,7 +1020,4 @@ Effect on the engine: before, a unit that was turning had no reservation, and tw
 
 ## Open questions
 
-4. Group orders 1, 2, 5, 0x11, 0x13 and the G / L / swarm commands are built ([ai §14.1](ai.md#141-implementation-and-the-asm-details-it-rests-on-confirmed-unless-marked)); the Scenario instants that would set them are missing;
-   the retreat post step `FUN_00573713` is decoded (§9 hook); its spell branches and the hidden-enemy detection `FUN_00556dcd` remain.
-8. `FUN_005728fa` (group order 0x12 handler, reader of `brain+0x16`): the full per-tick behaviour of guarding computer-player groups and the home-cell restart (`FUN_0056c8af`, `brain+0x9c`).
-10. `FUN_0051c391` / spell record `+9`, `+0xc`: confirm that they are spell range and mana cost (used by `FUN_0056ac5b`).
+1. The player commands `0x1b` (follow / defend a unit) and `0x1d` (patrol), `0x21` pickup, `0x24` use, `0x1f` (cast at a cell) and the town order: the simulation side of follow / patrol is built ([ai §14.2](ai.md#142-the-unit-orders-of-the-scripted-sub-commands-10-11-14-15-confirmed), `engine/sim/follow.py`), but the engine has no `Command` for them and `OrderInput.release` issues nothing (the cursor modes exist; mode 8 patrol is unreachable in the exe, [research §1.4](click-to-move-research.md)). Also the squad voice (no sound engine) and the consolidated VERIFY IN GAME list of §9 (items 1-11).

@@ -260,4 +260,5 @@ mode 1 when no tooltip is active, else the single selected object (`view+0x140 =
 - Which bottom bar is shown first; meaning of mouse-manager `+0x9c`; the purpose of the 30 px top strip.
 - `FUN_004b011e` (text vs human panel) and the command-bar contents (`FUN_004adcea`, `FUN_004aff34`, `FUN_004b0a10`).
 - Hover brightness exact effect; structure picking rects (types and `+0x64` / `+0x8c` flags in data.bin).
-- Names of orders (command bytes) and the squad voice `FUN_0041da16`.
+- The squad voice samples (`FUN_0041da16` is decoded, [research §6.2](click-to-move-research.md); needs a sound engine).
+- Main shell: which main-menu entry and screen-state chain lead to state `0x425` (new single-player game, [ai §10.1](ai.md#101-difficulty-tweak-fun_00561bf9-0x561e20-0x561f0b-confirmed)); the only known entry is state `0x438` index 6..9 of the widget `this+0x134`. Needed before an engine new-game screen.

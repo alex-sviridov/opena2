@@ -45,7 +45,7 @@ Group record = `group+0x3c` (shared with the command groups, [click-to-move §4.
 `FUN_0057026e`: `FUN_0056f850` (the stats above), `+0x2d = +0x38 := +0x2c`; then `if +0x2d < MinimalGuardRange: +0x2d = +0x38 := 0x14`
 (20); `+0x39 := 0`. `MinimalGuardRange` = registry key `Scanning\MinimalGuardRange` read at `0x5683a7` (`FUN_004e6f9f`) with default 10; the
 install's `world/data/map.reg` has no such key (only `ScanShift`), so **10** (CONFIRMED by scanning the file). The human's squads get
-group order 3 instead (`FUN_00562745`, [§14](#14-the-other-group-orders)).
+group order 3 instead (`FUN_00562745`, [§14](#14-the-other-group-orders-confirmed-fun_005700f3-dispatch-engine-implemented-see-the-end-of-this-section)).
 
 ## 3. The group pass `FUN_005728fa` (CONFIRMED, asm `0x5728fa`-`0x572d54`)
 
@@ -204,7 +204,7 @@ living one with the smallest facing change (`<=`, the last of equals wins; start
 
 ## 7. Guard scan `FUN_0056a1fb` (CONFIRMED)
 
-Not run by the handler itself: it is the scan of `FUN_0056afac(u, 0)`, used by the retreat step (§9), by `FUN_0056acc8` and by the group pass of the human's stopped units (group order 4, [§14](#14-the-other-group-orders)) and of empty-order groups (`0xff`); the stand-ground pass (order 3) does **not** use it. Candidates
+Not run by the handler itself: it is the scan of `FUN_0056afac(u, 0)`, used by the retreat step (§9), by `FUN_0056acc8` and by the group pass of the human's stopped units (group order 4, [§14](#14-the-other-group-orders-confirmed-fun_005700f3-dispatch-engine-implemented-see-the-end-of-this-section)) and of empty-order groups (`0xff`); the stand-ground pass (order 3) does **not** use it. Candidates
 are the single-unit pool built by `FUN_00569fd4` (same steps as §4 with only this unit's sight flood, then `FUN_00567a16`, `FUN_00567ddf`).
 `best` starts empty with `bestgap = range + 1` (`range = FUN_0056ac5b`, byte arithmetic); for each candidate `c` with `FUN_005711ea(u, c) !=
 0xffffff`: `g = reach_gap(u, c)` (`FUN_00556dcd`), `+1` if `class(c) == 3 and class(u) != 3`, `a = FUN_0055aa21(facing octant(u,c), u.facing)`;

@@ -525,10 +525,8 @@ player's (and broadcast id 0) messages and drops the rest (`drain_no_way`).
 
 ## 9. Open questions
 
-1. Group handlers for orders 5 (swarm `572e1e`), 1/3/0x13 (`57275f`, `57309d`, `57311c`) and the computer players' branch of the pass.
-2. `FUN_00556dcd` (detection level used by `FUN_00567a16` for hidden enemies) and the spell branches of the post step (`FUN_0056bb0d` kind `0x17`, `FUN_0056cb8c`, `FUN_0056969c`).
-3. The per-order voice slots beyond the unit pick (sound engine, out of scope).
-6. `FUN_00582a10` heap: the block after the `+0xb8` table (`(H+10)(W+6)` dwords); the last-row read of `FUN_00417f31` for panel column `W+3`/`W+4` (INFERRED skipped, result `H+4`).
+1. The per-order voice slots beyond the unit pick (sound engine, out of scope; the pick itself is §6.2).
+2. `FUN_00582a10` heap: the block after the `+0xb8` table (`(H+10)(W+6)` dwords); the last-row read of `FUN_00417f31` for panel column `W+3`/`W+4` (INFERRED skipped, result `H+4`).
 
 ## 10. Corrections to the existing docs (applied)
 

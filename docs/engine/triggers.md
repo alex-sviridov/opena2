@@ -349,7 +349,7 @@ campaign maps do not need it: scripts that name a hero not in the party change i
 ## Open questions
 
 * `FUN_005563ca` / `FUN_0055c5a0` (the free-cell test of `FUN_00510089` and of the teleport `FUN_0055a928`, which calls it twice with the flag 0 and 1).
-* The item rules of `FUN_00529ae2` (add: stacking, weight / capacity limits) for instants 11, 12, 28; the hidden caster of instants 21 / 24 (`FUN_004f06ac` appends it to the list at `server+0x2c`; whether it ticks like a creature); the reader of the cell record of instant 25.
+* The item rules of `FUN_00529ae2` (add: stacking, weight / capacity limits) for instants 11, 12, 28; the hidden caster of instants 21 / 24 (`FUN_004f06ac` appends it to the list at `server+0x2c`; whether it ticks like a creature); instant 25 (Set trap) writes the cell record described in [unit-struct](unit-struct.md#cell-record-effect-confirmed).
 * Where single player posts the ready message (type 4, `FUN_0041c50d` <- UI window `FUN_0048c8a3`) relative to the first tick; the "already on
   the map" test `FUN_0055641c` / `FUN_00551edb` of §9.2; the second loop of `FUN_00562518` for units by name (§9.5).
 * The window message `0x41d` and the mission-complete dialog's buttons (`0x486ddb`); Scenario variable `0x300`.

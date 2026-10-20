@@ -208,7 +208,7 @@ effect bonus block (`bonus_hp`/`bonus_mana`, no template has one), re-running th
 Carry-over of hero state between maps (CONFIRMED, [saves](../formats/saves.md)): the maps hold nothing (§6 above); in single player the heroes simply stay in the player's unit list when the server
 cleans the map (`FUN_004ebd5f`: effects removed, summons deleted, humans keep XP / items / spells and get HP and mana at their maxima). The hero *record* (`.a2c`, `FUN_004ea6ab`: template
 `Start_MF/FF/MM/FM` by `byte(+0x2c) & 0xc0`, four base attributes, five XP pools, spell mask, 12 equipped items, pack, gold, statistics) is the network join path and the saved character list; skills
-are not stored (`level_of(pool)`). A fresh character: [triggers §9.3](../engine/triggers.md#93-a-fresh-character-fun_004f254bplayer-str-dex-mind-spirit-school-flags). The exe's `FUN_00514920`
+are not stored (`level_of(pool)`). A fresh character: [triggers §9.3](../engine/triggers.md#93-a-fresh-character-fun_004f254bplayer-str-dex-mind-spirit-school-flags-confirmed). The exe's `FUN_00514920`
 is the equipment-string loop inside the template constructor `FUN_005145d1`, not a load routine.
 
 ## 7. Tests

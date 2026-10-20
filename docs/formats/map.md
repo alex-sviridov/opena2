@@ -610,7 +610,7 @@ HP = max HP); a human (flag `0x10`) whose `hp == max_hp` is reset to "default" (
 are not in the record.
 
 **Difficulty** (CONFIRMED, `FUN_00561bf9` `0x561e20`–`0x561f0b`; settings `+0xd8` = game option,
-set to selector + 1 by the game-setup window `0x4891d8` (setter `0x493d80`), default 2 = the server ctor `0x4e97bf`; modes 1 easy / 2 normal / 3 hard; see [ai §10.1](../engine/ai.md#101-difficulty-tweak-fun_00561bf9-0x561e200x561f0b-confirmed)): runs only when settings `+0x74` is 0 (single player) and the mode is not 2.
+set to selector + 1 by the game-setup window `0x4891d8` (setter `0x493d80`), default 2 = the server ctor `0x4e97bf`; modes 1 easy / 2 normal / 3 hard; see [ai §10.1](../engine/ai.md#101-difficulty-tweak-fun_00561bf9-0x561e20-0x561f0b-confirmed)): runs only when settings `+0x74` is 0 (single player) and the mode is not 2.
 Mode 1: max HP = trunc(max HP × 0.5) (`0x5d1b00`), HP = max HP, brain `+0x44` (low-HP threshold,
 compared at `0x56cb28`) `>>= 1`. Mode 3: words `+0xa6` and `+0xbe` += 50, max HP = trunc(max HP ×
 1.5) (`0x5d1b08`), HP = max HP. It runs before the HP override, so overrides are not scaled. The

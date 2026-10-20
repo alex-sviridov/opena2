@@ -35,7 +35,7 @@ Records with no params are editor slots and are skipped (61 monster slots). Mons
 Column labels come from data.bin ([databin § Column names](../formats/databin.md#column-names)); `fields`
 in `UnitType` uses the snake_case names below (`field_name`). Every value is the raw param; **-1 = keep the
 constructor default** for all fields (CONFIRMED `0x5425c0/0x542610/0x542660`: a -1 param is skipped). "Struct" is the
-Creature offset ([unit-struct](../engine/unit-struct.md#2-creature-layout-server-0x208-0x254)).
+Creature offset ([unit-struct](../engine/unit-struct.md#2-creature-layout-server-0x208--0x254)).
 
 ### Monsters (62 params; humans: see below)
 
@@ -106,7 +106,7 @@ equipped weapon, defence from `defence` + armour, and the 0x254 constructor (`FU
 
 Each row's "Struct" column is the field the value initialises. Map section 6 replaces only
 **HP**: `hp`/`max_hp` (-1 = template, §4 of [unit-struct](../engine/unit-struct.md#hierarchy--class-order-of-the-creature-creation-path-map-load-fun_00561bf9)),
-a human (flag `0x10`) with `hp == max_hp` is reset to default and keeps the *recomputed* maximum ([progression §6](progression.md#6-hero-start): the template `healthMax` of humans is never used), `behaviour` bits set `+0x194…+0x1a0`, and the difficulty tweak (easy: HP x0.5 and wimpy halved; hard: HP x1.5, to-hit and defence +50; **default normal = off**, [ai §10.1](../engine/ai.md#101-difficulty-tweak-fun_00561bf9-0x561e200x561f0b-confirmed); implemented behind `World.from_map(difficulty=)`) scales
+a human (flag `0x10`) with `hp == max_hp` is reset to default and keeps the *recomputed* maximum ([progression §6](progression.md#6-hero-start): the template `healthMax` of humans is never used), `behaviour` bits set `+0x194…+0x1a0`, and the difficulty tweak (easy: HP x0.5 and wimpy halved; hard: HP x1.5, to-hit and defence +50; **default normal = off**, [ai §10.1](../engine/ai.md#101-difficulty-tweak-fun_00561bf9-0x561e20-0x561f0b-confirmed); implemented behind `World.from_map(difficulty=)`) scales
 max HP and halves the brain's `+0x44` (wimpy). Nothing else in the record is overridden by the map (CONFIRMED
 `0x562013-0x562099`, `0x561e20-0x561f0b`). `World._load_units` reproduces the HP rule (humans take `progression.derived_vitals`, see progression §6) and keeps the full
 template in `Unit.stats` for the later systems (movement, combat, AI, loot).
@@ -146,5 +146,5 @@ pairs resolve (exclusion list empty), range checks (HP > 0 except `ManMage_Unarm
 
 ## Open questions
 
-- Damage kinds 1/2 and the record layout are answered by [combat §5.2, §6](../engine/combat.md#52-take_hit-fun_00516f6f-confirmed-vtable-54-of-every-creature-class) (no monster uses kind 1 or 2; kind 3 = sure hit).
+- Damage kinds 1/2 and the record layout are answered by [combat §5.2, §6](../engine/combat.md#52-take_hit-fun_00516f6f-confirmed-vtable-0x54-of-every-creature-class) (no monster uses kind 1 or 2; kind 3 = sure hit).
 - None open for the hero carry-over: single player keeps the heroes in memory, the `.a2c` record is [saves](../formats/saves.md). (Equipment strings are resolved: [items §9](items.md#9-equipment-strings).)

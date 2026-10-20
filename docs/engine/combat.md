@@ -321,7 +321,7 @@ Files: `engine/rng.py`, `engine/sim/combatstats.py`, `engine/sim/combat.py`, `en
    and attackers keep hitting the body until the executor sees state `0x10` (12.2, section 13).
 2. **Retaliation, XP, weapon spells, mage spells, structure targets, ranged hit sound/arrows:** not in I1 (section 10).
 3. **Pathing failure under order 3:** mode 0 (no auto scan), restored by the executor.
-4. **Difficulty:** the map-load tweak of monster to-hit/defence (`[0x6044c4+0xd8]`, [unit-struct §1](unit-struct.md)) is implemented as an option (hard: to-hit and defence +50 via `monster_stats(hard=)`); the default is mode 2 = skip, so the shipped behaviour is unchanged ([ai §10.1](ai.md#101-difficulty-tweak-fun_00561bf9-0x561e200x561f0b-confirmed)).
+4. **Difficulty:** the map-load tweak of monster to-hit/defence (`[0x6044c4+0xd8]`, [unit-struct §1](unit-struct.md)) is implemented as an option (hard: to-hit and defence +50 via `monster_stats(hard=)`); the default is mode 2 = skip, so the shipped behaviour is unchanged ([ai §10.1](ai.md#101-difficulty-tweak-fun_00561bf9-0x561e20-0x561f0b-confirmed)).
 5. **Seed:** per game, explicit (section 2 of simulation §10).
 6. **Ranged attacks** (range > 1) use the same code: wind-up + `extra`, no projectile in the simulation; the visual arrow is a view matter (not drawn yet).
 7. **Stats are built lazily** (`combat_stats(world, unit)`, from `Unit.stats`, `World.item_table`, `Unit.skills`) and cached in `Unit.combat`; a skill-up or an
@@ -578,7 +578,7 @@ the selection summary (`FUN_004167c2`) counts the objects with the selected flag
 ### 12.7 XP at a kill
 
 The kill credit is paid **at the removal tick** (12.3 (c), `0x52b6c7`..`0x52b84a`), not at HP <= 0. Chain: `victim+0x40` (last attacker, written by `take_hit` **at every hit** that has an
-attacker template, the last one wins, [5.2](#52-take_hit-fun_00516f6f-confirmed-vtable-54-of-every-creature-class)) must be an object whose owner exists (else cleared, `0x52b4b0`). Killer type `0x21..0x3f` and HP not < 0
+attacker template, the last one wins, [5.2](#52-take_hit-fun_00516f6f-confirmed-vtable-0x54-of-every-creature-class)) must be an object whose owner exists (else cleared, `0x52b4b0`). Killer type `0x21..0x3f` and HP not < 0
 (`FUN_00542770`) -> killer vtable `+0x68` (`FUN_00512fcb`, humans only; monsters' slot `0x5423e0` is a stub) with `(victim, spell byte +0x48)`. Details, amount (`0.5 * victim.xp` through the repeat-kill discount), repeat list, schools:
 [progression §4](../data/progression.md#4-xp-sources); not repeated here. Only the unit in `+0x40` gets the kill credit (no party / group share); the others got per-damage XP only. Kill counters:
 victim type `0x21..0x3f` -> `owner+0xa4c += 1`, `[killer-owner + ...]` message `0x94` if `[0x6044c4+0x74] != 0` (net, ignore); else `owner+0xa48 += 1`; message `0x2000000` to the killer's owner; per-owner kill table byte
@@ -619,11 +619,10 @@ decay `-1` per 32 ticks on even blocks with the stage table of 12.6. Do not rele
 
 ### 12.11 Open questions
 
-1. Who resets the dialog latch `[this+0x3e8]` (the main-hero pointer `owner+0x38` is written by `FUN_004f254b`, [triggers §9.3](triggers.md#93-a-fresh-character-fun_004f254bplayer-str-dex-mind-spirit-school-flags)) (start: callers of `FUN_00505347`: `0x4f0b71`, `0x4f0c67`, `0x4f3d68`, `0x4f515d`, `0x505d02`, `0x5162f6`). Answered in [triggers](triggers.md): `0xb5` / `0xb4` with a cause come from the victory / defeat pass `FUN_004f856a` (§6), `0xb6` is the script message `FUN_00505204` (§4: `0xfd` / `0xfe` are the sub-objective messages), and `owner+0x40` is the mission state byte that pass reads.
+1. Who resets the dialog latch `[this+0x3e8]` (the main-hero pointer `owner+0x38` is written by `FUN_004f254b`, [triggers §9.3](triggers.md#93-a-fresh-character-fun_004f254bplayer-str-dex-mind-spirit-school-flags-confirmed)) (start: callers of `FUN_00505347`: `0x4f0b71`, `0x4f0c67`, `0x4f3d68`, `0x4f515d`, `0x505d02`, `0x5162f6`).
 2. Summon-cap job (12.6): MFC `CMap` iteration order decides the order of the per-key RNG draws when two or more masters have minions: CONFIRMED now: table size 17 (`0x5457a5`), hash `key >> 4` mod 17 (`FUN_004a1120`, `0x545a60`), new node at the head of its bucket chain (`0x545a0f`-`0x545a46`). Built with the Summon spell (`spells.minion_job`) with the keys in **first-appearance order** instead, because the key is the master's network id (`unit+4`, a free id of the table `0x6c9628`) which the engine does not assign: exact for one master; open: the `unit+4` ids of map units and heroes, to reproduce the bucket order.
 3. What the pile, pickup and the equip path keep of a dropped template item's effect text (`{castSpell=Fire_Arrow:5}` on shaman staves): the engine's pile code is 16 bits and loses it (start: `FUN_00529ac2`, `FUN_0052a71d`, item object `+0x50` effects).
 4. Sound tables (the engine has no audio): which `.res` / data.bin entries are the unit sound set entries `k + 1` (`FUN_00467e42`, template `+0x24` -> `FUN_00420e30` -> `FUN_00402880`), the hero voice samples (`FUN_00468094 +0x50..+0x58`) and the UI sound `0x627740[0xf]` of the skill-up line (start: `FUN_00420e30`, `FUN_00420eb0`, `0x481967` scenario.dll ordinal loader).
-5. Listeners of the server event queue: answered in [16.4](#164-death-the-event-queue-and-the-trigger-runtime) (quest records; kinds listed); the quest system itself is open question 1 at the end.
 
 ## 13. Engine (I2): death, corpses, XP, loot, regeneration
 
@@ -682,7 +681,7 @@ Timeline (tests): order at tick T0; the next `tick & 15 == 6` is `P`; `CastStart
 
 Decisions (INFERRED unless marked): the cell cast (`0x1f`, order `0xe`, Brain mode 9, state `0xe`) is built in phase K ([spells §9d](../data/spells.md#9d-ai-casts-cell-casts-and-the-built-handlers-phase-k)); a missing target id stops the unit like an attack does; a caster is "gone" when it left `world.units`;
 spell damage goes through the exe's own `take_hit_detail` (the to-hit roll is drawn even for a spell, CONFIRMED structure of `FUN_00516f6f`); a monster caster's level uses `spell_power` / the mage skills and the
-template mind (phase K, [ai §12.1](ai.md#121-creature-set-up-fun_005114f3-monsters-0x5115860x511f44)); the target `brain+0xa4/+0xa8` stamps are written (`AiState.spell_mark`); the Invisibility break of the caster (`FUN_005106d2(0xc)`) needs the effect system and is not modelled;
+template mind (phase K, [ai §12.1](ai.md#121-creature-set-up-fun_005114f3-monsters-0x511586-0x511f44)); the target `brain+0xa4/+0xa8` stamps are written (`AiState.spell_mark`); the Invisibility break of the caster (`FUN_005106d2(0xc)`) needs the effect system and is not modelled;
 a staff has no charge counter; pack items (scroll command `0x25`) do not exist yet. VERIFY IN GAME: spells §9c.4.
 
 **AI casts (phase K, [ai §12](ai.md#12-casters-and-special-attacks-confirmed-unless-marked-engine-127)).** The AI issues `CastSpell(..., ai=True)` (unit or `cell`), applied at the
@@ -798,4 +797,4 @@ and only the attack type / range / to-hit for 56 (staves and shaman staffs, cata
 1. The quest system (accept `FUN_0052f8e2`, the board, rewards) and the exact meaning of the quest events 5-0x11 (start: `FUN_0052e3eb`, the senders in `0x57e5f0`-`0x57edda`).
 2. The effect system: writers of the Bless / Curse chance (`Unit.bless` / `Unit.curse`) and of the Invisibility bit, durations (start: `FUN_0051ce12`, `FUN_00519db8`).
 3. Sound tables (12.11 item 4) and the hit sound set entries (16.1).
-4. I2 open questions are in 12.11; assumptions in section 13.
+4. I2 open questions are in 12.11 (items 1-4); assumptions in section 13.
