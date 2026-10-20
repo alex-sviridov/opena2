@@ -164,3 +164,43 @@ class CastScroll(Command):
     def __post_init__(self):
         if self.cell is not None:
             object.__setattr__(self, "cell", (int(self.cell[0]), int(self.cell[1])))
+
+
+@dataclass(frozen=True)
+class PickUp(Command):
+    """Exe command `0x21` (cell target, `msg+0xe` = the pack index where the items go): the last unit of the selection walks to the sack on `cell` and
+    files it in its pack; "Sack not found" (nothing happens) when the cell holds none.  Intake and order: sim/gear.py."""
+    player_id: int
+    unit_ids: tuple
+    cell: tuple
+    index: int = 0x7FFF
+
+    def __post_init__(self):
+        object.__setattr__(self, "unit_ids", tuple(self.unit_ids))
+        object.__setattr__(self, "cell", (int(self.cell[0]), int(self.cell[1])))
+
+
+@dataclass(frozen=True)
+class MoveItem(Command):
+    """Server message `0x22` (client `FUN_0041a20c`): move an item between the hero's containers.  Kinds: 1 equipment slot (`index + 1`), 2 pack entry,
+    3 ground sack; `count` splits a stack.  Shop kinds 4..8 are not modelled.  Semantics: `gear.move_item`."""
+    player_id: int
+    unit_id: int
+    src_kind: int
+    dst_kind: int
+    src_index: int = 0
+    dst_index: int = 0
+    count: int = 1
+
+
+@dataclass(frozen=True)
+class DropGold(Command):
+    """Server message `0x23`: drop `amount` of the player's gold at `cell` (or at the first unit's cell when the target is further than 2 cells)."""
+    player_id: int
+    unit_ids: tuple
+    amount: int
+    cell: tuple
+
+    def __post_init__(self):
+        object.__setattr__(self, "unit_ids", tuple(self.unit_ids))
+        object.__setattr__(self, "cell", (int(self.cell[0]), int(self.cell[1])))

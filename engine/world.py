@@ -15,12 +15,14 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from allods2.formats import entities as fent
+from allods2.formats.itemdefs import mods_from_effects
 from allods2.formats import objects as fobj
 from allods2.formats import passability as pas
 from allods2.formats import progression as prog
 from allods2.formats.objects import MapObject as PlacedObject
 
 from .cellslots import CellSlots, pack
+from .netids import NetIds
 from .rng import DEFAULT_SEED, Rng
 
 STRUCTURE_ID_BASE = 0x6000      # spec decision 2: runtime object id = 0x6000 + uid (CONFIRMED map.md part 4)
@@ -144,12 +146,14 @@ class EffectStats:
     scan: int = 0
     scan_direct: int = 0
     prot: list = field(default_factory=lambda: [0] * 6)
+    hp_regen: int = 0               # humans' bonus words +0xde / +0xe2 (percent, effect kinds 8 / 11: the regeneration potions)
+    mana_regen: int = 0
 
     def any(self):
-        return bool(self.speed or self.absorb or self.defence or self.scan or self.scan_direct or any(self.prot))
+        return bool(self.speed or self.absorb or self.defence or self.scan or self.scan_direct or any(self.prot) or self.hp_regen or self.mana_regen)
 
     def dump(self):
-        return [self.speed, self.absorb, self.defence, self.scan, self.scan_direct, list(self.prot)]
+        return [self.speed, self.absorb, self.defence, self.scan, self.scan_direct, list(self.prot)] + ([self.hp_regen, self.mana_regen] if self.hp_regen or self.mana_regen else [])
 
 
 @dataclass
@@ -486,6 +490,7 @@ class Unit:
     mode_cell: bool = False         # Brain mode 9 (cast at a cell with approach, `FUN_0056ec3f`)
     cast_cell: tuple = None         # brain+0x3c target cell (x, y) of the cell cast order 0xe / mode 9
     name: str = ""                  # +0x80 CString: set only for heroes (hero name setters 0x4ead6b, 0x4f2b4c); the by-name hero look-up reads it (triggers.md 9.5); not dumped
+    net_id: int = 0                 # +0x04 the exe object id of a unit made at run time (`engine/netids.py`: a hero, a summoned minion); 0 = a map unit (id `0x6000 + uid`)
     master: int = 0                 # +0x148 the summoner's id (Summon spell; 0 = none): the minion cap job reads it (sim/spells.py `minion_job`)
     # follow / patrol orders and Brain mode 4 (docs/engine/ai.md 14.2; sim/follow.py)
     leader: int = None              # brain+0x10 the object being followed / defended (orders 8, 0x11)
@@ -495,12 +500,25 @@ class Unit:
     patrol: list = field(default_factory=list)      # brain+0xb4 the waypoint list of order 0xa (cell tuples)
     patrol_wp: tuple = None         # brain+2 the waypoint being walked to
     patrol_walk: bool = False       # brain+4 the previous pass left a walk running
-    equipment: tuple = ()           # humans loaded from a character record: the 12 equipped items in slot order (saves.Item; empty slot = code 0)
+    equipment: tuple = ()           # humans with an explicit loadout (a character record, or after an item command): the 12 equipped items in slot order
+                                    # (saves.Item, index = creature slot - 1: weapon, second hand, armour slots 3..12; empty slot = code 0); () = the template strings
     pack: tuple = ()                # humans loaded from a character record: the backpack items (saves.Item); `carried` holds their codes
+    pack_index: int = 0x7FFF        # pack +0x1c: where the next item filed in the pack goes (0x7fff = the end); set by item messages (sim/gear.py)
+    mode_pick: bool = False         # Brain mode 7 (`FUN_0056ea24`): file the sack on the own cell (state 2)
+    pick_cell: tuple = None         # brain +0xa of the pickup order 2: the sack's cell
+    gear_speed: int = None          # the speed stat +0x8c of a human with an explicit loadout (load penalty, equipment bonus); None: the Reaction rule
+    skill_bonus: tuple = ()         # bonus words +0xe8 + 2k of the equipment, added to the school skills (sim/gear.py); () = none
+    attr_bonus: tuple = ()          # equipment bonus (body, reaction, mind, spirit) on top of the template's capped attribute; () = none
+    carried_mods: tuple = ()        # parallel to `carried`: the modifier records (kind, a, b) of each carried item (sim/gear.py); () = none carries any
     # spell effects (docs/engine/effects.md; sim/effects.py)
     effects: list = field(default_factory=list)     # +0x20 the effect list (Effect), list order
     effect_mask: int = 0            # +0x144 bit 1 << id of every active effect
     fx: EffectStats = field(default_factory=EffectStats)    # the stat changes of the effects
+
+    @property
+    def oid(self):
+        """The exe object id `+0x04`: the free id of a unit made at run time, else `0x6000 + uid` (= `id`)."""
+        return self.net_id or self.id
 
     def __post_init__(self):
         if self.mover.target_facing < 0:
@@ -521,6 +539,9 @@ class Item:
     codes: tuple = ()
     groups: tuple = ()              # section 8 group indices merged into this pile
     seq: int = 0
+    mods: tuple = ()                # parallel to `codes`: the modifier records (kind, a, b) of each item (the exe's pile holds the item objects with their
+                                    # effect lists, combat.md 12.11); () = no item has any.  Not dumped (static once built; piles keep the dump of codes)
+    net_id: int = 0                 # +0x04 the pile's free id (`FUN_0052a780`, engine/netids.py); not dumped
 
 
 @dataclass
@@ -581,6 +602,7 @@ class World:
         self.items = {}             # id -> Item (ground piles), in section 8 order
         self.corpses = {}           # id -> Unit in state 0x10 (ground units after the dying countdown), in removal order
         self._next_pile = PILE_ID_BASE
+        self.net_ids = NetIds()     # the server's free-id bitmap (`DAT_006c9628`): piles, new heroes, summoned units; not dumped
         self.players = {}           # id (1-based record) -> Player
         self.groups = {}            # id -> OrderGroup, in creation order (sim/orders.py)
         self.events = []            # NoWay ...: for the UI, not part of dump()/the hash
@@ -899,18 +921,23 @@ class World:
             return True
         return bool(self._block[y, x] & 1)
 
-    def place_pile(self, x, y, gold, codes, pile_id=None, sub=(128, 128), **kw):
+    def place_pile(self, x, y, gold, codes, pile_id=None, sub=(128, 128), mods=(), **kw):
         """`FUN_0052ab07(cell, bag, gold)`: merge into the pile on the cell (even on a blocked cell), else register a new pile when the cell
         can hold one (`pile_blocked`); there is no search for a neighbouring cell.  Returns the pile, or None when the pile (gold and items) is
         deleted.  C§12.4."""
+        codes = tuple(codes)
+        mods = tuple(tuple(m) for m in mods) if mods else ()
         for i in sorted(self.items_at(x, y)):
             pile = self.items[i]
             pile.gold += gold
-            pile.codes = tuple(pile.codes) + tuple(codes)
+            if mods or pile.mods:
+                pile.mods = tuple(pile.mods or ((),) * len(pile.codes)) + (mods or ((),) * len(codes))
+            pile.codes = tuple(pile.codes) + codes
             return pile
         if self.pile_blocked(x, y):
             return None
-        it = Item(self.new_pile_id() if pile_id is None else pile_id, x, y, sub[0], sub[1], gold, tuple(codes), **kw)
+        it = Item(self.new_pile_id() if pile_id is None else pile_id, x, y, sub[0], sub[1], gold, codes, mods=mods, **kw)
+        it.net_id = self.net_ids.alloc()
         self.add_item(it)
         return it
 
@@ -925,6 +952,8 @@ class World:
         self.remove_unit(uid)
         if u.move_type <= 1:
             self.corpses[uid] = u
+        else:
+            self.net_ids.free(u.net_id)         # `FUN_0052b459` 0x52bb87: a ghost or flyer (`+0x4a > 1`) frees its id at the removal
         return u
 
     def remove_unit(self, uid):
@@ -978,7 +1007,9 @@ class World:
         return it.id
 
     def remove_item(self, iid):
-        self._index_del(self._icells, self.items.pop(iid))
+        it = self.items.pop(iid)
+        self._index_del(self._icells, it)
+        self.net_ids.free(it.net_id)            # the pile's destructor `FUN_0052a7fc` -> `FUN_004f8d3d`
 
     # --- loading -------------------------------------------------------------------
 
@@ -1091,13 +1122,30 @@ class World:
                 if pl is not None and pl.human and pl.main_hero == 0 and prog.is_hero_name(tpl.name):
                     pl.main_hero = u.id                 # INFERRED: the exe's owner+0x38 writer is not traced
             if 0 < rec.group <= len(m.item_groups):         # the carried pack (section 8): dropped at death
-                u.carried = tuple(mem.code & 0xFFFF for mem in m.item_groups[rec.group - 1].members)
+                members = m.item_groups[rec.group - 1].members
+                u.carried = tuple(mem.code & 0xFFFF for mem in members)
+                mods = tuple(self._member_mods(m, mem) for mem in members)      # the section 9 records: the objects keep their effects
+                if any(mods):
+                    u.carried_mods = mods
             self.add_unit(u)
             if not known:
                 rep.unknown_units.append((rec.uid, rec.type, rec.server_id, u.x, u.y))
         rep.units_sharing_cell = sum(1 for s in self._ucells.values() if len(s) > 1)
         rep.units_on_blocked = sum(1 for u in self.units.values()
                                    if self.blocked(u.x, u.y, u.move_type if u.move_type in pas.MOVE_MASK else 1))
+
+    def _member_mods(self, m, mem):
+        """The modifier records `(kind, a, b)` of a section 8 member: its section 9 record's pairs and the `c` field (castSpell / teachSpell) as effects
+        (`FUN_00564072`, items.md 5: `ItemTable.pair_effects`), or () for a member without a record or an unknown code."""
+        table = self.item_table
+        if table is None or not mem.record or mem.record > len(m.item_records):
+            return ()
+        rec = m.item_records[mem.record - 1]
+        ic = fent.decode_item(mem.code)
+        d = table.lookup(ic) if ic is not None else None
+        if d is None or not rec.props and not rec.c:
+            return ()
+        return mods_from_effects(table.pair_effects(rec.props, rec.c & 0xFFFF, rec.c >> 16, book=d.kind == "special" and d.subtype == 5))
 
     def _load_items(self, m):
         """Ground piles: the section 8 groups no unit's `group` points at (`Map.ground_groups`).
@@ -1111,16 +1159,20 @@ class World:
                 continue
             cell = (g.x >> 8, g.y >> 8)
             codes = tuple(mem.code & 0xFFFF for mem in g.members)
+            mods = tuple(self._member_mods(m, mem) for mem in g.members)
             if cell in at:
                 it = at[cell]
                 it.gold += g.extra
+                if any(mods) or it.mods:
+                    it.mods = tuple(it.mods or ((),) * len(it.codes)) + mods
                 it.codes += codes
                 it.groups += (n,)
                 continue
             if self.pile_blocked(*cell):        # same routine as the death drop (`FUN_0052ab07`): a cell that cannot hold a pile deletes it
                 continue
             at[cell] = Item(ITEM_ID_BASE + n, cell[0], cell[1], g.x & 255, g.y & 255, g.extra, codes,
-                            groups=(n,))
+                            groups=(n,), mods=mods if any(mods) else ())
+            at[cell].net_id = self.net_ids.alloc()
             self.add_item(at[cell])
 
     # --- consistency ---------------------------------------------------------------
@@ -1249,7 +1301,7 @@ class World:
         cast = World._cast_state(u)
         if fight is None and death is None and cast is None and World._follow_state(u) is None and not u.master and not u.auto_spell and not (u.order or u.state or u.path or u.odometer or m.steps or m.turning or u.order_group
                                   or u.stopped or m.waiting or m.parked or m.target_facing != u.facing
-                                  or u.effects or u.effect_mask or u.fx.any()):
+                                  or u.effects or u.effect_mask or u.fx.any() or u.equipment or u.pack or u.order == 2):
             return []
         d = {"order": u.order, "state": u.state, "path": [list(c) for c in u.path],
              "odometer": u.odometer, "target_facing": m.target_facing,
@@ -1279,6 +1331,9 @@ class World:
             d["follow"] = follow
         if u.master:
             d["master"] = u.master
+        if u.equipment or u.pack:                                           # only a hero with a loadout (sim/gear.py)
+            d["gear"] = [[[it.code, it.count, [list(r) for r in it.mods]] for it in u.equipment],
+                         [[it.code, it.count, [list(r) for r in it.mods]] for it in u.pack], u.pack_index]
         if u.auto_spell:
             d["auto_spell"] = u.auto_spell
         if u.effects or u.effect_mask or u.fx.any():                       # only under a spell effect (sim/effects.py)

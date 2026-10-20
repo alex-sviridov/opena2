@@ -56,11 +56,13 @@ def start_key(record):
     return record.identity.template[-2:]
 
 
-def apply_record(unit, owner, record):
+def apply_record(unit, owner, record, world=None):
     """Rebuild a freshly created `Start_*` hero from a decoded character record, in the order of FUN_004ea6ab (docs/formats/saves.md
     section 3): the four base attributes, the five school XP pools (skills 1..5 = `thr` inverse of the pools, skill 0 stays),
     the best school, the spell book mask, then the recompute (HP and mana at their maxima), the player's gold and statistics, and
-    the 12 equipped items / the pack.  Equipment effects on the stats are not modelled yet (the engine has no equip system)."""
+    the 12 equipped items / the pack (step 6, `engine/sim/gear.py`): without a `world` item table the items are only stored (slot i = record item
+    i, nothing resolves); with one each item is put through the equip method (`gear.put`: a hero equips what it may use, a refused or replaced item goes
+    to the pack at the end), so the equipment's effects reach the combat numbers, the speed, the maximum HP / mana and the spell level."""
     st = record.stats
     tpl = unit.stats
     if tpl is not None:
@@ -78,9 +80,26 @@ def apply_record(unit, owner, record):
     if tpl is not None:
         unit.hp_max, unit.mana_max = prog.derived_vitals(tpl, unit.skills, total=unit.xp_total)
     unit.hp, unit.mana = unit.hp_max, unit.mana_max
-    unit.equipment = tuple(record.equipment.items) if record.equipment else ()
-    unit.pack = tuple(record.pack.items) if record.pack else ()
-    unit.carried = tuple(i.code for i in unit.pack)
+    items = list(record.equipment.items) if record.equipment else []
+    pack_items = list(record.pack.items) if record.pack else []
+    table = world.item_table if world is not None else None
+    if table is None:
+        unit.equipment = tuple(items)
+        unit.pack = tuple(pack_items)
+        unit.carried = tuple(i.code for i in unit.pack)
+    else:
+        from .sim import gear
+        unit.equipment = tuple(gear.EMPTY for _ in range(gear.SLOT_COUNT))      # step 6: the template's equipment goes (a new, empty pack)
+        unit.pack = ()
+        unit.pack_index = gear.APPEND
+        for it in items:
+            if it.code:
+                gear.put_and_file(world, unit, it)              # vtable +0x44
+        for it in pack_items:
+            gear._file(world, unit, it)                         # FUN_00529ac2 per pack item
+        gear.sync_carried(unit)
+        gear.recompute(world, unit)
+        unit.hp, unit.mana = unit.hp_max, unit.mana_max
     owner.gold = st.gold
     owner.hero_deaths = st.hero_deaths
     owner.kills_monsters, owner.kills_players = st.kills_monsters, st.kills_players
@@ -130,9 +149,10 @@ def place_party(world, assets, drops, count=1, start="MF", owner=None, record=No
         world._load_units(SimpleNamespace(units=[rec], item_groups=[]), assets, None)
         world.report.units_on_blocked, world.report.units_sharing_cell = keep
         u = world.units[0x6000 + uid0 + k]
+        u.net_id = world.net_ids.alloc()    # `FUN_004f254b` / `FUN_004f312a`: `unit+4` = the lowest free id (engine/netids.py)
         if k == 0:
             owner.main_hero = u.id          # FUN_004f254b: owner+0x38 := the new hero
             if record is not None:
-                apply_record(u, owner, record)
+                apply_record(u, owner, record, world)
         placed.append(u)
     return placed

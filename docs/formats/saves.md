@@ -148,8 +148,11 @@ The character screen creates a file with gold 1000, the chosen attributes / pool
 7. New brain objects `+0x1c0` / `+0x1c4`, cleared orders `+0x40/+0x44/+0x5c/+0x64/+0x68`, recompute, **HP := max, mana := max** (`+0x94 = +0x96`, `+0x9a = +0x9c`),
    dying latch `+0x13c := 0`, state bit `+0x4c &= ~8`, `+0x1a4 := player+0x30` (the player slot).
 
-`engine/party.py` `apply_record` follows steps 2-7 for what the engine models (template, attributes, pools -> skills, school, spell mask, vitals, gold and statistics,
-equipment / pack kept as `Unit.equipment` / `Unit.pack`; equipment effects on the stats are not modelled).
+`engine/party.py` `apply_record` follows steps 2-7: template, attributes, pools -> skills, school, spell mask, gold and statistics, and step 6 through the equip
+methods of [items §15](../data/items.md#15-equip-use-pack-and-ground-items-confirmed-engine-sim-gearpy) (`gear.put_and_file` per chunk item in record order, then the pack items;
+the maximum HP / mana, the speed and the combat numbers include the equipment, HP and mana start at the maxima). Item `i` of the equipment chunk is creature slot `i + 1`
+(0 weapon, 1 second hand, 2..11 the armour table slots 3..12; an armour piece goes to the slot of its class, not necessarily slot `i + 1`). Without an item table
+(synthetic worlds) the items are only stored.
 
 ## 4. Carry-over between campaign maps (single player, CONFIRMED)
 

@@ -48,6 +48,7 @@ def spawn_unit(world, tpl, owner, cell, behaviour=8, master=0, fields=None):
     world._load_units(SimpleNamespace(units=[rec], item_groups=[]), shim, None, 2)      # difficulty 2: no map-load tweak
     world.report.units_on_blocked, world.report.units_sharing_cell, world.report.unknown_units[:] = keep
     u = world.units[0x6000 + rec.uid]
+    u.net_id = world.net_ids.alloc()        # `FUN_0052b246`: the unit's `+4` = the lowest free id (engine/netids.py)
     u.master = master
     u.squad = -rec.uid              # a group of its own: never a map squad (the `ai_groups` key of a computer owner would join it to squad 0)
     g = orders._new_group(world, owner)

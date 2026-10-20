@@ -39,6 +39,35 @@ DEFAULT_QUALITY, DEFAULT_MATERIAL = 0, 15                  # equipment strings w
 SUBTYPE = (("Potion", 3), ("Book", 5), ("Scroll", 4), ("SuperScroll", 4))   # name prefix, FUN_00523148
 
 
+def effects_from_mods(mods):
+    """Wire modifier records `(kind, a, b)` (`saves.Item.mods`) -> effects: castSpell `(41, spell, charges)`, elemental damage `(44..48, min, spread)`,
+    any other kind `(kind, value)` (`FUN_004ed5f5`: the value byte lands in the word `+0x40`, flags 0 = permanent)."""
+    out = []
+    for kind, a, b in mods:
+        if kind == STAT_CAST:
+            out.append(Effect(kind, a, 0, b))
+        elif kind in ELEMENT_DAMAGE:
+            out.append(Effect(kind, a, b))
+        else:
+            out.append(Effect(kind, a))
+    return tuple(out)
+
+
+def mods_from_effects(effects):
+    """The inverse (`FUN_005241bf`: the price modifier, kind 1, is not written)."""
+    out = []
+    for e in effects:
+        if e.kind == 1:
+            continue
+        if e.kind == STAT_CAST:
+            out.append((e.kind, e.value, e.count))
+        elif e.kind in ELEMENT_DAMAGE:
+            out.append((e.kind, e.value, e.spread))
+        else:
+            out.append((e.kind, e.value, 0))
+    return tuple(out)
+
+
 def ftol(x):
     """The exe's `__ftol`: truncation toward zero."""
     return int(x)

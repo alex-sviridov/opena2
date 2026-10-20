@@ -164,7 +164,12 @@ def combat_stats(world, u):
     st = u.combat
     if st is None:
         fx = u.fx if u.fx.any() else None
-        st = unit_combat_stats(u.stats, world.item_table, u.skills or None, hard=u.tweak == 3, fx=fx) or CombatStats()
+        if u.human and u.equipment and world.item_table is not None:
+            from . import gear                  # a hero's own loadout replaces the template strings (sim/gear.py)
+            g, load = gear.load_inputs(world, u)
+            st = unit_combat_stats(u.stats, world.item_table, u.skills or None, fx=fx, gear=g, load=load) or CombatStats()
+        else:
+            st = unit_combat_stats(u.stats, world.item_table, u.skills or None, hard=u.tweak == 3, fx=fx) or CombatStats()
         u.combat = st
     return st
 

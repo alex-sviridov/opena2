@@ -376,13 +376,13 @@ def test_a_campaign_unit_walks_the_per_cell_sum_of_the_formula():
     assert w.costs[3] == 8 and w.speed_multiplier == 8                 # Flowers: map.reg says 8, the default 9
     u = next(u for u in w.units.values() if u.human and u.stats)
     u.facing = u.mover.target_facing = EAST
+    sim = Simulation(w)                                                # first: it sets the humans' speed from their equipment (load, speed modifiers)
     cells = expand_line((u.x, u.y), [(u.x + 10, u.y)])
     expect, frm = 0, (u.x, u.y)
     for c in cells:
         v = step_length(w, u, frm, 2)
         expect += step_ticks(*step_components(v, 2))
         frm = c
-    sim = Simulation(w)
     sim.step([FollowPath(u.id, cells)])
     assert 1 + run_until_arrival(sim, u) == expect
     assert (u.x, u.y, u.sub_x, u.sub_y) == (cells[-1][0], cells[-1][1], 128, 128)

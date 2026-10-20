@@ -155,13 +155,17 @@ def mind_of(u):
     """`unit+0x88` (Mind): a human's recomputed attribute, a monster's template value."""
     if u.stats is None:
         return 0
-    return prog.attributes(u.stats)[2] if u.human else (u.stats.get("mind", 0) or 0)
+    if u.human:
+        return prog.attributes(u.stats)[2] + (u.attr_bonus[2] if u.attr_bonus else 0)       # + the equipment's Mind modifiers (sim/gear.py)
+    return u.stats.get("mind", 0) or 0
 
 
 def unit_level(u, spell):
     """`FUN_00519483` / `FUN_00519db8`: `skill[sphere] - 30 + Mind` of the caster (`unit+0xa8+2*sphere`, `unit+0x88`), clamped 0..255."""
     if u.human:
         skill = u.skills[spell.sphere] if len(u.skills) > spell.sphere else 0
+        if u.skill_bonus:
+            skill += u.skill_bonus[spell.sphere]        # +0xa8 + 2k includes the equipment's bonus word
     else:
         skill = monster_skill(u.stats, spell.sphere)
     return level_from(skill, mind_of(u))
@@ -520,7 +524,7 @@ def astral_skill(u):
 def summon_release(world, u):
     """`FUN_00519db8` case 25 (`0x51a595`-`0x51a91a`): family roll `rand(1..3)` (`FUN_0051fa4e(3)`, the first draw), tier `clamp(astral / 25 + 1, 1, 4)`
     with a C division (truncation), the template `Squirrel` / `Turtle` / `Foot_Animated` `[.tier]` created by name, the summoned flag `+0x1a0 = 1`, placed
-    by `FUN_00510089(caster cell, 6)` (no cell: the cast ends, no unit); owner = the caster's, master `+0x148` = the caster's id; the unit gets a group of
+    by `FUN_00510089(caster cell, 6)` (no cell: the cast ends, no unit); owner = the caster's, master `+0x148` = the caster's exe id `+4` (`Unit.oid`); the unit gets a group of
     its own, a stand (`FUN_0056dba1`) and the guard order `FUN_005709d9(group, 0)` (group order 1: the minion walks to enemies in sight and returns,
     the player's G command; not a Brain mode: the earlier reading of `+0x20 = 1` as a minion mode was the group record's order byte)."""
     from . import spawn
@@ -530,7 +534,7 @@ def summon_release(world, u):
     tpl = spawn.template_by_name(world, name)
     if tpl is None:
         return None
-    m, g = spawn.place(world, tpl, u.owner, u.x, u.y, SUMMON_RADIUS, behaviour=8, master=u.id)
+    m, g = spawn.place(world, tpl, u.owner, u.x, u.y, SUMMON_RADIUS, behaviour=8, master=u.oid)
     if m is None:
         return None
     spawn.settle(world, m, g, stand_ground=False)
@@ -564,6 +568,7 @@ def raise_release(world, u, cell):
     made = spelldefs.raise_dead(stage, attrs[0], attrs[1], attrs[2], attrs[3], body.hp_max, st.record.skill, st.block.defence)
     body.hp = STAGE5_HP
     world.corpses.pop(body.id, None)
+    world.net_ids.free(body.net_id)         # the exe frees it at the next corpse pass (`FUN_005110b8`, DECISION: at the cast)
     if made is None:
         return None
     name, vals = made
@@ -579,29 +584,41 @@ def raise_release(world, u, cell):
     return m
 
 
+CMAP_BUCKETS = 17                       # MFC `CMap` default hash table size (`0x5457a5`)
+
+
+def cmap_order(keys):
+    """The order `FUN_0053d920` / `FUN_0053d940` (`GetStartPosition` / `GetNextAssoc`) visit the keys of an MFC `CMap` that got them by `SetAt` in the
+    order `keys` (distinct): bucket `(key >> 4) % 17` ascending (`FUN_004a1120` `0x545a60`), inside a bucket the newest first (a new node is linked at
+    the head of its chain, `0x545a0f`-`0x545a46`).  CONFIRMED (combat.md 12.6 / 12.11)."""
+    buckets = [[] for _ in range(CMAP_BUCKETS)]
+    for k in keys:
+        buckets[((k & 0xFFFFFFFF) >> 4) % CMAP_BUCKETS].insert(0, k)
+    return [k for b in buckets for k in b]
+
+
 def minion_job(world):
-    """`FUN_0052bbb7` after the regeneration and the corpse decay (`tick & 15 == 12`): count the creatures per master key `+0x148`; one `rand(1..100)`
-    per key (`FUN_0051fa4e(100)`), the key is marked when `roll < count`; the first creature of a marked key in the list is removed (HP -10000, key
-    cleared, `FUN_00510a70`: summoned, so no loot or XP).  Key order = first appearance in the creature list (DECISION: the exe walks a hash map
-    of 17 buckets keyed by the master's network id, which the engine does not reproduce; exact for one master)."""
+    """`FUN_0052bbb7` after the regeneration and the corpse decay (`tick & 15 == 12`): count the creatures per master key `+0x148` (the master's exe id
+    `+4`, `Unit.oid`); one `rand(1..100)` (`FUN_0051fa4e(100)`) per key **in the `CMap` iteration order** (`cmap_order` over the keys in first-appearance
+    order of the creature list), the key is marked when `roll < count`; the creature list is then walked once and the first creature of each marked
+    key is removed (HP -10000, key cleared, `FUN_00510a70`: summoned, so no loot or XP) - removals happen in creature-list order."""
     from . import death
     counts = {}
     for u in world.units.values():
         if u.master:
             counts[u.master] = counts.get(u.master, 0) + 1
-    marked = []
-    for key, n in counts.items():
-        if _rand1(world.rng, 100) < n:
-            marked.append(key)
-    for key in marked:
-        for u in world.units.values():
-            if u.master == key:
-                u.master = 0
-                u.hp = -10000
-                u.state = u.order = DEAD
-                u.last_attacker = None
-                death.remove_dead(world, u)
-                break
+    marked = set()
+    for key in cmap_order(counts):
+        if _rand1(world.rng, 100) < counts[key]:
+            marked.add(key)
+    for u in list(world.units.values()):
+        if u.master and u.master in marked:
+            marked.discard(u.master)        # value -1 -> -2: one creature per key and pass
+            u.master = 0
+            u.hp = -10000
+            u.state = u.order = DEAD
+            u.last_attacker = None
+            death.remove_dead(world, u)
 
 
 def cast_release_cell(world, u, c, st):

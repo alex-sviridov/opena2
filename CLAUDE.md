@@ -207,7 +207,7 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   `Unit.stats`, `data export units`, `world-info --units`; REA: p33 = dyingTime, p34-36 AI thresholds, p37 XP
   (killed `+0x1c`×0.5), p38-44 loot (chance, gold base+spread, item value range, flags), humans-only serverID
   reduction; golden `["units"]`. docs/data/units.md
-- Items (F2) done: `allods2/formats/itemdefs.py` (162 definitions, `AssetCache.items()`, `data export items`, `tools/validate_items.py`)
+- Items (F2) done (equip / use / drop / pickup: Gear K4 below): `allods2/formats/itemdefs.py` (162 definitions, `AssetCache.items()`, `data export items`, `tools/validate_items.py`)
   and `itemgen.py` (generator, shop stock, loot). CONFIRMED: exe rounding `ftol(x+0.5)` of param x material x quality, price
   = base + effects, masks regenerate the 395 named class items, itemname.pkt cross-checks all prices, equipment strings parsed.
   docs/data/items.md
@@ -287,4 +287,10 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   (frozen); point / area (diamond, wall tables, lifetime pulses on the ground occupant, Fire Ball once over the square / size^2) / field carriers; cell record slots (cost `<< 2` per
   slot, Wall of Earth blocks, fire burns poison, Light and Darkness annihilate); area hits declare war only after 11 hits / half HP. `engine/sim/effects.py`, `Unit.effects/effect_mask/fx`,
   `World.cell_fx`; spell damage XP now goes to the mage's sphere. Tests `test_engine_effects*.py`. Open: Prismatic Spray chain, structures as targets, effect drawing.
+- Gear (K4) done, REA-checked ([items §15](docs/data/items.md#15-equip-use-pack-and-ground-items-confirmed-engine-sim-gearpy)): packs, piles and slots hold **item objects with their effect lists** (`saves.Item` = code + wire modifiers; piles `Item.mods`,
+  `Unit.carried_mods`, section 9 records at load), so a dropped `{castSpell=..}` staff keeps its spell; human put `FUN_00512573` (**the server does test fighter / mage** `suitable_for`; refused items return to the pack), weapon / shield / armour
+  equip (`FUN_005290cc` / `FUN_0052846b` / `FUN_00527a13`: two-handed pushes the shield, armour slot = class `Slot`, humans only), use `FUN_00523613` (potions), pack insert / take (stack rule `FUN_005234c2`), load `+0x90`/`+0x92` (speed
+  penalty `load / (Body*10+1)`), messages `0x22` / `0x23` / `0x21` (`MoveItem`, `DropGold`, `PickUp`; pickup = order 2, Brain mode 7, state 2); `engine/sim/gear.py`, `combatstats.human_stats(gear=)` (attributes, skills, HP / mana / speed / scan
+  modifiers), `party.apply_record` equips a record hero, every human template gives identical stats through a loadout (tested). Summon cap: the `unit+4` free-id bitmap (`engine/netids.py`: piles, heroes, minions) and the `CMap` order
+  (`spells.cmap_order`) make the per-master draw order exact ([combat §12.6](docs/engine/combat.md)). `tests/test_engine_gear*.py`, `test_engine_netids.py`, `test_engine_minions.py`.
 - Status: E, F, G3b, G3c (fonts), H (H1-H3), I1, I2, I3, I4 (a: cast simulation, b: view and UI, c: close-out) done = **phase I done**. Next: **J1: minimal UI** (command bar, spellbook, hero panels; the handoff list is combat.md §15; renderer sped up to 31.6 ms per frame at 640x480, 46 ms at 1024x768, combat.md §14.1). Phase K started: AI casting (K1) and spell effects (K2) done; left: the human caster scan, the Prismatic Spray chain, structure targets, effect drawing. Also (docs/open-questions.md): town-scene animations, text conventions.

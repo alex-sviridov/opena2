@@ -135,16 +135,19 @@ def attributes(t):
     return tuple(vals)
 
 
-def derived_vitals(t, skills=None, bonus_hp=0, bonus_mana=0, total=None):
+def derived_vitals(t, skills=None, bonus_hp=0, bonus_mana=0, total=None, attrs=None):
     """Max HP and max mana of a freshly built human of template `t` (`unitstats.UnitType`), as the exe's
     recompute `FUN_0051366b` computes them (docs/data/progression.md section 3); the data.bin `healthMax`
     is never used.  `bonus_*`: the equipment / effect bonus block (+0xdc / +0xe0), 0 for the templates of
-    the install.  Returns (max_hp, max_mana); max_mana is 0 for a fighter (template mana_max <= 0)."""
+    the install.  `attrs`: the effective (body, spirit) after the equipment's attribute modifiers (the recompute uses `+0x84` / `+0x8a`), else the
+    template's capped values.  Returns (max_hp, max_mana); max_mana is 0 for a fighter (template mana_max <= 0)."""
     mage = t.get("mana_max", -1) > 0
     female = t.get("gender", 0) == 1
     caps = ATTR_CAPS[(mage, female)]
     attr = lambda name: ATTR_DEFAULT if t.get(name, -1) < 0 else t.get(name)
     body, spirit = min(attr("body"), caps[0]), min(attr("spirit"), caps[3])
+    if attrs is not None:
+        body, spirit = attrs
     if total is None:
         _, total = start_pools(skills_of(t) if skills is None else skills)
     g = math.log(total / XP_VITALS_DIV + 1.0) / math.log(1.1)

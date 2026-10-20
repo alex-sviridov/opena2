@@ -69,12 +69,8 @@ def level_up(world, hero, school):
     sk = list(hero.skills)
     sk[school] += 1
     hero.skills = tuple(sk)
-    hp_max, mana_max = prog.derived_vitals(hero.stats, hero.skills, total=hero.xp_total)
-    hero.hp_max = hp_max
-    hero.hp = min(hero.hp, hp_max)
-    hero.mana_max = mana_max
-    hero.mana = min(hero.mana, mana_max)
-    hero.combat = None
+    from . import gear
+    gear.recompute(world, hero)         # max HP / mana from the new XP total and the equipment; HP and mana are clamped, the combat stats rebuilt
     log(world, LevelUp(world.tick, hero.id, school, hero.skills[school]))
 
 

@@ -173,3 +173,50 @@ def test_the_release_handlers_are_used_by_the_cell_cast():
     w.assets = FakeAssets()
     spells.summon_release(w, c)
     assert any(u.master == c.id for u in w.units.values())
+
+
+# --- the CMap iteration order of the cap job (combat.md 12.11, `FUN_0052bbb7`) ----------------------------------------------
+
+def test_cmap_order_is_bucket_ascending_newest_first_inside_a_bucket():
+    # bucket = (key >> 4) % 17: 0x10 and 0x11 share bucket 1, 0x20 is bucket 2, 0x110 (= 17 * 16) wraps to bucket 0
+    assert spells.cmap_order([0x10, 0x20, 0x11]) == [0x11, 0x10, 0x20]
+    assert spells.cmap_order([0x20, 0x10, 0x110, 0x11]) == [0x110, 0x11, 0x10, 0x20]
+    assert spells.cmap_order([]) == []
+
+
+def test_the_job_draws_per_master_in_cmap_order_and_removes_in_creature_list_order(monkeypatch):
+    """Three masters with ids 0x10, 0x20, 0x11 (appearance order A, B, C): the draws go C, A, B.  A scripted roll of 1 on the second draw marks
+    A (count 2 -> `roll < count`); its first minion is removed, the others stay."""
+    w = world(seed=3)
+    minions = []
+    for k, key in enumerate((0x10, 0x20, 0x11, 0x10, 0x20, 0x11)):
+        m = unit(w, 40 + k, 10 + k, 10, 2)
+        m.master = key
+        minions.append(m)
+    draws = iter([50, 1, 50])
+    seen = []
+
+    def fake(rng, n):
+        seen.append(n)
+        return next(draws)
+    monkeypatch.setattr(spells, "_rand1", fake)
+    spells.minion_job(w)
+    assert seen == [100, 100, 100]
+    gone = [m for m in minions if m.id not in w.units]
+    assert gone == [minions[0]]                         # key 0x10 was the second draw; its first creature in list order
+    assert all(m.master for m in minions if m is not minions[0])
+
+
+def test_marked_keys_remove_in_creature_list_order_not_key_order(monkeypatch):
+    w = world(seed=3)
+    a = unit(w, 40, 10, 10, 2); a.master = 0x20          # first in the list, but its key is drawn last
+    b = unit(w, 41, 11, 10, 2); b.master = 0x10
+    for k, key in enumerate((0x20, 0x10)):
+        m = unit(w, 50 + k, 12 + k, 10, 2); m.master = key
+    monkeypatch.setattr(spells, "_rand1", lambda rng, n: 1)         # every key marked
+    order = []
+    from engine.sim import death
+    real = death.remove_dead
+    monkeypatch.setattr(death, "remove_dead", lambda world, u: (order.append(u.id), real(world, u)))
+    spells.minion_job(w)
+    assert order == [a.id, b.id]                                      # list order (a, b), key order would be b, a

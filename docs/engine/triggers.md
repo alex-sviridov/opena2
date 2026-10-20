@@ -346,7 +346,7 @@ Callers: the creation message (type `0x48`, `0x4f6af6`), the multiplayer "invali
 `place_party(world, assets, drops, count, start)` builds `count` heroes of the human (`Start_MF` unless `start`, then `Fighter_Hero`, `Mage_Hero`:
 the templates as the maps use them, DECISION: the attributes of the creation screen are not modelled, so the template's own attributes
 stand in for the player's choice), draws the cell as §9.2, places the main hero at radius 0 then 5.., the others at `r`, sets
-`Player.main_hero`; uids `max(uid) + 1 + k` (DECISION; the exe's id is a free network id). `stand ground` is not issued (a human unit with no
+`Player.main_hero`; uids `max(uid) + 1 + k` (DECISION for the scenario uid; the exe's `unit+4` is a free id, kept in `Unit.net_id`: [combat §12.6](combat.md)). `stand ground` is not issued (a human unit with no
 order is idle either way, INFERRED). Fresh start = one hero; `record=` (a decoded `.a2c`, `saves.Character`) builds the main hero from the record instead (`apply_record`, [saves §3.6](../formats/saves.md)); the recruited heroes of later maps are units that stay in the player's list (saves §4), a save restores them from the server stream (its creature serialiser is an open question).
 
 ### 9.5 The hero look-up filter (`FUN_00562518`, CONFIRMED `0x562518`-`0x562632`)

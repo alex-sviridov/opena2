@@ -32,6 +32,7 @@ IDLE_STATE, MOVE_STATE = 0, 1   # unit.state (+0x54)
 NO_ORDER, MOVE_ORDER, ATTACK_ORDER, STAND_ORDER = 0, 1, 3, 0xC   # unit.order (+0x50): none, move to cell, attack, stand/guard
 GUARD_ORDER, STILL_ORDER = 0xB, 0x17                             # guard post (G, the squads), stand still (L)
 ATTACK_STATE = 3                # unit.state: melee swing (docs/engine/combat.md section 4)
+PICK_STATE = 2                  # unit.state: pick up the sack on the own cell (sim/gear.py)
 STATIC_PLAN_FORCED = 0xFF       # mover.consumed value that forces a static re-plan (brain wrapper 0x56e4b0)
 WAIT = "wait"                    # _drive result: a blocker wait began (not an ended order)
 IDLE, MOVE, TURN, ATTACK = "idle", "move", "turn", "attack"       # unit.action (the client's actions 0, 1, 5, 3)
@@ -81,7 +82,7 @@ def unit_speed(u):
     if t is None:
         base = 0
     elif u.human:
-        base = prog.derived_speed(t, u.type_id)
+        base = u.gear_speed if u.gear_speed is not None else prog.derived_speed(t, u.type_id)     # sim/gear.py: a loadout adds the load penalty and the equipment's speed
     else:
         base = t.speed
     return base + u.speed_mod + u.fx.speed           # Haste / Slow: a monster's +0x8c, a human's bonus +0xd8 (docs/engine/effects.md 5)
@@ -524,6 +525,7 @@ def cancel(u, world=None):
     derived from positions).  Plans, `dest`, `turning` and the dynamic list are untouched."""
     u.mover.target_facing = u.facing
     u.mover.follow = None                       # FUN_0056d969: mover+0x7c := 0
+    u.mode_pick = False
     u.ai_cast = False                           # FUN_0056d969 0x56da27: brain+0x60 := 0 (docs/engine/ai.md 12.7)
     u.state = IDLE_STATE
     u.stopped = False
@@ -640,6 +642,9 @@ def _tick_unit(world, u):
         combat.swing_tick(world, u)
     elif u.state in (spells.CAST_STATE, spells.CELL_STATE):
         spells.cast_tick(world, u)
+    elif u.state == PICK_STATE:                         # state 2: file the sack on the own cell (case 2 of FUN_0050f12c)
+        from . import gear
+        gear.pickup_tick(world, u)
 
 
 def _tick_inner(world, u):
@@ -665,6 +670,10 @@ def _tick_inner(world, u):
         u.mode_cast = False                             # the exe has one mode byte: the last writer wins
     if u.mode_cell and (u.mode_attack or u.mode_go or u.mode_look or u.mode_cast):
         u.mode_cell = False
+    if u.mode_pick:                                     # Brain mode 7 (FUN_0056ea24): the sack on the own cell (sim/gear.py)
+        from . import gear
+        gear.pick_mode(world, u)
+        return
     if u.mode_attack:                                   # Brain mode 5 (FUN_0056eab5)
         combat.attack_mode(world, u)
         return

@@ -112,10 +112,11 @@ cumulative range contains `r`, then `FUN_0051f7d3(budget, magic capacity)` for t
 
 ## 6. Who may use an item
 
-Item code and server (`FUN_00512573`, equip by name, also the human constructor): a weapon, armour or shield is equipped
-only if `suitable_for & 1` for a fighter or `& 2` for a mage (mage = carrier flag `+0x4c` bit 4, `FUN_0053a5a0`). The
-equip methods (`FUN_005290cc` weapon, `FUN_00527a13` armour, `FUN_0052846b` shield) read no skill, Body or level: CONFIRMED
-absent in `0x522000-0x52b000`.
+Item code and server (`FUN_00512573` = creature vtable `+0x40` "put", reached by the hero-window message `0x22` as well as by the human constructor
+and the character loader, [§15](#15-equip-use-pack-and-ground-items-confirmed-engine-sim-gearpy)): a weapon, armour or shield is equipped
+only if `suitable_for & 1` for a fighter or `& 2` for a mage (mage = carrier flag `+0x4c` bit 4, `FUN_0053a5a0`); a refused item comes back to the
+caller, which files it in the pack. The equip methods themselves (`FUN_005290cc` weapon, `FUN_00527a13` armour, `FUN_0052846b` shield) read no
+skill, Body or level: CONFIRMED absent in `0x522000-0x52b000`.
 
 Hero window, drop of the dragged item on a slot (`FUN_004b028d`, CONFIRMED). The wire item's flag byte `+8` carries
 `suitable_for << 1` (§8):
@@ -125,8 +126,8 @@ Hero window, drop of the dragged item on a slot (`FUN_004b028d`, CONFIRMED). The
   (`FUN_00439d63`, string `0x5f0424`); a quest item with neither bit (`flags & 6 == 0`, code `0xe4d`) sends message `0x463`.
 - a book (teachSpell entry `0x2a` of the item, `FUN_004b10b0`) is refused for a non-mage hero and when the hero's learned
   spell mask (`+0x1c`) already has the spell bit.
-No skill, Body or level test exists in any of them. The server side of a hero-window equip is message `0x22` (§12): it
-repeats no mage/fighter test.
+No skill, Body or level test exists in any of them. The server side of a hero-window equip is message `0x22` (§12, §15): it calls `FUN_00512573`, so the
+**server repeats the fighter / mage test** (the earlier INFERRED "no test" was wrong: the test lives in the put method, not in the three equip methods).
 
 ## 7. Special items
 
@@ -179,7 +180,10 @@ rest is looked up by name from the end of the class list (`FUN_0053eb10`). 1,319
 
 `tests/test_itemdefs.py` (synthetic rules, plus the install: every packet equals the formulas, masks regenerate the 395
 items, map codes and equipment strings resolve, golden hash `["items"]`), `tests/test_itemgen.py` (one test per rule of
-§11); `tools/validate_items.py` runs the install checks.
+§11); `tools/validate_items.py` runs the install checks. §15 (gear): `tests/test_engine_gear.py` (synthetic table `tests/gear_helpers.py`: stack rules, equip /
+refusal / two-handed / slot rules, modifiers, load and speed, potions, drop, pickup order, hero death drop, template drop keeps castSpell) and
+`tests/test_engine_gear_data.py` (every human template gives identical stats through an explicit loadout, the start mage's staff, a record hero, section 9
+effects of piles and carried items, an Orc_Shaman staff drop, the free-id bitmap of map 83).
 
 ## 11. Random generation
 
@@ -297,7 +301,7 @@ hero's `+0x1f` object `+0x1c`). Further shop messages: `0x33` buy (`FUN_0052115f
 (`FUN_005211bb` -> `FUN_00522c75` -> `FUN_005220d9`; `FUN_005210c9` -> `FUN_00522936`). A call from a hero that is not a customer logs
 "Invalid shop transaction".
 
-**Settlement.** The hero's gold is the field `+0x3c` of the hero object (`[customer + 0x14] + 0x3c`).
+**Settlement.** The hero's gold is the field `+0x3c` of the **player** object (`[customer + 0x14] + 0x3c`; `FUN_005167c6(id)` finds a player by its `+4`).
 - *Buy* (`FUN_00521c29`): for each item in the cart list whose owner `+0x14` is 0 (still the shop's): `cost = item.+0x1c * item.+0x42`
   (price times count). If the gold is below the cost the loop stops (the earlier items stay bought); otherwise `gold -= cost`, the item
   leaves the cart, `+0x14` = hero, `+0x4c` (in-cart flag) = 0, and `FUN_00529ac2` files it in the pack. So the gold taken is the server
@@ -308,18 +312,18 @@ hero's `+0x1f` object `+0x1c`). Further shop messages: `0x33` buy (`FUN_0052115f
 - The container total at `+0x20` (`FUN_00529c96`, the pack insert) only sums `short +0x4a * count` of what it holds (stack merge: same code
   and same `+0x4d` block tag). It is not used for payment.
 
-**Gold** (CONFIRMED). The hero's gold is its field `+0x3c` (not the map's `Player.money`, which is never read, [map](../formats/map.md)); a
-ground pile keeps its gold in its own `+0x3c`. Picking a pile up (`FUN_005108fa`, `this` = the hero) adds `pile.+0x3c` through
-`FUN_00516238(amount)` (`hero.+0x3c += amount`), moves the pile's items into the pack (`FUN_00529e5b`) and deletes the pile. Dropping gold is
-message `0x23`: the amount (word at `+0xa`) must be between 1 and the hero's gold, is subtracted, and `FUN_0052ab07(cell, pile, amount, flag)` adds it to
+**Gold** (CONFIRMED). The gold is the field `+0x3c` of the player object (the engine's `Player.gold`; not the map's `Player.money`, which is never read,
+[map](../formats/map.md)); a ground pile keeps its gold in its own `+0x3c`. Picking a pile up (`FUN_005108fa`) adds `pile.+0x3c` through
+`FUN_00516238(amount)` (`player.+0x3c += amount`), moves the pile's items into the pack (`FUN_00529e5b`) and deletes the pile. Dropping gold is
+message `0x23`: the amount (word at `+0xa`) must be between 1 and the player's gold, is subtracted, and `FUN_0052ab07(cell, pile, amount, flag)` adds it to
 the pile at the target cell (`FUN_00553ab3` finds it; a new pile is created when there is none, `pile.+0x3c += amount`). The shop paths above change the same field; killing a monster drops gold as
 a pile (`FUN_005109f5`, [units §4](units.md)).
 
 **Equip on the server.** The case `0x22` equip (destination kind 1) calls the carrier method `vtable + 0x40` (`FUN_005290cc` weapon /
 `FUN_00527a13` armour / `FUN_0052846b` shield, §6) with no fighter/mage test: the readers of record parameter 15 (`suitable_for`) in the exe
 are the equip-by-name functions `FUN_00527c46`, `FUN_005285f5`, `FUN_00529629` (via `FUN_00512573`), the generator and pool code
-(`FUN_00524bca`, `FUN_00526b5d`), the comparator below and `FUN_00510a70` (`== 0` test for a natural weapon swap). INFERRED from
-that absence: the server repeats no fighter/mage test for a hero-window equip; only the client test `FUN_0046a9c2` (§6) applies.
+(`FUN_00524bca`, `FUN_00526b5d`), the comparator below and `FUN_00510a70` (`== 0` test for a natural weapon swap); the test of the put method
+`FUN_00512573` (§15) is the one the server applies.
 
 **Wire flag byte** (`+8` of the descriptor, built from the `itemname.pkt` header byte `a`, checked on all 491 packets): bit 1 only on
 class 14 (specials: quest 1, book 5, potion 7, scroll `0x17`); bit `0x10` only on scrolls (58 of 58). Client `FUN_004b028d` (hero
@@ -414,15 +418,101 @@ readers: the upgrade of the equipped items and the 75-point attribute rule). The
 character file (`.a2c`, §12 message `0xbe` loads it with the wire item format `FUN_004ed5f5`; the file format is [saves §3](../formats/saves.md#3-the-a2c-character-file)), which is how the upgrade persists
 in the network case; in single player the upgraded item simply stays in the hero's pack in server memory ([saves §4](../formats/saves.md)).
 
+## 15. Equip, use, pack and ground items (CONFIRMED, engine `engine/sim/gear.py`)
+
+**Item objects.** A pack, a ground pile and the equipment slots hold **item objects with their effect lists** (`+0x20`), never a code: the copy
+constructor `FUN_005232bb` clones every effect (`FUN_0051cb98`), the weapon copy `FUN_00528fd8` also clones the cast wrapper `+0x84`, the wire reader
+`FUN_004ed5f5` builds the object from the code and appends the wire records (flags 0, value byte -> word `+0x40`; kinds `)` / `, - . / 0` carry a
+second byte), and a special item is built from its data.bin text (`FUN_00522fab`). The pile (`FUN_0052a71d` -> `FUN_0052a780`: gold `+0x3c`,
+bag `+0x40`, flag `+0x44`, a free id `+4`) and the sack bag (`FUN_005299b3`: `+0x1c := 0x7fff` insertion index, `+0x20 := 0` total weight) are lists of
+these objects. So a dropped Orc_Shaman staff **keeps its `{castSpell=Fire_Arrow:5}`** and a picked-up piece applies it again when equipped (answers the
+old question of combat 12.11 item 2; the earlier engine reduced pile members to 16-bit codes). Engine: `world.Item.mods` (parallel to `codes`),
+`Unit.carried_mods`, `saves.Item.mods`; the section 9 records of map groups become modifiers at load (`World._member_mods`), the generator's effects
+and the template strings' terms travel with the dropped item.
+
+**Pack insert** `FUN_00529ae2(index, item)` (ECX = pack): block tag `+0x4d := 0`; if the item is **stackable** (item vtable `+0x50`, `FUN_005234c2`: type
+byte `+0x44` 3 potion / 4 scroll always, any other item only with an empty effect list) and a pack entry has the same code (`FUN_00544160` = the code
+word) and is stackable too, the count is added (`item +0x42`), flags are or-ed, the new object is destroyed; else the object is inserted before
+position `index` (the end when `index >= count`); the total `+0x20 += weight * count`. `FUN_00529ac2(item)` = insert at `pack +0x1c`. **Take**
+`FUN_00529fb6(index, count)`: past the end -> none; `count < stack` splits `count` off (the clone, vtable `+0x40`, gets `count`), else the entry leaves the
+list; total `-= weight * taken`.
+
+**Creature (human, vtable `0x5d0fb8`) methods.** `+0x40` put `FUN_00512573(item)`: an item that is a weapon, armour or shield is refused (returned
+unchanged) unless `suitable_for & 1` (fighter) or `& 2` (mage); an allowed one goes to the item's `+0x38` equip and the return value is the **replaced
+object**; every other item (class 14: potion, scroll, book, quest item) goes to `+0x38` = **use** `FUN_00523613`. `+0x44` `FUN_00512638`: put, a non-null
+return is filed with `FUN_00529ac2` (used by the constructor and the character loader). `+0x48` `FUN_0051266e(item)`: take = item `+0x3c`. `+0x4c`
+`FUN_00512697`: slots 1..12 taken and filed in the pack.
+
+**Item equip methods.** Weapon `FUN_005290cc`: the castSpell effect (kind 41, `FUN_005238c5`) makes the cast wrapper `+0x84` (`FUN_005298d3(spell)`); the old
+weapon `+0x74` is unequipped (`+0x3c` = `FUN_00529392`) and returned; a **two-handed** new weapon (class parameter 14 == 2) takes the second hand out
+(`+0x48`) into the pack; the slot is set; attack types < 10 add `damage_min` / `spread` (u8 sums into `+0xf4` / `+0xf5`), the weapon's block `+0xfe`, copy
+the elemental bytes `+0xf9..+0xfb`, add to-hit `+0xe6` and set `+0xb6`; types 11 / 12 (flame thrower, beam) add to the elemental bytes and use the
+creature's own to-hit; humans copy windup / recovery (`+0x134` / `+0x135`) when the class has them; `+0x12c += range - 1`; `FUN_0050f065(weight)`;
+dirty flags `|= 0x34000`; then every effect's `+0x40` (`FUN_0052377e`: the stat switch with sign +1). Unequip `FUN_00529392` reverses all of it, resets
+windup / recovery to 8 / 4, deletes the cast wrapper and clears the slot. Shield `FUN_0052846b`: old shield unequipped and returned, a two-handed weapon
+in `+0x74` moved to the pack, block add (`FUN_00515617`), weight, effects. Armour `FUN_00527a13`: **humans only** (else the item is returned), slot =
+the item byte `+0x54` (the class record's `Slot`; 0 = "Illegal armor"), the creature table `+0x208 + 4 * slot` (slots 3..12 used), old piece
+unequipped and returned. Slot numbers: 1 weapon `+0x74`, 2 second hand `+0x78`, 3..12 armour; the message and the `.a2c` equipment chunk index them as
+`slot - 1` (chunk item `i` -> slot `i + 1`).
+
+**Effects at equip** (`FUN_0052377e`: every effect, whatever its time mode - `duration`, `charges`, `singleuse` text all apply; the flag `8` only skips
+the attribute byte tracker `+0xd4..`): stat switch `FUN_0051d436(carrier, +1)` (value `+0x40` as s32 for flags 0 else s16; first, for every kind, a speed bonus `+0xd8` above 24 is reset to 0): attributes 2..5 add to the base word (clamped 100) and the tracker (`+0xd4..+0xd7`; the recompute keeps `min(cap + tracker, base)`);
+6 / 9 heal HP / mana to the maximum; 7 / 10 (mage only) add to current and to the bonus `+0xdc` / `+0xe0` (max HP / mana); 8 / 11 (11 mage only)
+regeneration bonus `+0xde` / `+0xe2`; 12 to-hit `+0xe6`; 13 / 43 / 49 damage min `+0xf4`; 14 damage max `+0xf5`; 15 defence (block `+0xfe` on a human); 16 absorption
+(`+0x100`, humans); 17 speed `+0xd8` (humans); 18 turn rate (brain byte); 19 scan `+0xe4 += v << 8`; 20..25 protections `+0x102 + 2k` (clamped at 0 each
+add); 26..31 skill words `+0xe8 + 2k` for non-mages, 32..37 for mages; 41 castSpell nothing; 42 teachSpell adds the spell to the book (`FUN_0051c391`
+/ `FUN_0051c29e`, only a hero with a book); 44..48 elemental damage: element 1..5, `+0xf9` min, `+0xfa` spread from the effect bytes (a plain **set**, also
+for sign -1); 38..40 (lore) and 0x26..0x28 "Effect affects not implemented yet" (fatal log). Then the recompute (vtable `+0x58`).
+
+**Recompute `FUN_0051366b` - the parts the equipment feeds** (progression.md §3 has the rest): attributes `+0x84..+0x8a = min(cap + tracker, base)`;
+max HP `+0x96`, max mana `+0x9c` from them, then `+= bonus +0xdc / +0xe0`; capacity `+0x92 = Body * 10 + 1`; speed `+0x8c` = the Reaction rule
+(`R` below 12 else `R / 5 + 12`, +10 for unit types 0x13 / 0x15); **load** `+0x90 = +0x8e` (equipped weight: every equip adds the item's `+0x4a`) `+ pack total / 2`
+(32000 when the total is 64000 or more); when `capacity <= load`: `+0x8c -= load / capacity`, floor 6; `FUN_005113e7` adds the speed bonus `+0xd8` (zeroed when
+the sum is negative), max HP / mana bonus, scan bonus, then the attack and armour blocks; school skills `+0xa8 + 2k = clamp(+0x116 + 2k, 0, 100) +
+bonus +0xe8 + 2k`; HP and mana are clamped to the maxima (never raised). `FUN_0050f065(w)` adds `w` to `+0x8e`, recomputes the load and calls the
+recompute only when `load / capacity` changed. Engine: `combatstats.human_stats(gear=, load=)`, `human_speed`, `gear.recompute`.
+
+**Use `FUN_00523613`** (item vtable `+0x38` of a special item, reached through put): for a living carrier every effect with flags 0 gets `|= 8`, then the
+effect's apply (`FUN_0051ce12`, effects.md §4: modes 1 / 2 = timed -> an entry of the unit's effect list with id 0, merged by id like any effect;
+modes 4 / 8 / 0 -> the stat switch once, permanent: Body / Reaction / Mind / Spirit potions change the base, health / mana potions heal); the human
+method `+0x5c` runs; the object is destroyed (the whole stack the message took: `count` is normally 1). A potion with an attribute name in its text
+rewrites the character file after 15 s (`FUN_004e9e97`). The structure wells of `FUN_0050f12c` case 0xf make a "Potion Big Healing" / "Big Mana" and put it
+(`+0x44`) the same way (not modelled).
+
+**Message `0x22`** (`FUN_004f515d`, [§12](#12-trade-hero-window-and-wire-flags) for the fields). Kinds: 1 equipment slot (`+0xe + 1`; above slot 2 humans only,
+else a log line), 2 pack entry (take with `+0x12` count), 3 ground sack, 4..8 shop. Source kind 3: the sack at the hero's cell must exist
+(`FUN_00553ab3`), the pack insertion index := `+0x10` and the hero's order `+0x50 := 2` (the pickup order, no destination set: the brain keeps its old
+cell word; engine: the own cell). Destination kind 1: pack index := `+0xe`, `+0x40` put, a non-null return filed in the pack (so the replaced or
+refused item goes back to the slot index it came from), the load recomputed (`FUN_0050f065(0)`); kind 2: insert at `+0x10`; kind 3: a new bag with the
+item, dropped by `FUN_0052acf6(cell, bag, 0, 1)` at the cell `(+0x10 & 0xff, +0x10 >> 8)` when it is within 2 cells of the hero in both axes, else at the hero's
+cell; a cell that cannot hold a pile deletes the item (pile rules: combat 12.4). Message `0x23` (drop gold): player found by id, amount in `1..gold`,
+subtracted, `FUN_0052ab07(cell, 0, amount)` at the same target rule. Message `0x21` (pickup, cell target): a sack must exist at `(+0xa, +0xc)` ("Sack not
+found at ..." otherwise); the last unit of the intake gets pack index `+0xe` and `FUN_0056da98`: order 2, destination cell, Brain mode 0.
+**Pickup order**: the group pass executor `FUN_00569321` order 2 -> `FUN_0056c8da`: on the sack's cell Brain mode 7 else Brain mode 1 (walk); mode 7
+(`FUN_0056ea24`) sets state 2, or stops (`FUN_0056dbc6`) when the state already is 2; the creature tick's state 2 (`FUN_0050f12c` case 2) takes the pile of
+the own cell (`FUN_00553ab3`), unregisters it, and `FUN_005108fa` adds the gold to the player, files every item with `FUN_00529e5b` (one at a time
+through `FUN_00529fb6(0, 1)` / `FUN_00529ac2`, only while the pack holds fewer than 0x400 entries; the items are flagged new `+8 := 1`), deletes the pile and
+frees its id. Engine: `gear.move_item`, `drop_gold`, `command_pickup`, `refresh_pickup`, `pick_mode`, `pickup_tick`; commands `MoveItem`, `DropGold`,
+`PickUp` (`engine/sim/commands.py`).
+
+**Death and character load.** `FUN_00510a70` steps 1-3 ([combat §12.4](../engine/combat.md#124-loot-and-drops-fun_00510a70-steps-4-5)) file the second hand, the
+weapon (class parameter 15 != 0) and slots 1..12 into the pack, which is the bag: a hero's pack comes first, then those (`gear.bag`). The character
+loader ([saves §3.6](../formats/saves.md#36-building-a-hero-from-a-record-fun_004ea6ab-confirmed-order)) clears the template equipment, makes a new pack,
+puts the 12 items through `+0x44` in record order (a refused or replaced one lands at the end of the pack) and files the pack items.
+
 ## VERIFY IN GAME
 
 - Price shown for a Common Iron Long Sword (600) and a Rare Bronze one (600), a Rare Mithrill Helm with `{defence=13}`.
 - Scroll of Fire Arrow: price shown in a shop (about 41 from the pkt template, or 100); the gold taken is the server item's `+0x1c`
   times the count (§12).
-- A two-handed weapon pushes the shield into the pack; a mage cannot equip a Long Sword, a fighter cannot equip a Staff.
+- A two-handed weapon pushes the shield into the pack; a mage cannot equip a Long Sword, a fighter cannot equip a Staff (the server test of §6 / §15).
+- A dropped shaman staff keeps its spell after pickup; a hero over the capacity (`Body * 10 + 1`) walks slower by `load / capacity`.
 - Weight: Bronze Cuirass 38, Meteoric / Crystal items heavier (material f64 1).
 
 ## Open questions
 
-- None open for items. The `.a2c` item stream is decoded in [saves §3.4](../formats/saves.md#34-item-chunks-confirmed); left outside this spec: the Scenario.dll
+- Gear ([§15](#15-equip-use-pack-and-ground-items-confirmed-engine-sim-gearpy)) left outside the engine: the shop kinds 4..8 of message `0x22`, the structure wells
+  (state `0xf` potions, command `0x24`), the client-side drop test `FUN_0046a9c2`, the character-file rewrite after an attribute potion, the lore effects
+  38..40, the setter of Brain mode 12 (`FUN_0056eb2d`), the stale destination of source kind 3, and effect kind 18 (turn rate; the recompute overwrites it).
+- The `.a2c` item stream is decoded in [saves §3.4](../formats/saves.md#34-item-chunks-confirmed); left outside this spec: the Scenario.dll
   campaign state machine beyond the shop table (§13; its save block is [saves §6.3](../formats/saves.md#63-the-client-tail-confirmed-fun_0048dc9f-writes-fun_0048c2e9-reads-from-offset-4--0x100)).

@@ -40,12 +40,12 @@ def regen(world, u, block):
         return
     k = 3 if world.tick - u.step_end > REST_TICKS else 1
     hp_regen, mana_regen = regen_rates(u)
-    if hp_regen and u.hp < u.hp_max and block & 3 == u.id & 3:
-        t = u.hp * 100 + u.hp_acc + (u.hp_max * 2 * 100 * k) // hp_regen        # bonus +0xde = 0 (no effects yet)
+    if hp_regen and u.hp < u.hp_max and block & 3 == u.oid & 3:        # the exe object id `+4` (a map unit: 0x6000 + uid; a made unit: its free id)
+        t = u.hp * 100 + u.hp_acc + (u.hp_max * 2 * (100 + u.fx.hp_regen) * k) // hp_regen        # bonus +0xde (effect kind 8: the regeneration potions)
         u.hp_acc = t % 100
         u.hp = min(t // 100, u.hp_max)
     if mana_regen and u.mana < u.mana_max:
-        t = u.mana * 100 + u.mana_acc + (u.mana_max * 100 * k) // mana_regen    # bonus +0xe2 = 0
+        t = u.mana * 100 + u.mana_acc + (u.mana_max * (100 + u.fx.mana_regen) * k) // mana_regen    # bonus +0xe2 (effect kind 11)
         u.mana_acc = t % 100
         u.mana = min(t // 100, u.mana_max)
 

@@ -219,4 +219,4 @@ the hero on map 40 and of all humans/monsters (`Unit.skills/xp/xp_total/best_sch
 
 ## Open questions
 
-- Equipment effects of a hero loaded from a record (`engine/party.py` keeps the items but the engine has no equip system yet).
+None open. (A hero's equipment now feeds the recompute: max HP / mana, attributes, skills, speed: [items §15](items.md#15-equip-use-pack-and-ground-items-confirmed-engine-sim-gearpy), `engine/sim/gear.py`; level-ups recompute through `gear.recompute`.)

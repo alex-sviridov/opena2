@@ -1,6 +1,7 @@
 """Fixed-step simulation."""
 
 from . import ai as ai_mod
+from . import gear as gear_mod
 from . import triggers as triggers_mod
 from .movement import movement_system
 from .orders import orders_system
@@ -34,6 +35,7 @@ class Simulation:
         if triggers:
             self.systems.append(triggers_mod.mission_system)   # FUN_004f8967 at the end of the step (docs/engine/triggers.md 6)
         self.log = []
+        gear_mod.template_speeds(world)         # the humans' speed stat from their equipment strings (load penalty, speed modifiers)
 
     @property
     def tick(self):

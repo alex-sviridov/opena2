@@ -17,6 +17,9 @@ STAT_DEFENCE, STAT_ABSORPTION, STAT_TOHIT, STAT_DAMAGE_MAX = 15, 16, 12, 14
 STAT_ATTR = {2: "body", 3: "mind", 4: "reaction", 5: "spirit"}      # effect kinds 2-5 (docs/engine/unit-struct.md)
 STAT_PROT0 = 20                             # kinds 20..25: protection[phys, fire, water, air, earth, astral]
 STAT_ELEM0 = 44                             # kinds 44..48: elemental damage fire..astral
+STAT_HP_MAX, STAT_MANA_MAX, STAT_SPEED, STAT_SCAN = 7, 10, 17, 19       # healthMax -> bonus +0xdc, manaMax (mages) -> +0xe0, speed -> +0xd8, scanRange -> +0xe4 << 8
+STAT_SKILL0_FIGHTER, STAT_SKILL0_MAGE = 26, 32                        # kinds 26..31 (non-mages) / 32..37 (mages): skill bonus words +0xe8 + 2k
+CAVALRY_TYPES = prog.CAVALRY_TYPES
 
 
 def u8(v):
@@ -79,6 +82,15 @@ class CombatStats:
     weapon_weight: int = 0      # weapon +0x4a, for the hero delay
     weapon_spell: tuple = None  # (spell number, count) of the wielded weapon's `castSpell=` effect (weapon +0x84 != 0, `FUN_00542580`), else None
     reaction: int = 0           # +0x86, humans only (hero delay)
+    # the recompute's other results for a human (`FUN_0051366b`; engine/sim/gear.py reads them)
+    attrs: tuple = None         # effective (body, reaction, mind, spirit) = +0x84, +0x86, +0x88, +0x8a (equipment included)
+    hp_bonus: int = 0           # bonus +0xdc (healthMax modifiers), added to the max HP
+    mana_bonus: int = 0         # bonus +0xe0 (manaMax modifiers of a mage)
+    speed_bonus: int = 0        # bonus +0xd8 (speed modifiers of the equipment)
+    scan_bonus: int = 0         # bonus +0xe4 >> 8 (scanRange modifiers)
+    skill_bonus: tuple = (0,) * 6   # bonus words +0xe8 + 2k, added to the school skills 1..5 by the recompute
+    load: int = 0               # +0x90 equipped weight + half the pack's
+    capacity: int = 1           # +0x92 Body * 10 + 1
 
 
 class _Bonus:
@@ -97,13 +109,18 @@ class _Bonus:
         self.weight = 0
         self.weapon = False
         self.weapon_spell = None
+        self.hp = self.mana = self.speed = self.scan = 0
+        self.skill = [0] * 6
 
 
-def _apply_effects(bonus, effects):
-    """`FUN_0051d436` for the permanent modifiers of an item, kinds that touch the combat numbers only."""
+def _apply_effects(bonus, effects, human=False, mage=False):
+    """`FUN_0051d436` for the modifiers of an equipped item (`FUN_0052377e` calls every effect's `+0x40` -> the stat switch with sign +1), kinds that
+    touch the combat numbers.  The exe applies **every** effect whatever its time mode: `permanent`, `duration`, `charges` and `singleuse` text all
+    reach the switch (the mode only changes the attribute byte tracker `+0xd4..` for flag 8, which the min-with-cap of the recompute reads: a
+    single-use attribute modifier is a permanent change of the base instead).  `human` adds the kinds a monster's branch handles differently."""
     for e in effects:
         k, v = e.kind, e.value
-        if e.mode != 0:                             # duration / charges / single use: not an equipment bonus
+        if e.mode == 8 and k in STAT_ATTR:              # flag 8: the base word changes, the cap tracker does not (not an equipment bonus)
             continue
         if k in STAT_ATTR:
             bonus.attr[STAT_ATTR[k]] += v
@@ -123,6 +140,17 @@ def _apply_effects(bonus, effects):
         elif k in ELEMENT_DAMAGE:
             bonus.elem = k - STAT_ELEM0 + 1
             bonus.elo, bonus.esp = u8(v), u8(e.spread)
+        elif human and k == STAT_HP_MAX:
+            bonus.hp = s16(bonus.hp + v)
+        elif human and k == STAT_MANA_MAX and mage:
+            bonus.mana = s16(bonus.mana + v)
+        elif human and k == STAT_SPEED:
+            bonus.speed = s16(bonus.speed + v)
+        elif human and k == STAT_SCAN:
+            bonus.scan = s16(bonus.scan + v)
+        elif human and ((STAT_SKILL0_MAGE if mage else STAT_SKILL0_FIGHTER) <= k < (STAT_SKILL0_MAGE if mage else STAT_SKILL0_FIGHTER) + 6):
+            i = k - (STAT_SKILL0_MAGE if mage else STAT_SKILL0_FIGHTER)
+            bonus.skill[i] = s16(bonus.skill[i] + v)
 
 
 def _element_of(effects):
@@ -133,7 +161,7 @@ def _element_of(effects):
     return 0, 0, 0
 
 
-def _equip_weapon(bonus, item, general_skill, human):
+def _equip_weapon(bonus, item, general_skill, human, mage=False):
     """`FUN_005290cc`: the carrier-side effects of a weapon."""
     d, s = item.defn, item.stats
     t = d.fields.get("attack_type", 0)
@@ -161,14 +189,14 @@ def _equip_weapon(bonus, item, general_skill, human):
             bonus.windup = w
         if r != -1:
             bonus.recovery = r
-    _apply_effects(bonus, item.effects)
+    _apply_effects(bonus, item.effects, human, mage)
 
 
-def _equip_armour(bonus, item):
+def _equip_armour(bonus, item, human=False, mage=False):
     """`FUN_00527a13` / the shield twin: the item's defence and absorption join the carrier's block B."""
     bonus.block.defence = s16(bonus.block.defence + item.stats.defence)
     bonus.block.absorb = s16(bonus.block.absorb + item.stats.absorption)
-    _apply_effects(bonus, item.effects)
+    _apply_effects(bonus, item.effects, human, mage)
 
 
 def _merge(rec, block, bonus):
@@ -242,9 +270,46 @@ def monster_stats(t, items=None, hard=False):
     return st
 
 
-def human_stats(t, items=None, skills=None, fx=None):
-    """Human template -> `CombatStats` (the recompute `FUN_0051366b` after the equipment strings).  `fx`: the bonus words the spell effects
-    changed (`world.EffectStats`: defence `+0xfe`, absorption `+0x100`, protections `+0x102..`; docs/engine/effects.md 5)."""
+def template_gear(t, items, mage=None):
+    """The human template's equipment strings as the constructor equips them (`FUN_005145d1`, `FUN_00512573` per string): `{slot: resolved item}`
+    with the creature slots 1 weapon, 2 second hand, the armour's own `Slot` (a later string for a slot replaces the earlier one), the items the
+    carrier cannot use refused (`suitable_for` bit 1 fighters / 2 mages), and a two-handed weapon next to a shield dropping the weapon from the slot
+    (it goes to the pack).  Returns (equipped, displaced) where `displaced` lists the items that went to the pack, in the order they did."""
+    if mage is None:
+        mage = t.get("mana_max", -1) > 0
+    equipped, displaced = {}, []
+    for slot, text in enumerate(t.equipment):
+        if not text.strip():
+            continue
+        r = items.parse_equipment(text, slot)
+        item = items.resolve(*r) if r else None
+        if item is None:
+            continue
+        if not item.defn.can_use(mage):
+            displaced.append(item)                  # refused by `FUN_00512573`: `FUN_00512638` files the item in the pack
+            continue
+        if item.defn.kind == WEAPON:
+            n = 1
+            if item.defn.fields.get("two_handed") == 2 and 2 in equipped:
+                displaced.append(equipped.pop(2))   # `FUN_005290cc`: a two-handed weapon moves the shield to the pack
+        elif item.defn.kind == SHIELD:
+            n = 2
+            w = equipped.get(1)
+            if w is not None and w.defn.fields.get("two_handed") == 2:
+                displaced.append(equipped.pop(1))   # `FUN_0052846b`: the shield moves a two-handed weapon to the pack
+        else:
+            n = item.defn.cls
+        if n in equipped:
+            displaced.append(equipped[n])
+        equipped[n] = item
+    return equipped, displaced
+
+
+def human_stats(t, items=None, skills=None, fx=None, gear=None, load=0):
+    """Human template -> `CombatStats` (the recompute `FUN_0051366b` after the equipment).  `fx`: the bonus words the spell effects changed
+    (`world.EffectStats`: defence `+0xfe`, absorption `+0x100`, protections `+0x102..`; docs/engine/effects.md 5).  `gear`: `{slot: resolved
+    item}` of a hero's own equipment (engine/sim/gear.py), used instead of the template strings (the equip methods already enforced who may
+    wear what and the two-handed rule); `load`: the pack's half weight added to the equipped weight (`+0x90`)."""
     mage = t.get("mana_max", -1) > 0
     female = t.get("gender", 0) == 1
     caps = prog.ATTR_CAPS[(mage, female)]
@@ -252,34 +317,29 @@ def human_stats(t, items=None, skills=None, fx=None):
     sk = list(prog.skills_of(t) if skills is None else skills)
     bonus = _Bonus()
     equipped = {}
-    if items is not None:
-        for slot, text in enumerate(t.equipment):
-            if not text.strip():
-                continue
-            r = items.parse_equipment(text, slot)
-            item = items.resolve(*r) if r else None
-            if item is None or not item.defn.can_use(mage):
-                continue
-            equipped[slot] = item
-        w, sh = equipped.get(0), equipped.get(1)
-        if w is not None and sh is not None and w.defn.fields.get("two_handed") == 2:
-            del equipped[0]                         # equipping the shield moved the two-handed weapon to the pack
-        for slot in sorted(equipped):
-            item = equipped[slot]
-            if item.defn.kind == WEAPON:
-                _equip_weapon(bonus, item, sk[0], human=True)
-            elif item.defn.kind in (SHIELD, ARMOUR):
-                _equip_armour(bonus, item)
+    if gear is not None:
+        equipped = dict(gear)
+    elif items is not None:
+        equipped = template_gear(t, items, mage)[0]
+    equipped_weight = 0
+    for slot in sorted(equipped):
+        item = equipped[slot]
+        equipped_weight += item.stats.weight
+        if item.defn.kind == WEAPON:
+            _equip_weapon(bonus, item, sk[0], human=True, mage=mage)
+        elif item.defn.kind in (SHIELD, ARMOUR):
+            _equip_armour(bonus, item, human=True, mage=mage)
     if fx is not None:
         bonus.block.defence = s16(bonus.block.defence + fx.defence)
         bonus.block.absorb = max(0, s16(bonus.block.absorb + fx.absorb))
         bonus.block.prot = [max(0, s16(a + b)) for a, b in zip(bonus.block.prot, fx.prot)]
     body = min(min(raw["body"], caps[0]) + bonus.attr["body"], 100)
     reaction = min(min(raw["reaction"], caps[1]) + bonus.attr["reaction"], 100)
+    mind = min(min(raw["mind"], caps[2]) + bonus.attr["mind"], 100)
     spirit = min(min(raw["spirit"], caps[3]) + bonus.attr["spirit"], 100)
     base = int(1.1 ** body / 20.0)
     rec = AttackRecord(skill=s16(int((1.1 ** body + 1.1 ** reaction) / 5.0)), lo=u8(base), sp=u8(base), kind=bonus.kind)
-    school = [min(max(s, 0), 100) for s in sk]
+    school = [min(max(s, 0), 100) + (bonus.skill[i] if i else 0) for i, s in enumerate(sk)]     # +0xa8 + 2k = clamp + bonus word (k = 1..5)
     if bonus.kind:
         k = school[bonus.kind]
         rec.skill = s16(rec.skill + 3 * k)
@@ -295,18 +355,34 @@ def human_stats(t, items=None, skills=None, fx=None):
     st = CombatStats(rec, block, human=True, mage=mage, range=1 + bonus.range, reaction=reaction,
                      windup=bonus.windup if bonus.windup is not None else _param(t, "windup", HUMAN_WINDUP),
                      recovery=bonus.recovery if bonus.recovery is not None else _param(t, "recovery", HUMAN_RECOVERY),
-                     weapon_weight=bonus.weight, has_weapon=bonus.weapon, weapon_spell=bonus.weapon_spell)
+                     weapon_weight=bonus.weight, has_weapon=bonus.weapon, weapon_spell=bonus.weapon_spell,
+                     attrs=(body, reaction, mind, spirit), hp_bonus=bonus.hp, mana_bonus=bonus.mana,
+                     speed_bonus=bonus.speed, scan_bonus=bonus.scan,
+                     skill_bonus=tuple(bonus.skill), load=s16(equipped_weight + load), capacity=body * 10 + 1)
     return st
 
 
-def unit_combat_stats(t, items=None, skills=None, hard=False, fx=None):
+def human_speed(st, t, type_id=0):
+    """The speed stat `+0x8c` of a human after the recompute (`FUN_0051366b` `0x513a78`-`0x513c60` + `FUN_005113e7`): Reaction `R` gives `R` below 12
+    else `R // 5 + 12`, +10 for the cavalry unit types; when the load `+0x90` reaches the capacity `+0x92` (Body * 10 + 1) the stat drops by `load //
+    capacity` (floor 6); then the speed bonus word `+0xd8` (equipment + Haste / Slow) is added.  `st` is the unit's `CombatStats`."""
+    r = st.attrs[1] if st.attrs is not None else prog.derived_speed(t, 0)
+    s = r if r < 12 else r // 5 + 12
+    if type_id in CAVALRY_TYPES:
+        s += 10
+    if st.capacity <= st.load:
+        s = max(s - st.load // st.capacity, 6)
+    return s + st.speed_bonus
+
+
+def unit_combat_stats(t, items=None, skills=None, hard=False, fx=None, gear=None, load=0):
     """Dispatch on the template kind (`unitstats.MONSTER` / `HUMAN`); None for an unknown template.  `fx` (`world.EffectStats`): the effect
     changes, bonus words for a human (merged by the recompute), direct deltas of defence / absorption for a monster (its recompute
     `FUN_005118be` leaves them; a monster's protection bonus is never merged: docs/engine/effects.md 5)."""
     if t is None:
         return None
     if t.kind == prog.unitstats.HUMAN:
-        return human_stats(t, items, skills, fx)
+        return human_stats(t, items, skills, fx, gear, load)
     st = monster_stats(t, items, hard)
     if fx is not None:
         st.block.defence = s16(st.block.defence + fx.defence)
@@ -320,8 +396,8 @@ def item_code(item):
     return item.material << 12 | d.cls << 8 | item.quality << 5 | d.index
 
 
-def equipment_codes(t, items):
-    """The item codes the template's equipment strings leave in a unit's loot bag at death (`FUN_00510a70` steps 1-3, C§12.4), in the
+def equipment_bag(t, items):
+    """`[(item code, effects)]`: the items the template's equipment strings leave in a unit's loot bag at death (`FUN_00510a70` steps 1-3, C§12.4), in the
     exe's bag order: the second item (`+0x78`, a shield), the weapon (`+0x74`; **only when the weapon class's parameter 15 `suitable_for`
     is non-zero**, natural weapons have 0), then for humans the armour slots 1..12 ascending (`FUN_00512697`).
     Monsters (`FUN_00511959`): 2 strings, a string containing `Shield` is a shield, else a weapon.  Humans (`FUN_005145d1`): 10 strings, 0
@@ -353,9 +429,14 @@ def equipment_codes(t, items):
         weapon = None           # equipping the shield moved the weapon to the pack (the pack is dropped too)
     out = []
     if shield is not None:
-        out.append(item_code(shield))
+        out.append((item_code(shield), shield.effects))
     if weapon is not None and weapon.defn.fields.get("suitable_for", 0) != 0:
-        out.append(item_code(weapon))
+        out.append((item_code(weapon), weapon.effects))
     if human:
-        out += [item_code(armour[s]) for s in sorted(armour)]
+        out += [(item_code(armour[s]), armour[s].effects) for s in sorted(armour)]
     return out
+
+
+def equipment_codes(t, items):
+    """The item codes of `equipment_bag` (the effects dropped)."""
+    return [c for c, _ in equipment_bag(t, items)]

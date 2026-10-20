@@ -7,12 +7,13 @@ comments; routine addresses there).  Layer 4: reads and writes `engine.world` on
 
 from engine.world import OrderGroup
 
-from .commands import AttackUnit, CastScroll, CastSpell, Guard, MoveUnits, SetAutoCast, SetAutoSpell, SetFormation, StandStill, Stop, Swarm
+from .commands import (AttackUnit, CastScroll, CastSpell, DropGold, Guard, MoveItem, MoveUnits, PickUp, SetAutoCast, SetAutoSpell, SetFormation, StandStill, Stop,
+                       Swarm)
 from .combat import can_order_attack, refresh_attack, set_attack
 from .movement import (ATTACK_ORDER, CENTRE, MoveTo, _in_map, _set_action, IDLE, cancel, fail_stop, live_cells, path_grid,
                        set_guard, set_move, set_stand, set_still, stop_unit, unit_size, unit_speed)
 from .pathfinding import chebyshev
-from . import ai, follow, spells
+from . import ai, follow, gear, spells
 
 MAX_IDS = 253                       # FUN_0050bbb8 stops appending at 253 (R 2)
 FORMATION_LIMIT = 2                 # server+0xa724: Chebyshev distance an Auto group may be spread over (R 3.2)
@@ -257,6 +258,8 @@ def _pass_orders(world, g):
             follow.exec_follow(world, u)                # FUN_00569857
         elif u.order == follow.PATROL_ORDER:
             follow.exec_patrol(world, u)                # FUN_00569b62
+        elif u.order == gear.PICK_ORDER:
+            gear.refresh_pickup(world, u)               # FUN_0056c8da: order 2, go to the sack / Brain mode 7
 
 
 def attack_group(world, g, target):
@@ -312,6 +315,19 @@ def orders_system(world, commands):
             g = intake(world, cmd.player_id, cmd.unit_ids)
             if g is not None:
                 move_group(world, g, *cmd.cell, swarm=True)
+        elif isinstance(cmd, PickUp):                   # message 0x21: the last unit of the intake gets the pickup order (FUN_004f515d)
+            g = intake(world, cmd.player_id, cmd.unit_ids)
+            if g is not None and g.members:
+                _cancel_group(world, g)
+                gear.command_pickup(world, world.units[g.members[-1]], cmd.cell, cmd.index)
+        elif isinstance(cmd, MoveItem):                 # message 0x22: hero container moves (sim/gear.py)
+            u = _lookup(world, cmd.player_id, cmd.unit_id) if cmd.player_id in world.players else None
+            if u is not None:
+                gear.move_item(world, u, cmd.src_kind, cmd.dst_kind, cmd.src_index, cmd.dst_index, cmd.count)
+        elif isinstance(cmd, DropGold):                 # message 0x23
+            g = intake(world, cmd.player_id, cmd.unit_ids)
+            if g is not None and g.members:
+                gear.drop_gold(world, world.players[cmd.player_id], world.units[g.members[0]], cmd.amount, cmd.cell)
         elif isinstance(cmd, SetFormation):
             if cmd.player_id in world.players and cmd.mode in (0, 1, 2):
                 world.players[cmd.player_id].formation = cmd.mode

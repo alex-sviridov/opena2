@@ -29,6 +29,7 @@ BRAIN_STONE = 4                 # brain+9 = 4 (`0x56dd24`, `0x56dfca`)
 STONE_STATE = 0x1B
 # stat kinds (FUN_0051d436)
 K_DEFENCE, K_ABSORB, K_SPEED, K_SCAN, K_PROT0 = 15, 16, 17, 19, 20
+K_HP_REGEN, K_MANA_REGEN = 8, 11             # the regeneration potions: bonus words +0xde / +0xe2 (kind 11 only on a mage, `FUN_0053a5a0`)
 # cell record slots by spell (FUN_00518ba3)
 CELL_SLOT = {WALL_OF_FIRE: 0, POISON: 2, WALL_OF_EARTH: 3, LIGHT: 4, DARKNESS: 5}
 # what `release` builds (the damage branch covers the damage spells; 11 Prismatic Spray, 22, 24, 25, 26 are elsewhere)
@@ -312,6 +313,10 @@ def _switch(world, u, e, sign):
         fx.scan += a
     elif K_PROT0 <= k < K_PROT0 + 6:
         fx.prot[k - K_PROT0] = max(0, fx.prot[k - K_PROT0] + a)
+    elif k == K_HP_REGEN:
+        fx.hp_regen += a
+    elif k == K_MANA_REGEN and _monster_stats(world, u).mage:
+        fx.mana_regen += a
     _recompute(world, u)
 
 

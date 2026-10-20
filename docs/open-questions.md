@@ -17,13 +17,11 @@ from both places when answered).
 
 ## Progression
 
-- Equipment effects of a loaded hero (the engine keeps `Unit.equipment` / `Unit.pack` but has no equip system). [progression](data/progression.md#open-questions)
+- None open ([progression](data/progression.md#open-questions)).
 
 ## Combat and death
 
-- Summon-cap job `+0x148` draw order: the `unit+4` ids of map units and heroes that fix the `CMap` bucket order (`0x545a60`; `FUN_0052bbb7`); engine uses first-appearance order. [combat §12.11](engine/combat.md#1211-open-questions) 0
-- Item effects (`{castSpell=..}`) of dropped template equipment are lost in the 16-bit pile code; what pile / pickup keep (start `FUN_00529ac2`, `FUN_0052a71d`). [combat §12.11](engine/combat.md#1211-open-questions) 2
-- Sound tables (unit sound set entries, hero voices, UI sound `0x627740[0xf]`, the hit sound set); the engine has no audio. [combat §12.11](engine/combat.md#1211-open-questions) 3
+- Sound tables (unit sound set entries, hero voices, UI sound `0x627740[0xf]`, the hit sound set); the engine has no audio. [combat §12.11](engine/combat.md#1211-open-questions) 1
 - Structure damage `FUN_00516ea0` (attacks on structures); wire format of `FUN_005040c4`. [unit-struct](engine/unit-struct.md#open-questions)
 
 ## AI
@@ -46,7 +44,7 @@ from both places when answered).
 
 ## Movement and orders
 
-- Player commands `0x1b` (follow / defend) and `0x1d` (patrol), pickup `0x21`, use `0x24`, cast at a cell `0x1f`, town: simulation side built ([ai §14.2](engine/ai.md#142-the-unit-orders-of-the-scripted-sub-commands-10-11-14-15-confirmed)), no engine command or UI issue yet; the squad voice; the consolidated VERIFY IN GAME list. [simulation](engine/simulation.md#open-questions), [simulation §9](engine/simulation.md#9-handoff-to-combat-phase-i)
+- Player commands `0x1b` (follow / defend) and `0x1d` (patrol), use `0x24`, cast at a cell `0x1f`, town: simulation side built ([ai §14.2](engine/ai.md#142-the-unit-orders-of-the-scripted-sub-commands-10-11-14-15-confirmed)), no engine command or UI issue yet (the item commands `0x21` pickup, `0x22` move item, `0x23` drop gold are built: `PickUp`, `MoveItem`, `DropGold`; no click or window issues them yet - the pickup cursor mode and the hero window are phase J); the squad voice; the consolidated VERIFY IN GAME list. [simulation](engine/simulation.md#open-questions), [simulation §9](engine/simulation.md#9-handoff-to-combat-phase-i)
 - Click to move: heap block after the `+0xb8` table (`FUN_00582a10`; last-row read of `FUN_00417f31`); the per-order voice slots. [research §9](engine/click-to-move-research.md#9-open-questions)
 
 ## Interface

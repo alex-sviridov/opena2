@@ -12,7 +12,8 @@ from engine.world import DEAD, HeroDied, Item, Loot, Removed, death_stage
 
 from . import xp
 from .combat import combat_stats, log
-from .combatstats import equipment_codes
+from .combatstats import equipment_bag, equipment_codes
+from . import gear
 
 HUMAN_DYING_DEFAULT = 8         # `FUN_00512526`: a human without dying time (-1) uses 8
 HERO_DEATH_HP = -50             # `FUN_00510a70` step 7: the main hero's HP after its items dropped
@@ -89,6 +90,7 @@ def remove_dead(world, u):
     world.bury(u.id)
     if u.hp <= STAGE5_HP:                       # the decay step above already took it to stage 5: the id is freed
         world.corpses.pop(u.id, None)
+        world.net_ids.free(u.net_id)
     log(world, Removed(world.tick, u.id))
     if hero_event is not None:
         log(world, hero_event)
@@ -102,19 +104,33 @@ def drop_loot(world, u):
     Draws in the exe's order: `rnd(100)`, `rnd(spread)` (on a hit), `rnd(100)`, the generator, `rnd(len - 1)`."""
     st = u.stats
     summoned = bool(u.behaviour & 8)
-    codes = [] if summoned or (st is not None and "NPC" in st.name) else list(u.carried) + equipment_codes(st, world.item_table)
-    gold = 0
+    table = world.item_table
+    if summoned or (st is not None and "NPC" in st.name):
+        codes, mods = [], []
+    elif u.human and u.equipment and table is not None:
+        codes, mods = gear.bag(world, u)                # a loadout: the pack, then the second hand, the weapon and the armour as they are
+        codes, mods = list(codes), list(mods) or [()] * len(codes)
+    else:
+        codes = list(u.carried)
+        mods = [tuple(u.carried_mods[i]) if i < len(u.carried_mods) else () for i in range(len(codes))]
+        for code, effects in equipment_bag(st, table):  # the template's strings keep their `{castSpell=..}` terms
+            codes.append(code)
+            mods.append(gear.mods_of(effects))
     if not u.human and not summoned and st is not None:
         rng = world.rng
+        gold = 0
         if rng.rand(100) < st.get("gold_chance", 0):
             gold = st.get("gold_base", 0) + rng.rand(st.get("gold_spread", 0))
-        if rng.rand(100) < st.get("item_chance", 0) and world.item_table is not None:
-            it = loot_item(world.item_table, st.get("item_value_min", 0), st.get("item_value_max", 0), st.get("item_flags", 0), rng)
+        if rng.rand(100) < st.get("item_chance", 0) and table is not None:
+            it = loot_item(table, st.get("item_value_min", 0), st.get("item_value_max", 0), st.get("item_flags", 0), rng)
             if it is not None:
                 codes.append(it.code & 0xFFFF)
+                mods.append(gear.mods_of(it.effects))
+    else:
+        gold = 0
     if not codes and not gold:
         return
-    if world.place_pile(u.x, u.y, gold, codes) is None:     # `FUN_005538c7` failed: the pile with its gold and items is deleted (rolls are spent)
+    if world.place_pile(u.x, u.y, gold, codes, mods=tuple(mods) if any(mods) else ()) is None:     # `FUN_005538c7` failed: the pile with its gold and items is deleted (rolls are spent)
         return
     log(world, Loot(world.tick, u.id, u.x, u.y, gold, tuple(codes)))
 
@@ -130,6 +146,7 @@ def decay_step(world, u):
     if u.hp < -600 and u.hp > STAGE5_HP:
         u.hp = STAGE5_HP
         world.corpses.pop(u.id, None)
+        world.net_ids.free(u.net_id)            # `FUN_005110b8` 0x51121b: a ground unit (`+0x4a <= 1`) frees its id at death stage 5
 
 
 def decay_corpses(world):
