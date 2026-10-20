@@ -169,6 +169,19 @@ def combat_stats(world, u):
     return st
 
 
+def attack_range(world, u):
+    """`FUN_0056ac5b(u)`: the range every order issuer writes to `brain+0x14`: the range byte of the selected spell (`brain+0x78`, Ctrl+A;
+    docs/engine/ai.md 12.8) when the book has it and `mana >= cost` (signed words), else the unit's attack range `+0x12c`."""
+    base = combat_stats(world, u).range
+    n = u.auto_spell
+    if n and world.spell_table is not None:
+        from . import spells
+        sp = world.spell_table.get(n)
+        if sp is not None and spells.wrapper_of(u, n) is not None and u.mana >= sp.mana_cost:
+            return spells.wrapper_range(sp, spells.Wrapper(n), spells.unit_level(u, sp)) & 0xFF
+    return base
+
+
 def move_class(u):
     """movementType as the attack matrix reads it (humans carry -1 in data.bin and walk)."""
     return u.move_type if u.move_type in (1, 2, 3) else 1
@@ -176,7 +189,7 @@ def move_class(u):
 
 def can_order_attack(world, u, t):
     """`FUN_005711ea` != 0xffffff: the matrix of C§2.2 for attacker `u` and target `t`."""
-    return can_attack(move_class(u), combat_stats(world, u).range, move_class(t), combat_stats(world, t).range)
+    return can_attack(move_class(u), attack_range(world, u), move_class(t), attack_range(world, t))
 
 
 def set_attack(world, u, t):
@@ -188,7 +201,7 @@ def set_attack(world, u, t):
     mv.cancel(u, world)
     u.order = mv.ATTACK_ORDER
     u.target = t.id
-    u.range = combat_stats(world, u).range
+    u.range = attack_range(world, u)
     u.mode_go = u.mode_attack = u.mode_cast = False
     u.mode_follow = False
     u.anchor = None
@@ -202,11 +215,17 @@ def refresh_attack(world, u):
     if t is None or t.state == DEAD:
         mv.stop_unit(world, u)
         return
+    if world.ai_on and combat_stats(world, u).mage:
+        pl = world.players.get(u.owner)
+        if pl is not None and pl.human:
+            from . import ai
+            ai.human_attack(world, u, t)                # the player-owned mage branch of FUN_0056acc8: selected spell, mode 5, caster scan (ai.md 12.8)
+            return
     u.mode_go = False
     u.mode_attack = True
     u.mode_follow = False
     u.mover.waiting = u.mover.parked = False
-    u.range = combat_stats(world, u).range
+    u.range = attack_range(world, u)
 
 
 def attack_mode(world, u):

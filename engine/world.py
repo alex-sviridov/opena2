@@ -84,6 +84,7 @@ class Player:
     kills_players: int = 0          # exe owner+0xa4c (stats +0x04)
     death_code: int = 0             # exe owner+0x40 (byte): `server_id - 0x13` of the last hero of the human that died (message 0xb4)
     defeat_dialog: bool = False     # the client opens the hero-died dialog (combat.md 12.3a); the UI clears it
+    autocast: int = 0               # the party-AI byte (player `+0x34` record `+0x20`, message 0x46 sub 3): bits 8 / 0x10 / 0x20 = auto-cast levels (heal, buffs, protections), 1 / 2 / 4 = friend kinds (own, allied, neutral); docs/engine/ai.md 12.8
 
 
 @dataclass
@@ -480,6 +481,7 @@ class Unit:
     cast_wrapper: object = None     # brain+0x30 the `spells.Wrapper` of the cast order
     cast: object = None             # `SpellCast` of the cast in progress (unit +0x5c/+0x64/+0x68)
     spellbook: int = None           # unit+0x140 learned-spell bit mask (bit n = spell n); None: derived from the template (`spells.known_mask`)
+    auto_spell: int = 0             # brain+0x78: the unit's selected spell (Ctrl+A, message 0x46 sub 4; docs/engine/ai.md 12.8): the attack range and the human cast decision `FUN_0056b059` read it
     ai_cast: bool = False           # brain+0x60: the cast was set by the AI (`FUN_0056a981` & co.): Brain mode 8 / 9 stays after the cast starts; cleared by every cancel
     mode_cell: bool = False         # Brain mode 9 (cast at a cell with approach, `FUN_0056ec3f`)
     cast_cell: tuple = None         # brain+0x3c target cell (x, y) of the cell cast order 0xe / mode 9
@@ -1227,6 +1229,8 @@ class World:
             d["selection"] = list(p.selection)
         if p.formation != 1:
             d["formation"] = p.formation
+        if p.autocast:
+            d["autocast"] = p.autocast
         if p.hero_deaths or p.death_code or p.defeat_dialog:        # main_hero is derived at load, not dumped
             d["hero"] = [p.hero_deaths, p.death_code, int(p.defeat_dialog)]
         return [d] if d else []
@@ -1238,7 +1242,7 @@ class World:
         fight = World._fight_state(u)
         death = World._death_state(u)
         cast = World._cast_state(u)
-        if fight is None and death is None and cast is None and World._follow_state(u) is None and not u.master and not (u.order or u.state or u.path or u.odometer or m.steps or m.turning or u.order_group
+        if fight is None and death is None and cast is None and World._follow_state(u) is None and not u.master and not u.auto_spell and not (u.order or u.state or u.path or u.odometer or m.steps or m.turning or u.order_group
                                   or u.stopped or m.waiting or m.parked or m.target_facing != u.facing
                                   or u.effects or u.effect_mask or u.fx.any()):
             return []
@@ -1270,6 +1274,8 @@ class World:
             d["follow"] = follow
         if u.master:
             d["master"] = u.master
+        if u.auto_spell:
+            d["auto_spell"] = u.auto_spell
         if u.effects or u.effect_mask or u.fx.any():                       # only under a spell effect (sim/effects.py)
             d["effects"] = [[e.dump() for e in u.effects], u.effect_mask, u.fx.dump()]
         return [d]

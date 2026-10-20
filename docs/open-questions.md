@@ -29,15 +29,16 @@ from both places when answered).
 
 ## AI
 
+- Party options message `0x46`: sub 1 (retreat mode, Ctrl+W) and sub `0x80` (`FUN_00578910`) are not built; the registry default of `AutoCasting` on a first run. [ai](engine/ai.md#open-questions)
 - Caster follow branch `FUN_00569968`: the word `+0xa0` (a spell-list unit under defend heals the leader; engine: plain scan). [ai](engine/ai.md#open-questions)
-- AI casting ([ai §12](engine/ai.md#12-casters-and-special-attacks-confirmed-unless-marked-engine-127)): the party-AI flag byte of a human player (player `+0x34` record `+0x20`, client command at `0x4f6945`) before `FUN_0056bc7b` can be built; whether `FUN_00519483` scales the book wrapper in place (`+9` range; also [spells](data/spells.md#11-open-questions)); `FUN_005551d6` in the revive `FUN_00510534`. [ai](engine/ai.md#open-questions)
+- AI casting ([ai §12](engine/ai.md#12-casters-and-special-attacks-confirmed-unless-marked-engine-127)): whether `FUN_00519483` scales the book wrapper in place (`+9` range; also [spells](data/spells.md#11-open-questions)); `FUN_005551d6` in the revive `FUN_00510534`. [ai](engine/ai.md#open-questions)
 - Quest side of [ai §15.2](engine/ai.md#152-the-quest-that-sends-a-group-order-2): the quest generator and accept path (no quest system in the engine; shipped squads with creation bit 8; completion events `FUN_0057e87a`). [ai](engine/ai.md#open-questions)
 - Quest system (accept `FUN_0052f8e2`, board, rewards) and the meaning of quest events 5-0x11 (listeners in [combat §16.4](engine/combat.md#164-death-the-event-queue-and-the-trigger-runtime); start `FUN_0052e3eb`, senders in `0x57e5f0`-`0x57edda`). [combat](engine/combat.md#open-questions) 1
 
 ## Spells
 
 - [Effects](engine/effects.md#open-questions): the Prismatic Spray chain (`FUN_00519c04` -> `FUN_00579ddf`: the hit reaction first, the caster group's pool `FUN_00571c4d`, distance `FUN_00579d62`, the `min(7, L/20 + 2)` nearest within the range, dying units scored `<< 8`; spell 11 stays a counted no-op); the structure branch of the carriers (`vtable +0x34`, `FUN_00559b7f`); the human scan's recompute triggers besides the stat switch; the client effect messages (`FUN_005044ba`, `FUN_00504498`, `FUN_005045a5`).
-- Spell panel leftovers: the tooltip filter `obj+0x24 in {0x17, 0x18}`, the Ctrl+A auto-cast spell (`FUN_0041a727`, cmd `0x46` sub 4), the `0x411` resets of the panel selection, the F-key table's persistence, scroll casts (`0x25`). Start `FUN_004167c2`. [spells](data/spells.md#11-open-questions)
+- Spell panel: no window selects the backpack entry for scroll casts yet (`FUN_004c7143`, `FUN_004c70fe`; the sim command `CastScroll` and `scroll_slot_mask` exist). [spells](data/spells.md#11-open-questions)
 
 ## Triggers and scenario
 

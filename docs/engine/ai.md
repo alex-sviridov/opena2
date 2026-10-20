@@ -253,8 +253,8 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
   the pool radius, the post, the target, a label with mode / order / target uid / radius / stamp). Tests that use monsters as dummies keep the old behaviour.
 * Deviations (all invisible in the 46 maps' normal play, none changes the rules above): an event-raised mode (§6.2) runs its body one tick later than the
   exe's direct call; (a go cell is passed raw, as the exe does: cell (0, 0) for a never-hit unit, §3); a target that
-  disappears ends mode 5 (and an AI's mode 8) without stopping the unit (INFERRED, the exe's pointer); casters: §12.7 (the human-owner scan
-  `FUN_0056bc7b` and the Teleport flee are not built); the effect bit `0x40000` is not modelled (`0x1000` hidden: the clause is, `Unit.hidden` has no setter yet); the difficulty tweak is implemented behind `World.from_map(difficulty=...)` (default 2 = off, section 10.1); the target flag `+0x4c & 8` test of `FUN_0056acc8` is not modelled (off-map units do not exist in the engine).
+  disappears ends mode 5 (and an AI's mode 8) without stopping the unit (INFERRED, the exe's pointer); casters: §12.7, §12.8 (the human-owner scan
+  `FUN_0056bc7b`; the Teleport flee is not built); the effect bit `0x40000` is not modelled (`0x1000` hidden: the clause is, `Unit.hidden` has no setter yet); the difficulty tweak is implemented behind `World.from_map(difficulty=...)` (default 2 = off, section 10.1); the target flag `+0x4c & 8` test of `FUN_0056acc8` is not modelled (off-map units do not exist in the engine).
 ### 10.1 Difficulty tweak (`FUN_00561bf9` `0x561e20`-`0x561f0b`, CONFIRMED)
 
 `[0x6044c4+0xd8]` is the game option "difficulty": the server ctor `0x4e97bf` stores **2**; the only setter is `0x493d80`, called from `FUN_004891d8` (`0x48972f`) with `selector + 1`. **Who reaches it in single player (CONFIRMED, REA)**: `FUN_004891d8` is not a lobby window but the main shell window's handler of message `0x44c` ("a child panel closed", dispatch `FUN_004852d8`, class vtable `0x5ce0d8`, ctor `0x481efc`; `this+0x5d8` = game kind: 2 = single player, 1 / 3 / 0 = network client / host / join). The server object (and so the option) is created only by `FUN_0048ab76` (ctor `0x4e957b` -> `0x4e97bf`, then `0x4eb356`), whose five callers are the game-kind starters: kind 2 by screen state `0x425` (`0x48c0e2`) and state `0x419` (`0x48db37`); kind 3 / 1 / 0 by `0x48f156` / `0x48f1e2` / `0x48ef1f` (network). **New game = state `0x425`** (loads `main\text\town.txt`, kind 2, selector `this+0x598 := 1`), then `FUN_0048f4e2` shows the setup panel `this+0x374` (resource `0x466`, class ctor `0x43270d`): name, option index `+0x208`, and **three radio buttons Easy / Medium / Hard** (`0x434fa1/0x434fdb/0x435014` write `+0x20c := 0/1/2`; their tooltips `0x437533` use main.txt lines 247..249 only when kind == 2; town.txt tip 9 says "select the easy level if you play for the first time"). OK on that panel copies the values (`0x4891d8` `this+0x374` branch: selector `FUN_00493ce0` -> `this+0x598`) and shows the confirm panel `this+0x36c` (`FUN_0048f3f0`); OK on `this+0x36c` with kind 2 runs `0x40d480`, `0x49183e`, the two option flags, **`if ([0x6044c4]) setter(this+0x598 + 1)`** and enters state `0x42e` (the game). So **the player chooses Easy (1) / Medium (2, preselected) / Hard (3) once, at the start of a new single-player game; every map of the campaign then uses it** (nothing re-creates the server between missions; the value is read per unit by `FUN_00561bf9`). **Load game = state `0x419`** (list dialog `this+0x13c`, OK `0x445`): `FUN_0048db37` makes a kind-2 server (default 2), then `FUN_004e9b95` reads the saved server state through `FUN_004ec732`, which restores `+0xd8` **only if the saved value is 1..3** (`0x4ecad4`-`0x4ecae9`), so the difficulty lives in the save file (written by `0x4ec8a1`) and is not asked again. Other paths (`0x444bcc`, class `0x44498d` with vtable `0x5cc438`) are dead code (no constructor call). Network host / join / lobby (kinds 0, 1, 3) reach the same panels but are out of scope. Mapping to the engine: `engine run MAP --difficulty 1|2|3` = Easy / Medium (default, no tweak) / Hard; there is no per-map difficulty and the map header does not carry one. It is not the map header: `field_88` is only the multiplayer advert level ([map.md](../formats/map.md)). The tweak runs only for units whose map flag `0x10` is clear (monsters; heroes take the other branch), when the mode is not 2 and settings `+0x74 == 0` (single-player map, `field_84 == 1`). Mode 1 (easy): max HP = trunc(template HP x 0.5 `0x5d1b00`), HP = max HP, brain `+0x44` (wimpy) `>>= 1`. Mode 3 (hard; the code branch is "else", so 0 would act the same, never stored): to-hit `+0xa6` and defence `+0xbe` += `0x32`, max HP = trunc(x 1.5 `0x5d1b08`). It scales the template value; a map HP override replaces it afterwards, and the monster recompute is additive so the +50 survives. Engine: `World.from_map(m, assets, difficulty=2)` (`DEFAULT_DIFFICULTY`), `Unit.tweak` (0 / 1 / 3), `combatstats.monster_stats(hard=)`, `ai.post_step` (wimpy). Default 2 changes nothing: no golden or hash moves. Not modelled: the client-side damage scaling (x0.5 easy / x1.5 hard, `FUN_00502019`) and the `[0x6044c4+0x174]` multiplayer filter.
@@ -263,8 +263,8 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
   loops; the pool is built from the spatial index (`world.units`) restricted to the group's visible cells, not by scanning all creatures. Results are identical.
 * RNG: the group pass draws `rand(-1..1)` at the first pass of each group (§3.5), in group creation order, and the caster draws of §12 (slot rolls,
   the mage's `rand(100)` and pick, the idle friend / spell picks) in member order inside the handlers; the look-around (§6.1) draws per tick.
-* Not modelled: the Invisibility effect that sets `Unit.hidden`, the `0x40000` scan-range effect bit, the human-owner caster code (`FUN_0056b059` with a selected
-  spell, `FUN_0056bc7b`) and the Teleport flee (§12.6), the effects of the non-damage spells (§12.7: counted in `World.unbuilt_casts`). The other group orders are built ([§14.1](#141-implementation-and-the-asm-details-it-rests-on-confirmed-unless-marked)).
+* Not modelled: the Invisibility effect that sets `Unit.hidden`, the `0x40000` scan-range effect bit and the Teleport flee (§12.6); the human-owner caster code
+  (`FUN_0056b059`, `FUN_0056bc7b`) is built (§12.8), the effects of the non-damage spells (§12.7: counted in `World.unbuilt_casts`). The other group orders are built ([§14.1](#141-implementation-and-the-asm-details-it-rests-on-confirmed-unless-marked)).
 
 ## 11. Tests and code
 
@@ -291,8 +291,8 @@ cell" = `B+0x60 := 1` then **`FUN_0056969c(u, cell, w)`**: Brain mode 9, `B+0x3c
 * Skills `+0xa8+2k` (k = 1..5) := `p54` (`spell_power`) for every monster (`0x511d64`-`0x511d94`).
 * `p56` (`known_spells`) neither 0 nor -1: `+0x4c |= 6` (**mage**), a **new** spellbook replaces `+0x140` with the wrapper of every bit n = 1..29, and the skills
   `+0xaa..+0xb2` := `p57..p61` (raw words, -1 kept) (`0x511dd6`-`0x511f44`). No template has both a slot and a mask.
-* `B+0x78` (the default spell, read by `FUN_0056ac5b` and `FUN_0056b059`) is written only for heroes (creation `0x4f30f5`, record load `0x4ead58`, the client's
-  spell-select command `0x4f69c5`/`0x4f69e3`): **0 for every map unit**, so their `FUN_0056ac5b` range is the attack range `u+0x12c`.
+* `B+0x78` (the default spell, read by `FUN_0056ac5b` and `FUN_0056b059`) is written only for heroes (creation `0x4f30f5`, record load `0x4ead58`, Ctrl+A,
+  message `0x46` sub 4 `0x4f69c5`/`0x4f69e3`, §12.8): **0 for every map unit**, so their `FUN_0056ac5b` range is the attack range `u+0x12c`.
 
 So the install has two kinds of spell users (§6): **special-attack monsters** (bit 2 only: `.4` / `.5` variants, slots with probabilities 1..20, mana 0, the slot
 spells in the book, level `p54 - 30 + mind`) and **mages** (bits 2 + 4: Dragon, Orc_Shaman, `M_Skeleton.3-5`, Necro*, Druid*, Succubus*, MercenaryDruid*, and every human
@@ -387,7 +387,7 @@ defensive, n not 24 / 27]`, `k = rand(|L|)` (always drawn); **when L is empty th
 * `FUN_0056bc7b(u)` (human mage in mode 5 with range < 2, and the human idle `FUN_0056b025`; "castable n" = `FUN_0056bb0d` = known and `cost <= mana`; "in range" =
   `FUN_0056bc2e` = Chebyshev cells `<=` wrapper range; "friend" = `FUN_0056bb53`: not at war and not allied with owner flag 4, allied with flag 2, the same owner with
   flag 1, or itself; "fresh" = target `B+0xa4 != 20 || |B+0xa8 - tick| > 20` (it compares with 20 = Bless for every spell)). The flag byte is the owner's party-AI
-  byte (player `+0x34` record `+0x20`, starts `0xff` in `FUN_005691c7`, replaced by a client command, `0x4f6945`, operand `+0xe`; the client side is not traced).
+  byte (player `+0x34` record `+0x20`, starts `0xff` in `FUN_005691c7`, replaced by message `0x46` sub 3 at `0x4f6945`; bits and sender: §12.8).
   Order: mana < 5 or flag 8 clear -> mode 0. `hp < max` and castable 24 -> heal itself. Shield bit (`+0x144 & 1 << 27`) clear and castable 27 -> Shield itself.
   Caster lists (§4); castable 24 and a list count > 1 -> the friend in range with the smallest `(int)(hp / hp_max)`, healed when `< 1`. Flag 0x10 clear or mana < 10
   -> mode 0. Per friend of `server+0xaa8`: Bless 20 (`FUN_00542c90` and not effect 20, fresh, in range), then Haste 21 (not effect 21, fresh, in range). Flag 0x20 clear or
@@ -409,11 +409,55 @@ check fails silently and retries every 3 ticks. Only the cancel `FUN_0056d969` c
 and `Chebyshev(cell u, cell) <= B+0x14` (`FUN_0055539a`); else `FUN_0056e4ac(u, cell, range)` = the move driver `FUN_00555411(u, cell, range)` towards the cell, which at
 a cell centre within `range` only turns to the cell (`FUN_00556da2`), and state 1.
 
-**Engine (`engine/sim/ai.py`, `spells.py`)**: `engage` = 12.2 (computer branch built; the human branch keeps mode 5: `FUN_0056b059` is exact as a no-op because the
-engine has no selected spell, `FUN_0056bc7b` is not built), `special_attack` = 12.3, `caster_attack` = 12.4, `mage_idle` / `friend_cast` = 12.5 (called by `idle`), the
+**Engine (`engine/sim/ai.py`, `spells.py`)**: `engage` = 12.2 (the human branch is `human_attack`, 12.8), `special_attack` = 12.3, `caster_attack` = 12.4, `mage_idle` / `friend_cast` = 12.5 (called by `idle`), the
 casts are `CastSpell(..., ai=True)` commands (unit or cell) applied by `ai.apply` (mode 8 / 9 with `Unit.ai_cast`), the Brain mode 9 and state `0xe` are
 `spells.cell_mode` / `cast_tick`. Effects: `+0x144` is the effect mask of `sim/effects.py` ([effects](effects.md)), so "already active" is real: an active Shield (bit 27) ends the idle recast of 12.5 (the AI cast repeats only until the next pass, 12.7, and the merge then just refreshes the time), a blessed / hasted / protected friend is not buffed again, and a stoned target scores `+0x7f` (`0x5713c7`, effects §7).
 The Teleport flee (12.6) is not built (no shipped template can reach it).
+
+### 12.8 The player's own casters: the party-AI byte, Ctrl+A, the caster scan (CONFIRMED unless marked; engine `ai.human_scan`, `selected_cast`, `human_attack`)
+
+**Message `0x46`** (client `FUN_0041a4ef` .. `FUN_0041a727`, `msg+9 = 0x46`, sub-code `msg+0xa`, operand `msg+0xe`; server `FUN_004f515d` switch `0x4f67ce`, byte table `0x4f8432`, jump table `0x4f841a`): the "party options" message, handled only with the server object present (`[0x66832c]`):
+
+| sub | Client sender | Server | Meaning |
+|---|---|---|---|
+| 1 | `FUN_0041a4ef(v)`, v = `WimpyMode % 3` | `0x4f67d5` | retreat mode 0 / 1 / 2 -> 0 / 10 / 30 percent (`FUN_0057393c`, `FUN_00573b38`; not built) |
+| 2 | `FUN_0041a617(v)`, v = `FormationMode % 3`, Ctrl+F `FUN_0041f040` | `0x4f688c` | formation 0 off, 1 -> 2, 2 -> 1 (`FUN_005737ba`; built, `SetFormation`) |
+| 3 | `FUN_0041a5b9(byte)` | `0x4f6902`: `player(msg+5)+0x34` record `+0x20 := msg[+0xe]` (`0x4f6945`) | **the party-AI byte**, `SetAutoCast` |
+| 4 | `FUN_0041a727(spell)` (Ctrl+A) | `0x4f694d` | the unit's selected spell, `SetAutoSpell` |
+| 0x80 | `FUN_0041a672` | `0x4f6a26` -> `FUN_00578910` | not traced |
+
+**The byte** (sub 3). Source: the client option `0x62277c` = the options object `0x622758` field `+0x24`, registry value **`AutoCasting`** (`FUN_004415d4` reads it, the options dialog's OK `FUN_00442e8b` message `0x445` rebuilds it): start 8; combo `0x8d` = 0 / 1 / 2 ORs `0x00` / `0x18` / `0x38` (so 8 = heal, `0x18` = heal + buffs, `0x38` = heal + buffs + protections); three check boxes `0x83` / `0x84` / `0x85` OR `1` / `2` / `4`. The hotkey at `0x40cfbf` (`FUN_0041a54a`) cycles `(byte & 0x38)` 8 -> `0x18` -> `0x38` -> 8, keeps bits 0-2 and sends it (the same code is the status icon: icon 1 when bit `0x10`, 2 when `0x20`). The game start `FUN_0048c8a3` (`0x48cb3e`-`0x48cb7a`) sends subs 1, 2, 3 from the options (`0x48cb67` = `0x62277c`), and the options dialog sends them again. The server value `0xff` from `FUN_005691c7` therefore never survives a game that sends the options.
+
+| Bit | Reader | Meaning |
+|---|---|---|
+| `0x08` | `FUN_0056bc7b` `0x56bcb3` | auto-cast level 1: Heal (24) itself, Shield (27) itself, Heal the worst friend in range (mana >= 5) |
+| `0x10` | `0x56bee9` | level 2: Bless (20, only non-mages) and Haste (21) on friends (mana >= 10) |
+| `0x20` | `0x56c0fd` | level 3: the protections 13, 19, 4, 8, Invisibility (12) on friends / itself (mana >= 40) |
+| `0x01` / `0x02` / `0x04` | `FUN_0056bb53` `0x56bb8c`-`0x56bc09` | who counts as a friend: own units (same owner) / allied (relation bit 2) / neutral (relation bits 0 and 1 clear); the player's word for itself is `0x12`, so bit 2 also admits the own units; the caster itself is always a friend |
+
+Engine: `Player.autocast` (default **0**: INFERRED, a missing registry key leaves the zero-initialised global; every OK of the options dialog gives at least 8), `SetAutoCast`; dump key `autocast` only when non-zero.
+
+**The scan** `FUN_0056bc7b` (`ai.human_scan`), every group pass from `FUN_0056b025` (idle human mage, `ai.idle`) and after the melee mode 5 of a mage with range < 2 (`human_attack`). Every cast is "cast at a unit" with `B+0x60 := 1` (the AI cast of 12.7: the mode repeats until the next pass), "mode 0" is the byte write `B+8 := 0` (`ai.mode0`: the unit's walk / attack / cast mode ends, order and group untouched). The caster lists are `FUN_00571e9b` + `FUN_00567c56` (§4: the pool of the caster's own group, no relation filter; units in state `0x10` and undetected hidden ones skipped; foes `server+0xac8`, the rest `server+0xaa8`; `ai.caster_lists`).
+```
+mana < 5 or byte & 8 == 0 -> mode 0
+hp != hp_max and Heal castable -> Heal itself                     # castable n = FUN_0056bb0d: in the book and cost <= mana (signed words)
+no effect 27 and Shield castable -> Shield itself
+Heal castable and |friends| > 1: the friend (FUN_0056bb53) in range (FUN_0056bc2e: Chebyshev <= wrapper range) with the smallest (int)(hp / hp_max); < 1 -> Heal it
+byte & 0x10 == 0 or mana < 10 -> mode 0
+per friend: Bless castable, friend not a mage (FUN_00542c90 = +0x4c & 4 == 0), no effect 20, fresh, in range -> Bless
+            Haste castable, no effect 21, fresh, in range -> Haste
+byte & 0x20 == 0 or mana < 40 -> mode 0
+per friend: 13, 19, 4, 8 (castable, in range, effect bit clear, fresh), then Invisibility (castable, in range, no effect 12, friend != caster, relation word & 3 != 0, fresh)
+Invisibility castable and not hidden -> Invisibility itself, else mode 0
+```
+"fresh" = `B+0xa4 != 20 or |B+0xa8 - tick| > 20` of the target (always compared with 20, the Bless number, for every spell; `AiState.spell_mark` / `spell_tick`).
+
+**Ctrl+A** (sub 4). Client `FUN_004c74b1` (the spell panel's key handler, Ctrl held and key `a` / `A`): the spell of the panel's selected slot `+0x60`, else of the slot under the mouse; `FUN_0041a727(spell)` sends, for every selected object that has the spell (`obj+0x1c` bit; `FUN_0041eb40`), `msg+0xa = 4`, `msg+0xe = (unit id & 0xffff) | spell << 16` and sets `obj+0x118 := spell` (the highlight in the panel, `view+0x14c`, spells.md 9e.1). Server `0x4f694d`: the unit by id among the player's (`FUN_004f3a19`), `B+0x78 := (B+0x78 == spell) ? 0 : spell` (the client always sets, the server toggles: a second Ctrl+A leaves the client highlight on and the server off), then the stub `FUN_0056bb00` and the client notice `0xffb`. `B+0x78` is "the selected spell", read in two places only:
+* `FUN_0056ac5b` (the range every order writes to `brain+0x14`): the spell's range byte when the book has it and `mana >= cost`, else `+0x12c`; engine `combat.attack_range` (used by `set_attack`, `refresh_attack`, `can_order_attack`, the AI's score and `AttackUnit`).
+* `FUN_0056b059(u, t)` at the head of the player-owned branch of `FUN_0056acc8` (12.2; `ai.selected_cast`, called by `human_attack` and, for a player attack order, by `combat.refresh_attack` when the AI pass is on): not castable -> 0 (the mode 5 goes on). Spells 1 5 10 11 16 26: cast at `t`. 2 3 6 7: for each foe of the list the square of radius 1 (2) / 2 / 2 / 2 round its cell (2 and 3: the cell ahead, by the foe's facing `>> 5`, when it is not at a cell centre) counts foes (+1) against the rest (+1, the caster itself +100); the best score must be >= 1, then cast at `t`. 18 and 28: at `t` when it lacks the effect, else (quirk: still at `t`) when some foe lacks it. 24 Heal: the friend with the smallest `(int)(hp / hp_max)` (healed below 1, else mode 0, returns 1). 25 at itself, no `B+0x60`. 27 Shield at itself unless active. 22 and the rest: 0.
+The "mode 0 after mode 5" quirk is real: a mage with range < 2 whose scan ends in mode 0 (byte clear, no mana, nothing to do) loses the attack mode it was just given, at every pass. DECISION: applied as is (`human_attack`).
+
+VERIFY IN GAME: (1) a hired mage with the byte 8 heals a wounded party member and itself when idle; (2) Bless lands only on non-mages and is not repeated within 20 ticks; (3) a melee mage on stand ground does not fight with the byte clear.
 
 ## 13. VERIFY IN GAME
 
@@ -447,7 +491,7 @@ The Teleport flee (12.6) is not built (no shipped template can reach it).
 Group order = `record+0x20`; the pass `FUN_00570087` visits every player's groups (`FUN_005700f3`: empty group -> `0xff`, handler, then the post step §9 on every
 member). "Pool" = `FUN_00571c4d` over the members (§4), "assign" = `FUN_0057240b` (each member's lowest `FUN_005711ea` score in the pool, §5, no radius filter unless
 stated), "act" = per member in list order: target -> `FUN_0056acc8` (§6), no target -> the line given. `idle` = `FUN_0056afd9`: a computer owner gets brain mode `0xb`
-(§6.1), a human's non-caster brain mode 0 (`FUN_0056b025`; a mage runs the caster scan `FUN_0056bc7b`, §12.6). `go(m, c)` = `FUN_0056c8af` (§3).
+(§6.1), a human's non-caster brain mode 0 (`FUN_0056b025`; a mage runs the caster scan `FUN_0056bc7b`, §12.8). `go(m, c)` = `FUN_0056c8af` (§3).
 
 | Order | Handler | Per pass (every 16 ticks) | Set by |
 |---|---|---|---|
@@ -571,8 +615,7 @@ So the "map-object effect" of the earlier INFERRED line does not exist: it is th
 
 * The unit word `+0xa0` read by the caster follow branch `FUN_00569968` (defend / `0x11` of a unit with a spell list heals the leader; engine: plain scan). The sacks/pickup order (`P` key, cmd `0x13`, `FUN_00419f2a`) is not a group handler.
 * The quest side of [§15.2](#152-the-quest-that-sends-a-group-order-2): whether the shipped scripts ever create squads with creation-record bit 8 (kind `0xc`), the completion events of kinds `0xb` / `0xc` (`FUN_0057e87a`), and the three non-group kinds `4`-`6`; the engine has no quest system.
-* Party-AI flag byte of a human player (player `+0x34` record `+0x20`, default `0xff`, §12.6): which client option / command writes it (`0x4f6945`, operand `+0xe`) and its single-player
-  value; needed before `FUN_0056bc7b` (human mages healing / buffing on their own) is built. Start: the command case of `0x4f6945` in `FUN_004f515d`, its client sender.
+* Message `0x46` sub 1 (the retreat mode, Ctrl+W / registry `WimpyMode`, `0x4f67d5` -> `FUN_0057393c` / `FUN_00573b38`: 0, 10, 30 percent) and sub `0x80` (`0x4f6a26` -> `FUN_00578910`) are not built; the registry default of `AutoCasting` on a first run (§12.8; the engine starts at 0). Start `0x4f6758`.
 * Book wrapper range: does `FUN_00519483` scale the spellbook's own wrapper (so `+9` is the range of the last cast's level) or a copy? The engine uses the range at the caster's
   current level everywhere (`spells.wrapper_range`). Start `0x519483`, `0x5195b1`.
 * Revive `FUN_00510534` (Heal of a dying unit): `FUN_005551d6(position)` and whether the recompute (vtable `+0x58`) rebuilds defence after the `<<= 1` (engine: rebuilt).

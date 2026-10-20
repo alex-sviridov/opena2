@@ -197,6 +197,66 @@ def cast_group(world, g, spell_id, target, cancel_group):
             set_cast(world, u, target, w)
 
 
+CAST_SPELL_MOD = 41                       # saves.Item modifier kind 41 = castSpell (spell id, charges); the item's first effect (`FUN_0053ddf0`, kind 0x29)
+SCROLL_CLASS = 0xE                        # item class of a scroll (`FUN_0053bff0`); the release deletes an item of this class
+
+
+def take_from_pack(u, index, count=1):
+    """`FUN_00529fb6(pack, index, count)`: `index` past the pack gives None; a stack larger than `count` loses `count` pieces and the taken item is a
+    copy with `count`, else the whole entry leaves the pack.  Returns the taken `saves.Item`."""
+    from dataclasses import replace
+    pack = list(u.pack)
+    if not 0 <= index < len(pack):
+        return None
+    it = pack[index]
+    if it.count > count:
+        pack[index] = replace(it, count=it.count - count)
+        taken = replace(it, count=count)
+    else:
+        taken = pack.pop(index)
+    u.pack = tuple(pack)
+    return taken
+
+
+def put_back(u, index, item):
+    """`FUN_00529ae2(pack, index, item)`: the item returns to the pack (merged into a stack entry of the same code without modifiers, else inserted
+    at `index`)."""
+    from dataclasses import replace
+    pack = list(u.pack)
+    for k, it in enumerate(pack):
+        if it.code == item.code and not it.mods and not item.mods:
+            pack[k] = replace(it, count=it.count + item.count)
+            u.pack = tuple(pack)
+            return
+    pack.insert(min(max(index, 0), len(pack)), item)
+    u.pack = tuple(pack)
+
+
+def scroll_cast(world, g, u, index, target=None, cell=None, cancel_group=None):
+    """Commands `0x25` / `0x26` (`FUN_004f515d` `0x4f5825`): take one piece of pack item `index`; it must have castSpell as its first effect (else it is
+    simply gone, the exe returns without putting it back); the wrapper is `FUN_0051906d(spell)` scaled by the item's charges.  At a unit:
+    `FUN_005702be`; at a cell only for a spell that targets a cell, else the item goes back into the pack.  The cast pays no mana
+    (`item_count` set) and the item is spent: the release clears it (a scroll is deleted)."""
+    item = take_from_pack(u, index)
+    if item is None or not item.mods or item.mods[0][0] != CAST_SPELL_MOD:
+        return False
+    number, charges = item.mods[0][1], item.mods[0][2] & 0xFF
+    spell = world.spell_table.get(number) if world.spell_table is not None else None
+    if spell is None:
+        return False
+    w = Wrapper(number, charges)
+    if cell is not None:
+        if spell.target != 2:
+            put_back(u, index, item)
+            return False
+        cancel_group(world, g)
+        set_cell_cast(world, u, cell, w)
+    else:
+        cancel_group(world, g)
+        set_cast(world, u, target, w)
+    return True
+
+
 def refresh_cast(world, u):
     """Group pass, order 0xd (`FUN_00569321` -> `FUN_0056c72b`): Brain mode 8 with the target and the wrapper, range = wrapper `+9`.  A target id
     the world freed stops the unit (INFERRED: the exe dereferences a dangling pointer), as `combat.refresh_attack` does."""
@@ -619,7 +679,7 @@ def cast_tick(world, u):
         if u.timer == 0:
             if c is not None:
                 (cast_release_cell if c.cell is not None else cast_release)(world, u, c, st)
-                if c.item_count is not None:        # unit +0x68 / +0x64 := 0 (a staff stays, a scroll would be deleted: no pack items yet)
+                if c.item_count is not None:        # unit +0x68 / +0x64 := 0 (a staff stays; a scroll was taken out of the pack when the command arrived, `scroll_cast`)
                     u.cast = c = None
             u.phase = PHASE_RECOVERY
             delay = hero_delay(st.weapon_weight, st.reaction) if st.human and st.has_weapon else 0

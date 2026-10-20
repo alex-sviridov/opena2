@@ -4,7 +4,7 @@ clicks, hotkeys and minimap clicks into commands.  The pending target mode is `v
 A left release with a click on a non-empty selection dispatches on the cursor chosen at the release (R 1.2);
 the pending mode is reset after every such dispatch, also when nothing was ordered."""
 
-from engine.sim import AttackUnit, CastSpell, Guard, MoveUnits, SelectUnits, SetFormation, StandStill, Stop, Swarm
+from engine.sim import AttackUnit, CastSpell, Guard, MoveUnits, SelectUnits, SetAutoSpell, SetFormation, StandStill, Stop, Swarm
 from allods2.text import decode_text
 
 from . import spellbook
@@ -91,6 +91,16 @@ class OrderInput:
         if name == "l":                     # stand still (FUN_00419ffd, a key, not via FUN_00418a02): cmd 0x12; the pending mode is left alone
             return StandStill(self.player_id, tuple(self.selection_fn())), None
         return None, None
+
+    def auto_cast(self, knows, hover_slot=-1):
+        """Ctrl+A in the spellbook (`FUN_004c74b1`): the spell of the panel's selected slot (`+0x60`), else of the slot under the mouse, becomes the
+        auto-cast spell (`FUN_0041a727`): message `0x46` sub 4 for every selected unit that knows it (`knows(unit_id, spell)`; the server toggles).
+        Returns the commands (empty without a usable slot)."""
+        slot = self.slot if self.slot >= 0 else hover_slot
+        if slot < 0 or slot >= spellbook.SLOTS or self.state_fn() == "foreign":
+            return ()
+        spell = spellbook.spell_of_slot(slot)
+        return tuple(SetAutoSpell(self.player_id, uid, spell) for uid in self.selection_fn() if knows(uid, spell))
 
     # -- spell slots and the F4-F12 shortcuts (research 1.4; spells.md 9e) ------------------------------------
     def slot_enabled(self, slot):

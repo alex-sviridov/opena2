@@ -97,6 +97,24 @@ class SetFormation(Command):
     mode: int
 
 
+@dataclass(frozen=True)
+class SetAutoCast(Command):
+    """Exe message `0x46` sub-code 3 (`0x4f6945`; the client sends it at the game start and when the Options dialog or the auto-cast key changes it,
+    `FUN_0041a5b9`): the party-AI byte of the player, docs/engine/ai.md 12.8.  Bits 8 / 0x10 / 0x20 = heal / buffs / protections, 1 / 2 / 4 = own /
+    allied / neutral friends."""
+    player_id: int
+    flags: int
+
+
+@dataclass(frozen=True)
+class SetAutoSpell(Command):
+    """Exe message `0x46` sub-code 4 (Ctrl+A, `FUN_0041a727`; server `0x4f694d`): unit `unit_id` of the player toggles its selected spell
+    `brain+0x78`: equal to `spell` -> 0, else `spell`.  docs/engine/ai.md 12.8."""
+    player_id: int
+    unit_id: int
+    spell: int
+
+
 class CommandQueue:
     def __init__(self):
         self._q = deque()
@@ -128,5 +146,21 @@ class CastSpell(Command):
 
     def __post_init__(self):
         object.__setattr__(self, "unit_ids", tuple(self.unit_ids))
+        if self.cell is not None:
+            object.__setattr__(self, "cell", (int(self.cell[0]), int(self.cell[1])))
+
+
+@dataclass(frozen=True)
+class CastScroll(Command):
+    """Exe commands `0x25` (at a unit, `target_id`) and `0x26` (at a cell, `cell`) (`FUN_004f515d` case `0x4f5825`; client `0x419753`..): the unit casts the
+    spell of the backpack item `index` (the item panel's selected entry, `msg+0x10`) of its own pack: one piece is taken out of the pack (a stack
+    loses one), the cast level is the item's charges and no mana is paid.  docs/data/spells.md 9c.5."""
+    player_id: int
+    unit_id: int
+    index: int
+    target_id: int = None
+    cell: tuple = None
+
+    def __post_init__(self):
         if self.cell is not None:
             object.__setattr__(self, "cell", (int(self.cell[0]), int(self.cell[1])))

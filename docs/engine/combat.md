@@ -682,7 +682,7 @@ Timeline (tests): order at tick T0; the next `tick & 15 == 6` is `P`; `CastStart
 Decisions (INFERRED unless marked): the cell cast (`0x1f`, order `0xe`, Brain mode 9, state `0xe`) is built in phase K ([spells §9d](../data/spells.md#9d-ai-casts-cell-casts-and-the-built-handlers-phase-k)); a missing target id stops the unit like an attack does; a caster is "gone" when it left `world.units`;
 spell damage goes through the exe's own `take_hit_detail` (the to-hit roll is drawn even for a spell, CONFIRMED structure of `FUN_00516f6f`); a monster caster's level uses `spell_power` / the mage skills and the
 template mind (phase K, [ai §12.1](ai.md#121-creature-set-up-fun_005114f3-monsters-0x511586-0x511f44)); the target `brain+0xa4/+0xa8` stamps are written (`AiState.spell_mark`); the Invisibility break of the caster (`FUN_005106d2(0xc)`, `0x519a6e`: a cast at another unit) is built in phase K2 (`effects.end_invisibility` in `cast_start`);
-a staff has no charge counter; pack items (scroll command `0x25`) do not exist yet. VERIFY IN GAME: spells §9c.4.
+a staff has no charge counter; scroll casts from pack items (`0x25` / `0x26`) are built ([spells 9c.5](../data/spells.md#9c5-scroll-casts-commands-0x25-0x26)). VERIFY IN GAME: spells §9c.4.
 
 **AI casts (phase K, [ai §12](ai.md#12-casters-and-special-attacks-confirmed-unless-marked-engine-127)).** The AI issues `CastSpell(..., ai=True)` (unit or `cell`), applied at the
 brain level (`ai.apply_cast`: mode 8 / 9, `Unit.ai_cast` = `brain+0x60`); because `brain+0x60` is set the stop after the cast start is skipped and the mode repeats the cast

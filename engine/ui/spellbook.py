@@ -47,6 +47,18 @@ def unit_slot_mask(u):
     return slot_mask_of_book(spells.known_mask(u))
 
 
+def scroll_slot_mask(u):
+    """`view+0x150` of one unit (`FUN_004167c2` `0x4173c6`): the slot bits of the spells of its backpack scrolls (item class `0xe`, castSpell as the first
+    effect; `FUN_0041eb20` = the item's spell number, 0 drops out).  The item-cast command is `CastScroll` (`0x25`, spells.md 9c.5)."""
+    m = 0
+    for it in u.pack:
+        if it.cls == spells.SCROLL_CLASS and it.mods and it.mods[0][0] == spells.CAST_SPELL_MOD:
+            slot = slot_of_spell(it.mods[0][1])
+            if slot is not None:
+                m |= 1 << slot
+    return m
+
+
 def selection_slot_mask(world, ids):
     """`view+0x148`: the OR of the slot masks of the living selected units (`FUN_004167c2`).  The caller passes the own selection; the exe fills
     `obj+0x18` only for the local player's units (`0x41037c`)."""
@@ -215,7 +227,7 @@ def spellbook(world, unit_ids, lines=None):
     unit of the selection knows and whose unit counts for the tooltip.  `lines` = the spells.txt lines (optional).  Empty without a spell table.
 
     The units that count are the living ones with a non-empty slot mask; the exe additionally requires the client object's type `obj+0x24` to be
-    0x17 or 0x18 (what those are: open, spells.md 11), which the engine does not model."""
+    0x17 or 0x18 (the drawn mage body: `mage` / `mage_st`, spells.md 9e.4), which the engine does not model (DECISION: every own mage counts)."""
     table = world.spell_table
     if table is None:
         return []

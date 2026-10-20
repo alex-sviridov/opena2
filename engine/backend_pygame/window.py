@@ -6,6 +6,7 @@ import pygame
 
 from engine.sim import DEFAULT_SPEED, CommandQueue, Simulation, tick_period_ms
 from engine.sim import ai as ai_mod
+from engine.sim import spells as spell_mod
 from allods2.common import as_fs
 from engine.ui import (CursorInput, CursorState, DebugFlags, Layout, MainText, MessageLine, MinimapPanel, OrderInput, ScrollInput,
                        SelectionInput, choose_cursor, choose_minimap_cursor, drain_no_way, level_up_messages, target_cell)
@@ -218,6 +219,9 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
                 cmd, mode = ordering.key("f", ctrl=True)
                 queue.put(cmd)
                 messages.show(texts.line(FORMATION_TEXT + mode), pygame.time.get_ticks(), FORMATION_MS)
+            elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_a and ev.mod & pygame.KMOD_CTRL:
+                for cmd in ordering.auto_cast(lambda uid, n: uid in world.units and (spell_mod.known_mask(world.units[uid]) >> n) & 1):      # Ctrl+A: FUN_004c74b1 -> message 0x46 sub 4
+                    queue.put(cmd)
             elif ev.type == pygame.KEYDOWN and ev.key in DEBUG_SHIFT_KEYS and ev.mod & pygame.KMOD_SHIFT:
                 debug.toggle(DEBUG_SHIFT_KEYS[ev.key])
             elif ev.type == pygame.KEYDOWN and ev.key in FKEY_NUMBERS:

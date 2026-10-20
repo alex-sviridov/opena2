@@ -7,7 +7,7 @@ comments; routine addresses there).  Layer 4: reads and writes `engine.world` on
 
 from engine.world import OrderGroup
 
-from .commands import AttackUnit, CastSpell, Guard, MoveUnits, SetFormation, StandStill, Stop, Swarm
+from .commands import AttackUnit, CastScroll, CastSpell, Guard, MoveUnits, SetAutoCast, SetAutoSpell, SetFormation, StandStill, Stop, Swarm
 from .combat import can_order_attack, refresh_attack, set_attack
 from .movement import (ATTACK_ORDER, CENTRE, MoveTo, _in_map, _set_action, IDLE, cancel, fail_stop, live_cells, path_grid,
                        set_guard, set_move, set_stand, set_still, stop_unit, unit_size, unit_speed)
@@ -315,6 +315,18 @@ def orders_system(world, commands):
         elif isinstance(cmd, SetFormation):
             if cmd.player_id in world.players and cmd.mode in (0, 1, 2):
                 world.players[cmd.player_id].formation = cmd.mode
+        elif isinstance(cmd, CastScroll):               # messages 0x25 / 0x26: a scroll of the unit's pack
+            g = intake(world, cmd.player_id, (cmd.unit_id,))
+            target = world.find_unit(cmd.target_id) if cmd.cell is None else None
+            if g is not None and world.spell_table is not None and (cmd.cell is not None or target is not None):
+                spells.scroll_cast(world, g, world.units[cmd.unit_id], cmd.index, target, cmd.cell, _cancel_group)
+        elif isinstance(cmd, SetAutoCast):              # message 0x46 sub 3 (0x4f6945): the byte is stored as sent
+            if cmd.player_id in world.players:
+                world.players[cmd.player_id].autocast = cmd.flags & 0xFF
+        elif isinstance(cmd, SetAutoSpell):             # message 0x46 sub 4 (0x4f694d): toggle brain+0x78
+            u = _lookup(world, cmd.player_id, cmd.unit_id) if cmd.player_id in world.players else None
+            if u is not None:
+                u.auto_spell = 0 if u.auto_spell == (cmd.spell & 0xFF) else cmd.spell & 0xFF
         elif isinstance(cmd, MoveTo):
             u = world.units.get(cmd.unit_id)
             if u is not None and u.hp > 0 and _in_map(world, (cmd.x, cmd.y)):

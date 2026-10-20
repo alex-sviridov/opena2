@@ -187,7 +187,7 @@ def class_of(u):
 
 
 def attack_range(world, u):
-    return cb.combat_stats(world, u).range
+    return cb.attack_range(world, u)
 
 
 def score(world, me, cand):
@@ -280,13 +280,14 @@ def _human(world, m):
 
 def idle(world, m):
     """`FUN_0056afd9`: a computer-owned unit with nothing to do looks around (brain mode 0xb) and a computer-owned mage then runs
-    `FUN_0056c592` (`mage_idle`: heal, Shield, friends; ai.md 12.5); a human's unit gets brain mode 0 (`FUN_0056b025`; a human mage would run
-    the caster scan `FUN_0056bc7b`, not built: ai.md 12.6).  Already in that mode = a no-op in the exe (the mode is set to the value it has),
+    `FUN_0056c592` (`mage_idle`: heal, Shield, friends; ai.md 12.5); a human's unit gets brain mode 0 (`FUN_0056b025`), a human mage runs the
+    caster scan `FUN_0056bc7b` (`human_scan`, ai.md 12.8).  Already in that mode = a no-op in the exe (the mode is set to the value it has),
     so the command is not issued again (log size)."""
     if _human(world, m):
-        if not (m.mode_look or m.mode_go or m.mode_attack):
-            return
-        emit(world, Stop(m.owner, (m.id,), ai=True))
+        if world.ai_on and is_mage(world, m):
+            human_scan(world, m)                        # FUN_0056b025: a mage runs the caster scan FUN_0056bc7b
+        else:
+            mode0(world, m)
         return
     if not (m.mode_look and not m.mode_go and not m.mode_attack and not m.mode_cast and not m.mode_cell):
         emit(world, Stop(m.owner, (m.id,), ai=True))
@@ -607,8 +608,8 @@ def stand_pass(world, g):
 def engage(world, m, t):
     """`FUN_0056acc8(m, t)` (docs/engine/ai.md 12.2): the special-attack roll over the monster's three slots (one `rand15` per used slot, the last
     slot whose `rand15 < probability * 0x147` wins; Teleport only when the target is more than 2 cells away), else a computer-owned mage tries
-    `FUN_0057a769` (`caster_attack`), else brain mode 5 on the target.  A human-owned unit takes mode 5 (`FUN_0056b059` does nothing without the
-    hero's selected spell, which the engine does not have; the scan `FUN_0056bc7b` is not built).  The target flag `+0x4c & 8` (off the map) and
+    `FUN_0057a769` (`caster_attack`), else brain mode 5 on the target.  A human-owned unit runs `human_attack` (`FUN_0056b059` with the selected
+    spell, mode 5, the caster scan `FUN_0056bc7b`; ai.md 12.8).  The target flag `+0x4c & 8` (off the map) and
     the `m == t` branch (`FUN_00567988`) are never reached from the pools (§10)."""
     pick = 0
     if not m.human:
@@ -620,7 +621,10 @@ def engage(world, m, t):
         return
     if m is t:
         return
-    if not _human(world, m) and is_mage(world, m) and caster_attack(world, m, t):
+    if _human(world, m):
+        human_attack(world, m, t)
+        return
+    if is_mage(world, m) and caster_attack(world, m, t):
         return
     attack(world, m, t)
 
@@ -821,6 +825,231 @@ def friend_cast(world, m, friends):
     return True
 
 
+# --- the player's own casters (docs/engine/ai.md 12.8) ---------------------------------------------------------------------
+
+AUTO_HEAL, AUTO_BUFF, AUTO_PROT = 0x08, 0x10, 0x20        # party-AI byte (player +0x34 record +0x20): the three auto-cast levels
+FRIEND_OWN, FRIEND_ALLY, FRIEND_NEUTRAL = 0x01, 0x02, 0x04   # ... and the kinds of friend `FUN_0056bb53` accepts
+SCAN_MANA = (5, 10, 40)                                   # mana the three levels need (`FUN_0056bc7b`)
+FRESH_TICKS = 20                                          # a unit is not enchanted again within 20 ticks of the last cast aimed at it
+BUFF_PROTECTIONS = ((13, 1 << 13), (19, 1 << 19), (4, 1 << 4), (8, 1 << 8))     # the order of `FUN_0056bc7b`: spell, effect bit
+
+
+def castable(world, u, n):
+    """`FUN_0056bb0d(u, n)`: the wrapper of spell n when the book has it and `cost <= mana` (signed words), else None."""
+    if world.spell_table is None or spells.wrapper_of(u, n) is None:
+        return None
+    sp = world.spell_table.get(n)
+    return spells.Wrapper(n) if sp is not None and u.mana >= sp.mana_cost else None
+
+
+def friend_of(world, u, o):
+    """`FUN_0056bb53(u, o)`: `o` is a target for the owner's friendly spells: not allied and not at war (relation bits 0, 1 clear) with party-AI
+    bit 4; allied (bit 1 set) with bit 2; the same owner with bit 1; or `o` is `u`.  A player's word for itself is `0x12`."""
+    pl = world.players.get(u.owner)
+    flags = pl.autocast if pl is not None else 0
+    rel = 0
+    if pl is not None and 0 < o.owner <= len(pl.relations):
+        rel = pl.relations[o.owner - 1]
+    if not rel & 3 and flags & FRIEND_NEUTRAL:
+        return True
+    if rel & 2 and flags & FRIEND_ALLY:
+        return True
+    if u.owner == o.owner and flags & FRIEND_OWN:
+        return True
+    return u is o
+
+
+def in_cast_range(world, u, o, w):
+    """`FUN_0056bc2e(u, o, wrapper)`: the Chebyshev cell distance is at most the wrapper's range byte."""
+    sp = world.spell_table.get(w.number)
+    return chebyshev((u.x, u.y), (o.x, o.y)) <= spells.wrapper_range(sp, w, spells.unit_level(u, sp)) & 0xFF
+
+
+def _members_of(world, u):
+    g = world.groups.get(u.order_group) if u.order_group else None
+    mem = [world.units[i] for i in g.members if i in world.units] if g is not None else []
+    return mem or [u]
+
+
+def caster_lists(world, u):
+    """`FUN_00571e9b(u+0x70)` + `FUN_00567c56` (ai.md 4, caster lists): the pool is every unit on the cells the caster's group sees (no relation
+    filter; the dying ones only when no living one is there), minus units in state `0x10` and hidden ones the group does not detect; at war with
+    the caster -> `foes` (`server+0xac8`), else `friends` (`server+0xaa8`: allies, neutrals, the caster itself).  Creation order."""
+    mem = _members_of(world, u)
+    ids = set()
+    for c in _visible(world, mem):
+        ids |= world.units_at(*c)
+    pool = sorted((world.units[i] for i in ids), key=lambda o: o.seq)
+    living = [o for o in pool if o.hp > 0]
+    foes, friends = [], []
+    for o in living or pool:
+        if o.state == DEAD or (o.hidden and not _detected(o, mem)):
+            continue
+        (foes if at_war(world, u.owner, o.owner) else friends).append(o)
+    return foes, friends
+
+
+def fresh(world, o):
+    """`B+0xa4 != 20 || |B+0xa8 - tick| > 20` of the target (the test compares with 20 = Bless for every spell)."""
+    return o.ai.spell_mark != 20 or abs(o.ai.spell_tick - world.tick) > FRESH_TICKS
+
+
+def mode0(world, m):
+    """`brain+8 := 0` of a human-owned unit (the exe writes the byte: no order, anchor or group change)."""
+    if m.mode_look or m.mode_go or m.mode_attack or m.mode_cast or m.mode_cell:
+        emit(world, Stop(m.owner, (m.id,), ai=True))
+
+
+def human_scan(world, m):
+    """`FUN_0056bc7b(m)` (ai.md 12.6, 12.8): a player-owned mage looks after its friends by the owner's party-AI byte: mana < 5 or bit 8 clear -> mode 0.
+    Wounded: Heal itself; Shield itself; Heal the friend of the caster list in range with the smallest `(int)(hp / hp_max)` when it is below 1
+    (needs more than one friend in the list).  Bit 0x10 and mana >= 10: Bless (non-mages, not blessed) then Haste per friend.  Bit 0x20 and
+    mana >= 40: per friend the protections 13, 19, 4, 8 and Invisibility (not the caster, relation `& 3`); Invisibility on itself; else mode 0."""
+    pl = world.players.get(m.owner)
+    flags = pl.autocast if pl is not None else 0
+    if world.spell_table is None or m.mana < SCAN_MANA[0] or not flags & AUTO_HEAL:
+        mode0(world, m)
+        return
+    w = castable(world, m, spells.HEAL)
+    if m.hp != m.hp_max and w is not None:
+        cast_at(world, m, m, spells.HEAL)
+        return
+    w = castable(world, m, spells.SHIELD)
+    if not effect_active(m, spells.SHIELD) and w is not None:
+        cast_at(world, m, m, spells.SHIELD)
+        return
+    _, friends = caster_lists(world, m)
+    w = castable(world, m, spells.HEAL)
+    if w is not None and len(friends) > 1:
+        best, bv = None, 2.0
+        for f in friends:
+            if friend_of(world, m, f) and in_cast_range(world, m, f, w):
+                v = _ratio(f)
+                if v < bv:
+                    best, bv = f, v
+        if bv < 1.0:
+            cast_at(world, m, best, spells.HEAL)
+            return
+    if not flags & AUTO_BUFF or m.mana < SCAN_MANA[1]:
+        mode0(world, m)
+        return
+    for f in friends:
+        if not friend_of(world, m, f):
+            continue
+        w = castable(world, m, 20)
+        if (w is not None and not is_mage(world, f) and not effect_active(f, 20) and fresh(world, f)
+                and in_cast_range(world, m, f, w)):
+            cast_at(world, m, f, 20)
+            return
+        w = castable(world, m, 21)
+        if w is not None and not effect_active(f, 21) and fresh(world, f) and in_cast_range(world, m, f, w):
+            cast_at(world, m, f, 21)
+            return
+    if not flags & AUTO_PROT or m.mana < SCAN_MANA[2]:
+        mode0(world, m)
+        return
+    for f in friends:
+        if not friend_of(world, m, f):
+            continue
+        for n, _ in BUFF_PROTECTIONS:
+            w = castable(world, m, n)
+            if w is not None and in_cast_range(world, m, f, w) and not effect_active(f, n) and fresh(world, f):
+                cast_at(world, m, f, n)
+                return
+        w = castable(world, m, spells.INVISIBILITY)
+        pl_rel = world.players[m.owner].relations
+        rel = pl_rel[f.owner - 1] if 0 < f.owner <= len(pl_rel) else 0
+        if (w is not None and in_cast_range(world, m, f, w) and not effect_active(f, spells.INVISIBILITY) and f is not m and rel & 3
+                and fresh(world, f)):
+            cast_at(world, m, f, spells.INVISIBILITY)
+            return
+    w = castable(world, m, spells.INVISIBILITY)
+    if w is None or effect_active(m, spells.INVISIBILITY):
+        mode0(world, m)
+    else:
+        cast_at(world, m, m, spells.INVISIBILITY)
+
+
+def selected_cast(world, m, t):
+    """`FUN_0056b059(m, t)` (ai.md 12.6): the player-owned mage's selected spell `brain+0x78` (Ctrl+A) is cast instead of the melee mode 5 when it is
+    in the book and `cost <= mana`.  Returns 1 when it handled the pass.  Attack spells 1 5 10 11 16 26 hit `t`; 2 3 6 7 only when the best
+    square round a foe (radius 1 / 2 / 2 / 2; 2 and 3 aim ahead of a unit that is between cells) has more foes than friends; 18 28 when `t` lacks the
+    effect, else when some foe lacks it (still aimed at `t`); 24 the friend with the smallest `(int)(hp / hp_max)` (healed below 1, else mode 0);
+    25 at itself; 27 Shield at itself unless active; 22 and the rest: 0."""
+    n = m.auto_spell
+    if not n or world.spell_table is None:
+        return 0
+    w = castable(world, m, n)
+    if w is None:
+        return 0
+    if n in (1, 5, 10, 11, 16, 26):
+        cast_at(world, m, t, n)
+        return 1
+    if n in (2, 3, 6, 7):
+        foes, _ = caster_lists(world, m)
+        radius = 1 if n == 2 else 2
+        best = -1000
+        for f in foes:
+            cell = (f.x, f.y)
+            if n in (2, 3) and (f.sub_x, f.sub_y) != (mv.CENTRE, mv.CENTRE):     # FUN_00551383 false: the cell ahead of the unit
+                o = (f.facing & 0xFF) >> 5
+                cell = ((cell[0] + WANDER_DX[o]) & 0xFF, (cell[1] + WANDER_DY[o]) & 0xFF)
+            enemies = others = 0
+            for o in mv._occupants(world, ring_cells(cell, radius)):
+                if at_war(world, m.owner, o.owner):
+                    enemies += 1
+                else:
+                    others += 100 if o is m else 1
+            best = max(best, enemies - others)
+        if best < 1:
+            return 0
+        cast_at(world, m, t, n)
+        return 1
+    if n in (18, 28):
+        if not effect_active(t, n):
+            cast_at(world, m, t, n)
+            return 1
+        foes, _ = caster_lists(world, m)
+        if any(not effect_active(f, n) for f in foes):
+            cast_at(world, m, t, n)
+            return 1
+        return 0
+    if n == spells.HEAL:
+        _, friends = caster_lists(world, m)
+        best, bv = None, 2.0
+        for f in friends:
+            if friend_of(world, m, f):
+                v = _ratio(f)
+                if v < bv:
+                    best, bv = f, v
+        if bv >= 1.0:
+            mode0(world, m)
+            return 1
+        cast_at(world, m, best, n)
+        return 1
+    if n == 25:
+        emit(world, CastSpell(m.owner, (m.id,), n, m.id, ai=True))
+        m.ai_cast = False                                               # no `brain+0x60 := 1` here: a player's cast (stop after it)
+        return 1
+    if n == spells.SHIELD:
+        if effect_active(m, n):
+            return 0
+        cast_at(world, m, m, n)
+        return 1
+    return 0
+
+
+def human_attack(world, m, t):
+    """`FUN_0056acc8`'s player-owned branch after the slot roll: a mage tries `selected_cast`; else Brain mode 5 at `t` (range `FUN_0056ac5b`) and a
+    mage with that range below 2 runs the scan `human_scan` (which may replace the mode)."""
+    mage = is_mage(world, m)
+    if mage and selected_cast(world, m, t):
+        return
+    attack(world, m, t)
+    if mage and m.range < 2:
+        human_scan(world, m)
+
+
 # --- guard scan (FUN_0056a1fb), auto scan (FUN_0056ed4e) ---------------------------------------------------------------------
 
 def guard_scan(world, u):
@@ -1010,7 +1239,7 @@ def apply(world, cmd):
             if t is None:
                 continue
             u.target = t.id
-            u.range = cb.combat_stats(world, u).range
+            u.range = cb.attack_range(world, u)
             u.mode_attack, u.mode_go, u.mode_look = True, False, False
             u.mode_follow = False
             u.mode_cast = u.mode_cell = False

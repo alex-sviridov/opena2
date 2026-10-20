@@ -272,8 +272,14 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   offensive spell 1..28 (`FUN_0057a769`; mind >= 60: 30 % rethink -> mode 5), idle mages heal themselves / the first wounded ally, Shield themselves, buff a random friend at full mana (`FUN_0056c592`,
   `FUN_0057a999`, Curse quirk); AI casts set `brain+0x60` so mode 8 / 9 repeat the cast until the next pass; monsters get mana, skills (`spell_power` / `skill*`), book (slots / mask) and the mage flag
   (staffs replace their melee hit). Cell cast `CastSpell(cell=)` = cmd `0x1f` -> order `0xe` -> mode 9 -> state `0xe`. Releases built: damage, Heal (revive), Drain Life, and (K2) every
-  effect spell; only the Prismatic Spray chain stays a counted no-op (`World.unbuilt_casts`). Not built: the human mages' scan `FUN_0056bc7b` (needs the party-AI flag byte), the Teleport flee.
+  effect spell; only the Prismatic Spray chain stays a counted no-op (`World.unbuilt_casts`). Not built: the Teleport flee.
   `tests/test_engine_ai_casting.py`, `test_engine_ai_casting_maps.py` (map 73).
+- Player-owned casters (K3) done, REA-checked ([ai §12.8](docs/engine/ai.md), spells.md 9c.5, 9e): message `0x46` is the party-options message (sub 1 retreat, 2 formation, **3 the party-AI byte**
+  `0x4f6945`, **4 Ctrl+A** `0x4f694d`); the byte = registry `AutoCasting` (options dialog / hotkey): `8` heal, `0x10` Bless + Haste, `0x20` protections + Invisibility, `1/2/4` friend kinds (own / allied /
+  neutral); `Player.autocast` (default 0), `SetAutoCast`; the scan `FUN_0056bc7b` = `ai.human_scan` (idle human mage, and after the melee mode 5 of a mage with range < 2: the mode-0 quirk is applied);
+  Ctrl+A toggles `brain+0x78` = `Unit.auto_spell` (`SetAutoSpell`, `OrderInput.auto_cast`), read by the range `combat.attack_range` (`FUN_0056ac5b`) and `ai.selected_cast` (`FUN_0056b059`);
+  scroll casts `CastScroll` (`0x25` / `0x26`, `Unit.pack` scrolls, `spells.scroll_cast`, `spellbook.scroll_slot_mask`). Answered: tooltip filter = drawn mage body (`mage` / `mage_st`, not applied),
+  the `0x411` reset is sent once at the game view's build, the F-key table is saved in the savegame (block 5). `tests/test_engine_human_autocast*.py`, `test_engine_scrolls.py`.
 - Spell effects (K2) done, REA-checked ([effects](docs/engine/effects.md)): effect objects (class `0x5d1178`: id = spell number, kind = stat, flags, value, u16 ticks; >= 0x2581 never counts down)
   in the list `unit+0x20`, mask `+0x144` (`1 << id`; the stat-class bits are the client mask `+0x150`); apply `FUN_0051ce12` merges the same id (max value, max time, never stacks; Bless /
   Curse cancel each other), the effect pass runs first in every creature tick (`FUN_0051cc9f`: Poison every 8 ticks, expiry undoes), stat switch `FUN_0051d436` (monsters: direct
