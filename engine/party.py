@@ -4,7 +4,7 @@ The campaign maps hold no hero of the human player: the exe keeps the party (mai
 from the campaign state, and places the units that are not yet on the map at a "Drop Location" cell when the ready message
 (type 4) arrives.  `place_party` builds a fresh campaign start (the hero state of later maps lives in the save: open question)
 and places it exactly like the exe: one drop cell drawn at random, the main hero on it (radius 0, else in the radius), the
-others in the radius `max(5, trunc(sqrt(n) + 4))` of it, every search by `FUN_00510089` (`engine.sim.triggers.find_place`).
+others in the radius `max(5, trunc(sqrt(n) + 4))` of it, every search by `FUN_00510089` (`engine.sim.place.find_place`).
 """
 
 import math
@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from allods2.formats import entities as E
 from allods2.formats import progression as prog
 
-from .sim.triggers import find_place
+from .sim.place import find_place
 
 # data.bin server ids of the hero templates (docs/data/progression.md section 6); +0x14c = (id / 10) % 1000 = 21, 22, 23
 # = scenario hero numbers 10001, 10002, 10003 (FUN_00562518).  The main hero is a `Start_*` (FUN_004f254b picks it from the
@@ -73,6 +73,7 @@ def apply_record(unit, owner, record):
     base = unit.skills or (0,) * 6
     unit.skills = (base[0],) + tuple(_PROG.level_of(x) for x in unit.xp)
     unit.best_school = record.identity.school
+    unit.name = record.identity.name.split("|")[0]        # the hero's name (+0x80, FUN_004ea6ab / FUN_004ead6b)
     unit.spellbook = st.spells
     if tpl is not None:
         unit.hp_max, unit.mana_max = prog.derived_vitals(tpl, unit.skills, total=unit.xp_total)
@@ -84,6 +85,14 @@ def apply_record(unit, owner, record):
     owner.hero_deaths = st.hero_deaths
     owner.kills_monsters, owner.kills_players = st.kills_monsters, st.kills_players
     return unit
+
+
+def on_map(world, unit):
+    """`FUN_0055641c(map, unit+0x10) == unit` (-> `FUN_00551edb`, CONFIRMED): the unit already stands on the map when the ground occupant slot
+    (cell record `+4`) of its own cell holds it.  `FUN_004f2c83` skips such units; a unit that lost a first-come race for its cell would be
+    placed again (no map has one; the engine places only the units it creates)."""
+    from engine.cellslots import pack
+    return world.slots.occ[0].get(pack(unit.x, unit.y)) == unit.id
 
 
 def place_party(world, assets, drops, count=1, start="MF", owner=None, record=None):
@@ -111,7 +120,7 @@ def place_party(world, assets, drops, count=1, start="MF", owner=None, record=No
         tpl = types.lookup(True, sid)
         if tpl is None:
             raise ValueError("hero template %d is not in data.bin" % sid)
-        stub = SimpleNamespace(move_type=tpl.movement_type)
+        stub = SimpleNamespace(move_type=tpl.movement_type, stats=tpl)
         spot = (find_place(world, stub, x, y, 0) if k == 0 else None) or find_place(world, stub, x, y, r)
         if spot is None:
             continue                        # the exe logs "can't place unit" and goes on (FUN_004f2c83 0x4f2fb3)

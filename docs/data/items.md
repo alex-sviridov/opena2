@@ -348,7 +348,7 @@ structure: `FUN_00522767` / `FUN_00521d4c` call the export `ScenarioGetShopAssor
 `0x10037420 + 0x50 * town` with `town` = the index of the current location (`ScenarioEnterLocation` sets `0x10037560`). The record is
 the same four 20-byte blocks (`min`, `max`, `count`, `stack`, `flags`). Locations are `(type, index)` objects: type 2 = the three towns
 (index 1, 2, 3), type 1 = the missions (ids 10, 20, 21, 30-32, 40-43, 50-53, 60-63, 70-77, 80-87, 90-96, 100-103, 110; the tens are the main missions). The table is
-zero (BSS) until `ScenarioNewGame` (`0x100033be`) fills towns 1 and 2; `ScenarioSave` / `ScenarioLoad` copy it into the save. Town 0 has
+zero (BSS) until `ScenarioNewGame` (`0x100033be`) fills towns 1 and 2 (it also zeroes the 1024 script variables and sets Var(0x300) = 10, [triggers §11](../engine/triggers.md#11-the-end-of-the-mission-scenariodll-and-the-client-flow)); `ScenarioSave` / `ScenarioLoad` copy it into the save. Town 0 has
 no record (all zero, never used).
 
 **Initial blocks** (`ScenarioNewGame`). `min 0` everywhere; `count` / `stack` and `flags` per block `b`:

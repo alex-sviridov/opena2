@@ -167,7 +167,7 @@ The humans' units stay in the player's list; the server object stays. End of a m
 
 Gold (`player+0x3c`), the statistics words, the spell book and the script state are untouched, so they carry over by staying in memory. The Scenario.dll variable array
 (`ScenarioGetVar/SetVar`, [triggers](../engine/triggers.md#2-compilation-at-map-start-fun_00562745)) is a global of the DLL, not reset by this routine.
-`ScenarioNewGame` (`0x100033be`, called at `0x4862ba`) initialises it for a new campaign.
+`ScenarioNewGame` (`0x100033be`, called at `0x4862ba`) initialises it for a new campaign: all zero except Var(0x300) = 10 ([triggers §11](../engine/triggers.md#11-the-end-of-the-mission-scenariodll-and-the-client-flow)).
 
 ## 5. `famehall.dat` (CONFIRMED, the install's file decodes exactly)
 

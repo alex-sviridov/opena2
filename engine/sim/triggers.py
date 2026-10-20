@@ -15,13 +15,13 @@ from dataclasses import dataclass, field
 from allods2.formats import scenario as S
 from engine.world import DEAD, OrderGroup
 
-from . import ai
+from . import ai, campaign, place
 from .combat import combat_stats
 from .pathfinding import chebyshev
 
 SLOTS = 1000                        # S+0xc784 values (4000 bytes) and S+0xe6c4 fired flags (1000 bytes), FUN_0057468d
 HERO_TYPE = 0x15                    # FUN_00562518: hero k = the unit with (u16)(+0x14c) - 0x15 == k
-SUBOBJECTIVE_BASE = 0x2F0           # Scenario.dll variable of sub-objective n (instant 36, check 24)
+SUBOBJECTIVE_BASE = campaign.SUBOBJECTIVE_BASE           # Scenario.dll variable of sub-objective n (instant 36, check 24)
 MSG_SUB_DONE, MSG_SUB_FAILED = 0xFD, 0xFE   # messages of instant 36 (FUN_00577b16)
 MISSION_PHASE = 15                  # FUN_004f8967 when (tick + 1) & 15 == 15 (end of the step)
 STATE_COMPLETE, STATE_HERO = 1, 2   # player +0x40 after message 0xb5 / after the hero test
@@ -122,7 +122,7 @@ class Script:
     passes: int = 0                         # S+0xd720 (FUN_0057485b)
     drops: list = field(default_factory=list)           # "Drop Location" cells (x, y) (CWordArray this+0x28)
     gold: dict = field(default_factory=dict)            # player id -> server player +0x3c added by instant 23
-    scenario_vars: dict = field(default_factory=dict)   # Scenario.dll ScenarioGetVar / SetVar array (0 until set)
+    scenario_vars: dict = field(default_factory=campaign.new_game_vars)   # Scenario.dll ScenarioGetVar / SetVar array: ScenarioNewGame's values (var 0x300 = 10), absent = 0
     phased: dict = field(default_factory=dict)          # unit id -> Unit phased out (instants 16, 32)
     errors: list = field(default_factory=list)          # compile messages ("Can't resolve unit 5", ...)
     unsupported: Counter = field(default_factory=Counter)   # ("check" | "instant" | "group", kind) not implemented
@@ -135,7 +135,7 @@ class Script:
                 "fired": [i for i, f in enumerate(self.fired) if f],
                 "counters": [self.stage, self.stage2, self.complete, self.fail, self.passes],
                 **({"gold": sorted(self.gold.items())} if self.gold else {}),
-                **({"vars": sorted(self.scenario_vars.items())} if self.scenario_vars else {}),
+                **({"vars": sorted(self.scenario_vars.items())} if self.scenario_vars != campaign.new_game_vars() else {}),
                 **({"phased": sorted(self.phased)} if self.phased else {}),
                 **({"unsupported": sorted("%s:%d" % k for k in self.unsupported)} if self.unsupported else {}),
                 **({"unbuilt": sorted("%s:%d" % k for k in self.unbuilt)} if self.unbuilt else {})}
@@ -147,6 +147,22 @@ def _reduced_id(u):
     """+0x14c: a human's server id above 10000 is stored as (v / 10) % 1000 (docs/data/units.md)."""
     v = u.server_id
     return (v // 10) % 1000 if u.human and v > 10000 else v
+
+
+def find_named_hero(creatures, k):
+    """The second loop of `FUN_00562518` (CONFIRMED `0x5625b8`-`0x56262d`): over the creature manager's list (the update order), a creature
+    with a non-empty name (`FUN_004029a0` = `CString::GetLength(creature + 0x80)`) is tested for `(u16)(+0x14c) - 0x15 == k`; the loop
+    advances the iterator once after every creature, and a named one that does not match advances it a second time, so the creature after
+    each named mismatch is never looked at."""
+    i = 0
+    while i < len(creatures):
+        u = creatures[i]
+        if u.name:
+            if (_reduced_id(u) - HERO_TYPE) & 0xFFFF == k:
+                return u
+            i += 1
+        i += 1
+    return None
 
 
 class _Resolver:
@@ -178,9 +194,12 @@ class _Resolver:
             k = v - S.HERO_BASE
             pl = next((p for _, p in sorted(self.world.players.items()) if p.human), None)
             if pl is not None and pl.main_hero:
-                for u in self.world.units.values():     # the owner's unit list, creation order (the filtered second loop: T§2.1)
+                for u in self.world.units.values():     # the owner's unit list, creation order (the first loop of FUN_00562518)
                     if u.owner == pl.id and (_reduced_id(u) - HERO_TYPE) & 0xFFFF == k:
                         return u
+                u = find_named_hero(list(self.world.units.values()), k)
+                if u is not None:
+                    return u
             return self.fail("Can't resolve hero %d" % v)
         return self.fail("Can't resolve hero %d (units by name are not implemented)" % v)
 
@@ -482,27 +501,11 @@ def phase_out(world, script, u):
 
 
 def _free(world, u, x, y):
-    """FUN_005563ca (INFERRED: the cell is inside the map, not blocked for the unit's mover and holds no unit)."""
-    if not (0 <= x < world.width and 0 <= y < world.height):
-        return False
-    return not world.blocked(x, y, u.move_type if u.move_type in (1, 2, 3) else 1) and not world.units_at(x, y)
+    """FUN_005563ca (CONFIRMED, docs/engine/triggers.md section 10): `place.cell_free`."""
+    return place.cell_free(world, u, x, y)
 
 
-def find_place(world, u, x, y, r):
-    """FUN_00510089(x, y, r): up to r*r/2 + 2 random tries in the square [-r/2, r - r/2] (y drawn first), then (r > 0) a scan
-    x-major over [-r/2, r/2]; None when no cell is free."""
-    rng, h = world.rng, r // 2
-    for _ in range((r * r) // 2 + 2):
-        cy = (y - h + rng.rand(r)) & 0xFF
-        cx = (x - h + rng.rand(r)) & 0xFF
-        if _free(world, u, cx, cy):
-            return cx, cy
-    if r:
-        for cx in range(x - h, x + h + 1):
-            for cy in range(y - h, y + h + 1):
-                if _free(world, u, cx & 0xFF, cy & 0xFF):
-                    return cx & 0xFF, cy & 0xFF
-    return None
+find_place = place.find_place                           # FUN_00510089
 
 
 def _enter(world, script, u, cell):
@@ -740,6 +743,7 @@ def mission_pass(world):
             world.events.append(MissionFailed(world.tick, p.id, script.fail))
         elif script.complete != 0 and p.death_code != STATE_COMPLETE:
             p.death_code = STATE_COMPLETE
+            world.mission_complete = True               # message 0xb5 -> window message 0x430 (sim/campaign.poll)
             world.events.append(MissionComplete(world.tick, p.id))
 
 

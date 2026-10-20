@@ -116,3 +116,18 @@ def test_the_scripted_unit_orders_run_on_a_real_map(name, order):
     assert n and [u for u in w.units.values() if u.order == order or u.mode_follow]
     assert w.check_consistency() == []
     assert run()[0].dump_hash() == w.dump_hash()
+
+
+def test_script_messages_are_the_event_sections_of_the_mission_text():
+    """Instant 2 sends window message 0x433 with wParam n; the client shows the section `#event<n>` of main\\text\\mission<id>.txt
+    (triggers.md section 11): 444 of the 448 instants of the 46 maps find their section; the four others are unused numbers."""
+    import re
+    missing = []
+    for path in campaign_maps(GFS):
+        n = re.findall(r"(\d+)\.alm", path)[0]
+        text = bytes(GFS.read("main/text/mission%s.txt" % n)).decode("cp1251", "replace")
+        keys = set(re.findall(r"#\s*(event\d+)", text))
+        for r in open_map(path, GFS).scenario.instants:
+            if r.type == 2 and r.values[0] < 0xFA and "event%d" % r.values[0] not in keys:
+                missing.append((n, r.values[0]))
+    assert missing == [("30", 20), ("71", 10), ("71", 11), ("71", 12)]

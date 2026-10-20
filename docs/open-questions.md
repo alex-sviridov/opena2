@@ -21,10 +21,9 @@ from both places when answered).
 
 ## Combat and death
 
-- Dialog latch `[this+0x3e8]` of the defeat dialog: who resets it (callers of `FUN_00505347`). [combat §12.11](engine/combat.md#1211-open-questions) 1
-- Summon-cap job `+0x148` draw order: the `unit+4` ids of map units and heroes that fix the `CMap` bucket order (`0x545a60`; `FUN_0052bbb7`); engine uses first-appearance order. [combat §12.11](engine/combat.md#1211-open-questions) 2
-- Item effects (`{castSpell=..}`) of dropped template equipment are lost in the 16-bit pile code; what pile / pickup keep (start `FUN_00529ac2`, `FUN_0052a71d`). [combat §12.11](engine/combat.md#1211-open-questions) 3
-- Sound tables (unit sound set entries, hero voices, UI sound `0x627740[0xf]`, the hit sound set); the engine has no audio. [combat §12.11](engine/combat.md#1211-open-questions) 4
+- Summon-cap job `+0x148` draw order: the `unit+4` ids of map units and heroes that fix the `CMap` bucket order (`0x545a60`; `FUN_0052bbb7`); engine uses first-appearance order. [combat §12.11](engine/combat.md#1211-open-questions) 0
+- Item effects (`{castSpell=..}`) of dropped template equipment are lost in the 16-bit pile code; what pile / pickup keep (start `FUN_00529ac2`, `FUN_0052a71d`). [combat §12.11](engine/combat.md#1211-open-questions) 2
+- Sound tables (unit sound set entries, hero voices, UI sound `0x627740[0xf]`, the hit sound set); the engine has no audio. [combat §12.11](engine/combat.md#1211-open-questions) 3
 - Structure damage `FUN_00516ea0` (attacks on structures); wire format of `FUN_005040c4`. [unit-struct](engine/unit-struct.md#open-questions)
 
 ## AI
@@ -42,7 +41,7 @@ from both places when answered).
 
 ## Triggers and scenario
 
-- [Triggers](engine/triggers.md#open-questions): where single player posts the ready message (`FUN_0041c50d`); `FUN_0055641c`; the by-name second loop of `FUN_00562518`; the free-cell test `FUN_005563ca` / `FUN_0055c5a0` of `FUN_00510089`; the window message `0x41d` and the mission-complete dialog (`0x486ddb`, Scenario variable `0x300`); the text of message `0xb6` values (`0x433` handler); Scenario.dll initial variables (`ScenarioNewGame`) and campaign use; the member loop of instant 22 (`FUN_005782ba` over a list `FUN_004f0568` changes); the item rules of `FUN_00529ae2` (instants 11, 12, 28) and the hidden caster of instants 21 / 24 (`FUN_004f06ac`) and the effect-duration instants 29 / 30, documented no-ops (the effect system exists now: [effects](engine/effects.md)).
+- [Triggers](engine/triggers.md#open-questions): the item rules of `FUN_00529ae2` (instants 11, 12, 28) and the hidden caster of instants 21 / 24 (`FUN_004f06ac`); the hero recruit `FUN_004f312a` (Var(0x305) at a mission end), the roster carry-over `FUN_004ebd5f` and the campaign variables `0x301`-`0x30d` / the markers at `0x214`; the UI sounds and story window of the `0xfe` / `0xfd` / `0xfa` / `event<n>` messages. Instants 29 / 30 stay documented no-ops (the effect system exists now: [effects](engine/effects.md)).
 - Scenario event classes: unit `behaviour` bits 1, 2, 4 and the three scenario booleans `+0x194` / `+0x198` / `+0x19c` (`FUN_005303ed`). [map](formats/map.md#open-questions), [unit-struct](engine/unit-struct.md#open-questions)
 
 ## Movement and orders

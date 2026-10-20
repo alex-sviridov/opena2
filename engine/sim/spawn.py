@@ -12,7 +12,7 @@ from types import SimpleNamespace
 from allods2.formats import entities as E
 
 from . import movement as mv
-from .triggers import find_place
+from .place import find_place
 
 
 def template_by_name(world, name):
@@ -67,7 +67,7 @@ class _Table:
 
 def place(world, tpl, owner, x, y, radius, **kw):
     """`FUN_00510089(x, y, radius)` for a unit of `tpl`, then `spawn_unit` on the cell it found; (None, None) when no cell is free."""
-    stub = SimpleNamespace(move_type=tpl.movement_type)
+    stub = SimpleNamespace(move_type=tpl.movement_type, stats=tpl)
     spot = find_place(world, stub, x, y, radius)
     if spot is None:
         return None, None

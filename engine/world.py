@@ -485,6 +485,7 @@ class Unit:
     ai_cast: bool = False           # brain+0x60: the cast was set by the AI (`FUN_0056a981` & co.): Brain mode 8 / 9 stays after the cast starts; cleared by every cancel
     mode_cell: bool = False         # Brain mode 9 (cast at a cell with approach, `FUN_0056ec3f`)
     cast_cell: tuple = None         # brain+0x3c target cell (x, y) of the cell cast order 0xe / mode 9
+    name: str = ""                  # +0x80 CString: set only for heroes (hero name setters 0x4ead6b, 0x4f2b4c); the by-name hero look-up reads it (triggers.md 9.5); not dumped
     master: int = 0                 # +0x148 the summoner's id (Summon spell; 0 = none): the minion cap job reads it (sim/spells.py `minion_job`)
     # follow / patrol orders and Brain mode 4 (docs/engine/ai.md 14.2; sim/follow.py)
     leader: int = None              # brain+0x10 the object being followed / defended (orders 8, 0x11)
@@ -603,6 +604,10 @@ class World:
         self._ucells = {}           # (x, y) -> set of unit ids   (never part of the block layer)
         self._icells = {}           # (x, y) -> set of item ids
         self._next_seq = 1
+        self.mission_complete = False  # message 0xb5 arrived (window message 0x430, sim/campaign.py); not dumped
+        self.mission_ended = False      # client latch win+0x3e4: the result dialog / end of mission handled
+        self.defeat_latch = False       # client latch win+0x3e8: the defeat dialog was opened once
+        self.dialog = None              # sim/campaign.Dialog on screen, None otherwise
         self.slots = CellSlots()    # occupant and stamp slots of the cell records (simulation.md 7.4); not dumped
         self.cell_fx = {}           # (x, y) -> [6 carrier uids or None]: the cell records' effect slots (effects.md 6.4); dumped while non-empty
         self._fx_saved = {}         # (x, y) -> the cost byte the record saved at creation

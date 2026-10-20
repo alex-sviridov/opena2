@@ -619,10 +619,11 @@ decay `-1` per 32 ticks on even blocks with the stage table of 12.6. Do not rele
 
 ### 12.11 Open questions
 
-1. Who resets the dialog latch `[this+0x3e8]` (the main-hero pointer `owner+0x38` is written by `FUN_004f254b`, [triggers §9.3](triggers.md#93-a-fresh-character-fun_004f254bplayer-str-dex-mind-spirit-school-flags-confirmed)) (start: callers of `FUN_00505347`: `0x4f0b71`, `0x4f0c67`, `0x4f3d68`, `0x4f515d`, `0x505d02`, `0x5162f6`).
-2. Summon-cap job (12.6): MFC `CMap` iteration order decides the order of the per-key RNG draws when two or more masters have minions: CONFIRMED now: table size 17 (`0x5457a5`), hash `key >> 4` mod 17 (`FUN_004a1120`, `0x545a60`), new node at the head of its bucket chain (`0x545a0f`-`0x545a46`). Built with the Summon spell (`spells.minion_job`) with the keys in **first-appearance order** instead, because the key is the master's network id (`unit+4`, a free id of the table `0x6c9628`) which the engine does not assign: exact for one master; open: the `unit+4` ids of map units and heroes, to reproduce the bucket order.
-3. What the pile, pickup and the equip path keep of a dropped template item's effect text (`{castSpell=Fire_Arrow:5}` on shaman staves): the engine's pile code is 16 bits and loses it (start: `FUN_00529ac2`, `FUN_0052a71d`, item object `+0x50` effects).
-4. Sound tables (the engine has no audio): which `.res` / data.bin entries are the unit sound set entries `k + 1` (`FUN_00467e42`, template `+0x24` -> `FUN_00420e30` -> `FUN_00402880`), the hero voice samples (`FUN_00468094 +0x50..+0x58`) and the UI sound `0x627740[0xf]` of the skill-up line (start: `FUN_00420e30`, `FUN_00420eb0`, `0x481967` scenario.dll ordinal loader).
+1. Summon-cap job (12.6): MFC `CMap` iteration order decides the order of the per-key RNG draws when two or more masters have minions: CONFIRMED now: table size 17 (`0x5457a5`), hash `key >> 4` mod 17 (`FUN_004a1120`, `0x545a60`), new node at the head of its bucket chain (`0x545a0f`-`0x545a46`). Built with the Summon spell (`spells.minion_job`) with the keys in **first-appearance order** instead, because the key is the master's network id (`unit+4`, a free id of the table `0x6c9628`) which the engine does not assign: exact for one master; open: the `unit+4` ids of map units and heroes, to reproduce the bucket order.
+2. What the pile, pickup and the equip path keep of a dropped template item's effect text (`{castSpell=Fire_Arrow:5}` on shaman staves): the engine's pile code is 16 bits and loses it (start: `FUN_00529ac2`, `FUN_0052a71d`, item object `+0x50` effects).
+3. Sound tables (the engine has no audio): which `.res` / data.bin entries are the unit sound set entries `k + 1` (`FUN_00467e42`, template `+0x24` -> `FUN_00420e30` -> `FUN_00402880`), the hero voice samples (`FUN_00468094 +0x50..+0x58`) and the UI sound `0x627740[0xf]` of the skill-up line (start: `FUN_00420e30`, `FUN_00420eb0`, `0x481967` scenario.dll ordinal loader).
+
+(The dialog latch `[this+0x3e8]` is cleared at every game start and save load, `FUN_0048c8a3` / `FUN_0048c2e9`: [triggers §11](triggers.md#11-the-end-of-the-mission-scenariodll-and-the-client-flow).)
 
 ## 13. Engine (I2): death, corpses, XP, loot, regeneration
 
@@ -795,5 +796,5 @@ and only the attack type / range / to-hit for 56 (staves and shaman staffs, cata
 ## Open questions
 
 1. The quest system (accept `FUN_0052f8e2`, the board, rewards) and the exact meaning of the quest events 5-0x11 (start: `FUN_0052e3eb`, the senders in `0x57e5f0`-`0x57edda`).
-2. Sound tables (12.11 item 4) and the hit sound set entries (16.1).
-3. I2 open questions are in 12.11 (items 1-4); assumptions in section 13.
+2. Sound tables (12.11 item 3) and the hit sound set entries (16.1).
+3. I2 open questions are in 12.11 (items 1-3); assumptions in section 13.

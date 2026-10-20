@@ -36,7 +36,7 @@ Resolution (each failure logs and makes the record fail, §2.4):
 
 | Kind | Resolver | Rule |
 |---|---|---|
-| 4 unit | `FUN_00562274` | `< 10001`: creature map by uid ("Can't resolve unit %d"); `10001..11000`: hero `k = id - 10001` = `FUN_00562518(k)`: only in single player, only when the local player has a main hero (`+0x38`), the first unit of the player's list (`+0x24`) with `(u16)(+0x14c) - 0x15 == k`, else the same test over all creatures whose name `+0x80` is non-empty (`FUN_004029a0` = `CString::GetLength` of `creature+0x80`; every named non-matching creature also makes the loop skip the next creature, see §9.5) ("Can't resolve hero %d"); `>= 11001`: a name from the table at `0x5f42f4` (`FUN_0056236c`, unused) |
+| 4 unit | `FUN_00562274` | `< 10001`: creature map by uid ("Can't resolve unit %d"); `10001..11000`: hero `k = id - 10001` = `FUN_00562518(k)`: only in single player, only when the local player has a main hero (`+0x38`): first loop = the first unit of the player's list (`+0x24`) with `(u16)(+0x14c) - 0x15 == k`; second loop = the creature manager's list (`0x68d2dc + 4`, update order), see §9.5 ("Can't resolve hero %d"); `>= 11001`: a name from the table at `0x5f42f4` (`FUN_0056236c`, unused) |
 | 2 group | `FUN_005626bc` | group map ("Can't resolve group %d") |
 | 3 player | `FUN_00562633` | player map ("Can't resolve player %d") |
 | 9 building | inline | structure map ("Can't resolve building %d.") |
@@ -123,9 +123,11 @@ dying countdown, [combat §12.3](combat.md)). All CONFIRMED at the routine; name
 | `0x10002` | Constant / TRUE / FALSE | compiler | `values[slot] = value` once |
 
 Order: `FUN_00574899` walks the compiled checks in file order and evaluates those without a variable reference.
-Scenario.dll's `ScenarioGetVar` / `ScenarioSetVar` (ordinals 1, 2) read / write an i32 array at `0x10036028`
-(CONFIRMED, `objdump` of `Scenario.dll`: `mov eax, [eax*4+0x10036028]`); its initial values and campaign use
-(`ScenarioNewGame`, `ScenarioLoad`, `ScenarioSave`) are not decoded. Another writer: the client sets variable `0x213 + server id` to 0
+Scenario.dll's `ScenarioGetVar` / `ScenarioSetVar` (ordinals 1, 2) read / write an i32 array at `0x10036028` (CONFIRMED, `objdump` of `Scenario.dll`:
+`mov eax, [eax*4+0x10036028]`), 1024 entries. **Start values** (CONFIRMED, `ScenarioNewGame` `0x100033be`): `memset(array, 0, 0x1000)`, then variable
+`0x300` (the chapter, `0x10036c28`) = 10; everything else 0 (so the 20 words at `0x214` that the DLL zeroes again are 0 too). The engine's
+`Script.scenario_vars` starts with exactly `{0x300: 10}` ([§11](#11-the-end-of-the-mission-scenariodll-and-the-client-flow)); a save carries the array
+([saves §6.3](../formats/saves.md)). Another writer: the client sets variable `0x213 + server id` to 0
 when a unit of server id `< 0x15` reaches death stage 2 (`0x41050f`, [combat §12](combat.md)); not modelled.
 
 ## 4. Instants (`FUN_00574f3f`)
@@ -153,7 +155,7 @@ when a unit of server id `< 0x15` reaches death stage 2 (`0x41050f`, [combat §1
 | 19 | Change unit's owner | `578291` | `FUN_004f0568(u, p)`: leave group and owner list, owner := p, new group (0x50, `FUN_0052ae43`) with the unit, `FUN_00570f2b` (cancel + stand ground), vision bits `+0x18` of both players cleared, `+0x204 = 1` |
 | 20 | Drop all | `578330` | `FUN_005109f5` drops `u`'s inventory, a new empty one (0x24 bytes) |
 | 21 | Make spell effect | `5783be` | `FUN_004f086f(n0, n1, n2, n3, spell n4, power n5 or 99 when 0)`: a spell from cell to cell |
-| 22 | Change group's owner | `5782ba` | instant 19 for every member of `g` (the loop removes the current member from the list it walks) |
+| 22 | Change group's owner | `5782ba` | instant 19 for every member of `g`. **All members change** (CONFIRMED `0x5782ba`-`0x578309`: the MFC-style iterator `GetNext(POSITION&)` has already advanced to the next position when `FUN_004f0568` removes the current member, so none is skipped; every member gets a group of its own) |
 | 23 | Give money to player | `57830f` | `p+0x3c += n0` (the player's gold), message `0x67` to the client (`FUN_00516238`) |
 | 24 | Cast spell to unit | `578440` | `FUN_004f0832(n0, n1, u, spell n2, power n3)` |
 | 25 | Set trap | `57847e` | cell `(n2, n3)` gets record `{n0, n1, sx, sy, tx, ty}` (`FUN_0055ba36`; with `n4 == 0` source and target = the trigger cell) |
@@ -220,11 +222,8 @@ state byte `+0x40 < 2`:
 
 `+0x40` is the same byte the hero death writes (`server_id - 0x13`, [combat §12.3a](combat.md)). A failure is
 therefore checked before a completion, and a completed mission (`+0x40 == 1`) can still fail afterwards. The
-client: `0xb4` (any value) = the modal "load / quit" dialog (combat §12.3a); `0xb5` -> window message `0x430`
-(`0x486ddb`): if `ScenarioGetVar(0x300) > 0x77` it posts `0x41d` at once, else it opens a modal text dialog
-(text entry `0x8c`, the defeat one is `0x8d`; registered with `FUN_0048b33b`, so the simulation freezes) and
-plays sound 14 / `0xdc`. What `0x41d` and the dialog's buttons lead to (the next mission / world map) is not
-decoded.
+client: `0xb4` (any value) = the modal "load / quit" dialog (combat §12.3a); `0xb5` -> window message `0x430`; both dialogs, the end-of-mission
+message `0x41d` and the buttons are decoded in [§11](#11-the-end-of-the-mission-scenariodll-and-the-client-flow).
 
 ## 7. Answers to the old questions
 
@@ -261,13 +260,19 @@ decoded.
   selections into `Script.phased` and stays a `TriggerGroup` member; phase-in draws the `FUN_00510089` tries
   from `world.rng` (radius 0 draws nothing), puts the unit at the cell centre with no step in progress, appends
   it to `world.units` (the update order) and back into its group in creation order; "free" = not blocked for its
-  mover and no unit on the cell (INFERRED: `FUN_005563ca` -> `FUN_0055c5a0` not decoded). Phase-in of a unit on
+  mover and no stamp on the cell ([§10](#10-the-placement-search-fun_00510089-and-the-free-cell-test), CONFIRMED). Phase-in of a unit on
   the map (the exe inserts it into the creature list twice) is logged and skipped (DECISION).
 * **Owner change**: `triggers.change_owner` = `FUN_004f0568` with a new `OrderGroup` under stand ground (the exe
   allocates the group without deleting the owner's empty ones); the unit leaves every selection (INFERRED).
 * **Mission**: `Player.death_code` is the `+0x40` byte; §6 sets it, `Player.defeat_dialog` (message `0xb4`) and
   appends `MissionFailed` / `MissionComplete` (`0xb5`) to `world.events`; instant 2 and the sub-objective
   messages append `ScriptMessage`. No dialog or message text is drawn yet.
+* **Start order** (CONFIRMED, [§9.1](#91-chain-confirmed-unless-noted)): the exe compiles the script at map load (`FUN_004eb715`), posts the ready message from the
+  game-start routine and the **first server step** applies it in its drain (counter 1, before the first group pass at counter 6), which places the party. The
+  engine does the placement first and the compile second because the hero references need the units; nothing in the compile reads the map or draws
+  from the rng, so the state at the end of `enable` equals the exe's state after the drain of step 1. `Player` "in game" (`+0x41`) is not modelled: the defeat
+  pass of the engine runs for every human (the exe skips a player whose flag is 0, which only holds before step 1). The placement search and its free-cell
+  test are [§10](#10-the-placement-search-fun_00510089-and-the-free-cell-test); `World.mission_complete` (message `0xb5`) feeds [§11](#11-the-end-of-the-mission-scenariodll-and-the-client-flow).
 * **The campaign maps have no party**: heroes 10001-10003 come from the player's roster, placed at the drop cell at map start (§9).
   `enable(world, m, assets=...)` runs `engine.party.place_party` first when the map has a drop cell and the human has no main hero
   (`engine run --triggers` passes the assets; `--party N`, default 0 = as many heroes as the script names, DECISION: the save that
@@ -292,11 +297,15 @@ Reconstructed from the GOG exe (sha256 in [formats/README](../formats/README.md)
    memory across the missions (`FUN_004ebd5f` at the end of each, [saves §4](../formats/saves.md#4-carry-over-between-campaign-maps-single-player-confirmed)) and
    creates the first hero with `FUN_004f254b` (§9.3, message `0x48` from the character screen); `FUN_004ea472` -> `FUN_004ea6ab` (the `.a2c` record) is the
    network path only ([saves §3.6](../formats/saves.md#36-building-a-hero-from-a-record-fun_004ea6ab-confirmed-order)).
-3. The ready message (net message type **4**, jump table `0x4f82da` index 1 = `0x4f7ea3`; posted by `FUN_0041c50d(flag)`, the UI window
-   routine `FUN_0048c8a3`) calls `FUN_004f1d9c(player, flag = (msg+0xa == 0))`: no main hero is an error ("Oops ... no main hero",
-   `0x5fca60`); with `flag` set and `player+0x41 == 0` it calls **`FUN_004f2c83(player)`**, then sets `+0x41 = 1`. Single player runs through
-   the same message queue (`0x6831a8`); the exact SP poster of the type-4 message and its tick are not traced (INFERRED: before the first
-   simulation tick).
+3. The ready message (net message type **4**, jump table `0x4f82da` index 1 = `0x4f7ea3`) calls `FUN_004f1d9c(player, flag = (msg+0xa == 0))`: no main hero is an
+   error ("Oops ... no main hero", `0x5fca60`); with `flag` set and `player+0x41 == 0` it calls **`FUN_004f2c83(player)`**; then always `+0x41 := 1`, `+0x43 := 1`,
+   `S+0xc780 += 1` (`FUN_00573d34`, a write-only counter) and the awake recompute `FUN_0055b5f1`. **Who posts it (CONFIRMED)**: `FUN_0041c50d(flag)` has one caller, the
+   game-start routine `FUN_0048c8a3(param_1)` at `0x48cb1a` (`param_1` = 0 for a new game, 1 for a loaded save, so `flag` = new game; a save restores positions
+   and places nobody). Its order: server start `FUN_004eb715` (map load, script compile, counters := 0; only for a new game), UI set-up, the latches of the window
+   object cleared (`0x48d886` is the tail), then `FUN_0041c50d(param_1)` and straight after it the **first server step `FUN_004f08c0`** (single player). The
+   message is delivered synchronously into the server hub's queue (`FUN_0050164f`, [simulation §1.1](simulation.md)), so step 1 (`FUN_004f8521`: counter
+   0 -> 1, drain `FUN_004f84c6`) handles it before anything else of that step: **the party is placed in the drain of the very first tick, after the script was
+   compiled (the roster units exist but are not on the map) and before the first group pass (counter 6)**.
 
 ### 9.2 `FUN_004f2c83(player)` (CONFIRMED, disassembly `0x4f2c83`-`0x4f3127`)
 
@@ -307,9 +316,11 @@ Reconstructed from the GOG exe (sha256 in [formats/README](../formats/README.md)
   uses `x = rand(0x46) + 0x1e`, `y = rand(0x46) + 0x1e`. One cell for the whole party. (Multiplayer: `player+0xa6c` or the list.)
 * **Radius** `r = ftol(max(5.0, sqrt(n) + 4.0))`, `n` = count of the player's unit list `player+0x24` (map-placed units included;
   constants `0x5d0830` = 4.0, `0x5d0838` = 5.0): 5 for n <= 3, 6 for n = 4..8, 7 for n = 9..15, ...
-* For every unit of the list: skipped when it already stands on the map (`FUN_0055641c(map, unit+0x10) == unit`); else its position
+* For every unit of the list: skipped when it already stands on the map (`FUN_0055641c(map, unit+0x10) == unit`: CONFIRMED = `FUN_00551edb(cell word of the unit's position)`,
+  bit `0x20` of the static layer byte of the cell and the cell record's **ground occupant slot** (`rec+4`) equal to the unit; a flyer's slot `rec+8` is not read,
+  a first-come loser holds no slot and would be placed again; engine `party.on_map`); else its position
   record is set to the cell (`FUN_0054f9b9`), then **the main hero** (`unit == player+0x38`) tries `FUN_00510089(x, y, 0)` (exact cell);
-  every other unit, and the main hero when that failed, `FUN_00510089(x, y, r)` ([§8 `find_place`](#8-engine-enginesimtriggerspy)); a
+  every other unit, and the main hero when that failed, `FUN_00510089(x, y, r)` ([§10](#10-the-placement-search-fun_00510089-and-the-free-cell-test)); a
   failure logs an error and the unit stays off the map. Then `FUN_0052b22a(unit)` (creature manager, update order), new brain objects
   (`+0x1c0` `FUN_00551346`, `+0x1c4` `FUN_00569003`, keeping the byte `+0x78`) and `FUN_00570f2b` (stand ground). Facing is not touched
   (the constructor's random angle stays; the engine hashes the uid, `unit_angle`).
@@ -340,19 +351,79 @@ order is idle either way, INFERRED). Fresh start = one hero; `record=` (a decode
 
 ### 9.5 The hero look-up filter (`FUN_00562518`, CONFIRMED `0x562518`-`0x562632`)
 
-First loop: the player's list, `(u16)(+0x14c) - 0x15 == k`. Second loop (the exe's fallback for a hero that is not in the list, e.g. map 40's
-`Mage_Hero` owned by player 3 until a script gives it to the human): all creatures with a non-empty name (`FUN_004029a0` is
-`CString::GetLength(creature + 0x80)`; the list iterator is advanced once more after every named non-match, so the creature after it is
-skipped). The engine searches the human's units only ([§8](#8-engine-enginesimtriggerspy)); the fallback is not modelled (INFERRED that the
-campaign maps do not need it: scripts that name a hero not in the party change its owner first).
+Single player only (`game+0x74 == 0`), and only with a main hero (`player+0x38`). First loop: the player's unit list `player+0x24`, `(u16)(+0x14c) - 0x15 == k`.
+Second loop (the fallback for a hero that is not in the list, e.g. map 40's `Mage_Hero` owned by player 3 until a script gives it to the human): the **creature
+manager's list** (`0x68d2dc + 4`, the update order). The iterator is MFC-style (`FUN_00562518` `0x53b070` / `0x53b0e0` = `GetNext(POSITION&)`): a creature
+whose name `+0x80` is non-empty (`FUN_004029a0` = `CString::GetLength`) is tested; **after every named mismatch the iterator advances a second time, so the creature after
+it is never looked at**; an unnamed creature is passed over without a test and without a skip. Which creatures are named (CONFIRMED by every writer of `+0x80`):
+the constructor sets the empty string (`0x6ca2ac`); the hero name setters (call sites `0x4ead6b` in the .a2c loader, `0x4f2b4c` in the creation `FUN_004f254b`, `0x4f7e24` in the network handler) and the
+creature copy (`0x50e81d`) assign names; the template parser `FUN_005145d1` ("Unknown" and the name tables `0x68f5f0` / `0x68d338`) writes the `+0x80` of the *unit type object*,
+not of a creature. So the named creatures are the player heroes; a map unit has no name and is never found by the second loop (the campaign scripts need it only for
+the cases where the first loop fails). Engine: `triggers.find_named_hero(creatures, k)` over `world.units` with `Unit.name` (set by `party.apply_record`;
+a fresh `Start_*` hero has no name in the engine: the creation screen's name is not modelled).
+
+## 10. The placement search `FUN_00510089` and the free-cell test
+
+All CONFIRMED (disassembly `0x510089`-`0x5102a0`, `0x5563ca`, `0x55c5a0`, `0x54fca8`; engine `engine/sim/place.py`, used by the party, the summons,
+phase in / polymorph and the spawns). `FUN_00510089(creature, x, y, r)`: `tries = r*r/2 + 2` rounds of
+
+1. `y' = y - r/2 + rand(r)`, then `x' = x - r/2 + rand(r)` (y drawn first; `r/2` is the byte `r >> 1`; `rand(r)` = `FUN_0051fa25`, 0..r);
+2. the position is stored by **`FUN_0054fca8(x', y')`: both bytes are clamped into the playable rectangle `[8, width - 9] x [8, height - 9]`** (`0x550d9f` / `0x550db3` =
+   map width / height `+0x50000` / `+0x50004`; a coordinate below 8 becomes 8, above `width - 9` becomes `width - 9`; so the search never leaves the rectangle and
+   the cell that is tested and returned is the clamped one);
+3. the free test `FUN_005563ca(creature)` (the multiplayer variant skips rows below 12 only when `game+0x74 != 0`);
+
+then, for `r > 0` and no hit, a scan `x` from `x - r/2` to `x + r/2` (outer), `y` likewise (inner), the same clamp and test; the first free cell wins. On success
+`FUN_0055020a` registers the creature (occupant slots and its stamp, [simulation §7.4](simulation.md)); no free cell returns 0.
+
+**The free test** `FUN_005563ca` = `FUN_0055c5a0(creature, cell, 0)` **and** `FUN_0055c5a0(creature, cell, 1)`. `FUN_0055c5a0` reads the creature's footprint size `n`
+(vtable `+0x1c`, the token size) and the cell word `y << 8 | x`, and for `i, j` in `0..n-1` fetches the byte of cell `((x + i) & 0xff, (y + j) & 0xff)` of the **live
+layer** (`+0x20000`, flag 0: `FUN_0055fa20`) or the **static layer** (`+0x10000`, flag 1: `FUN_00542dc0`) and answers 0 when `byte & mask != 0`, where `mask` is
+the creature's mover byte (`brain+5`: 0x41 walker, 0x44 ghost / bee, 0x82 flyer, `FUN_0055c550` = AND). There is **no occupant or relation test**: units matter
+only through the stamp bits 0x40 / 0x80 of the live layer, which are the stamp slots of the cell records ([simulation §7.4](simulation.md)); a unit that lost a first-come race
+for its cell holds no stamp and does not block, and a dying unit keeps its stamps until removal. The teleport check `FUN_0055a928` (instants 27, the Teleportation
+spell) uses the same `FUN_005563ca`. Engine: `place.cell_free(world, u, x, y)` (static = `World.blocked`, live = `World.slots.stamp`), `place.find_place`, `place.clamp`;
+the old engine rule (any unit on the cell blocks) was INFERRED and is gone. Cells outside the map are unreachable from the search (the clamp); the grid reads 0 beyond a
+square map and 0x1f in the outermost 8 rows / columns of a non-square one (`FUN_00553b30`).
+
+## 11. The end of the mission, Scenario.dll and the client flow
+
+CONFIRMED in `FUN_004852d8` (window procedure; messages `0x416 + k` through the byte table `0x488821` and jump table `0x488731`) and `Scenario.dll`. Engine:
+`engine/sim/campaign.py` (state machine with no windows; `World.mission_complete`, `.mission_ended` = latch `+0x3e4`, `.defeat_latch` = latch `+0x3e8`, `.dialog`).
+
+**Messages.** Server `0xb5` -> window `0x430` (`0x486ddb`): `+0x3e4 := 1`; if `ScenarioGetVar(0x300) >= 0x78` (`FUN_00493da0`) post `0x41d` at once, else open the modal
+text dialog (class vtable `0x5cd098`, text entry `0x8c`, sound 14 / `0xdc`, window `+0x128`, modal bit 8 freezes the sim) whose single button's command is `0x41d`
+(`0x44db9e`, INFERRED that this class' init is `FUN_0044da55`). Server `0xb4` -> `0x433` with `0xff` -> `0x431` (`0x486f7e`): the defeat dialog once (latch `+0x3e8`, mode 2): button
+`0x445` = end the game (`0x41e`, `FUN_0048f2e5`) and back to the main menu (`0x421`); button `0x446` = the load-game window (`0x418`), disabled when no `game*.sav` exists
+([combat §12.3a](combat.md#123a-hero-death-message-0xb4-the-dialog-and-the-game-confirmed-unless-marked-allods2exe-sha256-in-formatsreadmemd)). **Both latches are cleared at every game start (`FUN_0048c8a3`, `0x48d886`) and when a save is loaded
+(`FUN_0048c2e9`, `0x48c824` / `0x48c834`)** (this was combat §12.11 item 1).
+
+**Window message `0x433` with other wParam `n`** (script instant 2 and the sub-objective messages, server `0xb6`; `0x485f73`): `0xff` the defeat dialog; `0xfe` sound `0xdc` on
+UI sound slot `0x10`; `0xfd` the same on slot `0xe`; `0xfa` sound `0xdc` on slot `0xe` plus interface text `0x61` in the message line for 30 s; **every other value shows the
+section `#event<n>` of `main\text\mission<id>.txt`** (`sprintf("event%d")` at `0x5f3318`, story window `FUN_0041d15e`), or, with a modal dialog open (bit 8), queues
+`n` (`0x627170`). On the 46 maps 444 of the 448 instants of kind 2 find their section (test); the other four (map 30 n 20, map 71 n 10-12) are unused numbers.
+`campaign.message_action(n, modal)`.
+
+**`0x41d`** (`0x486a68`; also posted by the quit-mission confirmation `FUN_0048e764` when the player leaves a mission by the menu): game modes 1 / 3 (non-campaign) and 0 go
+elsewhere; in the campaign (mode 2): with latch `+0x3e4` clear it is "back to the main menu" (`FUN_0048f2e5` + `0x421`, no carry-over). With the latch set:
+the mission time `tick >> 4` is stored (`FUN_00493b40`, list `win+0x598`), `FUN_0041c897`, `FUN_004ebd5f` (the roster carry-over, [saves §4](../formats/saves.md)),
+`ScenarioLeaveLocation(&code)`, then if `Var(0x305) != 0` the hero of that number is recruited (`FUN_004f312a(server, Var(0x300), [Var(0x305)])`: template id `n*10 + 10000`, heroes 0x15..0x1e;
+**not decoded further**), a cutscene `code >= 0` is played (`FUN_0048f919`), and the next screen: chapter `Var(0x300) >= 0x78` -> the ending (`0x428`); else
+`ScenarioIsTownAvailable(0)` (any town in the available list) -> the town / world-map screen (`FUN_0048b419`); else `ScenarioEnterLocation(first available location)` and `0x468` (start it).
+`campaign.press` returns these as `Outcome(kind, cutscene, recruit, location)`; the recruit and the roster carry-over are for the shell to apply.
+
+**Scenario.dll** (CONFIRMED; ordinals from the exe's loader `0x4818e7`: 1 GetVar `0x62729c`, 2 SetVar, 3 TalkTo, 5 EnterLocation, 6 LeaveLocation, 7 / 8 EnterShop / LeaveShop, 9 / 10 EnterInn / LeaveInn,
+11 NewGame, 12 Save, 13 Load, 14 GetAvailableLocations, 15 GetShopAssortment, 16 IsTownAvailable, 17 IsMissionAvailable, 18 GetCurrentLocation, 19 GetAllLocations):
+locations are `(type, id)` objects (type 1 mission, 2 town; the towns 1-3 at `0x10035f60`, `0x10035f78`, `0x10037568`); `ScenarioNewGame` empties the available list (`0x10035f90`), adds town 1
+and enters it; `ScenarioEnterLocation` zeroes the 16 variables `0x2f0..0x2ff` (the sub-objectives) and stores the location. `ScenarioLeaveLocation(&code)` (`code := -1`): no location -> 0; a town
+-> leave (town 1 also leaves the available list); a mission `n` (`0x10001da5`) -> clear Var(`0x305`); the location leaves the list; `Var(0x380 + n) := 1`; unlocks (`campaign.UNLOCK`: 10 -> mission 20,
+20 -> town 2 and mission 21 when `Var(0x303)`, 31 -> 32, 40 -> missions 50 and 60 and `Var(0x305) := 0x17`, 50 -> town 3, 60 -> mission 80); cutscene codes 10 -> 1, 30 -> 2, 70 -> 3 when
+`Var(0x309) == 0 and Var(0x30a) != 0`, 80 -> 3 when the reverse, 110 -> 4 (`Var(0x30b) == 0`) or 5; `Var(0x300) += 10` when `n % 10 == 0`; then the shop tables
+([items §13](../data/items.md#13-campaign-town-shops-scenariodll)). Not modelled: the "new / updated" markers of the 20-word tables at `0x214` / `0x228`, the other `Var(0x30x)` flags that gate the optional unlocks, and
+the shop tables.
 
 ## Open questions
 
-* `FUN_005563ca` / `FUN_0055c5a0` (the free-cell test of `FUN_00510089` and of the teleport `FUN_0055a928`, which calls it twice with the flag 0 and 1).
 * The item rules of `FUN_00529ae2` (add: stacking, weight / capacity limits) for instants 11, 12, 28; the hidden caster of instants 21 / 24 (`FUN_004f06ac` appends it to the list at `server+0x2c`; whether it ticks like a creature); instant 25 (Set trap) writes the cell record described in [unit-struct](unit-struct.md#cell-record-effect-confirmed).
-* Where single player posts the ready message (type 4, `FUN_0041c50d` <- UI window `FUN_0048c8a3`) relative to the first tick; the "already on
-  the map" test `FUN_0055641c` / `FUN_00551edb` of §9.2; the second loop of `FUN_00562518` for units by name (§9.5).
-* The window message `0x41d` and the mission-complete dialog's buttons (`0x486ddb`); Scenario variable `0x300`.
-* The text shown for message `0xb6` values (`0x433` handler, `event_%d`).
-* Scenario.dll: initial variables (`ScenarioNewGame`), which variables the campaign reads (towns, missions).
-* The loop of instant 22 over a list it modifies (`FUN_004f0568` removes the member): which members change owner.
+* The recruit of `FUN_004f312a` (hero Var(0x305) at a mission end), the roster carry-over `FUN_004ebd5f` (saves §4: per-player upkeep `FUN_004f3cad`, `FUN_004f3d14`) and the campaign variables other than `0x300` / `0x305` / `0x380+` (who writes `0x301`-`0x30d`, `0x303` for mission 21, the markers at `0x214` / `0x228`).
+* Which UI sound `0x627740[0x10]` / `[0xe]` samples play for the `0xfe` / `0xfd` / `0xfa` messages (the engine has no audio) and the story window `FUN_0041d15e` layout.
