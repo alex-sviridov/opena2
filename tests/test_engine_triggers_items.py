@@ -90,7 +90,7 @@ def test_set_formation_writes_the_server_byte():
         assert w.players[1].formation == mode
 
 
-def test_scripted_casts_and_the_cell_effects_are_documented_no_ops():
+def test_scripted_casts_make_hidden_casters_and_instant_25_sets_a_trap():
     sc = script([rec(21, 1, (S.K_X, 10), (S.K_Y, 10), (S.K_X, 12), (S.K_Y, 12), (S.K_INT, 7), (S.K_INT, 100)),
                  rec(24, 2, (S.K_X, 10), (S.K_Y, 10), (S.K_UNIT, 2), (S.K_INT, 18), (S.K_INT, 100)),
                  rec(25, 3, (S.K_INT, 23), (S.K_INT, 255), (S.K_X, 12), (S.K_Y, 12)),
@@ -99,8 +99,12 @@ def test_scripted_casts_and_the_cell_effects_are_documented_no_ops():
     w, sim, h, a, b = setup(sc)
     for i in range(5):
         run1(w, i)
-    assert w.unbuilt_casts == {7: 1, 18: 1} and not w.script.unsupported
-    assert w.script.unbuilt == {("instant", 21): 1, ("instant", 24): 1, ("instant", 25): 1, ("instant", 29): 1, ("instant", 30): 1}
+    assert not w.unbuilt_casts and not w.script.unsupported
+    assert w.script.unbuilt == {("instant", 29): 1, ("instant", 30): 1}
+    c21, c24 = w.transients                                 # sim/traps.py: FUN_004f086f / FUN_004f0832
+    assert (c21.x, c21.y, c21.state, c21.cast.spell, c21.cast.cell, c21.stats.get("spell_power")) == (10, 10, 0xE, 7, (12, 12), 100)
+    assert (c24.x, c24.y, c24.state, c24.cast.spell, c24.cast.target, c24.stats.get("spell_power")) == (10, 10, 0xD, 18, a.id, 100)
+    assert w.cell_effects == {(12, 12): (23, 255, 12, 12, 12, 12)}            # FUN_0057847e with n4 == 0
     a.hidden = True
     for c in w.script.checks:
         T.eval_check(w, w.script, c)

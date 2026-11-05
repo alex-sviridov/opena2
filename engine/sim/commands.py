@@ -79,6 +79,25 @@ class StandStill(Command):
 
 
 @dataclass(frozen=True)
+class Retreat(Command):
+    """Exe command 0x14 (key R / bar button 8, `FUN_00419e72`): members order 0x16, Brain mode 0, group order 0 (`FUN_00570c31`); the order has no
+    end of its own (docs/engine/simulation.md 9.3)."""
+    player_id: int
+    unit_ids: tuple
+
+    def __post_init__(self):
+        object.__setattr__(self, "unit_ids", tuple(self.unit_ids))
+
+
+@dataclass(frozen=True)
+class SetRetreatMode(Command):
+    """Exe message `0x46` sub-code 1 (`FUN_0041a4ef`, Ctrl+W; server `0x4f67d5`): the player's retreat mode 0 / 1 / 2 = x 0 / 10 / 30 percent; every
+    unit the player owns gets wimpy = maxHP * x / 100 and withdraw = 0 (`FUN_00573b38`, `FUN_0057393c`)."""
+    player_id: int
+    mode: int
+
+
+@dataclass(frozen=True)
 class Swarm(Command):
     """Exe command 0x1a (swarm, key S then a click, or Ctrl+click): the move group code with group order 5 (`FUN_0057063e`)."""
     player_id: int

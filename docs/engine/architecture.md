@@ -17,9 +17,9 @@ Dependencies point down only (a layer imports layers with a smaller number).
 | 1-2 | `a2res/`, `allods2/` (incl. `allods2/assets.py`) | archives, formats, decoders, asset cache | stdlib, numpy, Pillow; never pygame, never `engine` |
 | 3 | `engine/world.py`, `engine/rng.py` | `World`: cells, heights, tick counter, entity tables, spatial index, block layer, the game's `Rng` (`World.rng`, seeded per game), `fight_log` | layers 1-2 |
 | 4 | `engine/sim/` | `Simulation.step` (+ command log), systems list (orders, selection, movement + the creature tick with the swing), `Command` / `SelectUnits` / `MoveUnits` / `AttackUnit` / `Stop` / `SetFormation` / `FollowPath` / `MoveTo` (debug), combat (`combat.py`, `combatstats.py`), `CommandQueue`, tick clock ([simulation](simulation.md), [combat](combat.md)) | 1-3 |
-| 5 | `engine/ui/` | `Layout`, `choose_cursor` / `choose_minimap_cursor`, `SelectionInput` (-> `SelectUnits`), `OrderInput` (-> `MoveUnits`, `AttackUnit`, `Stop`, `SetFormation`; pending mode, right button, minimap orders), `MessageLine` / `drain_no_way`, `ScrollInput`, `MinimapPanel` | 1-4, `engine.view` (camera, `pick`) |
+| 5 | `engine/ui/` | `Layout`, `choose_cursor` / `choose_minimap_cursor`, `SelectionInput` (-> `SelectUnits`), `OrderInput` (-> `MoveUnits`, `AttackUnit`, `Stop`, `SetFormation`; pending mode, right button, minimap orders), `MessageLine` / `drain_no_way`, `ScrollInput`, `MinimapPanel`; J1: `GameUi` (panel mode, `ModalStack`, message sources, key / mouse routing), `widgets` (widget table), `info` (panel readers), `bar` (command cells), `modal` (dialogs), `messages` (`PickupWatch`) | 1-4, `engine.view` (camera, `pick`) |
 | 6 | `engine/view/` | `Camera`, coordinates, visible range, per-cell compositing, draw list, floating damage numbers (`damage.py`) | 1-3 |
-| 7 | `engine/backend_pygame/` | window, surface cache, blitting, events, main loop, screenshot, `interface.py` (panels, info panel), `cursor.py`, `text.py` (`draw_text`) | everything; the only layer that imports pygame |
+| 7 | `engine/backend_pygame/` | window, surface cache, blitting, events, main loop, screenshot, `interface.py` (panels, `make_game_ui`), `panels.py` (portrait, info texts, bar overlays, dialogs), `cursor.py`, `text.py` (`draw_text`, `draw_text_exact`) | everything; the only layer that imports pygame |
 
 Rules (enforced by `tests/test_engine_boundaries.py`, an AST scan):
 
@@ -75,11 +75,9 @@ surfaces happens only in the backend (`SurfaceCache`).
   8, 10, 12, 14, 16, 20, 24, 28, 32 ticks/s (CONFIRMED,
   [animation §3.1](../formats/animation.md#31-the-game-tick)); default speed 4 =
   16 ticks/s = 62 ms. The speed is a parameter.
-- The exe re-bases its clock every 16 ticks; the engine uses a plain
-  accumulator with a frame-time cap (DECISION, `MAX_FRAME_MS = 250`: a stall
-  produces at most `250 // 62 = 4` catch-up ticks at the default speed).
-  Documented difference: the exe may run up to 15 ticks back to back after a
-  stall.
+- The tick scheduler is the exe's (CONFIRMED `FUN_00488aa1`, [ui-layout 11.4](ui-layout.md#114-in-game-menu-pause-freeze)):
+  `engine.sim.TickClock`, 16-tick blocks re-based at count 0, **no catch-up cap** (a stall runs `17 - count`
+  ticks, at most 16, back to back); a closed dialog zeroes the counter only (one tick at resume).
 - Animation clock = `world.tick` (view clock `+0xa88` is +1 per tick). Water
   cells use `8 + ((set + (x+1)*y + (tick >> 2)) & 3)` (CONFIRMED,
   [terrain](../formats/terrain.md#cell-value)).
@@ -87,17 +85,19 @@ surfaces happens only in the backend (`SurfaceCache`).
 ## 5. Main loop
 
 ```
-acc = 0
+ticks = TickClock(period_ms)
 while running:
     dt = clock.tick()                     # ms since last frame
-    acc += min(dt, MAX_FRAME_MS)
-    events = backend.poll()               # window/keys/mouse -> abstract input
+    events = backend.poll()               # window/keys/mouse -> abstract input; ui.key / ui.mouse_down first (J1: ESC menu, Pause, TAB, dialogs, bar, info buttons)
     ui.update(dt, input_state, camera)    # scroll -> camera (UI state); minimap press/drag
     for cmd in ui.commands(): queue.put(cmd)   # SelectionInput -> SelectUnits; OrderInput -> MoveUnits / Stop / SetFormation
     drain_no_way(world, ...)              # World.events NoWay -> the message line "No way" (3000 ms)
-    while acc >= period_ms:               # fixed-step simulation
-        sim.step(queue.drain())           # world.tick += 1, systems run
-        acc -= period_ms
+    if ui.frozen: was_frozen = True       # J1: a dialog is open (menu, End Quest, pause, story, result): no step, no scroll
+    else:
+        if was_frozen: ticks.resume(); was_frozen = False   # one tick at resume
+        for _ in range(ticks.advance(now_ms)):              # fixed-step simulation
+            sim.step(queue.drain())       # world.tick += 1, systems run
+    ui.poll(now)                          # J1: script messages -> story windows, mission result dialogs, pickup lines (reads the world only)
     terrain = view.build_terrain_items(terrain_view, camera, world.tick)
     items = view.build_draw_list(world, camera, world.tick, assets, options, debug, selection)
     backend.draw(terrain, items, camera)  # black window, viewport, strips and panels, info panel
@@ -176,7 +176,7 @@ world pixels. `run` defaults to the playable area corner `(8*32, 8*32)`
 Controls: arrow keys, and the mouse on the screen border (x == 0, y == 0, x >= W-2, y >= H-2; panels do not
 matter), scroll **one whole cell per tick period** (62 ms at the default speed), clamped to the 8-cell border
 (CONFIRMED, [ui-layout §5](ui-layout.md)); left click / drag selects or orders, Shift toggles, right click cancels the pending mode or clears
-(CONFIRMED, ui-layout §8), right drag scrolls, M/A/D/S/T, Ctrl+F, Ctrl+H health bars, F1-F3 debug, Esc quits. The camera is built from the layout's viewport.
+(CONFIRMED, ui-layout §8), right drag scrolls, M/A/D/S/T, Ctrl+F, Ctrl+H health bars, F1-F3 debug (off by default), Esc opens the menu (J1; a window close quits), Pause freezes, Tab switches the info panel. The camera is built from the layout's viewport.
 
 ## 9. World state
 

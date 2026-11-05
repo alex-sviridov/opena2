@@ -7,11 +7,11 @@ comments; routine addresses there).  Layer 4: reads and writes `engine.world` on
 
 from engine.world import OrderGroup
 
-from .commands import (AttackUnit, CastScroll, CastSpell, DropGold, Guard, MoveItem, MoveUnits, PickUp, SetAutoCast, SetAutoSpell, SetFormation, StandStill, Stop,
+from .commands import (AttackUnit, CastScroll, CastSpell, DropGold, Guard, MoveItem, MoveUnits, PickUp, Retreat, SetAutoCast, SetAutoSpell, SetFormation, SetRetreatMode, StandStill, Stop,
                        Swarm)
 from .combat import can_order_attack, refresh_attack, set_attack
-from .movement import (ATTACK_ORDER, CENTRE, MoveTo, _in_map, _set_action, IDLE, cancel, fail_stop, live_cells, path_grid,
-                       set_guard, set_move, set_stand, set_still, stop_unit, unit_size, unit_speed)
+from .movement import (ATTACK_ORDER, CENTRE, RETREAT_ORDER, MoveTo, _in_map, _set_action, IDLE, cancel, fail_stop, live_cells, path_grid,
+                       set_guard, set_move, set_retreat, set_stand, set_still, stop_unit, unit_size, unit_speed)
 from .pathfinding import chebyshev
 from . import ai, follow, gear, spells
 
@@ -165,6 +165,14 @@ def still_group(world, g):
     g.order = ai.G_STILL
 
 
+def retreat_group(world, g):
+    """`FUN_00570c31` (cmd 0x14 R): cancel every member (group order 0), each `FUN_0056da4f` (order 0x16, Brain mode 0).  The executor runs in the group
+    pass of order 0 (`ai.retreat_exec`)."""
+    _cancel_group(world, g)
+    for i in g.members:
+        set_retreat(world, world.units[i])
+
+
 def hold_group(world, g, x, y):
     """`FUN_005708bc` (scripted sub-command 2): cancel, group order 2, destination `y << 8 | x`; the members keep their order."""
     _cancel_group(world, g)
@@ -198,12 +206,24 @@ def group_pass(world):
         for g in [g for g in world.groups.values() if g.owner == pid]:
             if g.members and g.order == GROUP_MOVE:
                 _pass_move(world, g)
+                _post_steps(world, g)
             elif g.members and g.order == GROUP_ORDERS:
                 _pass_orders(world, g)
+                _post_steps(world, g)
             elif g.members and g.order == GROUP_STAND and world.ai_on:
                 ai.stand_pass(world, g)         # FUN_0057309d; behind the AI switch (the original always runs it)
+                _post_steps(world, g)
             elif g.members and g.order in ai.PASS_ORDERS and (world.ai_on or g.order in (ai.G_SWARM, ai.G_WANDER)):
                 ai.run_group(world, g)
+
+
+def _post_steps(world, g):
+    """`FUN_00573713` on every member after the handler (ai.md 9).  Only a unit with retreat-mode thresholds is visited; the
+    run_group path of the other group orders calls it itself, behind the AI switch (its enemies exist only then)."""
+    for i in list(g.members):
+        u = world.units.get(i)
+        if u is not None and u.wimpy_hp is not None:        # DECISION: only the retreat-mode thresholds; a player-owned monster's data.bin ones stay inert (as before)
+            ai.post_step(world, g, u)
 
 
 def _pass_move(world, g):
@@ -258,6 +278,8 @@ def _pass_orders(world, g):
             follow.exec_follow(world, u)                # FUN_00569857
         elif u.order == follow.PATROL_ORDER:
             follow.exec_patrol(world, u)                # FUN_00569b62
+        elif u.order == RETREAT_ORDER:
+            ai.retreat_exec(world, u)                   # FUN_0056c9bc
         elif u.order == gear.PICK_ORDER:
             gear.refresh_pickup(world, u)               # FUN_0056c8da: order 2, go to the sack / Brain mode 7
 
@@ -311,6 +333,16 @@ def orders_system(world, commands):
             g = intake(world, cmd.player_id, cmd.unit_ids)
             if g is not None:
                 still_group(world, g)
+        elif isinstance(cmd, Retreat):
+            g = intake(world, cmd.player_id, cmd.unit_ids)
+            if g is not None:
+                retreat_group(world, g)
+        elif isinstance(cmd, SetRetreatMode):           # message 0x46 sub 1 (0x4f67d5): FUN_0057393c (withdraw := 0) and FUN_00573b38 (wimpy := maxHP * x / 100)
+            if cmd.player_id in world.players:
+                x = {1: 10, 2: 30}.get(cmd.mode, 0)
+                for u in world.units.values():
+                    if u.owner == cmd.player_id:
+                        u.wimpy_hp, u.withdraw_hp = u.hp_max * x // 100, 0
         elif isinstance(cmd, Swarm):
             g = intake(world, cmd.player_id, cmd.unit_ids)
             if g is not None:

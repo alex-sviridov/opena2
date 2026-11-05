@@ -9,7 +9,7 @@ MAP as for `python -m allods2 map` (10, scenario/10.alm, or a file).  X, Y =
 the viewport's top-left in world pixels (x = 32*col, y = 32*row - height).
 `run` starts at the playable-area corner (256, 256) by default.  Arrow keys
 or the mouse at the window edge scroll; F1/F2/F3 (Shift+F4 paths, Shift+F5 ai) toggle the debug overlays
-passability / markers / depth, Ctrl+H the health bars of all units, Ctrl+L the floating damage numbers (on by default, as in the game); Esc quits.  --debug takes a comma list of those
+passability / markers / depth, Ctrl+H the health bars of all units, Ctrl+L the floating damage numbers (on by default, as in the game).  --debug takes a comma list of those
 names (screenshot: drawn in the PNG).  Objects and structures are drawn with the
 game's default options; --no-* switch shadows, the BRIGHT2 light row, the b.256
 smoothing, or both layers off.  `screenshot` writes a PNG
@@ -20,6 +20,9 @@ Shift toggles, right click clears); --size only 640x480 (default), 800x600 or 10
 `screenshot --interface` renders that whole window headless (default 640x480; --select UID,...
 selects those unit ids first); without --interface it renders the bare viewport as before.
 `minimap` writes its base image (no pygame).  Docs: docs/engine/architecture.md.
+J1 interface (docs/engine/ui-layout.md 11): Esc or the disk button opens the in-game menu (End Quest -> Exit leaves the game), the Pause key a
+pause window, Tab / the mode button switches the info panel between portrait and stats, the command bar buttons act like the hotkeys; any open dialog
+freezes the simulation.  `run --hero-name NAME` names the player's heroes (default Hero); `run --trace` shows the "No way" line (the exe's -trace flag).
 `run --debug-move UID X,Y [X,Y ...]` (developer tool, not for players) walks map unit UID
 through the given cells: each leg must be straight or diagonal from the previous cell (the unit's own
 cell first); no pathfinding, no blocking.  `run --debug-moveto UID X,Y` orders a `MoveTo` (the original's
@@ -238,6 +241,8 @@ def main(argv=None):
     m.add_argument("--install")
     m.add_argument("--units", action="store_true", help="add the unit dots")
     r.add_argument("--no-minimap", action="store_true")
+    r.add_argument("--trace", action="store_true", help="show the \"No way\" message line (the exe's -trace flag; off by default)")
+    r.add_argument("--hero-name", default="Hero", help="name of the player's heroes in the info panel and level-up lines (default Hero)")
     r.add_argument("--no-ai", action="store_true", help="monsters do not think (docs/engine/ai.md)")
     r.add_argument("--triggers", action="store_true", help="run the map script (docs/engine/triggers.md); a fresh campaign party is placed at the drop cell (--party)")
     r.add_argument("--party", type=int, default=0, choices=(0, 1, 2, 3), help="with --triggers: heroes placed at map start (Start_MF, Fighter_Hero, Mage_Hero; 0 = as many as the map script names, a fresh campaign has only the first)")
@@ -280,8 +285,11 @@ def main(argv=None):
             print("seed %d" % world.seed)
         except ValueError as e:
             p.error(str(e))
+        import re
+        mission = re.search(r"(\d+)(?:\.alm)?$", os.path.basename(a.map.rstrip("/\\")), re.I)
         window.run(world, tv, camera, a.layout, a.speed, "Allods 2 - " + world.name,
-                   assets=assets, options=opts, debug=debug, minimap=mm, commands=commands, ai=not a.no_ai or a.triggers)
+                   assets=assets, options=opts, debug=debug, minimap=mm, commands=commands, ai=not a.no_ai or a.triggers,
+                   trace=a.trace, hero_name=a.hero_name, mission_id=mission.group(1) if mission else None)
     elif a.interface:
         from engine.backend_pygame.interface import screenshot_window
         from engine.world import UNIT_ID_BASE

@@ -214,8 +214,8 @@ def press(world, camp, command):
 def message_action(n, modal=False):
     """Window message `0x433` with wParam `n` (client message `0xb6` = script instant 2 / sub-objective messages; `0xb4` posts `0xff`;
     CONFIRMED `0x485f73`-`0x48615f`).  Returns the actions: `0xff` opens the defeat dialog (`0x431`); `0xfe` plays sound `0xdc` on UI slot
-    `0x10`; `0xfd` the same on slot `0xe`; `0xfa` sound `0xdc` on slot `0xe` and shows interface text `0x61` for 30 s in the message
-    line; any other value shows the mission text section `#event<n>` of `main\\text\\mission<id>.txt` in a story window (`FUN_0041d15e`
+    `0x10`; `0xfd` the same on slot `0xe`; `0xfa` sound `0xdc` on slot `0xe` and shows `patch.txt` line `0x61` ("You've got a new mission!") for 30 s in the message
+    line (the "line" action's id is a patch.txt index); any other value shows the mission text section `#event<n>` of `main\\text\\mission<id>.txt` in a story window (`FUN_0041d15e`
     with the key `"event%d"`), or, while a modal dialog is open (window bit 8), queues the number (list `0x627170`)."""
     if n == 0xFF:
         return (("defeat",),)

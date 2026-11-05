@@ -252,6 +252,19 @@ class Removed:
 
 
 @dataclass(frozen=True)
+class Killed:
+    """Fight log entry: a kill that the exe's creature loop (`FUN_0052b459`, `0x52b709`-`0x52b84a`) credits to a hero-type unit with HP >= 0: the
+    killer's owner learns about the victim's type (`player+0x44[victim +0x14c]`, ui-layout 11.1).  `server_id` / `human` are the victim's raw
+    template key and class (the UI reduces them like `+0x14c`); `killer_owner` is the killer's owner at that moment.  Log only: no world state."""
+    tick: int
+    unit: int
+    server_id: int
+    human: bool
+    killer: int
+    killer_owner: int
+
+
+@dataclass(frozen=True)
 class CastStarted:
     """Fight log entry: the cast passed its first tick (`FUN_00519998` returned non-zero: mana spent for a learned spell, the client message `0x86`
     sent); `flight` is the client's projectile time (`sim/spells.client_flight_ticks`)."""
@@ -478,6 +491,8 @@ class Unit:
     kill_list: list = field(default_factory=list)       # +0x1a8 repeat-kill list of a hero: up to 5 [server_id, count]
     ai: AiState = field(default_factory=AiState)        # Brain AI fields (sim/ai.py, docs/engine/ai.md)
     mode_look: bool = False         # Brain mode 0xb: the idle look-around (`FUN_0056e5bc`) of a computer-owned unit
+    wimpy_hp: int = None            # brain+0x44 / +0x40 set by the retreat mode message (`SetRetreatMode`); None = the template values (data.bin p35 / p34)
+    withdraw_hp: int = None
     tweak: int = 0                  # difficulty mode applied at load (`FUN_00561bf9` 0x561e20): 0 none, 1 easy, 3 hard (docs/engine/ai.md 10)
     # spell casting (docs/data/spells.md 9c; sim/spells.py)
     mode_cast: bool = False         # Brain mode 8 (cast with approach, `FUN_0056ebc0`)
@@ -485,6 +500,7 @@ class Unit:
     cast_wrapper: object = None     # brain+0x30 the `spells.Wrapper` of the cast order
     cast: object = None             # `SpellCast` of the cast in progress (unit +0x5c/+0x64/+0x68)
     spellbook: int = None           # unit+0x140 learned-spell bit mask (bit n = spell n); None: derived from the template (`spells.known_mask`)
+    teleport_to: int = 0            # brain+0xb0: a pending teleport target `y << 8 | x` set by a Teleport cell record (sim/traps.py), 0 = none
     auto_spell: int = 0             # brain+0x78: the unit's selected spell (Ctrl+A, message 0x46 sub 4; docs/engine/ai.md 12.8): the attack range and the human cast decision `FUN_0056b059` read it
     ai_cast: bool = False           # brain+0x60: the cast was set by the AI (`FUN_0056a981` & co.): Brain mode 8 / 9 stays after the cast starts; cleared by every cancel
     mode_cell: bool = False         # Brain mode 9 (cast at a cell with approach, `FUN_0056ec3f`)
@@ -631,6 +647,8 @@ class World:
         self.defeat_latch = False       # client latch win+0x3e8: the defeat dialog was opened once
         self.dialog = None              # sim/campaign.Dialog on screen, None otherwise
         self.slots = CellSlots()    # occupant and stamp slots of the cell records (simulation.md 7.4); not dumped
+        self.cell_effects = {}      # (x, y) -> the record's 6-byte effect (spell, power, sx, sy, tx, ty): traps (sim/traps.py, which hooks `slots.on_enter`); dumped while non-empty
+        self.transients = []        # the list server+0x2c: hidden casters (sim/traps.py), ticked in step 2; dumped while non-empty
         self.cell_fx = {}           # (x, y) -> [6 carrier uids or None]: the cell records' effect slots (effects.md 6.4); dumped while non-empty
         self._fx_saved = {}         # (x, y) -> the cost byte the record saved at creation
         self.costs = pas.DEFAULT_COSTS      # map.reg [Terrain] Cost<name> (from_map loads the install's)
@@ -1268,6 +1286,12 @@ class World:
                 **({"carriers": [[c.uid, c.kind, c.caster, c.target, c.spell, c.level, c.ticks_left, c.born, int(c.hostile), list(c.start), c.flight, list(c.aim)]
                                   + c.area_dump() for c in self.carriers]} if self.carriers else {}),
                 **({"cell_fx": [[x, y, list(v)] for (x, y), v in sorted(self.cell_fx.items())]} if self.cell_fx else {}),
+                **({"cell_effects": [[x, y, list(v)] for (x, y), v in sorted(self.cell_effects.items())]} if self.cell_effects else {}),
+                **({"transients": [[c.x, c.y, c.state, c.cast.spell if c.cast else None, c.cast.target if c.cast else None,
+                                    list(c.cast.cell) if c.cast and c.cast.cell else None, c.stats.get("spell_power"), c.phase, c.timer, int(c.done)]
+                                   for c in self.transients]} if self.transients else {}),
+                **({"thresholds": [[u.id, u.wimpy_hp, u.withdraw_hp] for _, u in sorted(self.units.items()) if u.wimpy_hp is not None]}
+                   if any(u.wimpy_hp is not None for u in self.units.values()) else {}),
                 **({"ai": self._ai_dump()} if self.ai_on else {}),
                 **({"script": self.script.dump()} if self.script is not None else {}),
                 **({"rng": self.rng.state} if self.rng.state != self.seed else {})}
@@ -1299,7 +1323,7 @@ class World:
         fight = World._fight_state(u)
         death = World._death_state(u)
         cast = World._cast_state(u)
-        if fight is None and death is None and cast is None and World._follow_state(u) is None and not u.master and not u.auto_spell and not (u.order or u.state or u.path or u.odometer or m.steps or m.turning or u.order_group
+        if fight is None and death is None and cast is None and World._follow_state(u) is None and not u.master and not u.auto_spell and not u.teleport_to and not (u.order or u.state or u.path or u.odometer or m.steps or m.turning or u.order_group
                                   or u.stopped or m.waiting or m.parked or m.target_facing != u.facing
                                   or u.effects or u.effect_mask or u.fx.any() or u.equipment or u.pack or u.order == 2):
             return []
@@ -1336,6 +1360,8 @@ class World:
                          [[it.code, it.count, [list(r) for r in it.mods]] for it in u.pack], u.pack_index]
         if u.auto_spell:
             d["auto_spell"] = u.auto_spell
+        if u.teleport_to:                                                   # only while a Teleport cell record's target is pending
+            d["teleport_to"] = u.teleport_to
         if u.effects or u.effect_mask or u.fx.any():                       # only under a spell effect (sim/effects.py)
             d["effects"] = [[e.dump() for e in u.effects], u.effect_mask, u.fx.dump()]
         return [d]

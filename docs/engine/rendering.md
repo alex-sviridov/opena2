@@ -240,20 +240,22 @@ Code: `engine/ui/layout.py`, `cursor.py`, `selection.py`; `engine/view/pick.py`,
   Ctrl+H): 4 rows, track `x1+4..x2-4`, grey `0x40/0x80/0x60/0x40` empty, fill dark/bright/mid/dark in green, yellow
   (< max/2) or red (< max/4), fill >= 1 px while hp > 0, 4x4 `Ball.bmp` caps at `x1` and `x2-4` (CONFIRMED geometry and
   colours, ui-layout §9). No mana bar, name or squad number yet; no circle.
-- **Info panel** (text via `text.draw_text`, the game font (fonts.md)): the unit's `DescText` centred at
-  `(panel.w - 88, 0x1c)`, `HP` label at 0x2c, `cur/max` at (0x73, 0x36), owner name at (6, 0xe0). No portrait.
-  Positions CONFIRMED (§10); title source and owner line are DECISIONs.
+- **Info panel** (J1, [ui-layout §11.1](ui-layout.md#111-unit-info-panel-window-7), built): two modes (TAB / the mode button). Picture mode = HumanBackR (strip C HumanBackL) + the 160x240 portrait at (0, 2) of the panel: a paper doll for human units (`.256` layers composited by `Canvas.draw_256`, each
+  with its embedded palette, keyed by black) or `graphics/infowindow/<InfoPicture>[face].bmp`; text mode = TextBackR / TextBackL + the font2 rows of the exe (gold labels, sage values, orange headers) placed by the exact measure (`text.draw_text_exact`); the four buttons (book, backpack, mode, disk) in
+  both; the empty / multi-selection texts. Code: `engine/ui/info.py` (rows, portrait recipe), `backend_pygame/panels.py` (drawing). No Level row, no owner line, signed HP, Mana "0/0" for non-casters.
+- **Command bar** (J1, ui-layout 11.2): CommandBarR (Heads for no / foreign selection), CommandEmpR over the disabled cells (mask `0xef`, Cast by the slot mask), CommandDnR on the pending mode's cell (`engine/ui/bar.py`, `Panels.draw_bar`).
+- **Dialogs** (J1, ui-layout 11.4-11.5): `lm.256` frames (corners 48x48, edges tiled, 96x64 centre tiles, an 8 px drop shadow = the same sprites darkened by level 6, cached as one RGBA surface per size), bevel text buttons in font1, message-style text; drawn last, over the panels, before the cursor.
 - **Cursor**: `choose_cursor` (pure) picks arrows / default / select / pickup / move / attack / swarm / town / the pending-mode
   cursors (H3 stage B, table in [ui-layout §6](ui-layout.md)); over the minimap image `choose_minimap_cursor` gives the `s*` cursors; `CursorSprites` decodes the frame of
   `load_cursor_set(name).frame_at` (wall-clock ms) and the window blits it last at `mouse - hotspot`; the OS cursor is hidden.
 - **Message list** (CONFIRMED `FUN_004021fe` add, `FUN_00402585` ageing, `FUN_0040261a` draw, `FUN_0040212b` rect): a queue of lines (text, colour table, lifetime) wrapped
   to the view width, drawn top-down from (8, 8) of the view (game mode 2; mode 3 (0, 0xdc) with font2) in **font1**, colour table `0x61fa80` (17i grey ramp, white at the top) with the
   drop shadow, `font height + 2` pixels per line; at most `(view height / pitch) / 2` lines (oldest dropped). Only the first line has a clock (`age += dt`, removed when `age > its lifetime`,
-  then `age := 0`), so a later message lives its own time after the earlier one is gone. Lifetimes: "No way" and level-up lines 3000 ms, option toggles (formation `0x61+`, retreat `0x5e+`,
-  Show Health `0x64/0x65`, Flying damage `0x66/0x67`) **2000 ms** (`push 0x7d0`). Engine: `engine.ui.MessageLine` (queue, `lines(now)`), `Interface.draw(..., message=lines)`, `window.message_line`.
+  then `age := 0`), so a later message lives its own time after the earlier one is gone. Lifetimes: level-up lines 3000 ms ("No way" also 3000 ms but **only with `-trace`**, [ui-layout §11.5](ui-layout.md#115-on-screen-messages)), option toggles (formation `0x61+`, retreat `0x5e+`,
+  Show Health `0x64/0x65`, Flying damage `0x66/0x67`) **2000 ms** (`push 0x7d0`). Engine: `engine.ui.MessageLine` (queue, `lines(now)`, `entries(now)` with the colour slot: system = `highlight`, log = `normal`), `Interface.draw(..., message=entries)`, `interface.message_line`; sources in [ui-layout 11.5](ui-layout.md#115-on-screen-messages) (pickups: `engine/ui/messages.py`).
   No click marker (CONFIRMED absent).
-- Tests: `tests/test_engine_{layout,cursor,pick,selection,selection_input,interface,orders_ui}.py`; golden `["interface"]` (map 10,
-  640x480, the human unit selected) is tied to the pinned pygame-ce's bundled font.
+- Tests: `tests/test_engine_{layout,cursor,pick,selection,selection_input,interface,orders_ui}.py`, `test_engine_ui_{widgets,info,modal,screens}.py`; goldens `["interface"]` (map 10,
+  640x480, the first human unit selected, the real panel) and `["ui"]` (the J1 scenarios): all text is drawn with the game's fonts, so they no longer depend on the pinned pygame-ce font (only on the interface art and font data).
 
 ## Open questions
 

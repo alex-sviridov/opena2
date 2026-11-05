@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from allods2.formats import scenario as S
 from engine.world import DEAD, OrderGroup
 
-from . import ai, campaign, place
+from . import ai, campaign, place, traps
 from .combat import combat_stats
 from .pathfinding import chebyshev
 
@@ -331,6 +331,8 @@ def enable(world, m, strict=False, assets=None, party=0):
         ai.enable(world)
     world.script = compile_scenario(world, scenario)
     world.script.strict = strict
+    if hasattr(m, "item_records"):                      # FUN_00562745 0x564280: the section 9 cell records (sim/traps.py)
+        traps.load_map(world, m)
     return world.script
 
 
@@ -649,12 +651,13 @@ def run_instant(world, script, index):
         if u.carried:
             world.place_pile(u.x, u.y, 0, [x & 0xFFFF for x in u.carried])      # FUN_005109f5 -> FUN_0052acf6: the pack becomes a pile
         u.carried = ()
-    elif kind in (21, 24):                              # FUN_004f086f / FUN_004f0832: a scripted cast from a hidden caster; the effect handlers are missing
-        script.unbuilt[("instant", kind)] += 1
-        spell = n[4] if kind == 21 else n[2]
-        world.unbuilt_casts[spell] = world.unbuilt_casts.get(spell, 0) + 1
-    elif kind == 25:                                    # FUN_0055ba36: a cell record (trap); the engine has no cell effects
-        script.unbuilt[("instant", 25)] += 1
+    elif kind == 21:                                    # FUN_004f086f: a hidden caster casts from cell (n0, n1) at cell (n2, n3) (sim/traps.py)
+        traps.cast_at_cell(world, n[0], n[1], n[2], n[3], n[4], n[5] or 99)
+    elif kind == 24:                                    # FUN_004f0832: a hidden caster casts from cell (n0, n1) at the unit
+        if u is not None:
+            traps.cast_at_unit(world, n[0], n[1], u, n[2], n[3])
+    elif kind == 25:                                    # FUN_0057847e -> FUN_0055ba36: the cell record effect (trap)
+        traps.set_record(world, *traps.instant_effect(n)[0], traps.instant_effect(n)[1])
     elif kind == 27:
         teleport(world, u, n[0] & 0xFF, n[1] & 0xFF)
     elif kind == 28:

@@ -1,7 +1,8 @@
 """Interface frame, bars, cursor drawing, full-window screenshot (G3b test 7).
 
-Headless (SDL dummy driver).  The golden is tied to the pinned pygame-ce version: the info panel
-text uses the game's fonts (engine/backend_pygame/text.py).
+Headless (SDL dummy driver).  The golden ["interface"] shows the J1 info panel (portrait, game fonts: engine/backend_pygame/text.py), so it does
+not depend on pygame-ce's bundled font; the J1 scenarios are in test_engine_ui_screens.py (golden ["ui"]).  Only the without-install fallback text uses
+pygame's font, and no golden is taken without the install.
 """
 
 import importlib.util

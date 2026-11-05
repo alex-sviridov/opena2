@@ -64,7 +64,7 @@ CONFIRMED, `FUN_004f08c0` → `FUN_004f8521` (`0x4f8521`), `FUN_004f04cf`:
 |---|---|---|---|
 | 0 | tick counter `server+4` += 1 | `0x4f8521` | |
 | 1 | **drain the command queue** | `FUN_004f84c6`: `FUN_00501831` pops, `FUN_004f515d(msg)` runs (message type byte at `msg+9` → order issuer, [unit-struct §9](unit-struct.md)) | every player command of the tick is applied before any unit moves; an order issued in tick T makes its unit act in tick T |
-| 2 | transient objects of the list `server+0x2c`, **in list order**: vtable slot `0x18`, then delete when byte `+0x136 != 0` | `FUN_004f04cf` (`0x4f04e0`-`0x4f052c`); added by `FUN_004f06ac` (a `0x208` creature-class object with id 0 at a given cell, `0x4f06ca`-`0x4f071f`) | CONFIRMED: carriers (spell effect / projectile bodies), not units |
+| 2 | transient objects of the list `server+0x2c`, **in list order**: vtable slot `0x18`, then delete when byte `+0x136 != 0` | `FUN_004f04cf` (`0x4f04e0`-`0x4f052c`); added by `FUN_004f06ac` (a `0x208` creature-class object with id 0 at a given cell, `0x4f06ca`-`0x4f071f`) | CONFIRMED: the hidden casters of traps and scripted casts (creature ticks; [effects §10](effects.md#10-cell-record-effects-traps-and-the-hidden-caster-confirmed-engine-enginesimtrapspy)), not units; engine `traps.transient_system` |
 | 3 | area effects (`server+4` container): slot `0x18`, remove when `+0x40` set | `FUN_0052c279` | |
 | 4 | **creatures**: per-player relation-bit notification, then slot `0x18` (= `FUN_0050f12c`) unless state `0x10`, then dead-unit removal | `FUN_0052b459` (`0x52b4b0`-`0x52b5c3`), list at the container's `+4`, order of creation | CONFIRMED; this is the pass the older notes called "kill credit" (the credit is its tail) |
 | 5 | per-creature relation-bit notifications (`+0x1a4` vs `+0x1a6`) | `FUN_0052b321` | |
@@ -764,8 +764,9 @@ order 4, target (x, y) as sent, speed.
   same destination reuses the plan); turning -> the turn ends at the current facing, the step starts the same tick.
 - **Stop** (`orders.stop_group`): every member cancelled, order `0xc` (stand/guard), anchor = own cell, Brain mode 0,
   group order 3. The step in progress finishes; plans are kept (`dest`, `static_path`). The guard scan of order 0xc
-  (`FUN_0056a1fb`) needs enemies: nothing happens yet. The other stand commands (`G` 0x17, `L` 0x12, `R` 0x14) are
-  phase I.
+  (`FUN_0056a1fb`) needs enemies: nothing happens yet. The other stand commands (`G` 0x17, `L` 0x12) are in
+  [ai §14](ai.md); `R` is 8.3a.
+- **Retreat** (8.3a, `orders.retreat_group`, command `Retreat`): below.
 - **Failure** (`mover.failed`, set by the planners) is consumed at the end of the Brain tick: order 1 -> `fail_stop`
   (`FUN_0056dc24` = cancel + `FUN_0056dba1`: order `0xc`, anchor, mode 0, **`stopped` stays 0**, CONFIRMED asm; the older
   text and code used `FUN_0056dbc6`, which also sets `brain+0x50`) in the same tick; under any other order the event
@@ -790,6 +791,36 @@ order 4, target (x, y) as sent, speed.
 - `Unit.state` follows the Brain tick: 1 while a step or turn runs, 0 at each step end and after cancel (H1/H2 kept
   1 for the whole walk).
 
+#### 8.3a Retreat (key `R`, bar button 8) and the retreat mode (Ctrl+W)
+
+CONFIRMED (client `FUN_00419e72`, server `FUN_00570c31`, `FUN_0056da4f`, executor `FUN_0056c9bc` via `FUN_00569321` case `0x16`, option `0x4f67d5` ->
+`FUN_00573b38` / `FUN_0057393c`; engine `commands.Retreat` / `SetRetreatMode`, `orders.retreat_group`, `ai.retreat_exec`, `ai.post_step`):
+- **Client.** R and bar cell 7 (button 8) run `FUN_00419e72` at once (`FUN_00418a02` clears the pending mode): message type `0x14` with the id of
+  every selected own unit (`FUN_0041eb40` filter, `FUN_0050bbb8` appends), sent with `FUN_0050164f`, then the squad voice (`FUN_0041da16`, vtable `+0x7c`;
+  no sound engine). No cursor, no text, no click marker. Hotkey gating as for T / G ([ui-layout 6](ui-layout.md#6-cursors), own non-structure selection).
+- **Server.** `FUN_00570c31(group)`: `FUN_00570e83` (cancel every member, group order := 0, as for every command), each member `FUN_0056da4f` =
+  `FUN_0056dbfb` (cancel, `brain+0x50 := 0`) then **order := `0x16`, Brain mode := 0**; the anchor is not written; group order 0 (`record+0x20`). No formation
+  and no destination: the group is not a move group, and the retreat option does not enter.
+- **Executor** (`FUN_00569321` case `0x16` = `FUN_0056c9bc`, run by the group pass every 16 ticks): units without a spell list, or without castable Teleport
+  (spell `0x17`, wrapper known and mana >= cost): the hostiles within `mover+8 + 5` = 10 cells (`FUN_0054ec6a` + relation filter `FUN_00567a16`, the same scan as
+  ai.md 9); none of them alive (HP > 0) -> the guard scan `FUN_0056afac(u, 0)` (an in-range enemy is attacked in Brain mode, the order stays `0x16`); else Brain mode 1
+  towards `FUN_00558b92(u, mean hostile position, 3)` = 3 cells beyond the unit on the ray hostile -> unit, clamped to [8, size-9] (ai.md 9). The order never ends by
+  itself: while hostiles are near the unit walks 3 cells further at every pass (2.4 s at most apart), with none near it stands (guard scan). Only a new command
+  (any other order issuer cancels and replaces order `0x16`) or death ends it. A Teleport-capable unit takes `FUN_0056cb8c` (casts Teleport 1 + `unit+0xa5` cells away):
+  not built, DECISION: it flees on foot (no shipped unit knows Teleport, ai.md 12.6).
+- **Engine.** `Retreat` -> `intake`, `retreat_group` (cancel, `set_retreat` per member); `_pass_orders` runs `ai.retreat_exec` for order `0x16` (the guard scan only
+  with the AI on, like the other executors).
+- **Retreat mode** (`SetRetreatMode`, message `0x46` sub 1, operand 0 / 1 / 2 -> x = 0 / 10 / 30; Ctrl+W cycles it, `FUN_0041f090`, and sends it, `FUN_0041a4ef`): for **every unit
+  the player owns at that moment** `brain+0x44` (wimpy) := `maxHP * x / 100` (`FUN_00573b38`, all three classes the same) and `brain+0x40` (withdraw) := 0 (`FUN_0057393c`
+  passes `0, 2x, 3x` for the classes 0 / 1 / 2 and every unit is class 0 = `0`); the template values of monsters the player owns are overwritten too, units created later keep
+  theirs (`Unit.wimpy_hp` / `withdraw_hp`, None = template). The mode's only effect is the post step `FUN_00573713` (research 4.5, ai.md 9): a unit of **any** group order with
+  `HP <= wimpy` and a hostile within 10 cells flees as above, replacing its move / attack mode (its order is untouched, so it resumes only if a later pass restores the mode:
+  a move group restarts it towards the group target at the next pass). Mode 0 is `0` (never). The text of the toggle is `main 0x5e + mode` (`FUN_0041f160` is the plain getter of
+  `view+0xab4`, CONFIRMED). `ai.post_step` now runs after the move / orders / stand passes of command groups too (it was only called for squads), DECISION: only for units that have retreat-mode thresholds (a player-owned monster's data.bin thresholds stay inert in command groups, as before; the 46-map orders test depends on it).
+- DECISION: the game start does not send the three option messages (`FUN_0048c8a3` does); the retreat mode starts at 0 in the sim, which differs only for monsters the player already owns
+  (their data.bin thresholds survive until the first Ctrl+W).
+- Tests: `tests/test_engine_retreat.py` (command fields, flee cell and clamp, repeat, range 10, dead hostile, mode thresholds, wounded unit leaves its walk, keys, bar cell, replay hash at 30 / 60 fps and in batch).
+
 ### 8.4 DECISIONS and assumptions
 
 - Command latency 0: a command logged for tick T is applied in the drain of T (CONFIRMED, 1.1: the loop-back is synchronous, no extra tick). Tests `test_command_is_applied_by_the_next_step_without_extra_latency`.
@@ -797,7 +828,7 @@ order 4, target (x, y) as sent, speed.
 - `MoveTo` (debug) bypasses intake validation, wrap and clamp (the H2 tests use arbitrary cells); it still makes a
   group of one so the pass ends its order.
 - The pass runs the move handler for every owner including computer players (their branch is phase I).
-- Not implemented: group handlers for orders 1, 3, 5, 0x13, the retreat/withdraw post step `FUN_00573713` (hook in §9), voices.
+- Not implemented: voices (the group handlers and the post step are in [ai](ai.md)).
 - A finished or stopped order keeps `goal`/`dest`/`static_path` (the exe keeps `+0x74`): a later order to the same cell
   reuses the old static plan (INFERRED reading of `FUN_00555411` step 2; stale-plan quirk).
 
@@ -842,6 +873,35 @@ target; **14.** `T` (stand ground) while a unit turns leaves it facing where it 
     `World.slots.stamp`, every sampled unit's `live_cells` equals what the others hold in the table its mask sees, and every
     unit's claim matches its visible state (own cell; mid-step also the far end of the step; at a centre optionally the
     head of the dynamic list, which `FUN_00555c7e` stamps before the facing test, CONFIRMED asm `0x555cee`-`0x555d5d`).
+  - **Required calls** (`RequiredCalls`): the stamp model replays the engine's own call log, so a call the engine never makes stays
+    invisible while the claims look plausible (a dropped turn stamp leaves a turning unit holding its own cell only, a valid claim:
+    measured, the four default maps pass with the turn pair moved behind the facing test). The check derives the calls the exe must make
+    from what each unit visibly did in its own tick and in the orders phase, and looks for them (mode, cell for mode 0, the unit's cell at
+    the call, in order) in that tick's log: R1 step start and R2 turn tick (`FUN_00555c7e` `0x555cee`-`0x555d15`: mode 2, mode 0 with the
+    step target / the head of the dynamic list), R3 border crossing (`FUN_00554fd2` `0x555127`-`0x555186`: mode 2 on the old cell, mode 0 with
+    the old cell after the move), R4 step end (`FUN_00555b38` `0x555bf4`-`0x555c0f`: modes 2 and 1 on the new cell), R5 hop plan
+    (`FUN_0054d76e`: mode 2 at `0x54dd19`, mode 1 at `0x54e11e`, which every exit of the wave reaches: `0x54dfb0`, `0x54e001`, `0x54e015`,
+    `0x54e038` all jump to `0x54e109`, CONFIRMED asm), R6 cancel (`FUN_0056d969` `0x56d9a7`-`0x56da01`: an order change of a unit at a centre
+    whose last call was a mode 0 makes mode 1). The place's own mode 1 (`FUN_0055020a`) is not required: the mode 0 right after it claims the
+    same cells. Mutation tests (synthetic, always run: `test_required_calls_catch_a_dropped_call`, one per rule) drop each call at its call
+    site and assert the rule fires; the turn-pair mutation also asserts that the slot model alone misses it. A source mutation of
+    `_start_step` (the pair behind the facing test, reverted) fails the map test at once with 115 missing R2 calls on map 10.
+  - **Occupant model**: `StampModel` also replays `CellSlots.place` / `lift` (7.4 "Cell record": stop at a held slot, clear whoever holds)
+    and compares `World.slots.occ`; `races` / `lost` count refused stamp claims and lost occupant places.
+  - **First come on a real map** (`test_head_on_groups_contest_cells_first_come`, map 10, both owners): three walkers on each side of
+    the diagonal corridor (57, 28)-(60, 30), ordered through it towards each other (seeded placement that also gives a contest decided
+    within one tick at (58, 28)). A contest = a unit at a hop plan (or a blocker wait) whose adjacent static head is stamped by another
+    unit. Asserted: the holder always keeps the cell (the other's next cell is never it); the in-tick contest goes to the unit earlier in
+    the creation order; computer units never wait, human size-1 units do (the verdict of 7.4); no refused claim and no lost place happen
+    (every hop plan reads the live layer and a turning unit stamps its next cell from the first turn tick, so a move order cannot make a
+    race loser: the losers of 11.4 need a placement or teleport onto a stamped but unoccupied cell); all slot checks and documented end
+    states (the jam ends `boxed in`: 6 of 6 with the computer, 6 of 6 with the human owner).
+  - **Unsettled crowds** (`tools/orders_longrun.py`, not in the test): the batches of the 46-map run that end at the 3000-tick cap are
+    replayed and run on to 3 x the cap; the units unsettled at the cap end as resolved (a documented end state), `gridlock`, `parked`,
+    `progressing`, or cycling (walking without getting nearer). Every hop plan of a cycling unit is checked by an independent flood
+    (`HopProbe`): all fallbacks had their hop goal out of the wave's reach over the live layer, i.e. the static plan (which ignores
+    units) keeps aiming through a jam and the ring fallback walks the unit to and fro between 2..21 cells; some of them have another free
+    route to the plan's end, which the exe never looks for. Per-map counts: "Unsettled crowds, measured" below.
   - **The 8 failures after the slot commit** (maps 30, 40, 70, 73, 80, 91, 100, 110, identical with both planners) were all
     test-side; no engine change. (1) 30, 70, 73, 80, 100, 110: the old independent recomputation (own cell + step ends)
     predated the turn stamp above; these maps hit the 3000-tick cap with a crowd churning (`queueing`), and a unit turning
@@ -941,14 +1001,11 @@ with the AI off the human units still never react (no enemies exist in those sim
 **The retreat/withdraw post step `FUN_00573713`** ([research §4.5](click-to-move-research.md#45-the-post-step-fun_00573713-retreat-and-withdraw),
 CONFIRMED, combat-only for now): after every group handler, every 16 ticks, each member with HP <= `brain+0x44` (10 cells) or <= `brain+0x40`
 (2 cells) and a hostile (war relation bit, visible) in that Chebyshev radius gets Brain mode 1 with `brain+0xa` := a cell 3 beyond itself
-away from the hostiles' mean position (`FUN_00558b92`), overriding a move group's destination. The engine has none of its inputs (no
-hostility/visibility test, no thresholds, no retreat option): human units have thresholds 0 in the default configuration (data
-HP > 0 never satisfies it) and the engine's AI units are never ordered, so no order it can give today is affected. Phase I adds
-`Unit.wimpy/withdraw` (data.bin p34/p35 for monsters, `maxHP * x / 100` with x = 0/10/30 from a `SetRetreatMode` command for the
-player's units), the enemy scan and the flee cell, called after `_pass_move` for every member of every group.
+away from the hostiles' mean position (`FUN_00558b92`), overriding a move group's destination. Built since (I3, K3, [8.3a](#83a-retreat-key-r-bar-button-8-and-the-retreat-mode-ctrl-w)): the enemy scan, the flee cell, the thresholds (data.bin p34/p35 for monsters,
+`SetRetreatMode` for the player's units) and the call after every group handler.
 The guard scan of order 0xc (`FUN_0056a1fb`) is a no-op here; arrival and the blocked-target rule already call it.
 
-**UI still stubbed:** hotkeys G, L, R, A/D/S act only on the cursor (pending modes 1/4/6 give no order), cursor rows
+**UI still stubbed:** hotkeys A/D/S act only on the cursor (pending modes 1/4/6 give no order), cursor rows
 attack-on-unit, swarm, patrol, defend, pickup, town, cast issue nothing (`OrderInput.release`), the minimap's pending modes,
 and the voice (acknowledgement and selection voice `FUN_0041da16`; no sound engine). The message-line "No way" is
 filtered by recipient (`drain_no_way`, research 6.3 CONFIRMED routing).
@@ -1021,3 +1078,4 @@ Effect on the engine: before, a unit that was turning had no reservation, and tw
 ## Open questions
 
 1. The player commands `0x1b` (follow / defend a unit) and `0x1d` (patrol), `0x24` use, `0x1f` (cast at a cell) and the town order (the item commands `0x21` pickup, `0x22` move item and `0x23` drop gold are built: `PickUp`, `MoveItem`, `DropGold`, [items §15](../data/items.md#15-equip-use-pack-and-ground-items-confirmed-engine-sim-gearpy); the pickup cursor click does not issue `PickUp` yet): the simulation side of follow / patrol is built ([ai §14.2](ai.md#142-the-unit-orders-of-the-scripted-sub-commands-10-11-14-15-confirmed), `engine/sim/follow.py`), but the engine has no `Command` for them and `OrderInput.release` issues nothing (the cursor modes exist; mode 8 patrol is unreachable in the exe, [research §1.4](click-to-move-research.md)). Also the squad voice (no sound engine) and the consolidated VERIFY IN GAME list of §9 (items 1-11).
+2. Retreat ([8.3a](#83a-retreat-key-r-bar-button-8-and-the-retreat-mode-ctrl-w)): a Teleport-capable unit (`FUN_0056cb8c`, range `unit+0xa5`) flees on foot here; the game start does not send the option messages `0x46`. Start `0x56c9bc`, `0x48cb3e`.

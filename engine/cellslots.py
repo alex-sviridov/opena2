@@ -36,6 +36,8 @@ def pack(x, y):
 class CellSlots:
     """Occupant and stamp slots of every cell, keyed by the 16-bit cell index (the record hash key)."""
 
+    on_enter = None             # callable(unit, idx): the cell record effect test of FUN_005503af (World sets it; sim/traps.py)
+
     def __init__(self):
         self.stamp = ({}, {})       # [ground, air]: idx -> unit id   (rec+0x2c, rec+0x30)
         self.occ = ({}, {})         # [ground, air]: idx -> unit id   (rec+4, rec+8)
@@ -98,9 +100,12 @@ class CellSlots:
             return False
         d = self.occ[movement_class(u) == AIR]
         n = _size(u)
-        for j in range(n):
+        enter = self.on_enter if movement_class(u) in (1, 2) else None    # FUN_005503af: the effect test runs before the slot test,
+        for j in range(n):                                                  # ground classes only (0x550412 vs 0x5505c3)
             for i in range(n):
                 idx = pack(u.x + i, u.y + j)
+                if enter is not None:
+                    enter(u, idx)
                 if idx in d:
                     return False
                 d[idx] = u.id

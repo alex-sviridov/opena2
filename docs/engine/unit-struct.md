@@ -38,7 +38,7 @@ Which class a map unit becomes: `mapunit+0x48 & 0x10` (file+12 bit 4) set -> **h
 `0x68f590`, ID->index map `FUN_004fd5ad`), clear -> **monster** (0x208, ctor 0x50dc2b/0x50dd41, list `0x68f57c`,
 `FUN_004fd62f`). The ID looked up is `mapunit+0x10` (file+20). CONFIRMED (0x561d12-0x561dca, 0x4a4ad3-0x4a4b31, 0x4a4e61-0x4a4ec0).
 Other creation sites (all `Creature`/`Leaf`): 0x4f312a (server spawn of a type list per player: sets +0x14c=type, +0x14=player
-0x68d2c4, +4 = FUN_004f8d90 unique id), 0x4f06ac (temporary spell carrier: state 0xd/0xe), 0x490861.., 0x4ea7cc.., 0x4f275c..,
+0x68d2c4, +4 = FUN_004f8d90 unique id), 0x4f06ac (the hidden caster of traps and instants 21 / 24: state 0xd/0xe, [effects §10](effects.md#10-cell-record-effects-traps-and-the-hidden-caster-confirmed-engine-enginesimtrapspy)), 0x490861.., 0x4ea7cc.., 0x4f275c..,
 0x4f89d1, 0x512097, 0x5142db, 0x520770.., 0x40d9b2 (client message loop, 0x40f372), 0x51a61e/0x51ac7d. Not all traced.
 
 ### Hierarchy / class order of the creature creation path (map load, FUN_00561bf9)
@@ -98,7 +98,7 @@ Offsets from the constructors 0x50d493, 0x50dc2b, init 0x50e173, copy 0x50e48e (
 | +0x9e | 2 | mana regeneration rate | CONFIRMED 0x50fe2f |
 | +0xa0 | 2 | copied (monster param 6 also writes); UNKNOWN | UNKNOWN |
 | +0xa2 / +0xa3 | 1 | fractional accumulators (0..99) HP / mana regen | CONFIRMED 0x50fd5b, 0x50fe4f |
-| +0xa4 | 2 | copied; client view +0x10a (sight/scan range) | CONFIRMED copy 0x469b60 |
+| +0xa4 | 2 | sight word, 8.8 fixed point; client view +0x10a; human recompute `ftol(((mind + reaction) / 25 + 4) * 256)` + bonus `+0xe4` (`0x513a54`, `0x511477`), monsters `+0xa5 << 8` | CONFIRMED (ui-layout 11.1) |
 | +0xa5 | 1 | scan range byte (human param 8 at 0x514dc4) | CONFIRMED loader |
 | +0xa6..+0xbd | 0x18 | sub-object (copy ctor 0x5159cb): words incl. +0xa8..+0xb2 (6 skills, human params 10-15) | CONFIRMED copy; field roles per docs |
 | +0xbe..+0xd3 | 0x16 | sub-object (copy 0x5156bf): +0xbe word = defence (human param 9; halved at death 0x50f20f), +0xc0, +0xc4..+0xcc, +0xcf..+0xd3 (monster params 15-28) | CONFIRMED loader, meanings per docs |
@@ -125,7 +125,7 @@ Offsets from the constructors 0x50d493, 0x50dc2b, init 0x50e173, copy 0x50e48e (
 | +0x200 | 4 | ptr 0xc-byte object (ctor 0x54f955) | UNKNOWN |
 | +0x204 | 4 | dword | UNKNOWN |
 | Human only: +0x208..+0x23b | 13 x4 | equipment slot pointers (zeroed by 0x5121e1 loop <0xd) | CONFIRMED (size/loop) |
-| +0x23c..+0x253 | 6 x4 | per-school values: [0] best school index, [1..5] (view +0x16c..+0x17c, sum -> view +0x110) | INFERRED (0x469c1a-0x469cbc) |
+| +0x23c..+0x253 | 6 x4 | per-school values: [0] best school index, [1..5] XP pools (view +0x16c..+0x17c, sum -> view +0x110; sent by mask 0x100..0x1000) | CONFIRMED (0x469c1a-0x469cbc, 0x502019) |
 
 ### Position (creature+0x10, 0xc bytes; ctor FUN_0054fa43, set 0x54f9b9, accessors 0x54ff5b/7c/b0/c0)
 +0 cell x byte, +1 cell y byte, +2 word packed `(y<<8)+x`, +4 sub-cell x byte, +5 sub-cell y byte (0x80 = cell centre; `FUN_00551383` tests both == 0x80), +8 world ptr (0x670e48).
@@ -142,7 +142,7 @@ FUN_00558b3d turn step, FUN_0055be86). Move result is sent as message 0x6d (FUN_
 
 ## 4. Client mirror (view unit 0x1e4, built by FUN_004699d2 from the creature) - cross-check
 view+0x24 <- creature word +0xe (type T); +0x104 <- +0x94 (HP); +0x108 <- +0x96; +0x148 <- +0x9a; +0x14a <- +0x9c; +0x10c <- +0x8c; +0x10a <- +0xa4; +0x10e <- +0x90;
-+0x144..+0x147 <- +0x84,+0x88,+0x86,+0x8a bytes; +0x150 <- +0xbe; +0x152 <- +0xa6; +0x14e <- +0xc0; +0x154/+0x155 <- +0xb4/+0xb5; +0x1dc <- +0x14c;
++0x144 <- +0x84 (Body), +0x145 <- +0x88 (Mind), +0x146 <- +0x8a (Spirit), +0x147 <- +0x86 (Reaction) bytes (asm `0x469a25`-`0x469a6a`; this line had the order transposed); +0x157..+0x15b <- +0xaa + 2k, +0x15c..+0x160 <- +0xc4 + 2k (humans, `0x469ba8`; monsters copy bytes `+0xcf + k` / `+0xc4 + 2k`); +0x150 <- +0xbe; +0x152 <- +0xa6; +0x14e <- +0xc0; +0x154/+0x155 <- +0xb4/+0xb5; +0x1dc <- +0x14c;
 +0x156 = 2 for T in {0x46,0x49,0x68}; +0x16c.. <- human +0x240..+0x250. Known draw fields (docs/formats/animation.md): facing +0x70, phase +0x74, state +0x78, action +0x8c, ticks +0xa8, death stage +0x184, pos +0x2c/+0x30.
 Base view ctor 0x45fa00 initialises +4 (word id), +8, +0xc, +0x2c, +0x30 position (1/256 cell), +0x10, +0x70, +0x74, +0x84.. ; hero sprites +0x1c0/+0x1c4 (animation.md).
 
@@ -390,7 +390,7 @@ the 13 equipment slots (human `+0x208`). Id tables: units.reg, data.bin groups 3
 ## Cell record effect (CONFIRMED)
 
 Cell record effect `+0x34..+0x39`: `FUN_0055ba36(cell, effect6)` (`0x55ba36`) copies a 6-byte effect (`FUN_0055b978`) into the record, creating it when missing (`FUN_005508a0`); refused when the live cell has bit 0 set (`+0x20000 & 1`).
-  Its only callers are `0x564280` (map load `FUN_00562745`, from a map record: x/y at `+8`/`+0xc`, effect bytes from the list at `+0x1a`) and `0x57853b` (scenario instant function `FUN_0057847e`, effect from args `+0x18..+0x24`). Readers: place (`0x5503af`, on entering a cell) and step end (`0x555c50`): id `0x17` = Teleport -> `brain+0xb0 = (rec+0x39 << 8) | rec+0x38`, consumed by `FUN_0055a96c`; other ids start a spell via `FUN_00519408` / server `0x4f0832`/`0x4f086f`. `CMap::Serialize` of the record table (`0x55f6b0`, raw `0x3c` bytes per record via `0x55fff0`) has no direct caller (vtable `0x5d1ab8` slot 8 only), so records are not restored from a stream. **Feeders (CONFIRMED by a census of the 46 campaign maps)**: map section 9 per-cell payloads (30 records in maps 76, 93-96, [map](../formats/map.md#open-questions)) and the Set trap instant 25 ([triggers §4](triggers.md#4-instants-fun_00574f3f); 9 records in maps 53, 93-96). The engine has no cell effects (needs the spell system).
+  Its only callers are `0x564280` (map load `FUN_00562745`, from a map record: x/y at `+8`/`+0xc`, effect bytes from the list at `+0x1a`) and `0x57853b` (scenario instant function `FUN_0057847e`, effect from args `+0x18..+0x24`). Readers: place (`0x5503af`, on entering a cell, classes 1 and 2) sets `brain+0xb0 = (rec+0x39 << 8) | rec+0x38` for id `0x17` (Teleport) or makes a hidden caster cast the spell at the unit (`0x4f0832`; the `0x4f086f` branch is dead: `FUN_00519408` returns 1); the step end (`0x555c50`) teleports at once for id `0x17` (`FUN_0055a96c`). `CMap::Serialize` of the record table (`0x55f6b0`, raw `0x3c` bytes per record via `0x55fff0`) has no direct caller (vtable `0x5d1ab8` slot 8 only), so records are not restored from a stream. **Feeders (CONFIRMED by a census of the 46 campaign maps)**: map section 9 per-cell payloads (31 records: 76 15, 93 7, 94 2, 95 5, 96 2; [map](../formats/map.md#open-questions)) and the Set trap instant 25 ([triggers §4](triggers.md#4-instants-fun_00574f3f); 9 records in maps 53, 93-96). What the effect does (readers, Teleport, the hidden caster) and the engine: [effects §10](effects.md#10-cell-record-effects-traps-and-the-hidden-caster-confirmed-engine-enginesimtrapspy).
 
 ## Open questions
 

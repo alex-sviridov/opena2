@@ -56,6 +56,7 @@ class CursorInput:
     alt: bool = False
     shift: bool = False             # never changes the cursor (R 1.3)
     pending: int = 0                # view+0x9b4, see engine.ui.orders
+    dragging: bool = False          # a left capture is open (`mgr+0x9c`) with a non-empty drag rect (press corner and pointer differ in x and y)
 
 
 def _border(x, y, w, h):
@@ -90,6 +91,8 @@ def choose_cursor(inp, previous=None):
         return arrow
     if not inp.in_viewport:
         return S.DEFAULT
+    if inp.dragging:                                    # `FUN_0041e730` and not `IsRectEmpty` (`0x40b57f`, `0x40bab4`): the rubber-band state shows the default arrow
+        return S.DEFAULT                                # (every branch but the open-book cast one, out of scope); also over modes 3 / 7
     if inp.pending:
         cur = PENDING_CURSORS.get(inp.pending)
         if cur is None:                                 # modes 3 and 7 (any value without a table entry): the cursor is not touched

@@ -30,7 +30,7 @@ SNAP_TURN = 0x20                # a turn of at most 45 degrees snaps (FUN_005564
 
 IDLE_STATE, MOVE_STATE = 0, 1   # unit.state (+0x54)
 NO_ORDER, MOVE_ORDER, ATTACK_ORDER, STAND_ORDER = 0, 1, 3, 0xC   # unit.order (+0x50): none, move to cell, attack, stand/guard
-GUARD_ORDER, STILL_ORDER = 0xB, 0x17                             # guard post (G, the squads), stand still (L)
+GUARD_ORDER, STILL_ORDER, RETREAT_ORDER = 0xB, 0x17, 0x16                             # guard post (G, the squads), stand still (L)
 ATTACK_STATE = 3                # unit.state: melee swing (docs/engine/combat.md section 4)
 PICK_STATE = 2                  # unit.state: pick up the sack on the own cell (sim/gear.py)
 STATIC_PLAN_FORCED = 0xFF       # mover.consumed value that forces a static re-plan (brain wrapper 0x56e4b0)
@@ -589,6 +589,11 @@ def set_still(world, u):
     _set_post(world, u, STILL_ORDER, (u.x, u.y))
 
 
+def set_retreat(world, u):
+    """`FUN_0056da4f` (cmd 0x14 R): the cancel, order 0x16, Brain mode 0; the anchor is not written."""
+    _set_post(world, u, RETREAT_ORDER, u.anchor)
+
+
 def set_move(world, u, x, y):
     """`FUN_0056d032` after the clamp: order 1, destination (x, y), `mover+0x90` (arrived) and the failure flag
     cleared, Brain mode 1.  The cancel comes first."""
@@ -665,7 +670,11 @@ def _tick_inner(world, u):
             _end_step(world, u)
             if m.goal is not None:
                 u.path = []             # FUN_00555b38 clears the dynamic list (+0x1e4) at every step end
+            if world.cell_effects:
+                traps.step_end(world, u)        # 0x555c50: a Teleport record on the new cell (sim/traps.py)
         return
+    if u.teleport_to and _at_centre(u):                 # brain order 0 (0x56e01b): a pending brain+0xb0 teleport before the mode switch
+        traps.pending(world, u)
     if u.mode_cast and (u.mode_attack or u.mode_go or u.mode_look):
         u.mode_cast = False                             # the exe has one mode byte: the last writer wins
     if u.mode_cell and (u.mode_attack or u.mode_go or u.mode_look or u.mode_cast):
@@ -784,4 +793,4 @@ def movement_system(world, commands):
         _tick_unit(world, u)
 
 
-from . import ai, combat, death, effects, follow, spells    # noqa: E402  the fight code imports this module: bound here, used at call time (circular on purpose)
+from . import ai, combat, death, effects, follow, spells, traps    # noqa: E402  the fight code imports this module: bound here, used at call time (circular on purpose)

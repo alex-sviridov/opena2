@@ -483,11 +483,13 @@ by `FUN_0056dbc6` (arrival and the group pass: the same plus `brain+0x50 := 1`).
 view. For the move order the call is skipped when `voice_obj+0x78 == 1` (`0x418c99`). Out of scope for now (no sound engine in the recreation yet).
 
 ### 6.3 "No way" (message `0x92`, string `0x81`)
+
+**CORRECTION (J1, 2026-10-24, CONFIRMED `0x40e266`: `cmp [0x622810], 0; jz`)**: the text is shown **only when the command line contains `-trace`** (`DAT_00622810`, string `0x5f2fb4`); a normal game prints nothing. The rest of this section (routing, colour, 3000 ms) describes the `-trace` behaviour.
 `FUN_005052d2(1, 0, owner)` (-> `FUN_00505347`, type `0x92`, packet `0x68f610`: `+9 = 0x92`, `+7 = owner player id`, `+0xa = 1`)
 is posted by the **static** planner (`FUN_0054d76e`, `0x54e1fd`/`0x54e230`) when the target was unreachable and the fallback end cell is
 more than 1 cell from the target (more than 2 when the target cell is a building cell, `FUN_00559bc9`), i.e. at every static re-plan of
 every affected unit (also each unit of a formation, and AI units; the message is addressed to the owner id). Client handler `0x40e21d`,
-sub-code 1 (`0x40e266`): if `DAT_00622810 != 0` (**constant 1**, its only writer is `0x48128d`; so always) it shows `main.txt` line `0x81` =
+sub-code 1 (`0x40e266`): if `DAT_00622810 != 0` (the only writer `0x48128d` runs only when the command line contains `-trace`; the earlier reading "constant 1, so always" was wrong) it shows `main.txt` line `0x81` =
 **"No way"** in the message list of the view (`FUN_004021fe`, colour slot `0x5f17f4` = table `0x61fa80`, **3000 ms**; list model in rendering §14). It does not change the route and plays no sound.
 **Recipient (CONFIRMED asm):** `FUN_005052d2` is called on the **server** session object `0x6831a8` (host flag `+0x18b0 = 1`,
 built by `0x5019d0`; the client session `0x670e50` is built with flag 0 by `0x501a11`); `FUN_00505347` writes `+7` = word at
@@ -511,7 +513,7 @@ player's (and broadcast id 0) messages and drops the rest (`drain_no_way`).
   Brain tick (`0x56e1b0`): order 1 -> `FUN_0056dc24` (cancel + order `0xc`, **`brain+0x50` stays 0**, so the next pass restarts the unit, §4.4); any other order
   except `0xa`/`0x18` -> brain mode 0 and the auto target scan `FUN_0056ed4e` (no enemy: mode 0; mode `0xb` for computer players).
 - `brain+0xb0` is not a move destination but a pending **teleport** target (cell record effect `0x17`, consumed at a centre by `FUN_0055a96c` before the mode
-  runs, `0x56e024`); nothing in the exe writes the record field, so it never fires in single player (unit-struct §8.1, INFERRED).
+  runs, `0x56e024`); the record field is written by `FUN_0055ba36` (map section 9, instant 25: traps on maps 53, 76, 93-96, [effects §10](effects.md#10-cell-record-effects-traps-and-the-hidden-caster-confirmed-engine-enginesimtrapspy); corrected).
 - Right-drag scroll and edge scroll are independent of orders.
 
 ## 8. What each later phase needs
@@ -550,7 +552,7 @@ player's (and broadcast id 0) messages and drops the rest (`drain_no_way`).
 6. **Arrival delay.** Order a walk of a few cells, then watch for the "arrived" state: the unit becomes a guard (order 0xc: it reacts to enemies in range) up to 16 ticks (about 1 s) after it stops.
 7. **Re-order mid-step.** Order, then re-order to the opposite side in the middle of a cell step: the unit finishes its current step (never reverses mid-cell), then turns and goes; same destination twice: no hitch.
 8. **Parked units resume.** Two units head-on in a one-wide corridor: the one that waits restarts within 16 ticks if the other leaves.
-9. **"No way".** Order a walk into the middle of a lake: text "No way" for about 3 s on the message line; a unit that reaches a cell next to the target (distance 1) prints nothing.
+9. **"No way".** Order a walk into the middle of a lake: text "No way" for about 3 s on the message line **only when started with `-trace`** (nothing in a normal game); a unit that reaches a cell next to the target (distance 1) prints nothing.
 10. **Stop commands.** `G`, `T`, `L`, `R` during a walk: all finish the current step; afterwards `T`/`G` units fight enemies in range, `L` units do not.
 11. **No marker.** Order a walk and look for any ground sprite at the destination (none expected).
 12. **Edge wrap.** Select a wide group near the west edge, Formation On, click within 2 cells of the edge: members whose offset is larger than the click column should run to the far east edge (the `& 0xff` wrap).

@@ -8,7 +8,7 @@ from dataclasses import replace
 
 from allods2.formats import progression as prog
 from allods2.formats.itemgen import loot_item
-from engine.world import DEAD, HeroDied, Item, Loot, Removed, death_stage
+from engine.world import DEAD, HeroDied, Item, Killed, Loot, Removed, death_stage
 
 from . import xp
 from .combat import combat_stats, log
@@ -94,6 +94,9 @@ def remove_dead(world, u):
     log(world, Removed(world.tick, u.id))
     if hero_event is not None:
         log(world, hero_event)
+    killer = world.units.get(u.last_attacker)
+    if killer is not None and killer.hp >= 0 and xp.is_hero(killer):     # `0x52b709`: the killer is a hero type (+0xe 0x21..0x3f), `FUN_00542770` clear
+        log(world, Killed(world.tick, u.id, u.server_id, bool(u.human), killer.id, killer.owner))
     xp.kill_credit(world, u)
 
 

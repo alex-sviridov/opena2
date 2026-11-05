@@ -1,7 +1,9 @@
 """Scroll input: arrow keys and the mouse on the screen border move the camera one cell per tick.
 
 CONFIRMED (docs/engine/ui-layout.md section 5, FUN_00488aa1 / FUN_00403f4f): x == 0 or y == 0 scrolls
-back, x >= W-2 or y >= H-2 forward, on the screen border only (panels do not matter).
+back, x >= W-2 or y >= H-2 forward, on the screen border only (panels do not matter).  The border test runs only while the
+mouse manager has no left-button capture (`+0x9c == 0`, `FUN_0041e730` at `FUN_00488aa1`): a press in the world that is still held
+(selection drag) stops the edge scroll; the arrow keys are not gated.  CONFIRMED.
 """
 
 from allods2.graphics.terrain import TILE
@@ -25,10 +27,11 @@ class ScrollInput:
             dy += (my >= screen_h - 2) - (my == 0)
         return max(-1, min(1, dx)), max(-1, min(1, dy))
 
-    def update(self, camera, dt_ms, keys, mouse, screen_size):
-        """Move `camera` one cell per active axis for every full period in `dt_ms`; the remainder carries over."""
+    def update(self, camera, dt_ms, keys, mouse, screen_size, captured=False):
+        """Move `camera` one cell per active axis for every full period in `dt_ms`; the remainder carries over.
+        `captured`: a left-button capture is open (a world press held): the pointer is ignored, the keys still scroll."""
         self.acc += dt_ms
-        dx, dy = self.direction(keys, mouse, *screen_size)
+        dx, dy = self.direction(keys, None if captured else mouse, *screen_size)
         while self.acc >= self.period_ms:
             self.acc -= self.period_ms
             if dx or dy:

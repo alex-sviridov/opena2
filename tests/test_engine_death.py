@@ -653,16 +653,21 @@ def test_dying_bodies_are_picked_until_stage_2_bones_are_not_and_stage_5_vanishe
     assert sorted(p.entity for p in items.picks) == sorted([alive.id, dying.id])      # stage 1 (HP 0) is hoverable, bones (stage 2) are not
 
 
-def test_info_rows_show_hp_mana_level_and_xp():
-    pygame = pytest.importorskip("pygame")
-    from engine.backend_pygame.interface import info_rows
+def test_info_text_rows_show_signed_hp_mana_and_no_level_or_owner_row():
+    """ui-layout 11.1: `"%d/%d"` of the signed HP, Mana drawn for every unit ("0/0" for a non-caster), no Level row, no owner line."""
+    from engine.ui import MainText
+    from engine.ui.info import text_rows
     w = world()
+    texts = MainText(["x"] * 0x100)
     plain = unit(w, 1, 10, 10, hp=40)
-    assert info_rows(plain) == [("HP", 0x2c), ("40/40", 0x36)]
+    plain.hp = -7
+    rows = {r.text: r for r in text_rows(w, plain, texts, [], 1)}
+    assert "-7/40" in rows and "0/0" in rows and rows["-7/40"].y == 0x36 and rows["0/0"].y == 0x4a
+    assert not any(t.startswith("Level") or t == "self" for t in rows)
     h = hero(w, 2, 12, 10)
     h.mana, h.mana_max = 5, 9
-    rows = dict((t, y) for t, y in info_rows(h))
-    assert rows["Mana"] == 0x40 and rows["5/9"] == 0x4a and rows["Level 80"] == 0x54 and ("XP %d" % h.xp_total) in rows
+    rows = {r.text: r for r in text_rows(w, h, texts, [], 1)}
+    assert "5/9" in rows and ("%d" % h.xp_total) in rows and "Hero" in rows
 
 
 # --- install (skipped without the game files) ----------------------------------------------------

@@ -4,7 +4,7 @@ clicks, hotkeys and minimap clicks into commands.  The pending target mode is `v
 A left release with a click on a non-empty selection dispatches on the cursor chosen at the release (R 1.2);
 the pending mode is reset after every such dispatch, also when nothing was ordered."""
 
-from engine.sim import AttackUnit, CastSpell, Guard, MoveUnits, SelectUnits, SetAutoSpell, SetFormation, StandStill, Stop, Swarm
+from engine.sim import AttackUnit, CastScroll, CastSpell, Guard, MoveUnits, Retreat, SelectUnits, SetAutoSpell, SetFormation, StandStill, Stop, Swarm
 from allods2.text import decode_text
 
 from . import spellbook
@@ -35,20 +35,36 @@ class OrderInput:
     """`selection_fn()` -> the player's selection tuple; `state_fn()` -> 'none' | 'own' | 'foreign';
     `formation` the player's current client mode."""
 
-    def __init__(self, player_id, screen_w, selection_fn, state_fn, formation=1, spell_fn=None, mask_fn=None):
+    def __init__(self, player_id, screen_w, selection_fn, state_fn, formation=1, spell_fn=None, mask_fn=None, item_mask_fn=None):
+        self._pending = 0
+        self.book = None                    # the spell book window (`engine.ui.book.SpellBookWindow`): `C` opens it, leaving the cast mode closes it
+        self.item_mask_fn = item_mask_fn    # () -> `view+0x150`, the slot mask of the selection's scrolls (None: no scrolls modelled)
         self.player_id, self.screen_w = player_id, screen_w
         self.selection_fn, self.state_fn = selection_fn, state_fn
         self.spell_fn = spell_fn            # () -> the spell number the selection can cast now, 0 for none (`castable_spell`): the stand-in for the spellbook window's choice
         self.mask_fn = mask_fn              # () -> the slot mask of the selection (`view+0x148`, `spellbook.selection_slot_mask`); None: not modelled
         self.spell = 0                      # the spell armed by `C` / F4-F12 (spell of the selected slot, FUN_0041f370)
         self.slot = -1                      # the spellbook window's selected slot (panel `+0x60`, -1 none); the window (J) sets it with `select_slot`
+        self.scroll = -1                    # the backpack window's selected scroll (item panel `+0x68`, -1 none; `+0x64` = its spell - 1): the cast sends CastScroll
+        self.scroll_unit = None             # the unit whose pack holds it (`view+0x138`)
         self.hotkeys = [None] * FKEYS       # client table `0x4dc`: per F4..F12 the bound slot (entry type 1) or None (type 0)
-        self.pending = 0
         self.formation = formation
         self.right_dragged = False          # view+0xd8
         self._had_selection = False
 
     # -- pending mode -------------------------------------------------------------------------------------
+    @property
+    def pending(self):
+        return self._pending
+
+    @pending.setter
+    def pending(self, mode):
+        old, self._pending = self._pending, mode
+        if old == CAST and mode != CAST:
+            self.scroll, self.scroll_unit = -1, None        # `FUN_004c7287`: the mode ends, the selected scroll is forgotten
+        if self.book is not None:
+            self.book.pending_changed(old, mode)
+
     def clear_pending(self):
         self.pending = 0
 
@@ -73,14 +89,18 @@ class OrderInput:
             self.pending = HOTKEYS[name]    # mask 0xef: buttons 1, 2, 4, 6 enabled
             return None, None
         if name == "c":                     # btn 5: enabled only when the selection has a castable spell (view+0x148 / 0x150, mask 0x10)
-            if self.mask_fn is not None and not self.mask_fn():
+            if self.mask_fn is not None and not self.slot_mask():
                 return None, None
             if self.slot >= 0:                          # the window's selection (a bound F-key or a clicked slot): FUN_0041f370
                 self.pending, self.spell = CAST, spellbook.spell_of_slot(self.slot)
-                return None, None
-            n = self.spell_fn() if self.spell_fn else 0
-            if n:
-                self.pending, self.spell = CAST, n      # no spellbook window yet (J): without a selected slot a fixed spell stands in (DECISION)
+            else:
+                n = self.spell_fn() if self.spell_fn else 0
+                if n:
+                    self.pending, self.spell = CAST, n      # without a selected slot a fixed spell stands in for the choice (DECISION)
+                else:
+                    return None, None
+            if self.book is not None:
+                self.book.open_book()                   # FUN_00418a02 case 5: the cast mode opens the spell book when it is closed
             return None, None
         if name == "t":                     # stand ground, immediate (btn 7): cmd 0x18, mode cleared
             self.pending = 0
@@ -88,6 +108,9 @@ class OrderInput:
         if name == "g":                     # guard, immediate (btn 3): cmd 0x17, mode cleared
             self.pending = 0
             return Guard(self.player_id, tuple(self.selection_fn())), None
+        if name == "r":                     # retreat, immediate (btn 8, FUN_00419e72): cmd 0x14, mode cleared
+            self.pending = 0
+            return Retreat(self.player_id, tuple(self.selection_fn())), None
         if name == "l":                     # stand still (FUN_00419ffd, a key, not via FUN_00418a02): cmd 0x12; the pending mode is left alone
             return StandStill(self.player_id, tuple(self.selection_fn())), None
         return None, None
@@ -97,15 +120,19 @@ class OrderInput:
         auto-cast spell (`FUN_0041a727`): message `0x46` sub 4 for every selected unit that knows it (`knows(unit_id, spell)`; the server toggles).
         Returns the commands (empty without a usable slot)."""
         slot = self.slot if self.slot >= 0 else hover_slot
-        if slot < 0 or slot >= spellbook.SLOTS or self.state_fn() == "foreign":
+        if slot < 0 or slot >= spellbook.SLOTS or self.state_fn() == "foreign" or not spellbook.AUTO_CAST[slot]:      # 0x5f18d0[slot] gates the key
             return ()
         spell = spellbook.spell_of_slot(slot)
         return tuple(SetAutoSpell(self.player_id, uid, spell) for uid in self.selection_fn() if knows(uid, spell))
 
     # -- spell slots and the F4-F12 shortcuts (research 1.4; spells.md 9e) ------------------------------------
+    def slot_mask(self):
+        """`view+0x148 | view+0x150`: the unit slots and the scroll slots (the window's enable mask)."""
+        return (self.mask_fn() if self.mask_fn is not None else 0) | (self.item_mask_fn() if self.item_mask_fn is not None else 0)
+
     def slot_enabled(self, slot):
-        """The spellbook click rule (`0x4c7580`): a slot is selectable when the selection's mask `view+0x148` has its bit (the item mask `+0x150` is not modelled)."""
-        return self.mask_fn is not None and slot >= 0 and (self.mask_fn() >> slot) & 1 == 1
+        """The spellbook click rule (`0x4c7580`): a slot is selectable when the selection's `view+0x148 | view+0x150` has its bit."""
+        return slot >= 0 and (self.slot_mask() >> slot) & 1 == 1
 
     def select_slot(self, slot):
         """The spellbook window's click on a slot: the panel's selection `+0x60` changes only for an enabled slot.  Returns whether it did."""
@@ -114,7 +141,28 @@ class OrderInput:
             return True
         return False
 
-    def fkey(self, n, ctrl=False, shift=False):
+    def select_scroll(self, index, spell, unit_id):
+        """`FUN_004c7143(index)` then `FUN_00418a02(10)` (the backpack window: a scroll released on the info panel): the pack entry becomes the cast item and the cast
+        mode is armed without a mask test and without opening the book (spells 9e.2).  Not for a foreign selection."""
+        if self.state_fn() == "foreign" or not spell:
+            return False
+        self.scroll, self.scroll_unit = index, unit_id
+        self.pending, self.spell = CAST, spell
+        return True
+
+    def deselect_slot(self):
+        """The window's right button (`0x4c75e8`, `0x4c7786`): `+0x60 := -1`."""
+        self.slot = -1
+
+    def instant_cast(self, slot, knows):
+        """`FUN_00419a54` (spell branch): every selected unit with the slot's spell (`knows(uid, spell)`) casts it on itself (command `0x1e`, the unit its own target),
+        only while no scroll is selected (`+0x68 == -1`, always here) and the selection's unit mask has the bit.  Nothing for a foreign selection."""
+        if self.state_fn() == "foreign" or self.mask_fn is None or not (self.mask_fn() >> slot) & 1:
+            return ()
+        spell = spellbook.spell_of_slot(slot)
+        return tuple(CastSpell(self.player_id, (uid,), spell, uid) for uid in self.selection_fn() if knows(uid, spell))
+
+    def fkey(self, n, ctrl=False, shift=False, hover_slot=-1):
         """F`n` (4..12), the handler of `FUN_0040c8a0` case `0x40ca16` (CONFIRMED) with the spellbook closed.  The table entry `E = hotkeys[n - 4]`:
         Ctrl (Shift not held) sends message `0x417` with Ctrl to the spell panel: the selected slot is bound to the key (and unbound from every other key);
         no Ctrl and `E` bound: the panel's selection becomes `E` (Shift holds back the message).  Then, whatever the keys, a bound `E` whose bit is set in the
@@ -125,11 +173,12 @@ class OrderInput:
             return None
         if not shift:
             if ctrl:
-                if self.slot >= 0:
+                bind = self.slot if self.slot >= 0 else hover_slot       # message 0x417 with Ctrl: the selection, else the slot under the pointer (`0x4c72f5`)
+                if bind >= 0:
                     for j in range(FKEYS):
-                        if j != i and self.hotkeys[j] == self.slot:
+                        if j != i and self.hotkeys[j] == bind:
                             self.hotkeys[j] = None
-                    self.hotkeys[i] = self.slot
+                    self.hotkeys[i] = bind
             elif self.hotkeys[i] is not None:
                 self.slot = self.hotkeys[i]
         e = self.hotkeys[i]
@@ -166,6 +215,9 @@ class OrderInput:
                 cmd = AttackUnit(self.player_id, sel, hover_unit)
         elif cursor is S.SWARM and movable:         # cmd 0x1a at the cell under the pointer, also over a unit (R 1.3)
             cmd = Swarm(self.player_id, sel, cell)
+        elif cursor is S.CAST and self.scroll >= 0:  # cmd 0x25 on the hovered unit (`0x419700`): the primary unit casts the scroll of its pack entry
+            if self.state_fn() == "own" and sel and isinstance(hover_unit, int) and not isinstance(hover_unit, bool):
+                cmd = CastScroll(self.player_id, self.scroll_unit if self.scroll_unit is not None else sel[0], self.scroll, target_id=hover_unit)
         elif cursor is S.CAST:                      # cmd 0x1e on the hovered unit (FUN_004195fa); a cell cast (0x1f) is phase K
             if (self.spell and self.state_fn() == "own" and sel and isinstance(hover_unit, int) and not isinstance(hover_unit, bool)
                     and self._slot_allows(self.spell)):
@@ -266,6 +318,11 @@ class MessageLine:
         self.tick(now_ms)
         return tuple(q[0] for q in self.queue)
 
+    def entries(self, now_ms):
+        """The live `(text, colour)` pairs after this frame's ageing (colour None = the system slot, "normal" = the log slot)."""
+        self.tick(now_ms)
+        return tuple((q[0], q[2]) for q in self.queue)
+
     def current(self, now_ms):
         """The first (oldest) live line or None."""
         lines = self.lines(now_ms)
@@ -279,9 +336,9 @@ class MainText:
         self.lines = list(lines)
 
     @classmethod
-    def load(cls, fs):
+    def load(cls, fs, path="main/text/main.txt"):
         try:
-            return cls(decode_text(fs.read("main/text/main.txt")).split("\r\n"))
+            return cls(decode_text(fs.read(path)).split("\r\n"))
         except (OSError, KeyError, FileNotFoundError):
             return cls()
 
@@ -289,12 +346,13 @@ class MainText:
         return self.lines[i] if 0 <= i < len(self.lines) else ""
 
 
-def drain_no_way(world, player_id, messages, now_ms, text):
+def drain_no_way(world, player_id, messages, now_ms, text, trace=True):
     """Consume `NoWay` events of `world.events`: the local player's ones show the message, the others (computer
     players) are dropped.  CONFIRMED routing: the server (`0x6831a8`, host flag +0x18b0 = 1) posts message 0x92 with
     `+7` = owner player id (`FUN_00505347`); `FUN_0050164f` delivers it only to the connection whose player id is
     `+7` (`FUN_0050155f`; none = dropped; `+7 == 0` = every connection); the client handler `0x40e266` has no
-    filter of its own.  Other event types stay."""
+    filter of its own.  Other event types stay.  The line is shown only with `trace` (the exe's `-trace` flag `0x622810` gates it, ui-layout 11.5);
+    the events are consumed either way."""
     from engine.world import NoWay
     keep, shown = [], False
     for ev in world.events:
@@ -303,9 +361,9 @@ def drain_no_way(world, player_id, messages, now_ms, text):
         else:
             keep.append(ev)
     world.events[:] = keep
-    if shown:
+    if shown and trace:
         messages.show(text.line(NO_WAY_TEXT), now_ms, NO_WAY_MS)
-    return shown
+    return shown and trace
 
 
 def level_up_messages(world, player_id, messages, now_ms, text, name_fn=None):

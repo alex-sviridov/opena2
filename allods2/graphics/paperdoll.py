@@ -29,3 +29,23 @@ def doll_mask_order(mage, two_handed):
     else:
         order.remove(("B",))
     return [(layer, 0 if layer == ("B",) else layer[1] + 1) for layer in order]
+
+
+def hit_mask(layers, fs=None, size=(160, 240)):
+    """The doll's hit mask (paperdoll.md 4; the exe passes a byte surface to `FUN_004688f7`): `layers` = [(file path, id)] in `doll_mask_order`; every layer
+    writes its id (slot + 1, the body 0) over the pixels it covers, later layers over earlier ones.  A layer without a file covers nothing.  Returns
+    a (height, width) uint8 array."""
+    import numpy as np
+
+    from .canvas import Canvas
+    from .sprites import SpriteFile
+    mask = np.zeros((size[1], size[0]), np.uint8)
+    for path, ident in layers:
+        try:
+            f = SpriteFile.load(path, fs)
+        except (KeyError, OSError, ValueError):
+            continue
+        canvas = Canvas(*size)
+        canvas.draw_256(f.sprites[0], 0, 0, f.palette)
+        mask[canvas.pix.any(axis=2)] = ident
+    return mask

@@ -158,7 +158,7 @@ when a unit of server id `< 0x15` reaches death stage 2 (`0x41050f`, [combat §1
 | 22 | Change group's owner | `5782ba` | instant 19 for every member of `g`. **All members change** (CONFIRMED `0x5782ba`-`0x578309`: the MFC-style iterator `GetNext(POSITION&)` has already advanced to the next position when `FUN_004f0568` removes the current member, so none is skipped; every member gets a group of its own) |
 | 23 | Give money to player | `57830f` | `p+0x3c += n0` (the player's gold), message `0x67` to the client (`FUN_00516238`) |
 | 24 | Cast spell to unit | `578440` | `FUN_004f0832(n0, n1, u, spell n2, power n3)` |
-| 25 | Set trap | `57847e` | cell `(n2, n3)` gets record `{n0, n1, sx, sy, tx, ty}` (`FUN_0055ba36`; with `n4 == 0` source and target = the trigger cell) |
+| 25 | Set trap | `57847e` | cell `(n2, n3)` gets record `{n0, n1, sx, sy, tx, ty}` (`FUN_0055ba36`; with `n4 == 0` source and target = the trigger cell); what it does: [effects §10](effects.md#10-cell-record-effects-traps-and-the-hidden-caster-confirmed-engine-enginesimtrapspy) |
 | 26 | Set building's health | `57855f` | building `+0x42 = n0` |
 | 27 | Teleport unit | `57857d` | `FUN_0055a96c(u, n0, n1)`; a computer-owned unit re-anchors (`FUN_0056d4ba`) |
 | 28 | Give All | `5785cb` | `u`'s whole inventory goes to `u2` (`FUN_00529e5b`), `u` gets an empty one, both sent |
@@ -254,7 +254,7 @@ message `0x41d` and the buttons are decoded in [§11](#11-the-end-of-the-mission
   only inventory, INFERRED equal to the exe's until pickup and give exist). Instants: **all kinds of the exe** except variable references (`Script.unsupported`, T§2.3: never written) and unit names (`>= 11001`): 1-6 (group sub-commands 1-5, 10, 11, 14, 15, 17, 18 through `ai.set_group_order`, `orders.attack_group` and `follow.*`),
   7 (the player's formation byte, `Player.formation`), 8-10, 11-13 and 28 and 38 (items: `take_item` / append on `Unit.carried`), 14 / 15 / 31 (nothing to change), 16-19, 20 (drop all: a pile on the unit's cell), 22, 23 (`Script.gold`), 26,
   27 (`teleport`: `FUN_0055a96c`), 32-36 (34 for the parameters 6, 15 defence, 16 absorption), 39; unknown kinds log "Bad instant"; drop locations go to `Script.drops`.
-  **Documented no-ops** (`Script.unbuilt`, to revisit with the effect system): 21 and 24 (a scripted cast from a hidden caster object, `FUN_004f06ac`: a 0x208-byte creature at the cell with a one-spell book, Mind 30, the power in the sphere skill, windup / recovery 1, state `0xe` / `0xd`; the cast is counted in `World.unbuilt_casts`), 25 (a cell record: trap), 29 and 30
+  21 and 24 (a scripted cast from a hidden caster, `traps.cast_at_cell` / `cast_at_unit`) and 25 (`traps.set_record`) are built ([effects §10](effects.md#10-cell-record-effects-traps-and-the-hidden-caster-confirmed-engine-enginesimtrapspy)). **Documented no-ops** (`Script.unbuilt`): 29 and 30
   (durations of the effects of a spell on a tile / unit: there are none to change), check 25 / 26 (above).
 * **Phase out / in**: the unit leaves `world.units`, the spatial index, its command group / squad record and the
   selections into `Script.phased` and stays a `TriggerGroup` member; phase-in draws the `FUN_00510089` tries
@@ -392,8 +392,7 @@ CONFIRMED in `FUN_004852d8` (window procedure; messages `0x416 + k` through the 
 `engine/sim/campaign.py` (state machine with no windows; `World.mission_complete`, `.mission_ended` = latch `+0x3e4`, `.defeat_latch` = latch `+0x3e8`, `.dialog`).
 
 **Messages.** Server `0xb5` -> window `0x430` (`0x486ddb`): `+0x3e4 := 1`; if `ScenarioGetVar(0x300) >= 0x78` (`FUN_00493da0`) post `0x41d` at once, else open the modal
-text dialog (class vtable `0x5cd098`, text entry `0x8c`, sound 14 / `0xdc`, window `+0x128`, modal bit 8 freezes the sim) whose single button's command is `0x41d`
-(`0x44db9e`, INFERRED that this class' init is `FUN_0044da55`). Server `0xb4` -> `0x433` with `0xff` -> `0x431` (`0x486f7e`): the defeat dialog once (latch `+0x3e8`, mode 2): button
+dialog (class vtable `0x5cd098`, label entry `0x8c`, sound 14 / `0xdc`, window `+0x128`, modal bit 8 freezes the sim) with two buttons: `Victory!` (`0x41d`, `0x44db9e`) and `Continue` (`0x446`, closes it) (CONFIRMED: its build slot is `FUN_0044da55`, [ui-layout 11.4](ui-layout.md#114-in-game-menu-pause-freeze)). Server `0xb4` -> `0x433` with `0xff` -> `0x431` (`0x486f7e`): the defeat dialog once (latch `+0x3e8`, mode 2): button
 `0x445` = end the game (`0x41e`, `FUN_0048f2e5`) and back to the main menu (`0x421`); button `0x446` = the load-game window (`0x418`), disabled when no `game*.sav` exists
 ([combat §12.3a](combat.md#123a-hero-death-message-0xb4-the-dialog-and-the-game-confirmed-unless-marked-allods2exe-sha256-in-formatsreadmemd)). **Both latches are cleared at every game start (`FUN_0048c8a3`, `0x48d886`) and when a save is loaded
 (`FUN_0048c2e9`, `0x48c824` / `0x48c834`)** (this was combat §12.11 item 1).
@@ -424,6 +423,6 @@ the shop tables.
 
 ## Open questions
 
-* The item rules of `FUN_00529ae2` (add: stacking, weight / capacity limits) for instants 11, 12, 28; the hidden caster of instants 21 / 24 (`FUN_004f06ac` appends it to the list at `server+0x2c`; whether it ticks like a creature); instant 25 (Set trap) writes the cell record described in [unit-struct](unit-struct.md#cell-record-effect-confirmed).
+* The item rules of `FUN_00529ae2` (add: stacking, weight / capacity limits) for instants 11, 12, 28.
 * The recruit of `FUN_004f312a` (hero Var(0x305) at a mission end), the roster carry-over `FUN_004ebd5f` (saves §4: per-player upkeep `FUN_004f3cad`, `FUN_004f3d14`) and the campaign variables other than `0x300` / `0x305` / `0x380+` (who writes `0x301`-`0x30d`, `0x303` for mission 21, the markers at `0x214` / `0x228`).
-* Which UI sound `0x627740[0x10]` / `[0xe]` samples play for the `0xfe` / `0xfd` / `0xfa` messages (the engine has no audio) and the story window `FUN_0041d15e` layout.
+* Which UI sound `0x627740[0x10]` / `[0xe]` samples play for the `0xfe` / `0xfd` / `0xfa` messages (the engine has no audio). The story window is decoded: [ui-layout 11.5](ui-layout.md#115-on-screen-messages).

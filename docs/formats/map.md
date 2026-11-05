@@ -686,7 +686,7 @@ max from the two bytes; `Crystal Long Sword` of `102.alm`: fire 30); `c` low ≠
 record is, by kind: bit 4 → building caster object (`FUN_0050da58`; the structure with uid
 `+0x12`, spell id `c`, origin `a`/`b`; 72.alm 27 records, `81.alm` 3), bit 8 → spellbook entry of unit uid
 `+0x12` (`FUN_0051c29e`; none in the install), `a`/`b` ≠ 0 with kind < 4 → a 6-byte per-cell
-payload registered on the server grid (`FUN_0055ba36`, meaning UNKNOWN; `76.alm`, `93`–`96`), else
+cell record effect (a trap: Teleport or a spell cast at whoever enters, `FUN_0055ba36`; `76.alm`, `93`–`96`, [effects §10](../engine/effects.md#10-cell-record-effects-traps-and-the-hidden-caster-confirmed-engine-enginesimtrapspy)), else
 ignored (3 editor leftovers).
 
 ### Drawing
@@ -815,9 +815,7 @@ client's CRT `rand`). Music playback itself: out of the engine's scope for now.
 - Block bits 3–7 and the dynamic stamping (`FUN_00550a96`,
   `FUN_0055c500`), the per-class `movementType` result (vtable `+0x20`),
   (the search itself is answered: [simulation §7](../engine/simulation.md#7-pathfinding-phase-h2)).
-- Part 5: the event classes of `behaviour` bits 1, 2, 4 (`FUN_005303ed`); section 9 per-cell
-  payload (`FUN_0055ba36`, records with `a`/`b` ≠ 0 and kind < 4; 30 records in `76`, `93`–`96`; the same routine
-  stores the instant "Set trap" `{spell, power, x, y, x, y}` record, [triggers §4](../engine/triggers.md#4-instants-fun_00574f3f));
+- Part 5: the event classes of `behaviour` bits 1, 2, 4 (`FUN_005303ed`)
   (note: `FUN_005303ed` is the quest generator, [items §14](../data/items.md#14-quests-and-the-item-upgrade-message-0x38)).
   Answered in [items](../data/items.md): gold pickup (hero `+0x3c`, never `Player.money`, §12), `+0x1c` = price,
   the `(41, v)` remap to `0x31` (= 49 `damageBonus`; a pair cannot carry castSpell).

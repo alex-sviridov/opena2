@@ -296,3 +296,37 @@ def tooltip(entry, labels):
             row = _pair("%d", "%d-%d", lo, hi)
         out.append("#" + labels[label] + ": " + row)
     return "".join(out)
+
+
+# ---- per-slot tables of the spellbook window (CONFIRMED, bytes read at the addresses; spells.md 9e.5, ui-layout 11.12) --------------------------------
+
+def _table(bits):
+    return tuple(1 if c == "1" else 0 for c in bits)
+
+
+# dword tables indexed by slot (0 / 1); slot order = SLOT_SPELLS
+UNIT_ONLY = _table("100111111111100110011101")       # 0x5f1810, `FUN_004c72c5`: 1 = the spell is cast at a unit only; 0 = it also has the cell form (the left release then issues `FUN_0041918e`)
+AUTO_CAST = _table("111010010011111010000111")       # 0x5f18d0, `FUN_004c74b1` (Ctrl+A): the slot may be chosen as the auto-cast spell
+INSTANT = _table("000111101100000110011000")         # 0x5f1930, `FUN_004c7604` (double click): the spell is cast at once by every unit that has it, at itself (no target click)
+
+
+def auto_slot_mask(world, ids):
+    """`view+0x14c` (`FUN_004167c2`): the OR over the living selected units of the slot bit of their auto-cast spell (`obj+0x118`, here `Unit.auto_spell`)."""
+    m = 0
+    for uid in ids:
+        u = world.units.get(uid)
+        if u is not None and u.hp > 0 and u.auto_spell:
+            s = slot_of_spell(u.auto_spell)
+            if s is not None:
+                m |= 1 << s
+    return m
+
+
+def selection_item_mask(world, ids):
+    """`view+0x150`: the OR of the scroll slot masks (`scroll_slot_mask`) of the living selected units."""
+    m = 0
+    for uid in ids:
+        u = world.units.get(uid)
+        if u is not None and u.hp > 0:
+            m |= scroll_slot_mask(u)
+    return m

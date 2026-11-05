@@ -134,3 +134,28 @@ def test_border_clamp():
 def test_border_falls_back_when_range_empty():
     c = Camera(160, 160, 10, 10, 0, 0, border=256)
     assert (c.min_x, c.max_x) == (0, 160)
+
+
+def test_captured_press_stops_edge_scroll_but_not_keys():
+    """`FUN_00488aa1`: the border test needs `mgr+0x9c == 0` (no left capture); the arrow keys are not gated."""
+    s = ScrollInput(period_ms=62)
+    c = Camera(160, 160, 40, 40, 320, 320)
+    s.update(c, 62 * 3, set(), (639, 0), (640, 480), captured=True)
+    assert (c.x, c.y) == (320, 320)
+    s.update(c, 62, {"left"}, (639, 0), (640, 480), captured=True)
+    assert (c.x, c.y) == (320 - TILE, 320)
+    s.update(c, 62, set(), (639, 0), (640, 480), captured=False)
+    assert (c.x, c.y) == (320, 320 - TILE)
+
+
+def test_capture_drag_cursor_and_rubber_band():
+    from engine.ui import CursorInput, CursorState, choose_cursor
+    from engine.ui.selection import band_lines, clip_to, drag_nonempty
+    base = dict(mouse=(100, 100), in_viewport=True, selection="own", selected_count=2)
+    assert choose_cursor(CursorInput(**base)) is CursorState.MOVE
+    assert choose_cursor(CursorInput(**base, dragging=True)) is CursorState.DEFAULT
+    assert choose_cursor(CursorInput(**base, dragging=True, pending=2)) is CursorState.DEFAULT
+    assert choose_cursor(CursorInput(**dict(base, mouse=(0, 100)), dragging=True)) is CursorState.ARROW_W     # the border arrows come first
+    assert drag_nonempty((10, 10), (20, 30)) and not drag_nonempty((10, 10), (10, 30)) and not drag_nonempty(None, (1, 1))
+    assert band_lines((10, 20), (5, 30)) == [(5, 20, 5, 1), (5, 29, 5, 1), (5, 20, 1, 10), (9, 20, 1, 10)]
+    assert clip_to(Rect(0, 0, 480, 480), (600, -5)) == (479, 0)

@@ -2,6 +2,7 @@
 of the RGB bytes of fixed engine screenshots (key "screenshots").
 
     python tools/update_golden.py [INSTALL_DIR]
+    python tools/update_golden.py --only interface,ui [INSTALL_DIR]    # refresh only these keys
 
 The hashes are derived values (no game data), so the file is committed.  Run it
 only when a change of the world state or of the drawing is intended.  Specs:
@@ -177,8 +178,133 @@ def casts_summaries():
     return spell_scenarios.all_summaries()
 
 
+def ui_hashes(install=None):
+    """{scenario: sha256 of the RGB bytes} of the J1 interface (docs/engine/ui-layout.md 11): map 10 with the placed party, the hero selected, the
+    panel in both modes, a message line, the level-up line (XP set through the engine's xp path), the menu / End Quest / pause / story / mission complete / failed windows, and
+    the text panel at 800x600.  Text is drawn with the game's fonts (no pygame font), so the hashes do not depend on the pygame-ce font."""
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    from engine.backend_pygame.interface import make_game_ui, screenshot_window
+    from engine.sim import triggers, xp
+    from engine.ui import Layout, level_up_messages, modal, widgets
+    from engine.view import Camera, DrawOptions, TerrainView
+    assets = AssetCache(install)
+    m = open_map("10", install)
+    w = World.from_map(m, assets)
+    triggers.enable(w, m, assets=assets, party=0)
+    hero = next(u for u in w.units.values() if u.human and u.owner == 1)
+    tv = TerrainView(w, assets.tileset())
+    out = {}
+
+    def shot(name, ui, size=(640, 480), now_ms=0, tooltip=None, hover=None, at=None, select=None, book=None, pack=None, mouse=None):
+        lay = ui.layout
+        v = lay.viewport
+        at = at or hero
+        if select == ():
+            w.players[1].selection = ()
+        cam = Camera(v.w, v.h, w.width, w.height, at.x * 32 - v.w // 2, at.y * 32 - v.h // 2, border=8 * 32)
+        out[name] = rgb_hash(screenshot_window(tv, cam, lay, 0, None, assets, DrawOptions(), None, (hero.id,) if select is None else select, ui=ui, now_ms=now_ms, tooltip=tooltip,
+                                               hover=hover, book=book, pack=pack, mouse=mouse))
+
+    def fresh(size=(640, 480)):
+        return make_game_ui(assets, Layout.for_size(*size), w, 1, "10")
+
+    ui = fresh()
+    shot("hero_picture", ui)
+    ui.toggle_mode()
+    shot("hero_text", ui)
+    ui.toggle_mode()
+    ogre = w.objects[0x6006]                                  # hovered structure (Ogre House, 500/500): picture mode, then text mode (ui-layout 10)
+    shot("structure_picture", ui, hover=ogre.id, at=ogre)
+    ui.toggle_mode()
+    shot("structure_text", ui, hover=ogre.id, at=ogre)
+    ui.toggle_mode()
+    from engine.backend_pygame.text import measure
+    from engine.ui.tooltip import bar_text, place
+    cell = widgets.cell_rect(ui.layout, 6)                    # Stand Ground: the widest text, pushed back from the right edge
+    pos = (cell.x + 20, cell.y + 20)
+    shot("bar_tooltip", ui, tooltip=place(bar_text(ui.layout, pos, "own", False, ui.main), pos, lambda t: measure(t, 2), ui.layout.size))
+    ui.messages.show("%s 25 %s" % (ui.main.line(0x58), ui.main.line(0x59)), 0, 3000, "normal")
+    ui.messages.show(ui.main.line(0x66 + 1), 0, 2000)
+    shot("messages", ui)
+    ui = fresh()
+    ui.open_menu()
+    shot("menu", ui)
+    ui.apply(("open", "endquest"))
+    shot("endquest", ui)
+    ui = fresh()
+    ui.toggle_pause()
+    shot("pause", ui)
+    ui = fresh()
+    ui._story(1)
+    shot("story", ui)
+    ui = fresh()
+    w.mission_complete = True
+    ui.poll(0)
+    w.mission_complete = False
+    shot("complete", ui)
+    ui = fresh()
+    ui.modals.push(modal.failed_dialog(ui.layout, ui.main_text, ui.dialog_text, wrap=ui.wrap))
+    shot("failed", ui)
+    ui = fresh((800, 600))
+    ui.toggle_mode()
+    shot("hero_text_800", ui)
+    ui = fresh()
+    shot("heads_party", ui, select=())                        # nothing selected: HeadsL / HeadsR (a bare picture), the party stands on the map (ui-layout 11.8)
+    ui = fresh((1024, 768))
+    shot("hero_extra_1024", ui)                               # window 8 holds the hero's text, the info panel stays in the picture mode
+    shot("structure_extra_1024", ui, hover=ogre.id, at=ogre)
+    ui = fresh()
+    xp.award(w, hero, 10 ** 6, 1)
+    level_up_messages(w, 1, ui.messages, 0, ui.main, lambda h: h.name or ui.hero_name)
+    shot("levelup", ui)
+    ui.toggle_mode()
+    shot("levelup_text", ui)
+    # the spell book open (ui-layout 11.12): the hero gets a mage's book, F4 / F6 bound, Haste on auto-cast, the Fire Ball slot selected, at 640x480 and 800x600
+    from engine.ui import OrderInput, book as bk, spellbook as sb
+    hero.spellbook = sum(1 << n for n in (1, 2, 3, 4, 24, 20, 21, 13, 11, 10, 5, 6, 16, 25))
+    hero.auto_spell = 24
+    for name, size in (("book_open", (640, 480)), ("book_open_800", (800, 600))):
+        ui = fresh(size)
+        o = OrderInput(1, size[0], lambda: w.players[1].selection, lambda: "own", mask_fn=lambda: sb.selection_slot_mask(w, (hero.id,)), item_mask_fn=lambda: 0)
+        o.hotkeys[0], o.hotkeys[2] = sb.slot_of_spell(1), sb.slot_of_spell(24)
+        o.select_slot(sb.slot_of_spell(2))
+        ui.book.open_book()
+        shot(name, ui, size, book=bk.draw_views(ui.book, o, w, (hero.id,), True))
+    hero.spellbook, hero.auto_spell = None, 0
+    # the backpack open (ui-layout 11.13): the hero (with its template equipment made explicit) carries eight items, the first is scrolled off, the potion has an F4 label
+    # and the right arrow is lit under the pointer; at 640x480 and 1024x768 (caps)
+    from allods2.formats import saves
+    from engine.sim import gear
+    gear.ensure_loadout(w, hero)
+    hero.pack = (saves.Item(0x102, 1), saves.Item(0x109, 1), saves.Item(0xE41, 5), saves.Item(0xE42, 3), saves.Item(0xE06, 1, 0, ((41, 1, 3),)),
+                 saves.Item(0x104, 1), saves.Item(0x103, 1), saves.Item(0x10A, 1))
+    for name, size in (("pack_open", (640, 480)), ("pack_open_1024", (1024, 768))):
+        ui = fresh(size)
+        ui.pack.open_pack()
+        ui.book.inventory_open = True
+        ui.sync_pack()
+        ui.pack.offsets[hero.id] = 1
+        ui.pack.item_keys[0] = (0xE41, ())
+        mouse = (ui.pack.right_arrow_rect().x + 8, size[1] - 40)
+        shot(name, ui, size, pack=ui.pack.views(w, mouse), mouse=mouse)
+    hero.pack = ()
+    return out
+
+
 def main(argv):
+    only = None
+    if len(argv) > 2 and argv[1] == "--only":                 # `--only interface,ui [INSTALL]`: refresh just these keys, keep the others
+        only = argv[2].split(",")
+        argv = argv[:1] + argv[3:]
     install = argv[1] if len(argv) > 1 else None
+    if only is not None:
+        with open(GOLDEN, encoding="ascii") as f:
+            out = json.load(f)
+        makers = {"interface": interface_hash, "ui": ui_hashes}
+        for k in only:
+            out[k] = makers[k](install)
+        _write(out)
+        return
     out = {m: golden_hash(m, install) for m in MAPS}
     out["screenshots"] = shot_hashes(install)
     out["minimaps"] = minimap_hashes(install)
@@ -190,6 +316,11 @@ def main(argv):
     out["paths"] = path_hashes(install)
     out["orders_slots"] = orders_summaries()      # was "orders" before the cell-record slots (simulation 7.4); old key dropped on regeneration
     out["casts"] = casts_summaries()
+    out["ui"] = ui_hashes(install)
+    _write(out)
+
+
+def _write(out):
     with open(GOLDEN, "w", encoding="ascii") as f:
         json.dump(out, f, indent=1, sort_keys=True)
         f.write("\n")

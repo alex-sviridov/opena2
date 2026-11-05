@@ -1198,11 +1198,18 @@ def away_cell(world, u, px, py, cells):
 
 def post_step(world, g, m):
     """`FUN_00573713`, after the handler for each member: the wimpy test (hostile within 10), else the withdraw test (within 2)."""
-    if m.stats is None or m.hp <= 0:
+    if m.hp <= 0:
         return
-    wimpy, withdraw = int(m.stats.get("wimpy", 0) or 0), int(m.stats.get("withdraw", 0) or 0)
-    if m.tweak == 1:
-        wimpy >>= 1                                                                # easy mode halves brain+0x44 at load (0x561e96)
+    if m.wimpy_hp is not None:                                                     # the retreat mode message rewrote both (0x4f67d5)
+        wimpy, withdraw = m.wimpy_hp, m.withdraw_hp
+    elif m.stats is None:
+        return
+    else:
+        wimpy, withdraw = int(m.stats.get("wimpy", 0) or 0), int(m.stats.get("withdraw", 0) or 0)
+        if m.tweak == 1:
+            wimpy >>= 1                                                            # easy mode halves brain+0x44 at load (0x561e96)
+    if wimpy <= 0 and withdraw <= 0:                                               # HP > 0 never reaches a threshold of 0
+        return
     if m.hp <= wimpy and _enemies(world, m, WIMPY_RADIUS):
         near = [c for c in _enemies(world, m, WIMPY_RADIUS) if c.hp > 0]          # FUN_0056c9bc counts the living
     elif m.hp <= withdraw and _enemies(world, m, WITHDRAW_RADIUS):
@@ -1213,6 +1220,18 @@ def post_step(world, g, m):
         go(world, m, flee_cell(world, m, near))
     else:
         guard_scan(world, m)
+
+
+def retreat_exec(world, u):
+    """`FUN_0056c9bc`, the executor of order 0x16 (the R key) in the group pass of order 0: the hostiles within `mover+8 + 5` = 10 cells; none alive
+    -> the guard scan; else Brain mode 1 towards the flee cell 3 beyond the unit (the order stays 0x16, so it repeats at every pass).  A unit that can
+    cast Teleport takes `FUN_0056cb8c` in the exe: not built (no shipped unit knows it), it flees on foot."""
+    near = [c for c in _enemies(world, u, WIMPY_RADIUS) if c.hp > 0]
+    if not near:
+        if world.ai_on:
+            guard_scan(world, u)
+        return
+    go(world, u, flee_cell(world, u, near))
 
 
 # --- brain-level executors of the AI commands ------------------------------------------------------------------------------

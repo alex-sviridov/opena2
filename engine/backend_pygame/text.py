@@ -124,3 +124,32 @@ def draw_text(surface, text, x, y, colour=(255, 255, 255), align="left", font=DE
             x -= img.get_width()
     surface.blit(img, (x, y))
     return img.get_width()
+
+
+# --- exact placement of the exe's `FUN_0045d536(x, y, text, flags, colours, off)` (docs/engine/ui-layout.md 11.8) ---------------------
+
+LEFT, RIGHT, CENTRE = 0, 1, 2
+SHADOW_TABLE = tuple(SHADOW_COLOUR for _ in range(16))        # slot 6 of the font vtable: a constant (8, 8, 8) table
+
+
+def measure(text, font=DEFAULT_FONT):
+    """The exe's `measure` of `text` in font `font` (`FUN_0045cb59`, spacing included, a lone `~` counts 0); an estimate from pygame's font without an install."""
+    f = game_font(font)
+    if f is None:
+        return _fallback_font().size(text if isinstance(text, str) else text.decode("cp866", "replace"))[0]
+    return f.measure(font_bytes(text) if isinstance(text, str) else text)
+
+
+def draw_text_exact(surface, text, x, y, colour="normal", flags=LEFT, font=DEFAULT_FONT, off=SHADOW_OFFSET):
+    """`FUN_0045d536` placement: flags 0 left, 1 right (`x -= measure`), 2 centre (`x -= measure // 2`), `y` = the top of the glyph cell, the shadow
+    `off` pixels right and down in the constant (8, 8, 8) table.  Unlike `draw_text(align=)` the origin is the exact measure, not the rendered
+    surface width (`measure + 3`).  Returns the measure."""
+    w = measure(text, font)
+    if flags & RIGHT:
+        x -= w
+    if flags & CENTRE:
+        x -= w >> 1
+    if off:
+        surface.blit(render_text(text, SHADOW_TABLE, font, shadow=False), (x + off, y + off))
+    surface.blit(render_text(text, colour, font, shadow=False), (x, y))
+    return w

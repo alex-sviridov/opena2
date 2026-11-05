@@ -99,6 +99,7 @@ class DrawList(list):
     missing = 0
     culled = 0
     picks = ()                  # PickRect of the drawn units, in draw order
+    hover_picks = ()            # units and hoverable structures merged, in draw order (the info panel's hover, ui-layout 7 / 10)
 
 
 def view_window(camera):
@@ -161,6 +162,7 @@ class _Ctx:
         self.shear = lt.shadow_shear(day.angle)
         self.items = DrawList()
         self.picks = []
+        self.struct_picks = []
         self.relief = relief_grid(world.heights)
 
     def visible(self, sx, sy, w, h, lo=0, hi=0):
@@ -233,6 +235,15 @@ def _destroyed(ent, aset):
         and not aset.rec.get("Indestructible") and "destroyed" in aset.actions
 
 
+def structure_hoverable(ent, aset):
+    """The view registers a pick rect for a structure that is not destroyed (`obj+0x7c`, INFERRED = the death stage of units), whose template is
+    not Flat (`+0x90`), and the hover loop of `FUN_004180c6` skips it when it is Indestructible (`+0x64`) and not Usable (`+0x8c`) (CONFIRMED)."""
+    rec = aset.rec
+    if _destroyed(ent, aset) or ent.hp <= 0 or rec.get("Flat"):
+        return False
+    return bool(rec.get("Usable")) or not rec.get("Indestructible")
+
+
 def _structure(ctx, ent):
     """Structure or bridge: P0 shadows (not bridges), P1 flat, P3 (a) slices."""
     opts = ctx.opts
@@ -256,6 +267,12 @@ def _structure(ctx, ent):
     ov = aset.overlay() if opts.smoothing else None
     key = ("bridge" if bridge else "structure", ent.type_id)
     X0, Y0 = CELL * ent.x, CELL * ent.y - g
+    if not bridge and structure_hoverable(ent, aset) and in_window(ctx.win, ent.x, ent.y):
+        ox, oy = X0 - ctx.cx, Y0 + (aset.TH - aset.FH) * CELL - ctx.cy      # `0x4085ac`-`0x4086b7`: (x << 5, ((y + TH - FH) << 5) - ground)
+        r = aset.rec
+        ctx.struct_picks.append(((PASS_CELL, ent.y, -ent.x, SLOT_STRUCTURE, ent.seq, 0),
+                                 PickRect(ent.id, r.get("SelectionX1", -1) + ox, r.get("SelectionY1", -1) + oy,
+                                          r.get("SelectionX2", -1) + ox, r.get("SelectionY2", -1) + oy)))
     shadow_y = aset.rec.get("ShadowY", 0)
     for (c, r), parts in cells.items():
         x, y = ent.x + c, ent.y + r
@@ -646,6 +663,8 @@ def build_draw_list(world, camera, tick, assets, options=None, debug=None, selec
         _carriers(ctx)
     ctx.items.sort(key=lambda i: i.depth)
     ctx.items.picks = [r for _, r in sorted(ctx.picks, key=lambda p: p[0] + (0, 2))]
+    ctx.items.hover_picks = [r for _, r in sorted([(d + (0, 2), r) for d, r in ctx.picks] + [(d + (0, 0), r) for d, r in ctx.struct_picks],
+                                                  key=lambda p: p[0])]
     ctx.items.extend(_bars(ctx, selection, hover))
     if debug is not None:
         ctx.items.extend(sorted(_debug_items(ctx, debug, selection, ai_info), key=lambda i: i.depth))

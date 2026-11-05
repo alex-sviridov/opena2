@@ -227,6 +227,65 @@ Fire Ball, Blizzard / Acid timing, Teleport, the area war counter, the AI's sing
 (install: data.bin values, the human hooks on a map 73 knight), `tests/test_engine_ai_casting_maps.py` (map 73 casters: one Shield per mage,
 Bless on friends, nothing unbuilt).
 
+## 10. Cell record effects ("traps") and the hidden caster (CONFIRMED, engine `engine/sim/traps.py`)
+
+**The record.** Bytes `+0x34..+0x39` of the cell record ([unit-struct](unit-struct.md#cell-record-effect-confirmed)) hold one effect
+`(spell, power, sx, sy, tx, ty)`. Writer `FUN_0055ba36(cell, effect)`: copies the 6 bytes, making the record when missing (`FUN_005508a0`);
+**refused** when the live layer has bit 0 at the cell (static block: water, rock, structure ground, border). Nothing clears it, and
+`FUN_005513b6` counts a record with `+0x34 != 0` as non-empty, so it outlives every unit that passes: **a trap fires every time**. Feeders:
+
+| Feeder | Cell | Effect |
+|---|---|---|
+| map section 9 (`FUN_00562745`, `0x5641c5`-`0x564280`): unclaimed record, `a` or `b` != 0, kind `u16 +0x10` < 4 | `(a, b)` low bytes | `(c & 0xff, byte +0x18 = (c >> 16) & 0xff, pair0.id, pair0.value, pair1.id, pair1.value)`, low bytes (pairs: 6-byte elements, `FUN_0054ce40`) |
+| instant 25 "Set trap" (`FUN_0057847e`) | `(n2, n3)` | `(n0, n1, n2, n3, n2, n3)` when `n4 == 0`, else `(n0, n1, n4, n5, n6, n7)` |
+
+Census (all 46 maps): section 9: 76.alm 15 spell traps (Fire Arrow / Fire Ball / Ice Missile / Poison Cloud, power 50..100, source = target =
+the trap cell), 93-96 16 Teleport records (spell 23, power 100; 93's `(98, 72)` lies on a blocked cell and is refused; several point at their own
+cell, which can never teleport, below); instant 25: 53 (`(15, 121)` -> `(13, 22)`), 93-96 (two each), all Teleport. No unit starts on a trap cell.
+
+**Readers.**
+1. `FUN_005503af` (the per-cell occupant place of `FUN_0055020a`: entering a cell at a border crossing, a teleport, placement): for movement
+   classes 1 and 2 only (class 3 takes `0x5505c3`, no effect test), for each footprint cell in the loop order, **before** the slot test (so it
+   fires also on the cell where a lost first-come race stops the loop). Spell `0x17`: `brain+0xb0 := ty << 8 | tx`. Any other spell:
+   `FUN_00519408` (a constant 1, called directly) then `FUN_004f0832(sx, sy, unit, spell, power)`: a hidden caster casts at the unit (the cell
+   branch `FUN_004f086f` there is dead).
+2. `FUN_00555b38` at the step end (unit at a centre, after the `FUN_0055be86` pair and the list clear, `0x555c22`-`0x555c72`): the record of the
+   unit's own cell, if spell `0x17`: `FUN_0055a96c(unit, tx, ty)` now. No class test: a flyer is teleported here too (its place never sets
+   `+0xb0`).
+3. The Brain tick under brain order 0 at a centre, before the mode switch (`0x56e01b`-`0x56e087`): `+0xb0 != 0` -> `FUN_0055a96c(unit, lo, hi)`,
+   then `+0xb0 := 0` whatever the result.
+
+`FUN_0055a96c` (also the Teleport spell and instant 27): free test `FUN_0055a928` = `FUN_0055c5a0(unit, cell, 0)` and `(.., 1)` (the footprint
+against the mover mask in the static and the live layer; the unit's own stamps count, so its own cell is never free); not free: return,
+nothing changes. Else release (`FUN_00553891`), position = the cell centre (`FUN_0054fbf7`), place (`FUN_0055020a`, which reads the target's
+record), then **`FUN_0056dba1` = cancel + stand** (order `0xc`, anchor the new cell, Brain mode 0, `brain+0x50 := 0`, so a move group's pass
+restarts the unit towards its destination). Timeline of a walker crossing a Teleport trap: border crossing -> `+0xb0` set; step end -> teleported
+and standing; next tick the Brain tick tries `+0xb0` again (its own cell: not free) and clears it. A trap whose target is blocked or occupied
+leaves the walk going; `+0xb0` is dropped at the next centre.
+
+**The hidden caster** `FUN_004f06ac(sx, sy, spell, power)`: a 0x208 monster object (constructor `FUN_0050dc2b`, vtable `0x5d0eb0`, slot `0x18` =
+`FUN_0050f12c`), id `+4 = 0`, no player, position = the source cell's centre (`FUN_0054f9b9`; it is never placed in the cell slots: it blocks
+nothing), the defaults of `FUN_0050ec60` (HP 30, order `0xb`), Mind `+0x88 = 30`, the spell's sphere skill word = power (level = power - 30 + 30),
+a one-spell book (`FUN_0051906d`, `FUN_0051c29e`), `+0x64` = the spell, windup `+0x134 = 1`, recovery `+0x135 = 1`; the constructor
+`FUN_0050e173` draws `rand(128)` (facing) and sets `+0x136 = 1`. The caller sets state `0xd` + target `+0x5c` (`FUN_004f0832`: traps, instant
+24) or state `0xe` + cell `+0x60/+0x61` (`FUN_004f086f`: instant 21, power `n5`, 99 when 0). It joins the transient list `server+0x2c`, ticked
+in step 2 of every server tick (`FUN_004f04cf`: after the command drain, before the area effects and the creatures, [simulation §2](simulation.md#2-update-order-inside-a-server-tick)),
+deleted after the tick in which `+0x136` is set. Its tick is the creature tick: the state switch's cast phases (spells.md 9c.2): phase 0
+start (no mana: not a mage), release one tick later (`FUN_00519d7f` / `FUN_00519db8`, so the missile starts at the source cell), recovery
+`1 + rand(0..3) + complication`, then done. A start that fails (target gone) leaves `+0x136` at 1: deleted after one tick. Timeline of a spell
+trap: tick T (the victim's creature tick) the caster is made; T+1 the cast starts; T+2 the release (a missile from the trap cell itself
+lands at once: flight 0).
+
+**Engine.** `World.cell_effects` ((x, y) -> 6 bytes, dumped while non-empty), `traps.set_record` (installs the reader `CellSlots.on_enter`,
+called by `CellSlots.place` per footprint cell before the slot test), `traps.load_map` (section 9, run by `triggers.enable` = the compiler),
+instant 25 / 21 / 24 in `triggers.run_instant`; `Unit.teleport_to` (`brain+0xb0`, dumped while set); `traps.step_end` and `traps.pending` in
+`movement._tick_inner`; `World.transients` + `traps.transient_system` (between the selection and the carrier systems; dumped while non-empty);
+`effects.teleport` now ends with the stand (`FUN_0056dba1`, `0x55a9f8`; it was missing). DECISIONS (INFERRED): the hidden caster's Brain tick
+does nothing (order `0xb`, mode 0, no group; not traced); its carriers name caster 0, which no lookup finds, so it is no attacker (no last-attacker
+mark, no XP, no AI reaction), as for a removed caster; `FUN_00511959` in its constructor (called only for a non-empty name list) is not reached.
+Tests: `tests/test_engine_traps.py` (synthetic: refusal, layout, teleport timeline, failed teleport, repeat, flyer, spell trap timeline and level,
+dropped target, footprint, instant 21; install: maps 93 (section 9 teleport, a walker through `(21, 20)`), 76 (a Fire Arrow trap), 53 (instant 25)).
+
 ## Open questions
 
 - The Prismatic Spray chain `FUN_00519c04` (targets from `FUN_00579ddf(caster, target, list, min(7, L/20 + 2), range)`): not decoded; spell 11 stays a counted no-op.

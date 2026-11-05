@@ -410,8 +410,12 @@ def landed(world, c):
 
 
 def teleport(world, u, x, y):
-    """Case 0x17 (`0x51a554`): `FUN_0055a96c(caster, cell)`: when the cell passes the free test the unit is lifted, moved to the cell and placed
-    again; nothing else (no stand: the cast's recovery runs on).  `FUN_00502019` is the client update."""
+    """`FUN_0055a96c(unit, x, y)` (spell case 0x17 `0x51a554`, instant 27, the Teleport cell records of sim/traps.py): when the cell passes the
+    free test `FUN_0055a928` (= `FUN_005563ca`'s two layers at that cell; the unit's own stamps count, so its own cell is never free) the unit is
+    released (`FUN_00553891`), moved to the cell centre and placed again (`FUN_0055020a`: a cell record effect there fires), then
+    `FUN_0056dba1` = cancel + stand (order 0xc, anchor the new cell, Brain mode 0, `brain+0x50 := 0`: a move group's pass restarts it).
+    Corrected: the stand at `0x55a9f8` was missed before.  The brain order (a cast in progress) is untouched, so a caster's recovery runs on.
+    `FUN_00502019` is the client update."""
     from . import triggers
     if u.id not in world.units or not triggers._free(world, u, x, y):
         return False
@@ -423,6 +427,8 @@ def teleport(world, u, x, y):
     u.x, u.y, u.sub_x, u.sub_y = x, y, 128, 128         # INFERRED: the centre of the cell (FUN_0054fbf7)
     world._index_add(world._ucells, u)
     world.slots.place(u)
+    from . import movement as mv
+    mv.set_stand(world, u)                              # FUN_0056dba1 (0x55a9f8)
     return True
 
 

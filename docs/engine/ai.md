@@ -420,7 +420,7 @@ The Teleport flee (12.6) is not built (no shipped template can reach it).
 
 | sub | Client sender | Server | Meaning |
 |---|---|---|---|
-| 1 | `FUN_0041a4ef(v)`, v = `WimpyMode % 3` | `0x4f67d5` | retreat mode 0 / 1 / 2 -> 0 / 10 / 30 percent (`FUN_0057393c`, `FUN_00573b38`; not built) |
+| 1 | `FUN_0041a4ef(v)`, v = `WimpyMode % 3` | `0x4f67d5` | retreat mode 0 / 1 / 2 -> 0 / 10 / 30 percent (`FUN_0057393c`, `FUN_00573b38`; built, `SetRetreatMode`, [simulation 8.3a](simulation.md#83a-retreat-key-r-bar-button-8-and-the-retreat-mode-ctrl-w)) |
 | 2 | `FUN_0041a617(v)`, v = `FormationMode % 3`, Ctrl+F `FUN_0041f040` | `0x4f688c` | formation 0 off, 1 -> 2, 2 -> 1 (`FUN_005737ba`; built, `SetFormation`) |
 | 3 | `FUN_0041a5b9(byte)` | `0x4f6902`: `player(msg+5)+0x34` record `+0x20 := msg[+0xe]` (`0x4f6945`) | **the party-AI byte**, `SetAutoCast` |
 | 4 | `FUN_0041a727(spell)` (Ctrl+A) | `0x4f694d` | the unit's selected spell, `SetAutoSpell` |
@@ -615,7 +615,7 @@ So the "map-object effect" of the earlier INFERRED line does not exist: it is th
 
 * The unit word `+0xa0` read by the caster follow branch `FUN_00569968` (defend / `0x11` of a unit with a spell list heals the leader; engine: plain scan). The sacks/pickup order (`P` key, cmd `0x13`, `FUN_00419f2a`) is not a group handler.
 * The quest side of [§15.2](#152-the-quest-that-sends-a-group-order-2): whether the shipped scripts ever create squads with creation-record bit 8 (kind `0xc`), the completion events of kinds `0xb` / `0xc` (`FUN_0057e87a`), and the three non-group kinds `4`-`6`; the engine has no quest system.
-* Message `0x46` sub 1 (the retreat mode, Ctrl+W / registry `WimpyMode`, `0x4f67d5` -> `FUN_0057393c` / `FUN_00573b38`: 0, 10, 30 percent) and sub `0x80` (`0x4f6a26` -> `FUN_00578910`) are not built; the registry default of `AutoCasting` on a first run (§12.8; the engine starts at 0). Start `0x4f6758`.
+* Message `0x46` sub `0x80` (`0x4f6a26` -> `FUN_00578910`) is not built (sub 1, the retreat mode, is: [simulation 8.3a](simulation.md#83a-retreat-key-r-bar-button-8-and-the-retreat-mode-ctrl-w)); the registry default of `AutoCasting` on a first run (§12.8; the engine starts at 0). Start `0x4f6758`.
 * Book wrapper range: does `FUN_00519483` scale the spellbook's own wrapper (so `+9` is the range of the last cast's level) or a copy? The engine uses the range at the caster's
   current level everywhere (`spells.wrapper_range`). Start `0x519483`, `0x5195b1`.
 * Revive `FUN_00510534` (Heal of a dying unit): `FUN_005551d6(position)` and whether the recompute (vtable `+0x58`) rebuilds defence after the `<<= 1` (engine: rebuilt).

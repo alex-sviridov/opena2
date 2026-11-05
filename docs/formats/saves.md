@@ -131,7 +131,7 @@ exceed 1.5 x the capacity ([items §12](../data/items.md#12-trade-hero-window-an
 ### 3.5 Hotkey chunk `0x40A40A40` and settings `0x55555555`
 
 Nine records `u16 a, u16 b, u32 n, n bytes` (`FUN_0041df0c` write, `FUN_0041df74` read; client `+0x8c + 12 i` while playing, `+0x4dc + 12 i` in
-the save code); INFERRED: the nine quick-use slots. The settings blob is the client's `0xa00` bytes at `client+0x3f70`, copied to `player+0x44` (content unknown).
+the save code); INFERRED: the nine quick-use slots. The settings blob is the client's `0xa00` bytes at `client+0x3f70`, copied to `player+0x44`. **CONFIRMED content: the viewer's knowledge table**, one byte per unit type id (server id `+0x14c`, 0..0x9ff), the hero's kill count of that type capped at 14; the info panel's detail level is `byte >> 1` ([ui-layout 11.1](../engine/ui-layout.md#detail-level-and-the-knowledge-table), writers `FUN_0052b459` / `FUN_00505582`).
 The character screen creates a file with gold 1000, the chosen attributes / pools / spell mask / slot and these two (`FUN_004915cd`).
 
 ### 3.6 Building a hero from a record (`FUN_004ea6ab`, CONFIRMED order)
@@ -181,8 +181,8 @@ Loader `FUN_004a91d5` (file `famehall.dat`, `0x5f31f4`), writer `FUN_004a90c9` (
 ## 6. The saved game `game%d.sav`
 
 Slot names (`FUN_0043ece0` and the list code `FUN_0043dc54`): `game%04ld.sav`-style zero padding (`game000%ld`, `game00%ld`, `game0%ld`, `game%ld`), the list scans `\game*.sav`; the
-literals `game9998.sav` / `game9999.sav` (INFERRED quick / auto slots) and `game0000.sav` (read by the server start when `server+0x1ac != 0`, `0x4eb992`). The save UI
-formats `game%d.sav` (`0x48850d`).
+literals `game9998.sav` / `game9999.sav` and `game0000.sav` (read by the server start when `server+0x1ac != 0`, `0x4eb992`). The save UI
+formats `game%d.sav` (`0x48850d`) as `9999 - slot`. **CONFIRMED** (full caller audit in [ui-layout 11.4](../engine/ui-layout.md#114-in-game-menu-pause-freeze)): `game9999.sav` is the automatic save written by the mission entry `FUN_0048c8a3(0)` (message `0x442`, description patch `0x37` "Restart last mission"); `game9998.sav` has no sender (description patch `0x5f` "Abort mission and return to town"); the Save dialog hides both, the Load dialog lists them. Single player never writes a `.a2c` (all writers gated by `+0x5d8 != 2`).
 
 ### 6.1 Container (CONFIRMED, `FUN_004e9816` writer, `FUN_004e9b95` reader)
 
@@ -248,8 +248,7 @@ flags and junk bytes, so a parsed `.a2c` rebuilds byte for byte. The server stre
 
 * The server stream's object serialisers: `FUN_0052d16b`, vtable `[0]` of `[server+0x7c]+0xc`, `FUN_0052c3da`, `FUN_0052d5cb`, `FUN_00550008`, `FUN_0052d5b2`, `FUN_0053bbd0`,
   `FUN_0057a951` (creatures with items and effects, groups, map dynamic layer) and the 11 option words of §6.2 (start `FUN_004ec732`).
-* Which server messages make the client pump rewrite the file (`FUN_0040d9b2` sites `0x411aa2`, `0x4122d7`, `0x41054f`, `0x414a9c`, `0x40ee51`, `0x40ee9b`), the `0x2f` flag byte, the
-  content of the `0xa00` settings block (`client+0x3f70`).
+* The `0x2f` flag byte (network only: every client-pump rewrite of the file is gated by `+0x5d8 != 2`, so never in single player).
 * Whether a single-player continue ever uses a stored character's items (VERIFY IN GAME: pick an advanced character for a new campaign and compare attributes).
 * `famehall.dat` fields `b`, `c` and when the hall is written (`FUN_004825c4` caller; the score formula); the mission list (`FUN_004a8f96`) record meaning.
-* Save slot naming roles (`game9998` / `game9999` / `game0000`) and who writes `game0000.sav` (message handler `FUN_004f515d` -> `FUN_004e9816` at `0x4f723d`).
+* Who writes `game0000.sav` (read at server start; `FUN_004f515d` case 7 -> `FUN_004e9816` at `0x4f723d` writes a stream, no file name seen) and the field order of the date in the save list.
