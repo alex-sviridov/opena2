@@ -714,8 +714,7 @@ the end of every 16-tick block: a dying or missing main hero, a script failure c
 `engine/sim/triggers.py`, `Simulation(world, triggers=True)` after `triggers.enable(world, map)`. "Killed" conditions read state `0x10`, "attacked" ones the HP or
 Brain mode 5 (the event list `server+0xbbec` is unused). The party at the drop location and the mission-complete screen flow are open (triggers.md).
 
-**Fog and vision.** The AI has exactly one vision rule, the sight flood (ai.md 4: no cone, no fog, no per-owner knowledge). The view's fog layer is render-only (rendering.md, cell bits `0xc000`); the player's
-side has no vision rule in the simulation (a click on a fogged cell becomes a move, research 1.3). Nothing to build for J besides the draw option.
+**Fog and vision.** The AI has exactly one vision rule, the sight flood (ai.md 4: no cone, no fog, no per-owner knowledge). The player's fog is client state (J2, [vision](vision.md)): only the viewer's own units reveal cells, units and unseen structures in fog are not drawn and so cannot be hovered, selected or clicked as targets; a click on a fogged *cell* is still a move; the server has no sight test on orders.
 
 **UI pieces still missing for J.** The command bar with its buttons (the hotkeys A M D S T G L C exist; `R` retreat `0x14`, `P` pick up all `0x13`, F4-F12 spell shortcuts exist as `OrderInput.fkey`), the spellbook window
 (spell choice and the cast cursor's spell, `FUN_0041f370`: the window calls `OrderInput.select_slot`, lists `engine.ui.spellbook.spellbook(...)` with `tooltip(...)`; enable rule = the slot mask, no mana: spells.md 9e; `C` uses the selected slot, else a fixed stand-in), the inventory / backpack and hero screens, the main-hero panel pieces (skills, XP, equipment), the hero-death

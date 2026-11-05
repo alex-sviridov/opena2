@@ -6,6 +6,7 @@ The recreated game, built on the core library (`allods2/`, `a2res/`).
 |---|---|---|
 | [architecture.md](architecture.md) | layers, import rules, coordinate systems, tick, main loop, terrain drawing, CLI | G1 skeleton done |
 | [rendering.md](rendering.md) | draw list and backend: pass order, placement, shadows, light rows, smoothing, culling, debug overlays, timings, interface / cursor / picking / marker (§14) | G2b, G3b done |
+| [vision.md](vision.md) | fog of war: sight mask, tile bits, refresh, what is hidden per state, minimap fog, cheats, saves; VERIFY IN GAME | J2 |
 | [ui-layout.md](ui-layout.md) | screen layout per mode, cursors, picking, selection, marker, info panel (REA facts) | G3b done |
 | [simulation.md](simulation.md) | tick, update order inside a server tick, unit state machine, movement formulas (step length, turning, cell occupancy), pathfinding (§7), orders (§8), handoff (§9), RNG (§10), exe addresses, VERIFY IN GAME | H1, H2, H3 sim side, I1 RNG done |
 | [click-to-move-research.md](click-to-move-research.md) | REA research for phase H3: mouse input to order message, server intake, groups, formation, group pass, stop commands, "No way", VERIFY IN GAME | CONFIRMED / INFERRED per fact |
