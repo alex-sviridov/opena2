@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from allods2.common import campaign_maps
+from allods2.graphics.palette import pack16, unpack16
 from allods2.minimap import BORDER, load_color_table, minimap_rgb, minimap_size, scale_shift
 from engine.ui import MinimapPanel
 from engine.ui.layout import Layout
@@ -42,6 +43,11 @@ def test_size_rule():
         assert minimap_rgb(np.zeros((h, w), np.uint16), table()).shape[:2][::-1] == minimap_size(w, h)
 
 
+def px(r, g, b):
+    """The 5-6-5 round trip every minimap pixel goes through (the exe's 16-bit surfaces)."""
+    return tuple(int(x) for x in unpack16(pack16(np.array([r, g, b], np.uint8))))
+
+
 def test_colour_rule_border_and_ignored_bits():
     cells = np.zeros((60, 60), np.uint16)
     cells[BORDER + 3, BORDER + 5] = (7 << 4) | 5 | 0x2000 | 0xc000      # strip id 7, row 5, dirt, fog
@@ -49,16 +55,42 @@ def test_colour_rule_border_and_ignored_bits():
     assert img.shape == (88, 88, 3)
     for dy in (0, 1):
         for dx in (0, 1):
-            assert tuple(img[6 + dy, 10 + dx]) == (7, 13 - 5, 7)
-    assert tuple(img[0, 0]) == (0, 13, 7)                                   # id 0, row 0
-    assert tuple(img[6, 12]) == (0, 13, 7)
+            assert tuple(img[6 + dy, 10 + dx]) == px(7, 13 - 5, 7)
+    assert tuple(img[0, 0]) == px(0, 13, 7)                                   # id 0, row 0
+    assert tuple(img[6, 12]) == px(0, 13, 7)
 
 
-def test_downscale_takes_every_second_pixel():
+def test_downscale_averages_2x2_cells():
+    """k = -1 (`0x4abe65`-`0x4ac01d`): sum of `(word >> 2) & 0x39e7` of the 2 x 2 cells (floor(c / 4) per channel)."""
     cells = np.zeros((150, 150), np.uint16)
-    cells[BORDER + 2, BORDER + 4] = 9 << 4
-    img = minimap_rgb(cells, table())
-    assert img.shape == (67, 67, 3) and tuple(img[1, 2]) == (9, 13, 7)
+    cells[BORDER + 2, BORDER + 4] = 9 << 4                              # one cell of the block (x 2, y 1)
+    t = table()
+    t[13, 9] = (200, 120, 80)
+    img = minimap_rgb(cells, t)
+    assert img.shape == (67, 67, 3)
+    w = pack16(np.array([[200, 120, 80], [0, 13, 7], [0, 13, 7], [0, 13, 7]], np.uint8))
+    q = (w.astype(np.uint32) >> 2) & 0x39e7
+    assert tuple(img[1, 2]) == tuple(int(x) for x in unpack16(np.uint16(q.sum())))
+    assert tuple(img[1, 2]) != px(200, 120, 80)
+
+
+def test_light_pass_scales_each_channel():
+    """`0x4ac030`: L = 0x60 - sum(4 light bytes) // 4, channel = min(max, (c * L) >> 5) on the 5-6-5 fields."""
+    cells = np.zeros((60, 60), np.uint16)
+    t = table()
+    t[13, 0] = (80, 100, 200)
+    light = np.full((60, 60), 64, np.uint8)
+    assert tuple(minimap_rgb(cells, t, light)[0, 0]) == px(80, 100, 200)             # L = 32: x1
+    light[:] = 46                                                                    # flat daylight: L = 50
+    w = int(pack16(np.array([80, 100, 200], np.uint8)))
+    want = (min(31, (w >> 11) * 50 >> 5), min(63, ((w >> 5) & 63) * 50 >> 5), min(31, (w & 31) * 50 >> 5))
+    assert tuple(minimap_rgb(cells, t, light)[0, 0]) == tuple(int(x) for x in unpack16(np.uint16(want[0] << 11 | want[1] << 5 | want[2])))
+    light[:] = 0                                                                     # L = 96: clamps at the field maximum
+    assert tuple(minimap_rgb(cells, t, light)[0, 0])[2] == 255
+    cells2 = cells.copy()
+    light = np.full((60, 60), 64, np.uint8)
+    light[BORDER + 1, BORDER] = 0                                                    # one of the 4 bytes of the cell (8, 8) is 0 -> avg 48
+    assert minimap_rgb(cells2, t, light)[0, 0][0] > minimap_rgb(cells2, t, np.full((60, 60), 64, np.uint8))[0, 0][0]
 
 
 @pytest.mark.parametrize("w", [48, 80, 144, 200])
@@ -163,3 +195,83 @@ def test_golden_minimaps():
     assert set(gold) == {"10", "20", "52"}
     assert tool.minimap_hashes(os.environ.get("ALLODS2_INSTALL") or None) == gold, \
         "minimap changed; if intended run tools/update_golden.py"
+
+
+def test_structure_dots():
+    """`0x46213e`: a W x H rectangle at the structure's cell; k = -1 halves the position, not the size; the fog gate is the cell's four tiles."""
+    from engine.view.minimap import draw_structure_dots
+    from engine.world import MapObject, Player
+    from allods2 import vision as v
+    colors = np.arange(48, dtype=np.uint8).reshape(16, 3) + 100
+    w = synthetic_world(80)                                                      # k = 1
+    w.players[1] = Player(1, 3)
+    w.objects[1] = MapObject(1, "structure", 5, 20, 30, owner=1)
+    w.objects[2] = MapObject(2, "object", 5, 22, 32, owner=1)                    # map objects get none
+    w.objects[3] = MapObject(3, "bridge", 33, 70, 70, owner=1, size=(4, 2))      # cropped at the image edge
+    g = MinimapGeometry(80, 80)
+    img = np.zeros((g.height, g.width, 3), np.uint8)
+    draw_structure_dots(img, g, w, colors, {5: (3, 2)})
+    mask = img.any(-1)
+    assert mask[(30 - 8) * 2:(30 - 8) * 2 + 4, (20 - 8) * 2:(20 - 8) * 2 + 6].all() and mask.sum() == 6 * 4 + (128 - 124) * 4
+    assert tuple(img[44, 24]) == tuple(colors[3])
+    w.fog = v.new_fog(80, 80)                                                    # nothing seen: no dots
+    img[:] = 0
+    draw_structure_dots(img, g, w, colors, {5: (3, 2)})
+    assert not img.any()
+    v.reveal(w.fog, [(20, 30)])
+    draw_structure_dots(img, g, w, colors, {5: (3, 2)})
+    assert img.any(-1).sum() == 6 * 4
+    g1 = MinimapGeometry(200, 200)                                               # k = -1
+    w2 = synthetic_world(200)
+    w2.players[1] = Player(1, 3)
+    w2.objects[1] = MapObject(1, "structure", 5, 20, 30, owner=1)
+    im = np.zeros((g1.height, g1.width, 3), np.uint8)
+    draw_structure_dots(im, g1, w2, colors, {5: (3, 2)})
+    ys, xs = np.nonzero(im.any(-1))
+    assert (xs.min(), ys.min(), xs.max(), ys.max()) == ((20 - 8) >> 1, (30 - 8) >> 1, ((20 - 8) >> 1) + 2, ((30 - 8) >> 1) + 1)
+
+
+# --- dot order, neutral colour, burnt ground, flying numbers in fog (open-question round, docs/engine/rendering.md 12) ---------------------
+
+def test_object_map_walk_order_is_bucket_then_newest_first():
+    """`view+0x9d0` is a CMap<word, obj*> with 17 buckets, hash `id >> 4`, new entries at the head of the chain."""
+    from engine.view.objmap import bucket, walk_order
+    ids = [0x6000, 0x6010, 0x6001, 0x6000 + 17 * 16, 0x6020]
+    got = [i for i, _ in walk_order([(i, None) for i in ids])]
+    assert [bucket(i) for i in got] == sorted(bucket(i) for i in ids)
+    same = [i for i in got if bucket(i) == bucket(0x6000)]
+    assert same == [0x6000 + 17 * 16, 0x6001, 0x6000]                   # newest registration first inside a bucket
+
+
+def test_overlapping_dots_are_drawn_in_walk_order():
+    from engine.view.minimap import exe_order
+    a, b = (0x6000, "first"), (0x6001, "second")                         # one bucket: the later registration is walked first, so the earlier one overwrites it
+    assert exe_order([a, b]) == [b, a]
+    c = (0x6010, "other bucket")                                          # bucket of 0x6010 is one above: walked after
+    assert exe_order([c, a, b])[-1] == c
+
+
+def test_burnt_ground_is_set_once_and_bumps_the_cache_version():
+    import numpy as np
+    from engine.world import World
+    w = World(np.zeros((12, 12), np.uint16), np.zeros((12, 12), np.int8))
+    assert w.cells_version == 0
+    w.scorch(5, 6)
+    assert w.cells[6, 5] & 0x2000 and w.cells_version == 1
+    w.scorch(5, 6)
+    assert w.cells_version == 1                                           # never cleared, set once
+    w.scorch(-1, 3)
+    w.scorch(99, 3)                                                       # outside the map: ignored
+    assert w.cells_version == 1
+
+
+def test_neutral_structure_dot_takes_the_first_players_colour():
+    """The structure builder defaults to the player with key 0 (section 5 record 1) when the owner matches no record (`0x4a4934`): owner 0 is drawn in the human's colour."""
+    from engine.view.minimap import structure_dots
+    from engine.world import MapObject, Player
+    colors = np.arange(48, dtype=np.uint8).reshape(16, 3) + 100
+    w = synthetic_world(80)
+    w.players[1] = Player(1, 3)
+    w.objects[1] = MapObject(1, "structure", 5, 20, 30, owner=0)
+    (dot,) = structure_dots(MinimapGeometry(80, 80), w, colors, {5: (3, 2)})
+    assert tuple(dot[2]) == tuple(colors[3])

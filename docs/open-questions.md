@@ -22,6 +22,7 @@ from both places when answered).
 ## Combat and death
 
 - Sound tables (unit sound set entries, hero voices, UI sound `0x627740[0xf]`, the hit sound set); the engine has no audio. [combat §12.11](engine/combat.md#1211-open-questions) 1
+- Attack order aimed at a structure: the order matrix reads creature-only fields of the structure object, outcome untraced. [combat](engine/combat.md#open-questions); start `FUN_005711ea`.
 
 ## AI
 
@@ -50,23 +51,21 @@ from both places when answered).
 ## Interface
 
 - Main shell: which main-menu entry and screen-state chain lead to state `0x425` (new single-player game; only known entry: state `0x438` index 6..9 of the widget `this+0x134`); needed before an engine new-game screen. [ui-layout](engine/ui-layout.md#open-questions), [ai §10.1](engine/ai.md#101-difficulty-tweak-fun_00561bf9-0x561e20-0x561f0b-confirmed)
-- Chat input line (the former "30 px top strip", `FUN_0043b219`): does a single-player server echo the client chat message `0x91` (consumer not found); Enter gate view `+0x80`; capture `ClipCursor` rect with an open bar; hover brightness; structure hover (rect cell slot, cursor flags `0x20` / `0x800`); info-panel quest markers (`main` `0x159`-`0x15e`, `FUN_004180c6`); squad voice samples. [ui-layout](engine/ui-layout.md#open-questions); start at `FUN_0040b2b8`, `FUN_004175c7`.
+- Chat input line (the former "30 px top strip", `FUN_0043b219`; the echo, the Enter gate and the send path are answered, not built): the line's draw `FUN_0043b529`, height terms `FUN_0043b548`; capture `ClipCursor` rect with an open bar; info-panel quest markers (`main` `0x159`-`0x15e`, `FUN_004180c6`); squad voice samples. [ui-layout](engine/ui-layout.md#open-questions); start at `FUN_0040b2b8`, `FUN_004175c7`.
 - Spell book window leftovers: colour key of SpellBook / SpellBack / caps, rounding of the level-4 veil `FUN_004565cd`, `view+0x14` at 800x600, map-row recompute `FUN_0041b121`, Space hero-dead branch `FUN_0041ab96`, the left release's cell cast `FUN_0041918e` (table `0x5f1810`). [ui-layout 11.12](engine/ui-layout.md#1112-spell-book-window-bottom-bar-id-3-class-fun_004c61e7-vtable-0x5cf918-confirmed-unless-marked)
 - Heads / hero arrows: receivers of messages `0x414` / `0x415` (the hero windows `FUN_0049a428` / `FUN_0049bd95` / `FUN_0049e187`?) and the hero list `FUN_00472460` flags. [ui-layout](engine/ui-layout.md#open-questions)
 - Text windows (pause, failed): justified paragraph drawing (`FUN_0045e01d`, `FUN_0045da67`), the scroll bar (`FUN_004da54d`), the initial button focus that decides what Enter presses, the complete path with chapter var `>= 0x78`. [ui-layout 11.4](engine/ui-layout.md#114-in-game-menu-pause-freeze)
-- Tooltip leftovers: box corner blits (`DAT_00626cac`), option byte `mgr+0xa0`, clip globals `DAT_00621414/18`, tooltip font, hide path `FUN_00427ea5`. [ui-layout 11.6b](engine/ui-layout.md#116b-tooltips-mouse-manager-fun_004268c4-bar-fun_004ad61c-box-fun_0042787b--fun_00427999)
-- Story window leftovers: `FUN_0041d8bb` (second unit list), portrait crop orientation, consumers of the `sound:` / `tune:` / `tips:` tag keys (message `0x45b`). [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages) (`FUN_004dd226`)
+- Tips window (message `0x45b`, `tips:`): draw of `FUN_004deca4`; no install mission uses the tag. [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages)
 - Info-panel knowledge table: character-file load / write-back (`Knowledge(blob)` / `to_blob`) and the exact engine mapping of client relation bit 8 (`FUN_0041e860`). [ui-layout](engine/ui-layout.md#open-questions) (`FUN_004ea6ab`, `0x4141fa`)
 - Info panel: whether the new-game name field accepts `|`. [ui-layout open questions](engine/ui-layout.md#open-questions)
 - Message list: quest-event lines need a quest system (none in the engine), alternative message colour tables `0x61fb08` / `0x61fba8`. [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages)
 
 ## Rendering and engine
 
-- Renderer speed: `build_draw_list` is the next target for 30 fps at 1024x768; terrain scroll hitch (~27 ms per new cell row/column): pre-warm or flat-cell fast path. [architecture](engine/architecture.md#open-questions)
+- [Engine drawing](engine/rendering.md#open-questions): dynamic lights of burning cells (fire explosions), projectile 13 explosion phases and lightning segments (`FUN_0040403b`, `FUN_0046d0ef`); burning trees.
+- Unit flag `+0x1b8 & 0x80` at the mission start: which masks the first announce of every map-loaded monster sends (`FUN_0052be01` in `FUN_004f1d9c`; the mechanism is answered, [rendering](engine/rendering.md#open-questions)).
+- Renderer speed: the densest 1024x768 view is now 26.5 ms mean (worst frame ~34 ms, above 30 fps only in spikes); a per-object item cache and shadow batching are left. [architecture](engine/architecture.md#open-questions)
 - Unregistering a structure (`FUN_0055995a`) clears cells held by another structure; the engine releases only its own cells. [architecture](engine/architecture.md#open-questions)
-- [Cell effects](engine/rendering.md#open-questions): drawing (the simulation side is built: [effects §6.4](engine/effects.md#64-cell-effect-slots)); the cell record feeders are known ([unit-struct](engine/unit-struct.md#cell-record-effect-confirmed)). Unit invisibility / stone curse / hover, message 0x74 (flag 0x80); start at `FUN_004632a1`.
-- [Engine object drawing](engine/rendering.md#open-questions): burnt ground, light-map lights on objects; start at `FUN_00404a2a`.
-- [Engine minimap](engine/rendering.md#open-questions): final channel pass `0x4ac030`, fog background surface `DAT_00626be0`, fog gate of the unit dots; start at `FUN_004ac414`.
 
 ## Formats and not started
 
@@ -80,4 +79,3 @@ from both places when answered).
 
 - Saves ([saves](formats/saves.md#open-questions)): the server stream's object serialisers (`FUN_0052d16b`, `FUN_0052c3da`, `FUN_0052d5cb`, `FUN_00550008`, `FUN_0052d5b2`, `FUN_0053bbd0`, `FUN_0057a951`, start `FUN_004ec732`) and its 11 option words; the `+0x2f` byte; whether single player ever uses a stored character's items (VERIFY IN GAME); `famehall.dat` fields `b`, `c`; slot `game0000.sav` (read by the server start when `server+0x1ac != 0`, writer unknown) and `game9998.sav` (no sender).
 - Phase K save/load UI and writers: the Save / Load / Delete dialogs (`FUN_0043ebf6`, `FUN_0043deaf`, list `FUN_0043dc54`), the `game%d.sav` writer `FUN_0048dc9f` (+ loader `FUN_0048db37`), the mission-start auto-save `game9999.sav` "Restart last mission" (message `0x442` from `FUN_0048c8a3(0)`), the `famehall.dat` write at exit; single player never writes a `.a2c` ([ui-layout 11.4](engine/ui-layout.md#114-in-game-menu-pause-freeze)).
-- Fog of war ([vision](engine/vision.md#open-questions)): corpse visibility (`flag 0x80`, arrays `+0x98`/`+0x9c`), the unit step's vtable `+0x44` callers, message `0xaa` value 2; start at `FUN_00468762`.

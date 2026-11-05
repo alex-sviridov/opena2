@@ -47,6 +47,7 @@ class Dialog:
     story: object = None            # `StoryState` of a story window
     picture: Rect = None            # the story window's speaker picture widget (None = the layout without `npc`)
     picture_unit: int = None        # engine id of the unit whose portrait it shows (None = blank)
+    picture_npc: int = None         # the speaker id when no living unit has it: the dummy unit of `FUN_0041d8bb` (ui-layout 11.5), None otherwise
 
     def button_at(self, pos):
         """Index of the enabled-or-not button under `pos`, or None."""
@@ -178,6 +179,7 @@ def advance(d):
         st.tips = pg.tips
     if pg.has_npc and d.picture is not None:
         d.picture_unit = st.picture_of(pg.npc)
+        d.picture_npc = pg.npc if d.picture_unit is None else None
     return True
 
 

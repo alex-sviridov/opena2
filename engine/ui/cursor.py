@@ -48,10 +48,10 @@ class CursorInput:
     selection: str = "none"         # "none" | "own" | "foreign"
     selected_count: int = 0
     single_is_hero: bool = False
-    hover_structure: bool = False   # h & 0x20 (no structure is pickable yet)
+    hover_structure: bool = False   # h & 0x20
     hover_enterable: bool = False   # h & 0x800
     hover_is_selected: bool = False # the hovered object is the single selected unit (view+0x994 == view+0x138)
-    hover_fogged: bool = False      # h & 0x400 (no fog model yet)
+    hover_fogged: bool = False      # h & 0x400 (the cell under the pointer is not fully in sight)
     ctrl: bool = False
     alt: bool = False
     shift: bool = False             # never changes the cursor (R 1.3)

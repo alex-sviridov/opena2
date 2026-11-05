@@ -115,3 +115,12 @@ def test_map32_structures_resist_the_brigands_and_swordsman():
     for u in w.units.values():
         if u.owner != 1:
             assert structure_damage(combat_stats(w, u).record, Rng(7)) == 0, u.server_id    # no elemental damage: structures never take a scratch
+
+
+def test_structure_gap_uses_size_one_at_the_anchor_whatever_the_footprint():
+    from engine.sim.combat import structure_gap
+    w = world()
+    ob = tower(w, x=12, y=10, size=(3, 3))                  # a 3 x 3 footprint is still size 1 for the gap (vtable +0x1c = 1, `0x541fe0`)
+    a = fighter(w, 1, 10, 10)                               # two cells west of the anchor cell
+    assert structure_gap(a, ob) == 2 and structure_gap(fighter(w, 2, 11, 10), ob) == 1
+    assert structure_gap(fighter(w, 3, 14, 10), ob) == 2    # east of the anchor: the far side of the footprint is not nearer

@@ -200,7 +200,7 @@ def screenshot_window(terrain_view, camera, layout, tick, dest, assets, options=
 
     from allods2.common import as_fs
     from allods2.graphics import write_png
-    from allods2.minimap import load_color_table, load_dot_colors
+    from allods2.minimap import load_color_table, load_dot_colors, load_structure_sizes
     from engine.sim import SelectUnits, selection_system
     from engine.ui import bar
     from engine.view import Minimap, build_draw_list, build_terrain_items
@@ -218,13 +218,13 @@ def screenshot_window(terrain_view, camera, layout, tick, dest, assets, options=
     mm = panel = None
     if minimap:
         from engine.ui import MinimapPanel
-        mm = Minimap(world, load_color_table(fs), load_dot_colors(fs))
+        mm = Minimap(world, load_color_table(fs), load_dot_colors(fs), load_structure_sizes(fs))
         panel = MinimapPanel.from_layout(mm.geometry, layout)
     ui = ui or make_game_ui(assets, layout, world, player_id)
     iface = Interface(layout, InterfaceArt(assets.fs))
     caches = Caches(SurfaceCache(terrain_view), SpriteCache(assets))
     state = selection_state(world, player_id)
-    iface.draw(window, caches, build_terrain_items(terrain_view, camera, tick), items, camera, world, player_id,
+    iface.draw(window, caches, build_terrain_items(terrain_view, camera, tick, items.lights), items, camera, world, player_id,
                mm, panel, None, ui.messages.entries(now_ms), (), hover, ui,
                bar.cells(state, cast_enabled, 0), mouse, info_picture_fn(assets), tooltip, book, pack)
     rgb = surface_rgb(window)

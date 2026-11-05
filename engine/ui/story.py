@@ -153,6 +153,13 @@ def pages(sec, flags, alive=lambda npc: True, limit=1000):
     return out
 
 
+def dummy_doll_path(npc):
+    """The paper doll of the dummy speaker `FUN_0041d8bb(npc)` builds when no living unit has the id (CONFIRMED `0x41d8bb`, `FUN_004688f7`): flags `0x56` = female (`& 4`)
+    mage (`& 2`), no equipment, face `+0x28 = npc - 0x50`, so the picture is the body layer alone, `graphics\\equipment\\fmage\\<npc - 0x50>.256` (a mage has no back
+    picture).  The install has fmage faces 1..20 (speaker ids 0x51..0x64); any other id makes the exe stop with "FATAL ERROR: can't load" (`FUN_00424559`)."""
+    return "graphics/equipment/fmage/%d.256" % (npc - 0x50)
+
+
 def crop_of(type_id):
     """(x, y, w, h) of the crop of the 160x240 portrait (`FUN_0041d48d`: the default, or the table of types 0x40..0x66 with `y != -1`)."""
     if 0x40 <= type_id <= 0x66:

@@ -86,3 +86,18 @@ def test_a_headless_session_fights_and_draws_the_numbers(assets):
                      max_frames=120)
     assert b.hp < 50                                                        # blows landed during the session
     pygame.display.quit()
+
+
+def test_a_number_over_a_foggy_unit_is_kept_but_not_drawn(assets):
+    """`FUN_0045c6cd`: expiry first (1000 ms), then nothing is drawn while the unit's `+0x7c` is non-zero; the number is created regardless (`0x4128c6`)."""
+    from allods2 import vision as v
+    from engine.backend_pygame import window
+    w, a, b = world_with(assets, a_type(assets))
+    f = FloatingDamage()
+    f.add(b.id, 5, 3, True, 1, 1000, 1)
+    cam = Camera(480, 480, 40, 40, 0, 0)
+    w.fog = v.new_fog(40, 40)
+    assert window.floating_entries(w, f, cam, assets, assets.fs, 1100) == []
+    assert len(f.numbers) == 1
+    v.reveal(w.fog, [(12, 10)])
+    assert len(window.floating_entries(w, f, cam, assets, assets.fs, 1100)) == 1

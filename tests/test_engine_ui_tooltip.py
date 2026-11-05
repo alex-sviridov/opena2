@@ -129,3 +129,38 @@ def test_right_edge_is_pushed_back_and_the_top_pushed_down():
     assert tip.right == 640 and tip.x == 640 - (measure("Retreat <R>") + 11)
     low = place("Attack <A>", (50, 10), measure, SCREEN)
     assert low.y == 0 and low.bottom - low.y == 5 + 14
+
+
+def test_corner_blits_come_from_ball_bmp_and_the_lines_overwrite_them():
+    """`FUN_00427999`: four 4x4 blits of `interface\\Ball.bmp` (`DAT_00626cac`) at (L, T), (R-3, T), (L, B-4), (R-3, B-4) after the fill, before the bevel lines."""
+    import os
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    from helpers import GFS
+    if GFS is None or not GFS.exists("graphics/interface/Ball.bmp"):
+        pytest.skip("no install")
+    import pygame
+    from engine.backend_pygame.panels import Panels
+    panels = Panels(GFS, Layout.for_size(640, 480))
+    tip = place("Attack <A>", (100, 100), measure, SCREEN)
+    win = pygame.Surface((640, 480))
+    win.fill((1, 2, 3))
+    panels.draw_tooltip(win, tip)
+    ball = panels.keyed("Ball")
+    for cx, cy in ((tip.x, tip.y), (tip.right - 3, tip.y), (tip.x, tip.bottom - 4), (tip.right - 3, tip.bottom - 4)):
+        assert win.get_at((cx + 1, cy))[:3] == (ball.get_at((1, 0))[:3] if cy == tip.y else win.get_at((cx + 1, cy))[:3])
+    assert ball.get_at((0, 0)).a == 0 and ball.get_at((1, 0)).a == 255      # black corner pixels are keyed out (INFERRED key)
+    assert tuple(win.get_at((tip.x, tip.y)))[:3] == (1, 2, 3)               # the keyed corner leaves the surface under the box untouched
+
+
+def test_story_picture_has_the_t_back_background_and_the_mirrored_border_only_with_a_unit():
+    """`FUN_0041d48d`: no unit = the blank 88x108 surface (no background, no `t_border.256`); a unit = `t_back.bmp` crop under the keyed portrait, frame on top."""
+    import os
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    from helpers import GFS
+    if GFS is None or not GFS.exists("graphics/interface/t_back.bmp") or not GFS.exists("graphics/interface/t_border.256"):
+        pytest.skip("no install")
+    from engine.backend_pygame.panels import Panels
+    panels = Panels(GFS, Layout.for_size(640, 480))
+    border = panels.story_border()
+    assert border is not None and border.get_size() == (88, 108)
+    assert panels.opaque("t_back").get_size() == (160, 240)

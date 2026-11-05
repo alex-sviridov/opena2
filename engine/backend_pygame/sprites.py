@@ -11,7 +11,7 @@ from collections import OrderedDict
 import numpy as np
 import pygame
 
-from allods2.graphics.palette import BRIGHT2, grayscale_palette, shade_table
+from allods2.graphics.palette import BRIGHT2, GRAY, grayscale_palette, shade_table
 
 LIGHT_LEVELS = 16
 
@@ -40,7 +40,7 @@ class SpriteCache:
                 self.assets.projectile_set(tid) if kind == "projectile" else self.assets.structure_set(tid, None))
         return None if aset is None else aset.sprites(source)
 
-    def palette(self, sprite, light_row, remap=None):
+    def palette(self, sprite, light_row, remap=None, gray=False):
         """(256, 3) colours of the main file's palette, through BRIGHT2 row `light_row`
         (None = the file's own colours).  Units: the set's palette for `remap` = (human.pal row,
         variant); the `b` overlay uses the main sprite's table."""
@@ -55,6 +55,12 @@ class SpriteCache:
             pal = np.asarray(own if own is not None else self.assets.projectile_set(tid).shade_palette, np.uint8)
         else:
             pal = grayscale_palette() if sf is None or sf.palette is None else np.asarray(sf.palette, np.uint8)
+        if gray:                            # Stone Curse (`FUN_004632a1`): the GRAY table (16 levels, no tint) in place of BRIGHT2; unlit = row 8 (x1)
+            tkey = main + (remap, "gray")
+            t = self._tables.get(tkey)
+            if t is None:
+                t = self._tables[tkey] = shade_table(pal, LIGHT_LEVELS, GRAY, (0, 0, 0))
+            return t[min(8 if light_row is None else light_row, LIGHT_LEVELS - 1)]
         if light_row is None:
             return pal
         tkey = main + (remap,)
@@ -70,7 +76,7 @@ class SpriteCache:
         shadow = item.kind == "shadow"
         key = (item.sprite, item.frame, item.mirrored, "shadow" if shadow else item.blend,
                None if shadow else item.light_row, item.shear if shadow else 0,
-               None if shadow else item.remap)
+               None if shadow else item.remap, False if shadow else item.gray)
         d = self._d
         if key in d:
             d.move_to_end(key)
@@ -100,7 +106,7 @@ class SpriteCache:
             for i, o in enumerate(off):
                 out[i, o - lo:o - lo + w] = mask[i]
             return SparseMask(out, lo)
-        pal = self.palette(item.sprite, item.light_row, item.remap)
+        pal = self.palette(item.sprite, item.light_row, item.remap, item.gray)
         if item.blend == "half":
             return SparseMask(mask, 0, pack_rgb(pal[idx] >> 1))
         if item.blend == "alpha":           # `.16a`: src * (a + 1) / 16 + dst * (15 - a) / 16 (Canvas.draw_16a)
@@ -157,12 +163,13 @@ class SparseMask:
     left of the sprite, with their packed source words `vals` (half) or None (shadow).  Most of the box is empty, so the
     blends gather / scatter only these; the flat framebuffer indices are cached per frame width."""
 
-    __slots__ = ("ys", "xs", "vals", "dx", "w", "h", "fw", "base")
+    __slots__ = ("ys", "xs", "vals", "dx", "w", "h", "fw", "base", "memo")
 
     def __init__(self, mask, dx=0, vals=None):
         self.ys, self.xs = np.nonzero(mask)
         self.vals = None if vals is None else vals[self.ys, self.xs]
         self.dx, (self.h, self.w), self.fw, self.base = dx, mask.shape, -1, None
+        self.memo = {}
 
     def indices(self, frame, x, y):
         """(flat indices, keep or None) of the covered pixels inside the frame for the sprite at (x, y), or None."""
@@ -172,11 +179,21 @@ class SparseMask:
             return None
         if self.fw != fw:
             self.fw, self.base = fw, self.ys * fw + self.xs
+            self.memo.clear()
+        key = (x, y, fh)
+        r = self.memo.get(key)                  # a still camera draws the same sprite at the same place every frame
+        if r is not None:
+            return r
         if x >= 0 and y >= 0 and x + w <= fw and y + h <= fh:
-            return self.base + (y * fw + x), None
-        X, Y = self.xs + x, self.ys + y
-        keep = (X >= 0) & (X < fw) & (Y >= 0) & (Y < fh)
-        return Y[keep] * fw + X[keep], keep
+            r = self.base + (y * fw + x), None
+        else:
+            X, Y = self.xs + x, self.ys + y
+            keep = (X >= 0) & (X < fw) & (Y >= 0) & (Y < fh)
+            r = Y[keep] * fw + X[keep], keep
+        if len(self.memo) >= 24:
+            self.memo.clear()
+        self.memo[key] = r
+        return r
 
 
 def frame_half(frame, x, y, entry):
@@ -190,17 +207,19 @@ def frame_half(frame, x, y, entry):
     flat[idx] = (entry.vals if keep is None else entry.vals[keep]) + ((flat.take(idx) >> 1) & LOW7)
 
 
+_SHADOW_LUT = np.array([[(v * (16 - k)) >> 4 for v in range(256)] for k in range(17)], np.uint8)
+RGB_WORD = np.uint32(0x00FFFFFF)
+
+
 def frame_shadow(frame, x, y, entry, level):
-    """Shadow: dst * (16 - level) / 16 per channel on the covered pixels.  Red and blue scale in one multiply, green in
-    another (fields 8 bits apart, products < 2**12, so no carries across fields)."""
+    """Shadow: dst * (16 - level) / 16 per channel on the covered pixels, one byte table for the three channels (the X byte comes out 0)."""
     r = entry.indices(frame, x, y)
     if r is None:
         return
     idx = r[0]
     flat = frame.flat
     v = flat.take(idx)
-    k = np.uint32(16 - level)
-    flat[idx] = (((v & RB) * k >> 4) & RB) | (((v & GG) * k >> 4) & GG)
+    flat[idx] = _SHADOW_LUT[level][v.view(np.uint8)].view(np.uint32) & RGB_WORD
 
 
 def alpha_mix(src, dst, a):

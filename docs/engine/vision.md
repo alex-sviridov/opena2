@@ -42,8 +42,8 @@ Per-object visibility `S` (`obj+0x7c`, recomputed every view tick; CONFIRMED `FU
 | Object | `S` | Drawn | Pickable |
 |---|---|---|---|
 | Unit/flyer of the viewer | 0 | yes | yes |
-| Other unit/flyer | 0 iff any of the 4 tiles `(x,y) (x+1,y) (x,y+1) (x+1,y+1)` of its first cell has `0xc000`, else 1 | **only when S = 0**, shadow too (nothing dimmed: it simply vanishes); with Invisibility only if the owner is the viewer | only drawn ones (pick rects are registered by the draw) |
-| Corpse (layer `+0x9c`) | same cell test (flag-0x80 bodies are forced to S = 1 in the exe; engine DECISION: corpses use the cell test, own corpses always) | S = 0 | no |
+| Other unit/flyer | 0 iff any of the 4 tiles `(x,y) (x+1,y) (x,y+1) (x+1,y+1)` of its first cell has `0xc000`, else 1 | **only when S = 0**, shadow too (nothing dimmed: it simply vanishes); with Invisibility only if the owner is the viewer | only drawn ones (pick rects are registered by the draw). A **selected** foreign unit whose S becomes 1 is deselected at once (`obj+0x80 := 0`, redraw flag `+0x114`; engine `sim/vision._drop_hidden_selection`) |
+| Corpse (layer `+0x9c`; a dead unit is still the same `CUnit`) | the unit rule, nothing corpse-specific: cell test, own corpses always (CONFIRMED `FUN_00468762`; both layer arrays `+0x98`/`+0x9c` are drawn by the same loops of `FUN_00406f43` (`0x4087c2`-`0x409de8`) through vtable `+0x28`, and the unit draw `FUN_004632a1` is the S = 0 one). **Not remembered**: S is recomputed every tick, so a body in an explored-only cell is gone and reappears when sight returns. Unit flag `+0x1b8 & 0x80` (set / cleared by client message `0x69`/`0x74`, byte `msg+9 == 't'`) forces S = 1 for **every** owner, own too: such a unit is never drawn or picked (it is no corpse flag) | S = 0 | no |
 | Structure of the viewer | 0 | yes | yes |
 | Other structure | footprint scan: any cell with `0xc000` -> 0; else a cell with exactly `0x8000` -> 1; else 2 | S < 2 (explored: frozen animation, behind the half fog); never seen: not drawn | only S = 0 |
 | Ground item pile | - | only when the 4 corner tiles OR to exactly `0xc000` | the cursor's item flag `0x40` needs the same test; `0x400` (fogged) is the complement |
@@ -62,14 +62,15 @@ sim does not).
 Per cell block (`1 << k` pixels), OR of the four tile bits: no `0xc000` bit at all -> the block shows the panel background pixel
 (`CrystalR.bmp`, `DAT_00626be0`); exactly `0x8000` -> `((panel >> 1) & M) + ((map >> 1) & M)` (565: `M = 0x7bef`, per channel `floor(a/2) + floor(b/2)`);
 otherwise the map pixel. Rebuilt only when `view+0xdc` is set (refresh or a reveal). The light pass `0x4ac030`-`0x4ac413` is the image build
-(each channel `* (0x60 - avg light) / 32`), not fog. Dots (vtable `+0x34`, drawn after the image): units (stage <= 1, flag `0x80` clear, not invisible
-unless own) and structures only when the 4 tiles at their cell OR to `0xc000`; **no ownership gate** (allies and enemies get dots when seen, own units
-with sight 0 get none); colour palette entry 164 of the owner's row. Minimap right-click orders have no fog test.
+([rendering §12](rendering.md#12-minimap)), not fog; the fog background surface `DAT_00626be0` is the panel bitmap. Dots (vtable `+0x34`, drawn after the image): units (stage <= 1, flag `0x80` clear, not invisible
+unless own; `0x465f3f`) and structures/bridges (`0x46213e`, rectangle of the footprint) only when the 4 tiles at their cell OR to `0xc000`; **no ownership gate** (allies and enemies get dots when seen, own units
+with sight 0 get none; the engine draws structure dots too, `minimap.draw_structure_dots`); colour palette entry 164 of the owner's row. Minimap right-click orders have no fog test.
 
 ## 4. Options, cheats, saves
 
 * No fog option in the GOG exe (no "fog" string among the options). `#show map` / `#hide map` (cheat level `> 0x32`, message `0xaa` value 1/0):
   1 sets global `0x62280c` and ORs `0xc000` into all tiles (refresh skipped while set); 0 clears the flag only (tiles keep `0x8000`: everything explored).
+  Value 2 only calls `FUN_0041e3f0(0x430, 0)`, a `PostMessage` of window message `0x430` to the client's window (`this+0x1c`): no fog effect (CONFIRMED).
   CONFIRMED. Engine: `vision.reveal_all(world)`, `vision.hide_all(world)` (debug keys, not a cheat chat).
 * Saves: `game%d.sav` section `Fog` (`FirstState`, `Data` = run lengths of bit `0x8000` over all tiles), written `0x48e537`-`0x48e629`, read
   `0x48d699`-`0x48d795` only with `InBattle`; bit `0x4000` is recomputed at the next refresh. The engine saves/loads when phase K builds save/load (state: `World.fog`).
@@ -80,7 +81,7 @@ with sight 0 get none); colour palette entry 164 of the owner's row. Minimap rig
 
 * Status: built (J2). Update cost on a 256 x 256 map with 24 own units: 24 cold masks about 11 ms once (cached per `(x, y, sight)`), a full refresh about 4 ms warm (`tests/test_engine_vision_view.py`, limit 15 ms).
 * DECISION: the very first `vision_system` pass reveals every own observer at once (no stored cell yet = a changed cell, the exe's `+0xc8/+0xcc` start unequal), instead of waiting for tick 32; VERIFY IN GAME 1 decides.
-* Not built: save/load of `World.fog` (needs the phase K writers), a debug key for `reveal_all` / `hide_all`, structure dots on the minimap (the engine draws none yet), frozen animation of explored structures follows `animate=False` only.
+* Not built: save/load of `World.fog` (needs the phase K writers), a debug key for `reveal_all` / `hide_all`, frozen animation of explored structures follows `animate=False` only.
 * `World.fog`: `(h, w) uint16` tile words (bit constants `FOG_SEEN = 0x4000`, `FOG_EXPLORED = 0x8000`), `None` = no fog (everything visible);
   `World.fog_viewer` = player id (1); `World.fog_rev` counter (bumped on any change, minimap/overlay caches key on it); entities' last revealed cell in
   `vision` side table `world.fog_cells` (`obj+0xc8/+0xcc`). `dump()` adds `"fog"` (a crc of the array) only when on.
@@ -100,13 +101,18 @@ with sight 0 get none); colour palette entry 164 of the owner's row. Minimap rig
 2. A unit that stands still: does it reveal only at the 32-tick refresh? Does a walking hero reveal every cell (the `0x1f == 0x10` centre test) or only after a step?
 3. Sight radius of the hero (about `(mind + reaction)/25 + 4` cells) and the effect of a hill between hero and target; Light/Darkness spells.
 4. Explored-but-unseen structures: drawn frozen at half brightness and not clickable; never-seen ones absent.
-5. Corpses and item piles in explored-only cells: gone (item rule is exact; corpse rule is a DECISION).
+5. Corpses and item piles in explored-only cells: gone (both rules are exact, CONFIRMED).
 6. A projectile or spell effect flying through fog: visible at all? (exe: drawn, then darkened.)
 7. Monsters' dots on the minimap appear only while seen; the explored area is a 50 % mix with the panel picture, unseen area the panel picture.
-8. Message `0xaa` value 2 (`#...`?) and the cheat availability in single player.
+8. The cheat availability in single player (message `0xaa` value 2 is only a window-message post, section 4).
+
+## Answered round (REA, GOG exe)
+
+* **Flying damage numbers in fog (CONFIRMED)**: the HP handler of message `0x73` (`0x4128c6`) tests only the option `view+0xabc` and the HP drop; it creates the number whatever the fog says. The per-number routine `FUN_0045c6cd` (called by the list walker `FUN_0045c756` from the view draw `0x40a913`) first drops the number after 1000 ms of wall time, then draws nothing while the unit's `+0x7c` (the visibility `S` above) is non-zero, so a number over a hidden unit lives its full second invisible and reappears if the unit becomes visible again. Engine: `window.floating_entries` skips hidden units.
+* **Vtable `+0x44` of the unit class** (`0x5cd5d0` slot 17 = `FUN_0046def0`): when the death stage byte `+0x184` is < 3, `FUN_00460ae0` (reveal the unit's sight mask at once). CONFIRMED callers: the unit tick `FUN_0046617c` at `0x466291` (the branch that stores `+0x34 := -1`) and `0x466d7f` (after `+0xa8` is copied); `0x4608d2` is the shim `FUN_004608c3` (the vtable `+0x48` of the full refresh: reveal, return 1), and `0x45ab87` belongs to a sound class, not to units.
+* **Per-player word bits `0x20` / `0x40` (CONFIRMED)** (table `view+0x38`, `FUN_0041e470`): the server relation message (`FUN_004891d8` `0x48a66b`) keeps `old & 0x68` and rebuilds the rest; the client relation handler (`0x4141a0`-`0x4146xx`) compares the old and new words and posts message lines through `FUN_0041f350` (`main.txt`): bit `0x20` = "alliance announced" (lines `0x8e` / `0x8f` "Player ... is now in alliance with you", `0x90` / `0x91` "is no longer in alliance with you"), bit `0x40` = "war announced" (`0x94` / `0x95` "is now in war with you", `0x92` / `0x93` "is no longer in war with you"), bit 8 (vision, `FUN_0041e860`) announces with lines `0x46`-`0x49` of the other text table `FUN_00474733` (not read); each line also plays UI sound entry `0xf` (`FUN_0045aa2f`) with a 3000 ms message. Bits are memory of the last announced state; they gate nothing else. The engine has no player-relation change at run time, so nothing is built.
+* **Client messages `0x69` / `0x74` and unit flag `0x80`**: see [rendering](rendering.md#unit-and-cell-effects) (sender `FUN_005053a8`).
 
 ## Open questions
 
-* Corpse (`flag 0x80`) visibility in the exe (kind-0 array `+0x98`/`+0x9c`, class registering `0x5cd500`); ShowFlyingHP numbers in fog.
-* Where the unit step code calls vtable `+0x44` (`0x466291`, `0x466d7f`, `0x4608d2`, `0x45ab87`).
-* Per-player word bits `0x20`, `0x40`; message `0xaa` value 2.
+* None open in this spec (the relation announcement lines above are not built: no run-time relation change in the engine).

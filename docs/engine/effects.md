@@ -134,7 +134,7 @@ Fields: `+8` mode, `+0x48` effect, `+0x4c` stamped, `+0x4d` radius `r` (param 9)
 - mode 2 (field: Blizzard, Acid Stream) -> `FUN_0051806c`, [spells §9b](../data/spells.md#9b-field-carriers-summons-raising-tooltip).
 - mode 0 (`+0x50 == 0`: **Fire Ball**) -> `FUN_00518833` once: for every cell of the square `|dx|, |dy| <= r` round the centre, `FUN_00518681` on
   the ground occupant (`rec+4`), the air occupant (`rec+8`) and the structure; a damage effect with spread > 0 also clears the cell
-  effects (`FUN_005189b5`, §6.4) and scorches the ground (`FUN_00559c28`, dirt bit; drawing only); done.
+  effects (`FUN_005189b5`, §6.4) and scorches the ground (`FUN_00559c28`, server dirt bit; no reader); done. The *client* burnt-ground bit is another thing: tile bit `0x2000` set by the Wall of Fire cell flag ([rendering](rendering.md#unit-and-cell-effects)), built (`World.scorch`).
 - mode 1 (lifetime): first visit (`+0x4c == 0`) **stamps** the shape (`FUN_00518024`: `distribution == 4` wall `FUN_005182b6`, else
   diamond `FUN_005183a2` = cells of the square with `|dx| + |dy| <= r + 1`), no countdown. Later visits: `+0x50 == 0` -> unstamp the square
   (`FUN_00518594`) and done; else `+0x50 -= 1` and when `+0x50 & 15 == 0` every cell of the square that holds **this** carrier
@@ -164,6 +164,8 @@ is dead (state 0x10); every area hit between neutral owners adds 1 to that count
 after 11 hits or below half HP. CONFIRMED `0x57977a`.
 
 ### 6.4 Cell effect slots
+
+Drawing of the slots and of the unit effects 12 / 18: [rendering: Unit and cell effects](rendering.md#unit-and-cell-effects).
 
 The cell record is [unit-struct: cell record](unit-struct.md#cell-record-effect-confirmed). 
 Record slots `rec+0x14 + 4k`, k by spell (`FUN_00518ba3`): Wall of Fire 3 -> 0, Poison Cloud 6 -> 2, Wall of Earth 17 -> 3, Light 15 -> 4,
@@ -221,7 +223,7 @@ Dumps: a unit's `effects` entry, the carriers' area fields, `cell_fx` and `AiSta
 are unchanged (tested). DECISIONS (INFERRED): a removed caster counts as gone for the Poison credit and the carriers' attacker bookkeeping;
 a human's absorption clamp is applied to the effects' part of the bonus word (no spell lowers it); when a human's speed would turn negative
 the bonus is zeroed at once (the exe keeps the negative value until the next recompute); a cell's position is its centre; structures are
-not targets; the scorch (dirt) and all client messages are not modelled. Tests: `tests/test_engine_effects.py` (synthetic: handlers, merge,
+not targets; the server scorch bit and the client effect messages are not modelled (the client burnt-ground bit of Wall of Fire is: `World.scorch`). Tests: `tests/test_engine_effects.py` (synthetic: handlers, merge,
 cancel, expiry, 0x2581, Poison, monster / scan hooks, Invisibility, Stone Curse, point / area / field carriers, cell slots and costs, walls,
 Fire Ball, Blizzard / Acid timing, Teleport, the area war counter, the AI's single Shield, a deterministic fight), `tests/test_engine_effects_maps.py`
 (install: data.bin values, the human hooks on a map 73 knight), `tests/test_engine_ai_casting_maps.py` (map 73 casters: one Shield per mage,
@@ -291,4 +293,3 @@ dropped target, footprint, instant 21; install: maps 93 (section 9 teleport, a w
 - The Prismatic Spray chain `FUN_00519c04` (targets from `FUN_00579ddf(caster, target, list, min(7, L/20 + 2), range)`): not decoded; spell 11 stays a counted no-op.
 - The structure branch of the carriers (`vtable +0x34`, area cells' structure `FUN_00559b7f`): structures as targets are not modelled.
 - Human scan: Darkness adds to `+0xa4` directly *and* to the bonus `+0xe4`, so until the next recompute the human loses twice the value (engine: the direct part is kept until the next stat-switch recompute; other recompute triggers such as level-ups are INFERRED to reset it too and are not hooked).
-- Client side: the effect messages (`FUN_005044ba`, `FUN_00504498`, cell effect `0x87` `FUN_005045a5`) and their drawing (Invisibility, Stone Curse sprite, cell sprites) are not built.

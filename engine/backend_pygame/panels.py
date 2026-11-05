@@ -146,12 +146,16 @@ class Panels:
 
     def draw_tooltip(self, window, tip):
         """`FUN_00427999` (ui-layout 11.6b): a bronze-framed box over everything.  Fill and the two-pixel bevel inset 1 px from the rect (light 1st line top / left, dark 2nd; the
-        bottom / right pair reversed outward), text font2 in the `tooltip` table with the 1 px shadow, line i at (left + 5, top + 4 + 14 i).  The 4x4 corner blits from `DAT_00626cac` are not
-        drawn (content unknown)."""
+        bottom / right pair reversed outward), text font2 in the `tooltip` table with the 1 px shadow, line i at (left + 5, top + 4 + 14 i).  The four 4x4 corner blits of `DAT_00626cac` = `interface/Ball.bmp`
+        (CONFIRMED the file and the black colour key, `FUN_00453bca` skips packed 0) come after the fill and before the lines, at (L, T), (R-3, T), (L, B-4), (R-3, B-4)."""
         q = lambda c: ((c[0] >> 3) << 3, (c[1] >> 2) << 2, (c[2] >> 3) << 3)        # packed into the 565 screen format
         fill, light, dark = q(tooltip.FILL), q(tooltip.LIGHT), q(tooltip.DARK)
         l, t, r, b = tip.x, tip.y, tip.right, tip.bottom
         window.fill(fill, (l + 1, t + 1, r - l - 1, b - t - 2))
+        ball = self.keyed("Ball")
+        if ball is not None:
+            for cx, cy in ((l, t), (r - 3, t), (l, b - 4), (r - 3, b - 4)):
+                window.blit(ball, (cx, cy), pygame.Rect(0, 0, 4, 4))
         line = lambda c, p0, p1: pygame.draw.line(window, c, p0, p1)
         line(light, (l + 3, t + 1), (r - 3, t + 1))
         line(dark, (l + 3, t + 2), (r - 3, t + 2))
@@ -372,11 +376,45 @@ class Panels:
         r = d.picture
         window.fill((0, 0, 0), (r.x, r.y, pw, ph))
         u = ui.world.units.get(d.picture_unit) if ui is not None and d.picture_unit is not None else None
-        surf = self.portrait_surface(info.portrait(ui.world, u, info_picture)) if u is not None else None
+        type_id = 1                                               # the dummy unit of `FUN_0041d8bb` has type 1 (default crop)
+        if u is not None:
+            surf = self.portrait_surface(info.portrait(ui.world, u, info_picture))
+            type_id = u.type_id
+        elif d.picture_npc is not None:
+            path = story.dummy_doll_path(d.picture_npc)           # no living unit: the dummy's empty female-mage doll (face = id - 0x50); a missing face file = the exe's fatal error, blank here
+            surf = self.portrait_surface(("doll", [path])) if self.fs.exists(path) else None
+        else:
+            surf = None
         if surf is None:
-            return
-        x, y, w, h = story.crop_of(u.type_id)
+            return                                                # no unit: the blank surface, no background, no border (`0x41d4e2`)
+        x, y, w, h = story.crop_of(type_id)
+        back = self.opaque("t_back")                              # the same crop of `t_back.bmp` (opaque `+0x34`) under the keyed portrait (`+0x38`)
+        if back is not None:
+            window.blit(back, (r.x + 8, r.y + 7), pygame.Rect(x, y, w, h))
         window.blit(surf, (r.x + 8, r.y + 7), pygame.Rect(x, y, w, h))
+        border = self.story_border()
+        if border is not None:
+            window.blit(border, (r.x, r.y))
+
+    def story_border(self):
+        """`t_border.256` (88x108, drawn at (0, 0) over the picture) with the exe's quirk: its sprite blit writes the top row first into the bottom-up panel, so the
+        frame appears vertically mirrored (bitmaps.md, picture step 5)."""
+        if "story_border" not in self._keyed:
+            try:
+                sf = SpriteFile.load("graphics/interface/t_border.256", self.fs)
+                layers = []
+                for fill in ((0, 0, 0), (255, 255, 255)):
+                    c = Canvas(88, 108, fill)
+                    c.draw_256(sf.sprites[0], 0, 0, sf.palette)
+                    layers.append(c.pix)
+                covered = (layers[0] == layers[1]).all(axis=2)
+                rgba = np.zeros((108, 88, 4), np.uint8)
+                rgba[..., :3] = layers[0]
+                rgba[covered, 3] = 255
+                self._keyed["story_border"] = surface_from_rgba(np.ascontiguousarray(rgba[::-1]))
+            except (KeyError, OSError, ValueError, IndexError):
+                self._keyed["story_border"] = None
+        return self._keyed["story_border"]
 
     def draw_dialogs(self, window, ui, mouse, info_picture=None):
         for d in ui.modals.stack:

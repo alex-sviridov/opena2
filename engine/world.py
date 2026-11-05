@@ -613,6 +613,9 @@ class World:
         if self.terrain.shape != self.cells.shape:
             raise ValueError("terrain and cells differ in shape")
         self.name = name
+        self.light_vertices = {}    # (x, y) vertex -> light value written by Light / Darkness cell flags (`light_write`)
+        self.light_version = 0
+        self.cells_version = 0      # bumped when a tile bit changes at run time (burnt ground): terrain surface caches drop
         self.tick = 0
         self.seed = seed & 0xFFFFFFFF   # the game's RNG seed (docs/engine/simulation.md section 10)
         self.rng = Rng(seed)            # the one generator of the simulation, drawn in update order
@@ -713,6 +716,28 @@ class World:
             c[y, x] = self._fx_saved.pop((x, y))
             del self.cell_fx[(x, y)]
         self._refresh([(x, y)])
+        if slot in (4, 5) and 0 <= x < self.width and 0 <= y < self.height:
+            self.light_write(x, y, uid is not None, 0x50 if slot == 5 else 0)
+
+    def light_write(self, x, y, on, value):
+        """Client light flags 15 (Light, `value` 0) / 14 (Darkness, `value` 0x50), `FUN_0041c18c`: setting writes `value` into the terrain light of
+        the cell's four vertices and nothing recomputes it (CONFIRMED); clearing calls `FUN_004a5dd2(x, y, 2, 2)`, which rebuilds the same four
+        vertices from the heights (a neighbour's still-active write on a shared vertex is lost too).  `TerrainView._apply` (a full recompute) drops
+        them all.  Client state: `light_vertices` {(vx, vy): value} and `light_version`."""
+        for v in ((x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)):
+            if on:
+                self.light_vertices[v] = value
+            else:
+                self.light_vertices.pop(v, None)
+        self.light_version += 1
+
+    def scorch(self, x, y):
+        """Burnt ground: the client sets tile bit `0x2000` of a cell the first time a Wall of Fire flag (message 0x87, spell 3) reaches it and
+        never clears it (`FUN_0041c18c` `0x41c44f`; drawn as `dirt.bmp`, ignored on water by the terrain draw).  Client state only: the block layer
+        reads `terrain`, not `cells`."""
+        if 0 <= x < self.width and 0 <= y < self.height and not self.cells[y, x] & 0x2000:
+            self.cells[y, x] |= 0x2000
+            self.cells_version += 1
 
     def set_costs(self, costs):
         """Install a terrain cost table (index = terrain type, `passability.costs_from_reg`)."""

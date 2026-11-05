@@ -52,8 +52,15 @@ new game has no time of day: the load call applies the option-off row (A 14,
 D 32, α +π/4, no tint) over the map header's light fields. No script
 instruction, trigger or unit touches the light; nothing else writes
 `0x6226c0..d8`. For map 32 (J4) the header light is therefore never used and
-the light is constant unless the option is switched on. INFERRED: the clock is
-the game tick counter (`+0x408`).
+the light is constant unless the option is switched on. CONFIRMED (`FUN_0041d3b9`
+`0x41d3e2`): the clock is the client object's `+0x408`, the server step counter
+that the type-100 handler stores each step ([simulation 2](../engine/simulation.md));
+`m = (+0x408 >> 4) + 360`. The option has a visible control: the options dialog's
+apply message `0x445` (`FUN_00442e8b`) reads widget `0xc` into `DAT_00622770` (beside
+Shadows `0x1f`, Dynamic lighting `0x20`, Object animations `0x21`, widget `3` =
+Smoothing `DAT_00622768`) and calls `FUN_0041d3b9(1)` when it changed. The engine's
+options window is phase K (the menu entry is disabled), so the engine's only toggle
+stays `TerrainView.set_time_flow` / the debug key `N`.
 
 Engine: `TerrainView(time_flow=False)` is that default; `set_clock(tick)`
 repeats the cadence above and `set_time_flow` is the toggle. Client-only
@@ -153,6 +160,8 @@ segment writes `phase·10` to its 2×2 vertices directly.
 are redrawn with `corner = min(terrain_light, light)` (terrain light from
 §2 where the light map is 0xFF).
 
+Built in the engine: structure and missile lights, cell rows, lit terrain corners, and the Light / Darkness
+vertex writes (`engine/view/lights.py`, [rendering](../engine/rendering.md#structure-pick-rects-and-dynamic-lights-confirmed-engine-drawlistpick_cell-lightspy)).
 Implementation: `stamp_light`, `projectile_light`, `BURNING_LIGHT_PHASES`
 (= `STATIC_LIGHT_PHASES`), `structure_light_value`, `lit_terrain_corner`.
 

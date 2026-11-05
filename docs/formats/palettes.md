@@ -266,8 +266,8 @@ is applied at conversion, not per pixel. Implementation:
 - **Brightness levels** (modes 2/3) replace per-pixel lighting; rows come
   from light maps ([lighting](../mechanics/lighting.md)). CONFIRMED.
 - **Hover highlight**: `FUN_004632a1` forces row 0 (×2) for the unit
-  stored at view `+0x994` when flag `+0x40c` is 0 (CONFIRMED code;
-  INFERRED: unit under the cursor).
+  stored at view `+0x994` when `client+0x3f4` is 0 (CONFIRMED code; `+0x994` = the
+  object under the pointer, `FUN_004180c6`; units only, [ui-layout §7](../engine/ui-layout.md)).
 - **Grey-out** (mode 5): `FUN_004632a1` uses a 16-level GRAY table of the
   unit's palette with **effect 0x2c** = Stone Curse (CONFIRMED).
   `FUN_00460d4b` looks up an effect id (high 16 bits of u32 entries).

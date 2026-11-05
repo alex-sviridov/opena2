@@ -341,14 +341,15 @@ def structure_damage(rec, rng):
 
 
 def structure_gap(a, ob):
-    """`FUN_005169de` against a structure (INFERRED: the exe calls the creature centre routines `FUN_0050d884` / `FUN_0050d8c0` on the structure object;
-    here the centre of its `w x h` footprint and size = max(w, h))."""
-    w, h = ob.size if ob.size else (max(c for c, _, _ in ob.footprint) + 1, max(r for _, r, _ in ob.footprint) + 1)
-    cx = ((ob.x << 8) + ob.sub_x - 128 + (w << 7)) & 0xFFFF
-    cy = ((ob.y << 8) + ob.sub_y - 128 + (h << 7)) & 0xFFFF
+    """`FUN_005169de` against a structure (CONFIRMED): the same routine as for creatures; the centre routines `FUN_0050d884` / `FUN_0050d8c0` read the
+    position object at `obj+0x10` (for a structure its anchor, the top-left footprint cell's centre `(x << 8) + 0x80`; INFERRED that the position
+    object holds the section 4 value as is) plus `(size - 1) * 0x80` with size = vtable `+0x1c`, which the structure class (vtable `0x5d1268`,
+    `0x541fe0`) answers with **1** whatever its footprint, so a big building is hit from its top-left cell centre only."""
+    cx = ((ob.x << 8) + ob.sub_x) & 0xFFFF
+    cy = ((ob.y << 8) + ob.sub_y) & 0xFFFF
     f = foot(a)
     d = max(abs(centre_x(f) - cx), abs(centre_y(f) - cy))
-    d -= (f.size + max(w, h)) * 128 - 256
+    d -= (f.size + 1) * 128 - 256
     return 1 if d <= 0x180 else (d + 0x40) >> 8
 
 

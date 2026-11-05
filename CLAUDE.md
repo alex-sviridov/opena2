@@ -97,7 +97,7 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   = text colours; effect id = 2·spell + 8; low-memory flag not reproduced
   (user decision). palettes.md
 - Lighting: CONFIRMED day/night, terrain light, light map + stamps, object
-  rows, shadows, options (labels from patch.txt), fog draw. mechanics/lighting.md
+  rows, shadows, options (labels from patch.txt), fog draw; engine builds structure / missile lights and Light / Darkness vertex writes (`engine/view/lights.py`), clock = client `+0x408`. mechanics/lighting.md
 - BMP: CONFIRMED (8-bit flips, 64k class doesn't; pack16; price bar;
   portrait canvas + crop table). bitmaps.md
 - .reg: CONFIRMED (17 files): reader/writer, +0x14 = garbage bytes, sort pass

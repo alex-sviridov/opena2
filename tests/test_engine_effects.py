@@ -265,6 +265,21 @@ def test_fire_removes_poison_and_light_and_darkness_cancel():
     assert (30, 30) not in w.cell_fx                                             # both removed
 
 
+def test_wall_of_fire_scorches_the_tile_bit_once_and_poison_does_not():
+    """The client's Wall of Fire flag (spell 3) sets tile bit 0x2000 for good (`FUN_0041c18c`); other cell flags leave the tile alone."""
+    w = world()
+    m = monster(w, 1, 10, 20)
+    effects.release(w, m, sp(w, 6), 30, cell=(20, 20))
+    carriers_pass(w)
+    assert not w.cells[20, 20] & 0x2000
+    effects.release(w, m, sp(w, 3), 30, cell=(20, 20))
+    carriers_pass(w)
+    assert w.cells[20, 20] & 0x2000 and w.cells_version > 0
+    v = w.cells_version
+    carriers_pass(w)
+    assert w.cells_version >= v and w.cells[20, 20] & 0x2000                    # never cleared
+
+
 def test_wall_of_earth_blocks_free_cells_only_and_unblocks_at_the_end():
     w = world()
     m = monster(w, 1, 20, 10)                                                   # south of the wall: direction 4 (down) -> rows y and y+1

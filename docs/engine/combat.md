@@ -266,17 +266,19 @@ before **or** is > -10 now (same rule as 5.1 step 5). No XP, no weapon spell, no
 resistances and the second part are never read, so every plain blade / bow user (all map-32 brigands and the swordsman have `elo = 0`) does **0 damage** to
 a structure; only fire / water / air / earth / astral weapons or spell-like bonuses hurt. When `d >= HP` the routine also walks the client list
 `[0x6044c4+0x7c]+0x10` and deletes every entry whose word `+2` equals the one of the structure's `+0x10` pointer (`FUN_0054fa73`, `FUN_0053cb10`): the
-meaning of that list is unknown (INFERRED: records tied to the structure, e.g. its client view). Nothing unregisters the cells: the structure keeps
+list is the quest manager's (class cluster `0x53c...`: `FUN_0053cb10` = unlink + virtual delete, `FUN_0053cad0` = delete all; `FUN_0054fa73` compares the word `+2` of the entry's object with the structure's):
+INFERRED: quests aimed at the structure are cancelled when it is destroyed. The engine has no quest system, so there is nothing to purge ([quest system](../open-questions.md)). Nothing unregisters the cells: the structure keeps
 its object, its block stamps and its cell-record slot at HP <= 0 (no `FUN_00559890`-style release is reachable from here). The client learns the new HP
 through message `0x73` (client message `0x82` with the HP word `+0x42`, `FUN_00503672`); a destroyed look (`intact == 0` art) is a client matter.
 
 Engine: `swing_tick` resolves a swing whose `swing_target` is a structure id (`world.objects`); `MapObject.indestructible` = data.bin param 3 == 0.
-`structure_gap` is INFERRED (the exe calls the creature centre routines `FUN_0050d884`/`0x50d8c0` on the structure; the engine uses the footprint centre
-and size = max(w, h)).
+`structure_gap` is CONFIRMED (corrected from the footprint centre): `FUN_005169de` is the creature routine; the centre routines `FUN_0050d884` / `FUN_0050d8c0` read the position object at `obj+0x10` (the
+structure's anchor, the top-left cell's centre, INFERRED as stored) plus `(size - 1) * 0x80`, and the structure class answers vtable `+0x1c` with **1** (`0x541fe0`, vtable `0x5d1268`), so the gap is
+`max(|dx|, |dy|) - ((attacker size + 1) * 0x80 - 0x100)` from the anchor cell, whatever the footprint.
 
 **Who can be ordered at a structure.** The UI never sends an attack at a *hostile* structure (cursor `select`, `A` + click = move, ui-layout 6); only Ctrl +
 click on a friendly / neutral structure shows the attack cursor and sends command `0x19`. The exe accepts the id (`FUN_0052bfa3`), but the order
-matrix `FUN_005711ea` then reads creature-only fields of the structure (`FUN_0056ac5b(target)`, `+0x144` flags), so the outcome is garbage-dependent; the
+matrix `FUN_005711ea` then reads creature-only fields of the structure (`FUN_0056ac5b(target)`, `+0x144` flags), so the outcome is garbage-dependent (not traced further: the structure object's size and what lies behind it decide; start `FUN_005711ea`, class vtable `0x5d1268`); the
 engine keeps the intake as a no-op (group made, orders untouched, no crash; tests/test_engine_structure_hit.py). Map 32's two structures (types 21 and 8,
 owner 3, HP 500 / 1000) are hostile to the player: a click only hovers (info panel), so the J4 play-through has no way to attack them.
 
@@ -824,3 +826,4 @@ and only the attack type / range / to-hit for 56 (staves and shaman staffs, cata
 1. The quest system (accept `FUN_0052f8e2`, the board, rewards) and the exact meaning of the quest events 5-0x11 (start: `FUN_0052e3eb`, the senders in `0x57e5f0`-`0x57edda`).
 2. Sound tables (12.11 item 1) and the hit sound set entries (16.1).
 3. I2 open question is in 12.11; assumptions in section 13.
+4. Outcome of an attack order (command `0x19`) aimed at a structure: the order matrix reads creature-only fields of the structure object ([5.4](#54-hits-on-structures-fun_00516ea0--fun_005201b2-confirmed-engine-combatresolve_structure_attack-structure_damage)); not traced (start `FUN_005711ea`, `FUN_0056ac5b`; the structure class vtable is `0x5d1268`).

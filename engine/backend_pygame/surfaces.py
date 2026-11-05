@@ -1,8 +1,12 @@
 """Surface cache: per-cell RGBA arrays -> pygame surfaces, LRU."""
 
+import time
 from collections import OrderedDict
 
 import pygame
+
+from engine.view import TerrainItem
+from allods2.graphics.terrain import TILE
 
 
 class SurfaceCache:
@@ -16,6 +20,33 @@ class SurfaceCache:
         self._version = terrain_view.version
         self.hits = self.misses = 0
 
+    def prewarm(self, camera, tick, budget_ms=4.0, margin=2):
+        """Build the cells in a ring of `margin` cells around the visible ones that are not cached yet, nearest rows first, for at most
+        `budget_ms` (call it after a frame is drawn: a scroll then finds the next row / column ready instead of building it in one frame).
+        Returns the number built."""
+        tv = self.tv
+        x0, x1, y0, y1 = tv.proj.visible_cells(camera)
+        cols, rows = tv.proj.cols, tv.proj.rows
+        xa, xb, ya, yb = max(0, x0 - margin), min(cols, x1 + margin), max(0, y0 - margin), min(rows, y1 + margin)
+        ring = [(c, r) for r in range(y0 - 1, ya - 1, -1) for c in range(xa, xb)]
+        ring += [(c, r) for r in range(y1, yb) for c in range(xa, xb)]
+        for r in range(max(y0, ya), min(y1, yb)):
+            ring += [(c, r) for c in list(range(x0 - 1, xa - 1, -1)) + list(range(x1, xb))]
+        cx = camera.ix
+        deadline = time.perf_counter() + budget_ms / 1000
+        built = 0
+        for c, r in ring:
+            if r < 0 or r >= rows:
+                continue
+            ph = tv.phase(c, r, tick)
+            if (c, r, ph, None) in self._d:
+                continue
+            self.get(TerrainItem(c, r, ph, c * TILE - cx))
+            built += 1
+            if time.perf_counter() > deadline:
+                break
+        return built
+
     def get(self, item):
         if self.tv.version != self._version:        # the light changed (day/night step)
             self._d.clear()
@@ -27,7 +58,7 @@ class SurfaceCache:
             self.hits += 1
             return d[key]
         self.misses += 1
-        comp = self.tv.composite(item.col, item.row, item.phase)
+        comp = self.tv.composite(item.col, item.row, item.phase, item.lit)
         val = None
         if comp is not None:
             arr, y0 = comp

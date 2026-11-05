@@ -112,16 +112,17 @@ def minimap_cmd(a):
     from allods2.common import as_fs
     from allods2.graphics import write_png
     from allods2.cli import open_map
-    from allods2.minimap import load_color_table, minimap_rgb
+    from allods2.minimap import load_color_table, minimap_light, minimap_rgb
     m = open_map(a.map, a.install)
-    rgb = minimap_rgb(m.runtime_terrain(), load_color_table(as_fs(a.install)))
+    rgb = minimap_rgb(m.runtime_terrain(), load_color_table(as_fs(a.install)), minimap_light(m.heights))
     if a.units:
         from allods2.assets import AssetCache
         from allods2.minimap import load_dot_colors
-        from engine.view.minimap import MinimapGeometry, draw_unit_dots
+        from allods2.minimap import load_structure_sizes
+        from engine.view.minimap import MinimapGeometry, draw_dots
         rgb = rgb.copy()
-        draw_unit_dots(rgb, MinimapGeometry(m.width, m.height),
-                       World.from_map(m, AssetCache(a.install)), load_dot_colors(as_fs(a.install)))
+        geo, world, colors = MinimapGeometry(m.width, m.height), World.from_map(m, AssetCache(a.install)), load_dot_colors(as_fs(a.install))
+        draw_dots(rgb, geo, world, colors, load_structure_sizes(as_fs(a.install)))
     write_png(a.dest, rgb)
     print("%s: %d x %d cells -> %s (%dx%d)" % (m.name, m.width, m.height, a.dest, rgb.shape[1], rgb.shape[0]))
     return 0
@@ -252,9 +253,10 @@ def play_cmd(a, parser):
         vision.enable(world)
         vision.vision_system(world, [])
         from allods2.common import as_fs
-        from allods2.minimap import load_color_table, load_dot_colors
+        from allods2.minimap import load_color_table, load_dot_colors, load_structure_sizes
         from engine.view import Minimap
-        mm = Minimap(world, load_color_table(as_fs(a.install)), load_dot_colors(as_fs(a.install)))
+        mm = Minimap(world, load_color_table(as_fs(a.install)), load_dot_colors(as_fs(a.install)),
+                     load_structure_sizes(as_fs(a.install)))
         import re
         mission = re.search(r"(\d+)(?:\.alm)?$", os.path.basename(a.map.rstrip("/\\")), re.I)
         window.run(world, tv, camera, a.layout, a.speed, "Allods 2 - " + world.name, assets=assets, options=opts,
@@ -370,10 +372,10 @@ def main(argv=None):
         vision.vision_system(world, [])
     if a.cmd == "run":
         from allods2.common import as_fs
-        from allods2.minimap import load_color_table, load_dot_colors
+        from allods2.minimap import load_color_table, load_dot_colors, load_structure_sizes
         from engine.view import Minimap
         mm = None if a.no_minimap else Minimap(world, load_color_table(as_fs(a.install)),
-                                               load_dot_colors(as_fs(a.install)))
+                                               load_dot_colors(as_fs(a.install)), load_structure_sizes(as_fs(a.install)))
         try:
             commands = (debug_move_commands(world, a.debug_move) + debug_moveto_commands(world, a.debug_moveto)
                         + debug_attack_commands(world, a.debug_attack))

@@ -244,8 +244,25 @@ Open: see [open-questions](../open-questions.md#rendering-and-engine).
 
 - Scroll: answered in G3b (whole cell per tick, border rule, 8-cell clamp; ui-layout §5). The view's exact
   "centre on unit" call is not wired (`(unit.x >> 8) - W/2`, no height term, CONFIRMED earlier).
-- Renderer: 31.6 ms (640x480) / 46 ms (1024x768) on the map 73 fight (combat.md 14.1); `build_draw_list` (~10 ms, per-object work for every tree in the window) is the next target for 30 fps at 1024x768.
-- Scroll hitch of about 27 ms when new cells enter (pre-warm water phases or add a
-  flat-cell fast path to `composite`).
+- Renderer speed (`tools/bench_render.py`, map 32 with fog, hero start, headless; ms per frame, draw list + `draw_frame`):
+
+  | case | 640x480 before | after | 1024x768 before | after |
+  |---|---|---|---|---|
+  | still | 13.5 | 7.4 | 31.0 | 15.2 |
+  | densest view (5 / 9 units) | 19.7 | 8.2 | 53.5 | 26.5 |
+  | scrolling (3 px right, 2 px up per frame), mean | 26.6 | 14.1 | 57.7 | 25.8 |
+  | scrolling, worst frame | 58 | 23 | 99 | 46 |
+
+  What changed (all pixel-identical, parity tests in `tests/test_lighting.py` and `tests/test_engine_composite.py`): the fog pass is
+  planned (`lighting.fog_plan` / `apply_fog_plan_rgb`: black quads become one AND mask, flat half rectangles go through byte tables,
+  only the gradient pixels are gathered; the plan was 20 ms per scrolled frame, now ~4 ms); `TerrainView.composite` builds the 32
+  columns of a cell as 2-D arrays (0.79 -> 0.23 ms per cell, `composite_reference` is the old form); `SurfaceCache.prewarm` builds the
+  ring of cells around the view for 4 ms after each frame (the play loop), so a scroll no longer builds a row inside a frame; shadows
+  use one byte table; `_objects` caches the per-frame sizes and anchors. Draw list: 2.4 ms still, ~6 ms in the densest 1024 view
+  (about 300 map objects in the window); the rest of the dense frame is ~470 shadow blends and ~1100 blits. Remaining frame time at 1024x768
+  was above 30 fps only in the densest views (35 ms): `SparseMask.indices` now remembers the flat framebuffer indices per screen position (24 positions
+  per sprite entry), so a still camera pays the index arithmetic of the ~470 shadow blends and ~100 half overlays once (dense 1024x768: 34.8 -> 26.5 ms mean, worst frame about 34 ms; scrolling
+  gains nothing, ~25.8 ms). The dynamic light map (lights.py) adds nothing measurable on this map (no lit structure in view). Next, if needed: a per-object item cache for the draw list (6 ms
+  dense) or batching non-overlapping shadows (their truncation order must be kept to stay pixel-identical).
 - Removing a structure: the exe clears every present cell, also those held by another structure
   (`FUN_0055995a`); the engine releases only the cells the structure holds.

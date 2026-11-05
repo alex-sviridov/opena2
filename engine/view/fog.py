@@ -19,9 +19,14 @@ def unit_visible(world, u):
     return world.fog is None or u.owner == world.fog_viewer or v.cell_in_sight(world.fog, u.x, u.y)
 
 
+def cell_visible(world, x, y):
+    """The four tiles of cell (x, y) OR to exactly `0xc000`: ground piles (`0x409547`) and the hover flags 0x40 (item) / 0x400 (fogged) of `FUN_004180c6`."""
+    return world.fog is None or v.cell_in_sight(world.fog, x, y)
+
+
 def item_visible(world, it):
-    """Ground piles: the four tiles OR to exactly `0xc000` (`0x409547`)."""
-    return world.fog is None or v.cell_in_sight(world.fog, it.x, it.y)
+    """Ground piles: the cell test of `cell_visible`."""
+    return cell_visible(world, it.x, it.y)
 
 
 def structure_state(world, ent):

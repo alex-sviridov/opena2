@@ -184,9 +184,13 @@ def fog_hashes(install=None):
 def minimap_hashes(install=None):
     """{map: sha256 of the minimap RGB bytes} for MAPS (no pygame)."""
     from allods2.common import as_fs
-    from allods2.minimap import load_color_table, minimap_rgb
+    from allods2.minimap import load_color_table, minimap_light, minimap_rgb
     table = load_color_table(as_fs(install))
-    return {m: rgb_hash(minimap_rgb(open_map(m, install).runtime_terrain(), table)) for m in MAPS}
+    out = {}
+    for m in MAPS:
+        mp = open_map(m, install)
+        out[m] = rgb_hash(minimap_rgb(mp.runtime_terrain(), table, minimap_light(mp.heights)))
+    return out
 
 
 def orders_summaries():
@@ -325,7 +329,7 @@ def main(argv):
     if only is not None:
         with open(GOLDEN, encoding="ascii") as f:
             out = json.load(f)
-        makers = {"interface": interface_hash, "ui": ui_hashes, "fog": fog_hashes}
+        makers = {"interface": interface_hash, "ui": ui_hashes, "fog": fog_hashes, "minimaps": minimap_hashes}
         for k in only:
             out[k] = makers[k](install)
         _write(out)

@@ -19,6 +19,7 @@ from engine.ui.orders import FORMATION_MS, FORMATION_TEXT, HEALTH_TEXT, castable
 from engine.view import DrawOptions, Projection, build_draw_list, build_terrain_items
 from engine.view.damage import FloatingDamage, unit_anchor
 from engine.world import Damage, Died, LevelUp, Loot, Removed
+from engine.view import fog as fog_view
 from engine.view.pick import pick_at
 
 from .cursor import CursorSprites, draw_cursor, hide_os_cursor
@@ -52,11 +53,11 @@ def ensure_display(w, h):
 
 
 def hostile_to(world, viewer):
-    """`entity -> bool`: the unit's owner is at war with the viewer (relation bit 0, INFERRED)."""
+    """`entity -> bool`: the owner of the unit or structure is at war with the viewer (relation bit 0, INFERRED; `FUN_0041e830` on the object's owner)."""
     def fn(e):
-        u = world.units.get(e)
-        p = world.players.get(u.owner) if u else None
-        return bool(p and len(p.relations) >= viewer and p.relations[viewer - 1] & 1 and u.owner != viewer)
+        o = world.units.get(e) or world.objects.get(e)
+        p = world.players.get(o.owner) if o else None
+        return bool(p and len(p.relations) >= viewer and p.relations[viewer - 1] & 1 and o.owner != viewer)
     return fn
 
 
@@ -66,20 +67,38 @@ def modifiers():
     return bool(m & pygame.KMOD_CTRL), bool(m & pygame.KMOD_ALT), bool(m & pygame.KMOD_SHIFT)
 
 
+def hover_flags(world, entity, assets=None):
+    """(is_structure, usable) of a hovered entity: units and flyers are 1 / 2 in `FUN_004180c6`; a structure is 0x20, plus 0x800 when its
+    structures.reg record has `Usable` (`+0x8c`; needs `assets`, else not usable).  Unit ids win a collision (none on the shipped maps)."""
+    if entity is None or entity in world.units:
+        return False, False
+    ent = world.objects.get(entity)
+    if ent is None or ent.kind == "object":
+        return False, False
+    aset = assets.structure_set(ent.type_id) if assets is not None and ent.kind == "structure" else None
+    return True, bool(aset is not None and aset.rec.get("Usable"))
+
+
 def cursor_input(world, camera, layout, picks, mouse, player_id=PLAYER_ID, projection=None, pending=0,
-                 mods=(False, False, False), drag_from=None):
-    """The `CursorInput` of this frame (docs/engine/ui-layout.md section 6)."""
+                 mods=(False, False, False), drag_from=None, assets=None):
+    """The `CursorInput` of this frame (docs/engine/ui-layout.md section 6).  `picks`: `DrawList.hover_picks` (units and structures); the item
+    flag 0x40 and the fogged flag 0x400 come from the four tiles of the cell under the pointer (`FUN_004180c6`)."""
     in_view = mouse is not None and layout.viewport.contains(*mouse)
     hover = pick_at(picks, *mouse) if in_view else None
     sel = world.players[player_id].selection
-    item_cell = False
+    item_cell = fogged = False
     if in_view:
         cell = (projection or Projection(world.heights)).hover_cell(camera.ix + mouse[0], camera.iy + mouse[1])
-        item_cell = cell is not None and bool(world.items_at(*cell))
-    return CursorInput(mouse, layout.screen.w, layout.screen.h, in_view, hover is not None,
+        if cell is not None:
+            seen = fog_view.cell_visible(world, *cell)
+            item_cell = seen and bool(world.items_at(*cell))
+            fogged = not seen
+    structure, usable = hover_flags(world, hover, assets)
+    return CursorInput(mouse, layout.screen.w, layout.screen.h, in_view, hover is not None and not structure,
                        hover is not None and hostile_to(world, player_id)(hover), item_cell,
                        selection_state(world, player_id), len(sel),
                        len(sel) == 1 and world.units[sel[0]].human,
+                       hover_structure=structure, hover_enterable=usable, hover_fogged=fogged,
                        hover_is_selected=hover is not None and len(sel) == 1 and hover == sel[0],
                        ctrl=mods[0], alt=mods[1], shift=mods[2], pending=pending,
                        dragging=drag_nonempty(drag_from, mouse))
@@ -125,6 +144,8 @@ def floating_entries(world, floats, camera, assets, fs, now_ms):
     out = []
     for n in floats.visible(now_ms):
         u = world.find_unit(n.unit)
+        if u is not None and not fog_view.unit_visible(world, u):       # `FUN_0045c6cd`: the number is kept (until 1000 ms) but not drawn while unit `+0x7c` != 0
+            continue
         anchor = unit_anchor(world, camera, assets, u) if u is not None else None
         if anchor is not None:
             out.append((str(n.value), player_ramp(n.colour, fs), anchor[0] + n.x, anchor[1] + n.y))
@@ -385,9 +406,9 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
                     if selecting.corner is not None:
                         ev = pygame.event.Event(ev.type, pos=clip_to(layout.viewport, ev.pos), button=ev.button)   # the pointer was clipped to the view (`FUN_0048acbc`)
                     if ordering.is_order_click(selecting.corner, ev.pos):
-                        picks = items.picks
+                        picks = items.hover_picks
                         ci = cursor_input(world, camera, layout, picks, ev.pos, player_id, projection,
-                                          ordering.pending, mods)
+                                          ordering.pending, mods, assets=assets)
                         cell, hover_unit = click_target(world, camera, layout, picks, ev.pos, projection)
                         what, cmd = ordering.release(choose_cursor(ci, state), cell, hover_unit)
                         if what == "select":
@@ -439,7 +460,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
         book_views = draw_views(ui.book, ordering, world, player.selection, sel_state == "own") if ui.book.open else None
         pack_view = ui.pack.views(world, mouse) if ui.pack.open else None
         tip = tips.update(dt, mouse, lambda p: hover_text(ui, ordering, world, player.selection, sel_state, cast_enabled, p, spell_lines), text_measure_font2, layout.size, ui.frozen)
-        iface.draw(screen, caches, build_terrain_items(terrain_view, camera, world.tick), items, camera,
+        iface.draw(screen, caches, build_terrain_items(terrain_view, camera, world.tick, items.lights), items, camera,
                    world, player_id, minimap, panel, None, lines or None, numbers, hover, ui,
                    bar.cells(sel_state, cast_enabled, ordering.pending, ui.bar.highlight(ordering.pending)), mouse, info_picture, tip, book_views, pack_view)
         if ui.frozen:
@@ -449,8 +470,8 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
         elif panel and mouse is not None and panel.contains(*mouse):
             state = choose_minimap_cursor(True, selection_state(world, player_id), ordering.pending)
         else:
-            state = choose_cursor(cursor_input(world, camera, layout, items.picks, mouse, player_id, projection,
-                                               ordering.pending, modifiers(), selecting.corner), state)
+            state = choose_cursor(cursor_input(world, camera, layout, items.hover_picks, mouse, player_id, projection,
+                                               ordering.pending, modifiers(), selecting.corner, assets=assets), state)
         if selecting.corner is not None and mouse is not None:
             for x, y, w, h in band_lines(selecting.corner, clip_to(layout.viewport, mouse)):
                 screen.fill((255, 255, 255), (x, y, w, h))      # the white rubber band of the capture (`FUN_0042754f`)
@@ -459,6 +480,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
         else:
             draw_cursor(screen, cursors, state, mouse, now)
         pygame.display.flip()
+        caches.terrain.prewarm(camera, world.tick)         # the cells just outside the view, so a scroll does not build a row at once
         frames += 1
         if max_frames is not None and frames >= max_frames:
             break

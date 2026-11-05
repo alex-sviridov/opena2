@@ -86,3 +86,16 @@ def vision_system(world, commands):
             world.fog_cells[eid] = (x, y)
     if before is not None and (fog != before).any():
         world.fog_rev += 1
+    _drop_hidden_selection(world)
+
+
+def _drop_hidden_selection(world):
+    """`FUN_00468762`: a foreign unit with S = 1 (none of its four tiles in sight) that is selected (`obj+0x80`) is deselected the same view tick
+    (info-panel selection of a monster that walks into the fog).  Own units have S = 0 always."""
+    p = world.players.get(world.fog_viewer)
+    if p is None or not p.selection:
+        return
+    keep = tuple(i for i in p.selection
+                 if (u := world.units.get(i)) is None or u.owner == world.fog_viewer or v.cell_in_sight(world.fog, u.x, u.y))
+    if keep != p.selection:
+        p.selection = keep

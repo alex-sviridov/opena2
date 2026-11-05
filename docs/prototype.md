@@ -53,7 +53,7 @@ damage numbers, `Ctrl+O` smoothing. Developer overlays: `F1`-`F3`, `Shift+F4` / 
 - Speed (reference machine, software drawing): a still frame costs about 16 ms (was 100 ms), a frame while scrolling about 28 ms.
   The fog pass is the cause: it is built once per camera / fog state as layers of blend rows (`lighting.fog_layers`, quads memoised
   by shape) and applied on the frame words with byte tables (`apply_fog_layers_rgb`); both are bit-identical to the reference
-  `draw_fog` plus the 16-bit round trip (`tests/test_lighting.py`).
+  `draw_fog` plus the 16-bit round trip (`tests/test_lighting.py`).  Later numbers and the `fog_plan` form: [architecture](engine/architecture.md#open-questions).
 
 ## Bugs found and fixed in the bug pass
 

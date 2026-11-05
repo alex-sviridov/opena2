@@ -127,6 +127,21 @@ def test_story_dialog_keys_and_unknown_unit_picture():
     assert d.picture_unit is None and d.key("return") == modal.NEXT and d.key("escape") == modal.CLOSE
 
 
+def test_unknown_speaker_is_the_dummy_unit_with_a_female_mage_doll():
+    """`FUN_0041d8bb` (CONFIRMED): no living unit -> flags 0x56 (female mage), face id - 0x50, no equipment: the body layer alone."""
+    d = dialog(sec("<npc=89, part=1>", "x"), picture=lambda n: None)
+    assert d.picture_unit is None and d.picture_npc == 89
+    assert story.dummy_doll_path(89) == "graphics/equipment/fmage/9.256"
+    d = dialog(sec("<npc=9, part=1>", "x"), picture=lambda n: 5)
+    assert d.picture_unit == 5 and d.picture_npc is None
+
+
+@needs("graphics", "equipment", "fmage", "1.256")
+def test_dummy_doll_faces_exist_for_speaker_ids_0x51_to_0x64():
+    assert all(GFS.exists(story.dummy_doll_path(n)) for n in range(0x51, 0x65))
+    assert not GFS.exists(story.dummy_doll_path(0x65)) and not GFS.exists(story.dummy_doll_path(21))      # the exe's fatal "can't load"
+
+
 # --- the install --------------------------------------------------------------------------------------------------------------------
 
 def _missions():

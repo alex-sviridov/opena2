@@ -446,3 +446,132 @@ def apply_fog_layers_rgb(words, layers):
             base = kf[idx].astype(np.uint32) << 8
             out = lr[base | (w & 255)] | lg[base | ((w >> 8) & 255)] | lb[base | ((w >> 16) & 255)]
             words[idx] = out | (w & np.uint32(0xFF000000))
+
+
+_QUAD_FLAT = {}
+_QUAD_SPANS = {}
+
+
+def _quad_flat(ytr, ybl, ybr, lv, width):
+    """`fog_quad_columns` of a quad at (0, 0) as flat arrays for a frame `width` px wide: (pixel index, y, blend row) of every covered pixel,
+    memoised by shape (the edges step by the height differences only, so the arrays shift by `ytl * width + x`)."""
+    key = (ytr, ybl, ybr, lv, width)
+    got = _QUAD_FLAT.get(key)
+    if got is None:
+        if len(_QUAD_FLAT) > 6000:
+            _QUAD_FLAT.clear()
+        cols = list(fog_quad_columns(0, ytr, ybl, ybr, lv))
+        ys = np.concatenate([y0 + np.arange(len(k), dtype=np.int32) for _, y0, k in cols]) if cols else np.zeros(0, np.int32)
+        cs = np.concatenate([np.full(len(k), c, np.int32) for c, _, k in cols]) if cols else np.zeros(0, np.int32)
+        ks = np.concatenate([np.asarray(k, np.uint8) for _, _, k in cols]) if cols else np.zeros(0, np.uint8)
+        got = _QUAD_FLAT[key] = (ys * width + cs, ys, ks)
+    return got
+
+
+def _quad_spans(ytr, ybl, ybr):
+    """(columns, first y, past-last y) of the columns a quad of this shape covers (relative to its top-left corner)."""
+    key = (ytr, ybl, ybr)
+    got = _QUAD_SPANS.get(key)
+    if got is None:
+        if len(_QUAD_SPANS) > 6000:
+            _QUAD_SPANS.clear()
+        cols = list(fog_quad_columns(0, ytr, ybl, ybr, (0, 0, 0, 0)))
+        got = _QUAD_SPANS[key] = (np.array([c for c, _, _ in cols], np.intp), np.array([y for _, y, _ in cols], np.intp),
+                                  np.array([y + len(k) for _, y, k in cols], np.intp))
+    return got
+
+
+def fog_plan(levels, vy, cols, rows, shape, clip=None):
+    """The fog pass of `fog_layers` in a form that applies faster: (black, layers).  `black` is the flat uint32 AND-mask of the frame words (None = nothing) for the pixels
+    that end up black (a quad of level 16 all round, black rectangles included: black absorbs every other draw, so no order);
+    `layers` (disjoint pixels each, applied in order) hold the uniform solid rectangles `(y0, y1, x0, x1, k)` (k = 8) and the other pixels
+    as flat indices with their blend rows.  A quad goes whole to the first layer after the last one that touched any of its pixels, so the
+    order of the overlapping draws is kept.  `apply_fog_plan_rgb` equals `apply_fog_layers_rgb` of `fog_layers` bit for bit
+    (`tests/test_lighting.py`)."""
+    H, W = shape
+    left, top, right, bottom = clip or (0, 0, W, H)
+    depth = np.zeros((H, W), np.int16)
+    flat = depth.reshape(-1)
+    layers = []
+    diff = np.zeros((H + 1, W), np.int8)            # per-column +1 where a black run starts, -1 where it ends
+
+    def layer(n):
+        while len(layers) <= n:
+            layers.append(([], [], []))
+        return layers[n]
+
+    for x, ytl, ytr, ybl, ybr, lv, solid in fog_runs(levels, vy, cols, rows):
+        if solid:
+            y0, y1 = max(ytl, top), min(ybl, bottom)
+            x0, x1 = max(x, 0), min(x + 32, W)
+            if y0 < y1 and x0 < x1:
+                if lv[0] == 16:
+                    diff[y0, x0:x1] += 1
+                    diff[y1, x0:x1] -= 1
+                    continue
+                sl = depth[y0:y1, x0:x1]
+                n = int(sl.max())
+                sl[...] = n + 1
+                layer(n)[0].append((y0, y1, x0, x1, lv[0]))
+            continue
+        if x < left or x + 32 > right:
+            continue
+        if not ((ytl < bottom or ytr < bottom) and (ybl >= top or ybr >= top)):
+            continue
+        if lv == (16, 16, 16, 16):
+            cs, y0s, y1s = _quad_spans(ytr - ytl, ybl - ytl, ybr - ytl)
+            y0s, y1s = np.minimum(np.maximum(y0s + ytl, top), bottom), np.minimum(np.maximum(y1s + ytl, top), bottom)
+            diff[y0s, cs + x] += 1
+            diff[y1s, cs + x] -= 1
+            continue
+        rel, ys, ks = _quad_flat(ytr - ytl, ybl - ytl, ybr - ytl, lv, W)
+        if not len(ks):
+            continue
+        pix = rel + (ytl * W + x)
+        if ytl + int(ys.min()) < top or ytl + int(ys.max()) >= bottom:
+            ok = (ys + ytl >= top) & (ys + ytl < bottom)
+            pix, ks = pix[ok], ks[ok]
+            if not len(ks):
+                continue
+        n = int(flat[pix].max())
+        flat[pix] = n + 1
+        lay = layer(n)
+        lay[1].append(pix)
+        lay[2].append(ks)
+    out = []
+    for rects, pix, ks in layers:
+        if pix:
+            out.append((rects, np.concatenate(pix), np.concatenate(ks).astype(np.uint32) << 8))
+        else:
+            out.append((rects, np.zeros(0, np.intp), np.zeros(0, np.uint32)))
+    for y in range(1, H):                           # running sum down the columns (a row-wise loop beats cumsum on int8)
+        diff[y] += diff[y - 1]
+    black = diff[:H] > 0
+    return (np.where(black, np.uint32(0xFF000000), np.uint32(0xFFFFFFFF)).reshape(-1) if black.any() else None), out
+
+
+_FOG_WORD_LUTS = []
+
+
+def apply_fog_plan_rgb(words, plan, shape):
+    """`apply_fog_layers_rgb` for a `fog_plan`: the black pixels are cleared by one mask, the solid rectangles go through the byte tables as
+    2-D slices of the frame bytes, the other pixels as before.  `shape` = (h, w) of the frame."""
+    H, W = shape
+    black, layers = plan
+    quantize_words_565(words)
+    lut = fog_byte_lut()
+    if not _FOG_WORD_LUTS:
+        _FOG_WORD_LUTS.append(tuple(lut[:, ch, :].astype(np.uint32).reshape(-1) << (8 * ch) for ch in range(3)))
+    lr, lg, lb = _FOG_WORD_LUTS[0]
+    b8 = words.view(np.uint8).reshape(H, W, 4)
+    for rects, idx, kbase in layers:
+        for y0, y1, x0, x1, k in rects:
+            for ch in range(3):
+                v = b8[y0:y1, x0:x1, ch]
+                v[...] = lut[k, ch][v]
+        if len(idx):
+            w = words[idx]
+            out = lr[kbase | (w & 255)] | lg[kbase | ((w >> 8) & 255)] | lb[kbase | ((w >> 16) & 255)]
+            words[idx] = out | (w & np.uint32(0xFF000000))
+    if black is not None:
+        words &= black

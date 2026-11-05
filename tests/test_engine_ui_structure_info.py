@@ -76,15 +76,15 @@ def test_pick_rect_is_the_selection_rect_at_cell_x32_and_y_plus_th_minus_fh():
     assert pick_at([r], 256 + 10, 224 + 10) == s.id and pick_at([r], 5, 5) is None
 
 
-def test_indestructible_structure_is_hit_only_when_usable_and_flat_or_destroyed_never():
+def test_indestructible_structure_is_hit_only_when_usable():
     w = world()
     s = structure(w, 1, 8, 8)
     assert len(pick(w, Indestructible=1)) == 0                                  # +0x64 set, +0x8c clear: the hover loop skips it
     assert len(pick(w, Indestructible=1, Usable=1)) == 1
     assert len(pick(w, Usable=0, Indestructible=0)) == 1
-    assert len(pick(w, Flat=1)) == 0                                            # +0x90: no rect registered
+    assert len(pick(w, Flat=1)) == 1                                            # the flat pass registers a rect too (`0x408068`)
     s.hp, s.flags = 0, FLAG_DESTROYED
-    assert len(pick(w)) == 0                                                    # destroyed (INFERRED death stage)
+    assert len(pick(w)) == 1                                                    # +0x7c is the visibility state, not a death stage: still pickable
 
 
 def test_unit_and_structure_picks_merge_in_draw_order():
@@ -106,7 +106,7 @@ def test_click_on_a_structure_leaves_the_selection_alone():
 @needs_data
 def test_worked_example_map_10_ogre_house_and_snake_house():
     """Map 10: structure 0x6006 = type 23 at (42, 67), 500/500: building.txt line 22 "Ogre House", picture `ogreh.bmp`; type 26 (norka) is the
-    "Snake House" with 100/100; the destroyed norka 0x6019 and the sphinx (Indestructible, no picture file) are never hover targets."""
+    "Snake House" with 100/100; the sphinx (Indestructible, no picture file) is never a hover target; the destroyed norka 0x6019 still is (the view registers it, no death test)."""
     from allods2.assets import AssetCache
     from engine.view import Camera
     from engine.world import World
@@ -121,5 +121,14 @@ def test_worked_example_map_10_ogre_house_and_snake_house():
     assert I.structure_picture(ogre, a.structures_reg()) == "graphics/infowindow/ogreh.bmp" and GFS.exists("graphics/infowindow/ogreh.bmp")
     assert I.structure_rows(w.objects[0x600A], MainText.load(as_fs(GFS)), names)[0].text == "Snake House"
     ids = {r.entity for r in build_draw_list(w, Camera(w.width * 32, w.height * 32, w.width, w.height, 0, 0), 0, a, DrawOptions()).hover_picks}
-    assert 0x6006 in ids and 0x6019 not in ids and 0x6003 not in ids and 0x6002 not in ids      # destroyed / sphinx / flat bee house
+    assert 0x6006 in ids and 0x6019 in ids and 0x6003 not in ids and 0x6002 not in ids      # a destroyed house stays pickable (no death test in the view); sphinx / bee house are Indestructible
     assert all(GFS.exists(I.structure_picture(w.objects[i], a.structures_reg())) for i in ids if i in w.objects)
+
+
+def test_pick_cell_is_the_last_cell_of_the_clipped_box():
+    from engine.view.drawlist import pick_cell
+    win = (10, 20, 30, 20)                                  # vx, vy, W, Hv
+    assert pick_cell(win, 12, 22, 3, 2) == (12, 23)        # smallest x, largest y of the box
+    assert pick_cell(win, 5, 15, 4, 4) == (7, 18)          # box (5..8, 15..18) clipped at x - vx >= -3 (smallest x 7)
+    assert pick_cell(win, 39, 45, 4, 4) == (39, 46)        # right/bottom clip: y <= vy + Hv + 6
+    assert pick_cell(win, 100, 22, 2, 2) is None and pick_cell(win, 0, 22, 2, 2) is None

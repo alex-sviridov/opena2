@@ -582,6 +582,8 @@ def _stamp_cell(world, c, x, y, dmg):
             world.set_cell_fx(x, y, _slot(c.spell), c.uid)
         return
     world.set_cell_fx(x, y, _slot(c.spell), c.uid)
+    if c.spell == WALL_OF_FIRE:
+        world.scorch(x, y)                                  # the client flag of spell 3 sets the burnt-ground tile bit once (`FUN_0041c18c`)
     _interact(world, c.spell, x, y)
 
 

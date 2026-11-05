@@ -16,6 +16,7 @@ from allods2.cli import open_map
 from engine.sim import vision as sv
 from engine.view import Camera, DrawOptions, Minimap, build_draw_list
 from engine.view import fog as vf
+from allods2.graphics.palette import pack16, unpack16
 from engine.view.minimap import MinimapGeometry, apply_fog
 from engine.view.pick import pick_at
 from engine.world import Player, World
@@ -119,14 +120,17 @@ def test_minimap_blocks():
     v.reveal(fog, [(12, 12)])
     v.begin_refresh(fog)
     v.reveal(fog, [(20, 20)])
-    img = np.full((g.height, g.width, 3), 200, np.uint8)
+    img = np.full((g.height, g.width, 3), 198, np.uint8)               # 565-exact values (round-tripped below)
     bg = np.full_like(img, 40)
     apply_fog(img, g, fog, bg)
     s = 1 << g.k
     at = lambda c: tuple(img[(c - 8) * s, (c - 8) * s])
-    assert at(20) == (200, 200, 200)                                   # in sight: the map pixel
-    assert at(12) == (120, 120, 120)                                   # explored: (40 >> 1) + (200 >> 1)
-    assert at(30) == (40, 40, 40)                                      # never seen: the panel picture
+    rt = lambda c: tuple(int(x) for x in unpack16(pack16(np.full(3, c, np.uint8))))        # 5-6-5 round trip
+    a, b = pack16(np.full(3, 198, np.uint8)), pack16(np.full(3, 40, np.uint8))
+    half = int(((a >> 1) & 0x7bef) + ((b >> 1) & 0x7bef))
+    assert at(20) == rt(198)                                           # in sight: the map pixel
+    assert at(12) == tuple(int(x) for x in unpack16(np.uint16(half)))  # explored: (bg >> 1 & M) + (map >> 1 & M) on the words
+    assert at(30) == rt(40)                                            # never seen: the panel picture
 
 
 def test_minimap_unit_dots_need_sight():

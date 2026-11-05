@@ -86,7 +86,7 @@ def main(argv):
     def frame():
         t0 = time.perf_counter()
         items = build_draw_list(w, cam, w.tick, a, opts)
-        draw_frame(surf, caches, build_terrain_items(tv, cam, w.tick), items, cam)
+        draw_frame(surf, caches, build_terrain_items(tv, cam, w.tick, getattr(items, "lights", None)), items, cam)
         frame_ms.append((time.perf_counter() - t0) * 1000)
 
     frame()                                         # warm the caches

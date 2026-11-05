@@ -42,7 +42,8 @@ CONFIRMED order of `FUN_00406f43` (every pass: rows top to bottom, columns right
 | P2 | corpses, backpacks | backpacks (ground piles) yes, corpses not yet |
 | P3 | per cell: (a) non-flat structure slice, (b) ground unit, (c) steam, (d) map object, (e) fire | slots 0, 1, 3 |
 | P4 | flyer shadows | yes |
-| P5-P6, P8 | projectiles, cell effects, overlays | not yet |
+| P5-P6 | projectiles, cell effects (fire / earth walls in P3 slot 5, poison clouds after the missiles in P6) | yes ([§ Unit and cell effects](#unit-and-cell-effects)) |
+| P8 | overlays | not yet |
 | P7 | flyers | yes |
 
 `slot` 0 structure, 1 unit, 2 steam, 3 object, 4 fire (P2: 0 corpse, 1 backpack); `seq` = the world's stamp order (a
@@ -68,7 +69,7 @@ bridges `w x h` from the section 4 size kept in `MapObject.size`):
 - frame: object `ObjectSet.frame_at("anim"|"still", ..., tick, x=, y=)` (Animation option off: frame
   0); structure `frame_at("intact", 0, tick, start=0)`, destroyed (flag bit 0 or hp 0, not
   Indestructible, has a destroyed block) shows the destroyed pieces; bridges the piece rule
-  with `clock = tick`. Burnt ground (tile bit 0x2000, dead object) is not drawn yet.
+  with `clock = tick`. Burnt ground (tile bit 0x2000, dead object) is not drawn yet (open question).
 
 ## 4. Window and culling
 
@@ -171,11 +172,14 @@ rectangle), `engine/ui/minimap.py` (click/drag), `python -m engine minimap MAP D
 | Base never depends on passability, objects or units; only fog changes it (dirty flag `view+0xdc`, redraw at most every 10 view-clock ticks) | `FUN_004ac414` | CONFIRMED |
 | Image centred on panel point (72, 82): `x = 72 - W/2`, `y = 82 - H/2`; panel origin `FUN_004d3a23(this+8)` | `FUN_004ac414` | CONFIRMED |
 | Fog: OR of the `0xc000` bits of cells (c,r), (c+1,r), (c,r+1), (c+1,r+1); 0 -> pixel of surface `DAT_00626be0`, `0x8000` -> 50 % blend with it, else base | `FUN_004ac414` | CONFIRMED |
-| Minimap objects draw themselves after the image (vtable `+0x34`, args origin, `k`) | `FUN_004ac414` (list `FUN_00420140`) | CONFIRMED |
+| Minimap objects draw themselves after the image (vtable `+0x34`, args origin, `k`) | `FUN_004ac414` (the view's object map `view+0x9d0`, `FUN_00420140` / `FUN_00420160`) | CONFIRMED. **Draw order of overlapping dots** (CONFIRMED): the map is an MFC `CMap<word id, object>` with 17 buckets and hash `id >> 4` (`0x422420`, `0x4223b0`); a new entry goes to the head of its bucket (`0x4222c0`); the walk visits buckets ascending, each chain head first, so a later walked dot overwrites an earlier one: bucket `(id >> 4) % 17` ascending, inside a bucket the oldest registration last (so on top). Registration: structures (`FUN_004a449c` `0x4a48cc`, id `0x6000 + uid`), then the map units (`0x4a52d8`), then run-time objects. Structures and units share this one walk. Engine `engine/view/objmap.py`, `minimap.draw_dots` |
 | Camera rectangle: white 1 px outline from `((view+0x5c) - 8) * s` , `((view+0x60) - 8) * s`, size `(view+0x64, view+0x68) * s - 1`; `/2` for `k = -1` | `FUN_004569a3` call | CONFIRMED |
-| Final per-channel pass | `0x4ac030`-`0x4ac413` | not identified |
+| Final per-channel pass (part of the builder, not of the draw): per cell block (`1 << k` pixels; k = -1 one pixel per 2 x 2 cells) `L = 0x60 - (sum of the four bytes of the terrain light map `map+0x18` (FUN_004a5dd2 output, `FUN_0041e930`) at (x, y), (x+1, y), (x, y+1), (x+1, y+1)) / 4`, each 5-6-5 channel `c := min(max, (c * L) >> 5)` (flat daylight light 46: L = 50, x 1.56; light 64 = x 1) | `0x4ac030`-`0x4ac413` | CONFIRMED. **Built after the light map exists** (CONFIRMED): the image is rebuilt only by message `0x404` to the minimap window (`FUN_004ab896` -> `FUN_004ab96c`), whose single sender is `FUN_0041d3b9` (`0x41d46b`), and that routine runs `FUN_00474d98`, the full `FUN_004a5dd2(1, 1, 0, 0)`, `FUN_00404910`, `FUN_0047e345` *before* it posts `0x404`; the scenario load calls it with force 1 (`0x41c028`), so the first image already has the light (day/night option off = default daylight). With ShowTimeFlow on the picture is rebuilt at every light step (every 320 ticks), also on the option toggle: the engine builds once (default option off) |
+| k = -1 image: average of the 2 x 2 cells' words, `sum((w >> 2) & 0x39e7)` (floor(c / 4) per channel, 565) | `0x4abe65`-`0x4ac01d` | CONFIRMED |
+| Fog background `DAT_00626be0` = the panel bitmap (`CrystalR.bmp`) blitted at the panel origin first; the image is drawn over it at `(72 - W/2, 82 - H/2)`; the 0-bit fog blocks copy its pixels at that offset, the `0x8000` blocks blend with the pixel just drawn (the blend `((a >> 1) & M) + ((b >> 1) & M)`, `M = 0x7bef`, works on 5-6-5 words) | `FUN_004ac414` | CONFIRMED |
+| Dots: units `0x465f3f` (stage < 2, flag `0x80` clear, not invisible unless player flag 8 = viewer, four tiles at the cell OR `0xc000`); **structures and bridges `0x46213e`** (vtable slot 13 of `0x5cd520`, `0x5cea88`, `0x5ceae0`): rectangle at the object's cell, `TileWidth x TileHeight` cells (bridge: its size), same colour and sight gate, no other gate; rectangles are half open (`FUN_00456348`) and k = -1 halves the position but not the size | | CONFIRMED. Colour of a dot whose owner matches no player record (owner 0, neutral): the builders store the player of key 0 (the section 5 record 1 = the human) as the default owner (`0x4a4934`, `0x4a51ea`), so such a structure is drawn in the human's colour (the engine used to draw none). "Viewer" of the invisibility gate = the client's local player object `view+0x9cc`; the gate is bit 8 of its word for the unit's owner (`FUN_0041e860`), only the viewer's own entry has it ([vision](vision.md)) |
 
-Engine deviations (DECISION): `k = -1` takes every second pixel; no final pass; fog blocks and the dot gate since J2 ([vision §3](vision.md)); unit dots: section 13;
+Engine: the image is built like the exe (565 words, 2 x 2 average, light pass with the default-daylight terrain light `allods2.minimap.minimap_light`, `Minimap` computes it once); fog blocks, dot gates and structure dots ([vision §3](vision.md), `draw_structure_dots`, sizes `load_structure_sizes`); unit dots: section 13; dot colours are the 5-6-5 words of the shade table / BMP loader, i.e. **truncated** `c >> (8 - bits)` (CONFIRMED: `FUN_00424c84` for the 24-bit BMP table [bitmaps](../formats/bitmaps.md), `FUN_00425bee` for the shade tables [palettes §5](../formats/palettes.md)), shown with the high bits replicated; dots go through `exe_order`.
 camera position is `camera / 32` in cells with relief ignored; the panel is the right column's top, flush at
 `(W-160, 0)`, image centre at panel point (72, 82) (CONFIRMED, [ui-layout §4](ui-layout.md); replaces the 8 px margin). The image is built once per
 `Minimap` (no World hook: the exe's picture never depends on passability or objects);
@@ -199,7 +203,8 @@ World side: [architecture §9](architecture.md#9-world-state); code `engine/view
 | Shadow | like an object's: main `k = 0x6226cc`, `b` `0x6226d0` (Smoothing only); anchor `x = px - anchor - dx`, `dx = trunc(T (h/2 + Height/2 - CenterY))`, `y = py - anchor - z`; current frame, mirrored with the sprite |
 | Flyers | `Z != 0` (bat 70, dragon 71, succubus 105; 494 map units): own view class, layer `+0x90`; shadow in **P4** with the *unsheared* blitter at `x + trunc(shear16 / 2000)`, drawn on the ground (`U+0x10` excluded); sprite in **P7** raised by `U+0x10 = 16` (`FLYER_ALTITUDE`, constructor `0x46bfc1`), so flyers cover every ground unit; a flyer and a ground unit on one cell both draw |
 | Layers | alive and the fresh corpse (death stage 0, 1) stay in the P3 slot; bones (stage 2-4) move to the corpse layer (P2); stage 5 is not drawn; re-decided every frame. A walker at HP 0 stays at stage 1 for good |
-| Not drawn yet | invisibility (effect 0x20: skipped unless the owner is visible to the viewer, else 50 %), stone curse grey table (0x2c), hover row 0, corpses, selection |
+| Effects | Invisibility and Stone Curse: [Unit and cell effects](#unit-and-cell-effects) |
+| Not drawn yet | corpses' stone state (INFERRED unchanged), selection |
 
 **Piles** (`Item`, P2 after corpses, `FUN_00461292`, `0x4611bf`): sprite `graphics/backpack/sprites.256`
 (+ `spritesb.256`), frame `min(5, floor(log10(gold)))` (0 when empty; the items' own `+0x1c` is not decoded,
@@ -214,7 +219,7 @@ differently from objects except the pass (flyers: P4 / P7) and the size-aware fi
 **Minimap dots** (`FUN_004ac414` -> unit vtable `+0x34` = `0x465f3f`, after the terrain and before the camera
 rectangle): a `1 << k` square at `((c - 8) << k, (r - 8) << k)` of the unit's cell `pos >> 8` (k = -1: one pixel at `>> 1`),
 colour = palette entry 164 of the owner's `human.pal` row (`allods2.minimap.load_dot_colors`; the exe reads it from the
-16-bit table, 5-6-5 rounding not reproduced). Gates: viewer's own units and any unit in sight, not invisible, not corpse
+16-bit table: truncated to 5-6-5, CONFIRMED). Gates: viewer's own units and any unit in sight, not invisible, not corpse
 (stage < 2, flag 0x80 clear). With fog on (J2) a dot needs a seen cell, without fog every unit gets one;
 `python -m engine minimap MAP DEST --units`.
 
@@ -257,18 +262,60 @@ Code: `engine/ui/layout.py`, `cursor.py`, `selection.py`; `engine/view/pick.py`,
 - Tests: `tests/test_engine_{layout,cursor,pick,selection,selection_input,interface,orders_ui}.py`, `test_engine_ui_{widgets,info,modal,screens}.py`; goldens `["interface"]` (map 10,
   640x480, the first human unit selected, the real panel) and `["ui"]` (the J1 scenarios): all text is drawn with the game's fonts, so they no longer depend on the pinned pygame-ce font (only on the interface art and font data).
 
+## Unit and cell effects
+
+CONFIRMED (`FUN_004632a1` unit draw, `FUN_00464487` unit shadow, `FUN_00460d4b`, `FUN_0040af69`, `FUN_0041c18c`; the draw list builds them in `_unit` /
+`_cell_effects`). The client keeps a list of effect ids at the view unit (`unit+0x130`, u32 `id << 16 | 0xffff`; added by message 0x88 `FUN_005044ba`
+from the server's effect attach, or by the projectile tick `FUN_0046c1d0` when a hit sprite lands, removed by 0x89 `FUN_00504498`).
+`FUN_00460d4b(id)` is its only reader, and every caller (draw, shadow, minimap dots, hover) asks for **0x20 (Invisibility)** or **0x2c (Stone Curse)**:
+no other unit effect (Bless, Curse, Poison, Haste, Shield, ...) changes how the unit is drawn; they show only as the spell's own hit / flight sprite
+(carriers, [animation 4.4](../formats/animation.md)). Engine: `Unit.effect_mask` bit 12 / 18 (or `Unit.hidden`) stands for the list entry (no client delay).
+
+| Effect | Drawing |
+|---|---|
+| Invisibility (0x20) | the owner is not the viewer (`FUN_0041e860` = player flag 8): sprite, `b` overlay, both shadows and the pick rect are skipped. The viewer's own unit: main sprite through the 50 % blit (vtable `+0x34`, `blend = "half"`; the `b` overlay stays 50 %), main shadow at the lighter level `0x6226d0` (k2), **no `b` shadow** |
+| Stone Curse (0x2c), death stage <= 2 (`0x463b5c`: `jg` skips above 2; corpses of stage 1 and the first bones included, the effect pass runs for dying units) | frame index = the facing alone (`(facing - 8) & 15`, mirrored when `Flip`): the unit stands frozen at phase 0 of its action; palette = the 16-level **GRAY** table of the unit's palette (`DrawItem.gray`, `shade_table(..., GRAY)`, no tint, same light row / hover row 0; unlit = row 8) for the sprite and the `b` overlay; the shadow uses the frozen frame. Engine: living units only (corpses INFERRED unchanged) |
+
+**Cell effects** (`FUN_0040af69(x, y, flags, mode)`, called from the cell loops at `0x4095d0` mode 1 (pass 3, after the cell's fire) and `0x409b07` mode 0 (pass 6, rows
+0..Hv+3, columns 0..W-1); both need the cell's four tile words OR `0xc000`): `flags` = the view's per-cell dword (`FUN_0041c18c`, message 0x87: bit `1 << spell` set / cleared
+over a bit mask of cells); `x = 32 col + 16`, `y = (+0xb8 + +0xbc) / 2` (min top edge + max bottom edge of the view vertex table, [terrain](../formats/terrain.md), C halving), both view-relative
+(cell origin `vx, vy` = camera `// 32`); `n = |clock / 2 + x * y|`:
+
+| Bit (spell) | Projectile id / sprite | Frame | Pass |
+|---|---|---|---|
+| 3 Wall of Fire | 15 `firewall` (128x128) | `3 + n % 5` | 3, slot 5 (after the cell's other entities), mode 1 only |
+| 17 Wall of Earth | 43 `wall` (32x64) | `n % Phases` (= 0) | 3, mode 1, after the fire |
+| 6 Poison Cloud | 21 `poison` (64x64) | `n % Phases` (15) | 6, after the missiles, mode 0 only |
+
+The sprite is the record's `Width x Height` box centred on `(x, y)` (top-left `x - W/2, y - H/2`), `.16a` alpha blit, no light row. Engine: the flags come from the server's cell slots
+(`World.cell_fx` slot 0 / 3 / 2, [effects 6.4](effects.md#64-cell-effect-slots)), clock = tick (CONFIRMED: `view+0xa88` is incremented once per server step by the view's message `0x401` handler `FUN_0040bcd8`, which `FUN_00488aa1` posts after each `FUN_004f08c0` step, `0x488b4a`; the fog cadence uses the same counter). Light (15) and Darkness (14) set / clear the light
+vertex values (`0x50` / 0) of the cell and are not sprites. **Burnt ground** (CONFIRMED `0x41c390`-`0x41c455`): the first flag of spell 3 on a cell sets tile bit `0x2000` and never clears it; the terrain draw (`FUN_00404e0e` `0x405041`, ignored on water) overlays `dirt.bmp` variant `(x + 5 y) & 3` ([terrain](../formats/terrain.md)). Engine: `World.scorch` (called when a Wall of Fire carrier stamps a cell, `effects._stamp_cell`) sets the bit in `World.cells` (client state; the block layer reads `terrain`) and bumps `World.cells_version`, which drops the terrain surface cache. Per-cell registration: **one pointer per cell and layer** (`FUN_00460591`: ground units and bodies of stage < 2, flyers, bones of stage >= 2 or unit flag `0x80` in `FUN_00463093`), registered by walking the object map in hash order ([objmap](../../engine/view/objmap.py), minimap row above), so of two objects of one layer on one cell only the last walked is drawn and pickable (`drawlist._unregistered_units`; shadows INFERRED to follow). Unit flag `0x80` is set on every map-loaded client unit (`0x4a52f1`) and by client message `0x74`, cleared by `0x69`; the sender is `FUN_005053a8(.., flag, ..)` (type `0x69 + 0xb * (flag != 0)`), called by `FUN_005102a3` (unit leaves the map, `+0x4c |= 8`: `0x74`), `FUN_00510318` / `FUN_005103ae` (back on the map: `0x69`), the server start `FUN_004f1d9c` (`0x4f226c`) and the per-player message filter `FUN_005039e2`; the senders are all `FUN_005053a8(creature, off_map, player)`: **0x74 (set) is sent when the creature's `+0x4c & 8` is set** (`FUN_005102a3`, and the tail of the general creature state sender `FUN_00502019`
+after it has sent its state to a player: `FUN_005053a8(c, (+0x4c & 8) != 0, player)` when the creature is off the map or the mask bit `0x40000000` is set), **0x69 (clear) otherwise**, so the
+clear at the mission start is that same tail: the entering player's full-state send (`FUN_004f1d9c` `0x4f21fb`: `FUN_00502019(hero, 0, 0xffffffff, ...)`, which loops over the players) and the per-creature state
+sends of the creature pass (`FUN_0052b459` calls it every step; mask bit `0x40000000` is raised by `FUN_005053a8` itself for a player not yet allowed to see the creature) ([CONFIRMED] sender mechanism; the exact
+mask of the first announce of every map-loaded monster, `FUN_0052be01` in the start `FUN_004f1d9c`, is not decoded). The engine places every unit at load and has no flag `0x80`. Tests: `tests/test_engine_unit_fx_draw.py`.
+
+## Structure pick rects and dynamic lights (CONFIRMED, engine `drawlist.pick_cell`, `lights.py`)
+
+**Pick rect registration** is in the cell scan of `FUN_00406f43`: `0x408068` for Flat structures (the flat pass), `0x4086b7` for the others (`FUN_00404d99` appends the rect and the object id; `+0x30` of
+vtable `0x5cd520`, `0x461b2b`, is the structure's HP bar, not the rect). Both test the visibility state `obj+0x7c` (`FUN_0041eb60`) `== 0` (draw: `< 2`); **no death test**, so a destroyed structure and a Flat one
+stay pickable (the hover loop `FUN_004180c6` skips only Indestructible and not Usable). The rect is registered **once per cell of the structure's box** `x .. x + W - 1`, `y .. y + TH - 1`
+(`obj+0x40..+0x4c` from `FUN_0046025d`, clipped to the drawn window `-3 .. W + 2`, `-3 .. Hv + 6`; `FUN_00460591` kind 1 fills one array slot per cell), in the cell order of the scan (rows ascending, x descending), so the
+copy that matters for the order against units is the **last** one: the clipped box's smallest x in its largest y row (`drawlist.pick_cell`; a Flat structure registers in the flat pass, before every cell pass). Rect offset: see
+[ui-layout 7](ui-layout.md#7-picking).
+
+**Dynamic lights** (`FUN_0040403b`, `FUN_00404a2a`, [lighting 3-4](../mechanics/lighting.md)): `engine/view/lights.py` builds the light map each frame from structures with `LightRadius` (5 types: Tower 1/2, Well 2/3, Campfire;
+vertices `x .. x + W`, `y .. y + TH`, value by `LightPulse` and the tick) and missile carriers (ids 10 / 18 / 40 radius 0, 12 radius 1, value 16, at the missile's cell); `DrawList.lights`. The cell rows
+(`FUN_00404a2a` step 3) go to structures (per footprint cell), map objects and units (filing cell); `build_terrain_items(lights=)` gives lit cells `TerrainItem.lit` = min(terrain light, light) per corner (the surface cache keys on it).
+`DrawOptions.lights` (the Lighting option) is on by default but needs `lit`, so the parity modes are unchanged; the only golden that moved is `full-52-village` (towers and a well in view). Later sources overwrite earlier
+ones (order INFERRED: structures, then missiles). **Light / Darkness cell flags** (`FUN_0041c18c`): setting writes 0 / `0x50` into the *terrain* light of the cell's four vertices and does **not** call `FUN_004a5dd2`
+(CONFIRMED: the write survives); clearing calls `FUN_004a5dd2(x, y, 2, 2)` for the same four vertices (a neighbour's write on a shared vertex is lost with it), and a day/night recompute (whole map) drops all of them
+(`World.light_write`, `TerrainView.light`).
+
 ## Open questions
 
-- Burnt ground (tile bit 0x2000, `DeadObject` frame), fog gates, light-map lights on objects
-  (structure `LightRadius`, burning cells), day/night: not drawn; see
-  [lighting.md](../mechanics/lighting.md). Starting routine `FUN_00404a2a`.
-- Cell effects (CONFIRMED, not drawn yet): `FUN_0040af69` draws spell-area cell sprites keyed by view message
-  0x87: wall of fire (bit 3, P3 f, projectile 15, frame `3 + abs(clock/2 + x*y) % 5`), wall of earth (bit 17,
-  P3 f, projectile 43), poison cloud (bit 6, P6, projectile 21, frame `abs(clock/2 + x*y) % phases`), at
-  `(32 col + 16, mean of the cell's two diagonal heights)`; bit 3 also marks burnt ground. Needs the spell system ([spells §4](../data/spells.md#4-effect-handlers): carriers, shapes, registration `FUN_0055a325`). Blizzard stones and Acid Stream puffs are not cell effects but timed projectile objects (message 0x86, ids 23 / 27, [spells §9b](../data/spells.md#9b-field-carriers-summons-raising-tooltip)).
-- Units: invisibility and stone-curse drawing, hover/selection, the exe's visit order when two units share a layer cell,
-  the sender of client message 0x74 (flag 0x80, moves a unit to the corpse layer). Starting routine `FUN_004632a1`, `0x415bda`.
+- Dynamic lights not built: the burning-cell list (`view+0xa94`, fire explosions) and the explosion phases of projectile 13 / lightning segments 28 / 30 (the engine has no such objects; [lighting 3](../mechanics/lighting.md)). Start `FUN_0040403b`, `FUN_0046d0ef`.
+- Unit flag `0x80` at the mission start: the exact state masks of the first announce of every map-loaded monster (`FUN_0052be01` in `FUN_004f1d9c`); the clear / set senders are answered (above, `FUN_00502019` tail, `FUN_005053a8`).
+- Burning trees: flag 3 on a cell whose map object has a dead-object frame (`objects.reg` `+0x44 != -1`) adds a `{cell, counter 0}` entry to the burning list `view+0xa94`; the 7 burning-tree objects have no sprite files, so nothing to draw ([animation §4.6](../formats/animation.md)). Not modelled.
 - Item-only piles: the item field `+0x1c` (pile frame), see [map.md](../formats/map.md#open-questions).
-- Minimap: the final channel pass `0x4ac030`-`0x4ac413`, surface `DAT_00626be0` (fog background), fog gate of the
-  dots (do structures draw dots too?). Starting routine `FUN_004ac414`.
-- Interface (G3b): hover brightness, structure pick rects, bottom bars and command-bar contents, portraits: see [ui-layout open questions](ui-layout.md#open-questions).
+- Interface (G3b): structure pick rects, bottom bars and command-bar contents, portraits: see [ui-layout open questions](ui-layout.md#open-questions).

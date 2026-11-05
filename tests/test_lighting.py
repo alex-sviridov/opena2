@@ -201,6 +201,24 @@ def test_fog_rgb_path_equals_the_16_bit_round_trip():
     assert (w2.view(np.uint8).reshape(H, W, 4)[..., 3] == rgb[..., 3]).all()      # the X byte is left alone
 
 
+@pytest.mark.parametrize("seed", range(8))
+def test_fog_plan_equals_fog_layers(seed):
+    """The rectangle / flat-index plan of the fog pass gives the same frame as the layers (relief folds, clips, uniform runs included)."""
+    rng = np.random.default_rng(100 + seed)
+    cols, rows = 6, 7
+    L = rng.choice([0, 0, 8, 8, 16, 16, 16, 3, 11], size=(rows + 3, cols + 1))
+    L[2:5, :] = np.where(rng.random((3, cols + 1)) < 0.5, 8, L[2:5, :])
+    vy = np.arange(rows + 3)[:, None] * 32 + rng.choice([0, 0, 0, 31, 63, 127, -40, 17], size=(rows + 3, cols + 1))
+    H, W = 190, 200
+    words = rng.integers(0, 2**32, size=H * W, dtype=np.uint64).astype(np.uint32)
+    for clip in (None, (0, 0, 190, 150), (10, 20, 170, 170)):
+        a, b = words.copy(), words.copy()
+        gfx.lighting.apply_fog_layers_rgb(a, gfx.fog_layers(L, vy, cols, rows, (H, W), clip=clip))
+        gfx.lighting.apply_fog_plan_rgb(b, gfx.lighting.fog_plan(L, vy, cols, rows, (H, W), clip=clip), (H, W))
+        assert (a == b).all()
+        assert not (a == words).all()
+
+
 def _flow_view(time_flow):
     from allods2.graphics.terrain import TerrainSet
     from engine.view import TerrainView
