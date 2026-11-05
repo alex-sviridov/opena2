@@ -14,15 +14,46 @@ from .coords import Projection
 
 
 class TerrainView:
-    def __init__(self, world, terrain, animate=True, minutes=0):
+    def __init__(self, world, terrain, animate=True, minutes=0, time_flow=False):
         """`terrain`: a `TerrainSet`.  Light = terrain light at the fixed default
-        daylight, like `map render --relief`."""
+        daylight (the game's "ShowTimeFlow" option off, its default), like
+        `map render --relief`.  `time_flow` turns the day/night cycle on
+        ([lighting §1](../../docs/mechanics/lighting.md#1-time-of-day-fun_00474d98-confirmed),
+        client-only: nothing here enters the world hash)."""
         self.world, self.terrain, self.animate = world, terrain, animate
         self.proj = Projection(world.heights)
-        day = lt.daylight(minutes, False)
-        light = lt.terrain_light(world.heights, day.angle, day.ambient, day.diffuse)
+        self.time_flow = time_flow
+        self.version = 0                # bumped when the light changes: cell caches must drop
+        self._minutes = None
+        self._apply(minutes)
+
+    def _apply(self, minutes):
+        """FUN_0041d3b9 body: FUN_00474d98 (daylight), FUN_004a5dd2 (terrain light),
+        FUN_0047e345 (tinted tables)."""
+        day = lt.daylight(minutes, self.time_flow)
+        light = lt.terrain_light(self.world.heights, day.angle, day.ambient, day.diffuse)
         self.light = np.pad(np.asarray(light), ((0, 1), (0, 1)), mode="edge")
-        self.table = shade_table(terrain.palette, LIGHT_ROWS, BRIGHT32, day.tint)
+        self.table = shade_table(self.terrain.palette, LIGHT_ROWS, BRIGHT32, day.tint)
+        self.day, self._minutes = day, minutes
+        self.world.daylight = day       # client-side only; read by the draw list
+        self.version += 1
+
+    def set_clock(self, tick, force=False):
+        """FUN_0041d3b9: with the option on, recompute when `tick & 15 == 0` and
+        `m = (tick >> 4) + 360` is a multiple of 20 (every 320 ticks); `force` is
+        its param 1 (load, option change).  Returns True when the light changed."""
+        minutes = (tick >> 4) + 360
+        if not (force or (self.time_flow and tick & 15 == 0 and minutes % 20 == 0)):
+            return False
+        if minutes == self._minutes and not force:
+            return False
+        self._apply(minutes)
+        return True
+
+    def set_time_flow(self, on, tick=0):
+        """The option toggle (key 'N' in debug mode, options): recomputes at once."""
+        self.time_flow = bool(on)
+        self.set_clock(tick, force=True)
 
     def phase(self, col, row, tick):
         """Water animation phase (tick >> 2) & 3; 0 for other cells or when frozen."""

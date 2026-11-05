@@ -22,7 +22,6 @@ from both places when answered).
 ## Combat and death
 
 - Sound tables (unit sound set entries, hero voices, UI sound `0x627740[0xf]`, the hit sound set); the engine has no audio. [combat §12.11](engine/combat.md#1211-open-questions) 1
-- Structure damage `FUN_00516ea0` (attacks on structures); wire format of `FUN_005040c4`. [unit-struct](engine/unit-struct.md#open-questions)
 
 ## AI
 
@@ -54,7 +53,7 @@ from both places when answered).
 - Chat input line (the former "30 px top strip", `FUN_0043b219`): does a single-player server echo the client chat message `0x91` (consumer not found); Enter gate view `+0x80`; capture `ClipCursor` rect with an open bar; hover brightness; structure hover (rect cell slot, cursor flags `0x20` / `0x800`); info-panel quest markers (`main` `0x159`-`0x15e`, `FUN_004180c6`); squad voice samples. [ui-layout](engine/ui-layout.md#open-questions); start at `FUN_0040b2b8`, `FUN_004175c7`.
 - Spell book window leftovers: colour key of SpellBook / SpellBack / caps, rounding of the level-4 veil `FUN_004565cd`, `view+0x14` at 800x600, map-row recompute `FUN_0041b121`, Space hero-dead branch `FUN_0041ab96`, the left release's cell cast `FUN_0041918e` (table `0x5f1810`). [ui-layout 11.12](engine/ui-layout.md#1112-spell-book-window-bottom-bar-id-3-class-fun_004c61e7-vtable-0x5cf918-confirmed-unless-marked)
 - Heads / hero arrows: receivers of messages `0x414` / `0x415` (the hero windows `FUN_0049a428` / `FUN_0049bd95` / `FUN_0049e187`?) and the hero list `FUN_00472460` flags. [ui-layout](engine/ui-layout.md#open-questions)
-- Text windows (pause, failed): justified paragraph drawing (`FUN_0045e01d`, `FUN_0045da67`), the scroll bar (`FUN_004da54d`), the failed window's reason string (`0x6227b0[msg - 2]`), the text-window key handler (ESC / Enter, `FUN_004dc595`), the complete path with chapter var `>= 0x78`. [ui-layout 11.4](engine/ui-layout.md#114-in-game-menu-pause-freeze)
+- Text windows (pause, failed): justified paragraph drawing (`FUN_0045e01d`, `FUN_0045da67`), the scroll bar (`FUN_004da54d`), the initial button focus that decides what Enter presses, the complete path with chapter var `>= 0x78`. [ui-layout 11.4](engine/ui-layout.md#114-in-game-menu-pause-freeze)
 - Tooltip leftovers: box corner blits (`DAT_00626cac`), option byte `mgr+0xa0`, clip globals `DAT_00621414/18`, tooltip font, hide path `FUN_00427ea5`. [ui-layout 11.6b](engine/ui-layout.md#116b-tooltips-mouse-manager-fun_004268c4-bar-fun_004ad61c-box-fun_0042787b--fun_00427999)
 - Story window leftovers: `FUN_0041d8bb` (second unit list), portrait crop orientation, consumers of the `sound:` / `tune:` / `tips:` tag keys (message `0x45b`). [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages) (`FUN_004dd226`)
 - Info-panel knowledge table: character-file load / write-back (`Knowledge(blob)` / `to_blob`) and the exact engine mapping of client relation bit 8 (`FUN_0041e860`). [ui-layout](engine/ui-layout.md#open-questions) (`FUN_004ea6ab`, `0x4141fa`)
@@ -63,7 +62,6 @@ from both places when answered).
 
 ## Rendering and engine
 
-- Day/night light recomputation in the engine. [architecture](engine/architecture.md#open-questions)
 - Renderer speed: `build_draw_list` is the next target for 30 fps at 1024x768; terrain scroll hitch (~27 ms per new cell row/column): pre-warm or flat-cell fast path. [architecture](engine/architecture.md#open-questions)
 - Unregistering a structure (`FUN_0055995a`) clears cells held by another structure; the engine releases only its own cells. [architecture](engine/architecture.md#open-questions)
 - [Cell effects](engine/rendering.md#open-questions): drawing (the simulation side is built: [effects §6.4](engine/effects.md#64-cell-effect-slots)); the cell record feeders are known ([unit-struct](engine/unit-struct.md#cell-record-effect-confirmed)). Unit invisibility / stone curse / hover, message 0x74 (flag 0x80); start at `FUN_004632a1`.

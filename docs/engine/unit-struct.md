@@ -176,7 +176,7 @@ recompute, not a template load; the monster template init is `FUN_00511959` (loa
 phase 0: start -> `FUN_00516b2f(creature, target+0x5c, &extra)` (melee start, picks swing, `extra=(sVar1*256+128)/200` if sVar1>1);
 sets `+0x136=0`, `+0x58=5`, `+0x6c = +0x134` (wind-up ticks) (+extra for melee; spells: +0x134 only).
 phase 5: `+0x6c--`; at 0: melee `FUN_00516c1f(creature,target)` -> vcall target+0x2c => `FUN_00516ceb` (creature target),
-+0x34 => `FUN_00516ea0` (structure target), else log "I don't know how to attack"; spells `FUN_00519d7f` (object) / `00519db8` (cell).
++0x34 => `FUN_00516ea0` (structure target, [combat 5.4](combat.md)), else log "I don't know how to attack"; spells `FUN_00519d7f` (object) / `00519db8` (cell).
 Then `+0x58=7`, `+0x6c = +0x135 + L + rand(0..3)` where, for humans with weapon (+0x74): `L = clamp((weapon.s16(+0x4a) + (0x1e - reaction(+0x86))*5)/12, 0, 12)` (I: weapon speed term), else L=0;
 spell with weapon-object: `+ byte FUN_0041e7e0(0)`. phase 7: `+0x6c--`; at 0: `+0x58=0`, `+0x136=1` (done; Brain then clears order 1/2).
 `rand(n)`=FUN_0051fa25: `rand15*(n+1)>>15` (0..n incl.), rand15 = CRT-style `FUN_00583290` (0..0x7fff).
@@ -394,5 +394,4 @@ Cell record effect `+0x34..+0x39`: `FUN_0055ba36(cell, effect6)` (`0x55ba36`) co
 
 ## Open questions
 
-- Not traced: the structure damage `0x516ea0` (an attack on a structure, [combat](combat.md) section 10), the wire format of `FUN_005040c4` (client message sender; the simulation does not need it).
 - Meaning of the event classes of the three scenario booleans `+0x194`, `+0x198`, `+0x19c` (`FUN_005303ed`).

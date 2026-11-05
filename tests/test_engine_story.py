@@ -165,3 +165,12 @@ def test_every_story_text_of_the_install_fits_the_text_widget():
             for p in story.pages(s, story.hero_flags(0, 0)):
                 lines.append(len(font.wrap(p.text.replace("\r\n", "\n").rstrip("\n"), width)))
     assert max(lines) <= 8                  # the visible rows are 136 / 17 = 8 (our wrap: at most 7 here), so the scroll bar of `FUN_004d51db` is never needed
+
+
+@needs("main", "text", "mission32.txt")
+def test_map32_failure_reasons_from_the_install():
+    """mission32.txt has #failure2 / 3 / 5 (no 4): list entries 0..3, entry 2 = the default `main 0x11c`."""
+    main = MainText.load(GFS)
+    t = bytes(GFS.read("main/text/mission32.txt")).decode("cp1251")
+    lst = story.failure_texts(t, main.line)
+    assert len(lst) == 4 and lst[0].startswith("Chasing swords") and lst[2] == main.line(0x11C) and lst[3].startswith("The heroes failed")

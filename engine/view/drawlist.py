@@ -155,7 +155,7 @@ class _Ctx:
         self.world, self.cam, self.tick, self.assets, self.opts = world, camera, tick, assets, opts
         self.cx, self.cy = camera.ix, camera.iy
         self.win = view_window(camera)
-        day = lt.daylight(0, False)
+        day = getattr(world, "daylight", None) or lt.daylight(0, False)     # TerrainView.set_clock
         self.row = lt.object_light_row(day.ambient) if opts.lit else None
         self.k1, self.k2 = day.shadow1, day.shadow2
         self.beta = lt.shadow_angle(day.angle)

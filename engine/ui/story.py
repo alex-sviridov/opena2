@@ -41,6 +41,31 @@ def section(text, key):
     return body if q < 0 else body[:q]
 
 
+FAILURE_DEFAULT = 0x118          # main.txt line `0x118 + n` is the default reason of `#failure<n>` for n = 2, 3, 4 (CONFIRMED `0x48d96b`)
+
+
+def failure_texts(text, main):
+    """The mission-failed reason list `0x6227b0` (CONFIRMED, built at mission start `0x48d913`-`0x48d9c2`): for n = 2, 3, ... the section `#failure<n>` of the mission text
+    (`FUN_004ddb87`: the same cut as `section`, '' when absent); an empty one is replaced by `main` line `0x118 + n` while n < 5, otherwise the list ends.  Entry `k` serves the
+    failure cause `k + 2`.  Newlines are normalised and the ends trimmed (DECISION: the exe keeps the raw bytes, e.g. a leading LF after a `#failure2 ` line)."""
+    out, n = [], 2
+    while True:
+        sec = section(text, "failure%d" % n) if text else ""
+        sec = sec.replace("\r\n", "\n").strip("\n ")
+        if not sec:
+            if n >= 5:
+                return out
+            sec = main(FAILURE_DEFAULT + n)
+        out.append(sec)
+        n += 1
+
+
+def failure_text(text, main, cause):
+    """The failed window's body (`0x486fd5`: `0x6227b0[cause - 2]`); '' outside the list (the exe reads past the list, J1 shows nothing)."""
+    lst = failure_texts(text, main)
+    return lst[cause - 2] if 0 <= cause - 2 < len(lst) else ""
+
+
 def has_speaker_layout(sec):
     """`+0x7c` after `FUN_004dd05b`: the section contains `npc` anywhere -> the window is built with the picture widget and the narrow text rect."""
     return "npc" in sec.lower()

@@ -124,9 +124,14 @@ def draw_fog_pass(frame, ov):
     levels, vy, cols, rows = ov
     if not (levels != lt.FOG_SEEN).any():
         return
-    px = pack16(frame.bytes[..., :3])
-    lt.draw_fog(px, levels, vy, cols, rows)
-    frame.bytes[..., :3] = unpack16(px)
+    shape = frame.arr.shape
+    key = (np.asarray(levels).tobytes(), np.asarray(vy).tobytes(), cols, rows, shape)
+    if _fog_cache[0] != key:                        # the pass only changes with the fog bits or the camera cell / offset
+        _fog_cache[:] = [key, lt.fog_layers(levels, vy, cols, rows, shape)]
+    lt.apply_fog_layers_rgb(frame.flat, _fog_cache[1])
+
+
+_fog_cache = [None, None]
 
 
 def surface_rgb(surface):

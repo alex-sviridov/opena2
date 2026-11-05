@@ -65,6 +65,7 @@ class MapObject:
     known: bool = True
     seq: int = 0
     size: tuple = None          # (w, h) cells of a sized bridge (section 4), else None
+    indestructible: bool = False    # data.bin healthMax 0 (server structure +0x44 == 0): FUN_005201b2 returns 0 damage
     sight: int = 0              # client sight word `obj+0x10a` (8.8): data.bin `scanRange << 8` (vision.md)
 
 
@@ -1070,6 +1071,7 @@ class World:
                            hp=hp_max if s.intact else 0, hp_max=hp_max,
                            flags=0 if s.intact else FLAG_DESTROYED, uid=s.uid, footprint=fp,
                            known=known, size=s.size,
+                           indestructible=known and 1 <= s.type <= len(stats) and not stats[s.type - 1].params[3],
                            sight=(stats[s.type - 1].params[2] << 8) if known and s.size is None and 1 <= s.type <= len(stats) else 0)
             if ob.id in w.objects:
                 raise ValueError("duplicate structure id %#x (uid %d)" % (ob.id, s.uid))

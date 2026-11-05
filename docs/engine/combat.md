@@ -165,7 +165,7 @@ the range test (5.1) when the target has left.
 ### 5.1 The gate (`FUN_00516c1f` -> `FUN_00516ceb`, CONFIRMED)
 
 At the end of the wind-up the target in `+0x5c` is dispatched by class: creature `FUN_00516ceb`, structure `FUN_00516ea0`
-(structure HP `+0x42`, `FUN_005201b2`; not modelled), anything else logs "I don't know how to attack". For a creature:
+(section 5.4), anything else logs "I don't know how to attack". For a creature:
 
 1. Nothing happens unless target and attacker exist, both have an owner, the attacker's HP `+0x94 > 0` and
    `attack_gap(attacker, target) <= range` (`+0x12c`). **No test of the target's HP, side or visibility.**
@@ -254,6 +254,32 @@ resistance. Hit when `53 + roll > 70` i.e. `roll >= 18`: 83 of 201 rolls = **41.
 it). Raw `8 + rand(0..8)` = 8..16, minus 10 -> -2..6, clamped at 0, then `trunc(x * 0.7 + 0.75)`: x = 1..6 gives 1, 2, 2, 3, 4, 4. Damage per hit
 is therefore one of 0, 0, 0, 1, 2, 2, 3, 4, 4 (equally likely, `rand(8)` has 9 values): **0..4, 1/3 of the hits do nothing**.
 
+### 5.4 Hits on structures (`FUN_00516ea0` + `FUN_005201b2`, CONFIRMED; engine `combat.resolve_structure_attack`, `structure_damage`)
+
+Gate: target and attacker exist, attacker HP `+0x94 > 0`, owner `+0x14 != 0`, `attack_gap(attacker, structure) <= range` (`+0x12c`). Then
+`dmg = FUN_005201b2(structure, attacker record +0xa6)`, `structure.HP(+0x42, s16) -= dmg`, and message `0x73` (`FUN_00504b1d`) when HP was > 0
+before **or** is > -10 now (same rule as 5.1 step 5). No XP, no weapon spell, no retaliation hook (`FUN_0056e6b8` is not called).
+
+`FUN_005201b2` (server structure object: `+0x42` HP, `+0x44` max HP = data.bin structure param 3, set by the constructor `0x51ff33`):
+`0` when the record is null or `+0x44 == 0` (indestructible); else `d = rec[0x13] (elemental min) + FUN_0051fa25(rec[0x14])` (the spread is drawn only when
+`rec[0x14] > 0`, i.e. `rng.rand(espread)`), `d -= 5`, `d <= 0 -> 0`. **Only the elemental part counts**: physical damage, the to-hit roll, absorption,
+resistances and the second part are never read, so every plain blade / bow user (all map-32 brigands and the swordsman have `elo = 0`) does **0 damage** to
+a structure; only fire / water / air / earth / astral weapons or spell-like bonuses hurt. When `d >= HP` the routine also walks the client list
+`[0x6044c4+0x7c]+0x10` and deletes every entry whose word `+2` equals the one of the structure's `+0x10` pointer (`FUN_0054fa73`, `FUN_0053cb10`): the
+meaning of that list is unknown (INFERRED: records tied to the structure, e.g. its client view). Nothing unregisters the cells: the structure keeps
+its object, its block stamps and its cell-record slot at HP <= 0 (no `FUN_00559890`-style release is reachable from here). The client learns the new HP
+through message `0x73` (client message `0x82` with the HP word `+0x42`, `FUN_00503672`); a destroyed look (`intact == 0` art) is a client matter.
+
+Engine: `swing_tick` resolves a swing whose `swing_target` is a structure id (`world.objects`); `MapObject.indestructible` = data.bin param 3 == 0.
+`structure_gap` is INFERRED (the exe calls the creature centre routines `FUN_0050d884`/`0x50d8c0` on the structure; the engine uses the footprint centre
+and size = max(w, h)).
+
+**Who can be ordered at a structure.** The UI never sends an attack at a *hostile* structure (cursor `select`, `A` + click = move, ui-layout 6); only Ctrl +
+click on a friendly / neutral structure shows the attack cursor and sends command `0x19`. The exe accepts the id (`FUN_0052bfa3`), but the order
+matrix `FUN_005711ea` then reads creature-only fields of the structure (`FUN_0056ac5b(target)`, `+0x144` flags), so the outcome is garbage-dependent; the
+engine keeps the intake as a no-op (group made, orders untouched, no crash; tests/test_engine_structure_hit.py). Map 32's two structures (types 21 and 8,
+owner 3, HP 500 / 1000) are hostile to the player: a click only hovers (info panel), so the J4 play-through has no way to attack them.
+
 ## 6. Stats that feed the record (what the engine must build)
 
 Both unit families end with the same layout. The record and the armour block are first filled from the unit's own data, then the
@@ -336,7 +362,7 @@ AI reaction `FUN_0056e6b8` (defender alert message, `brain+0x54/+0x58/+0x94`), t
 target scan (`FUN_0056a1fb`, `FUN_0056ed4e`), special-attack rolls (`FUN_0056a981`), mage casting (`FUN_0056b059`); effects: Bless / Curse
 bits (the `take_hit` inputs exist, nothing sets them), Invisibility ending on attack is built (16.5),
 Haste/Slow; item modifier kinds other than those in section 6 (speed, scan range, mana, regeneration, castSpell on a weapon); equipment
-swapping in play; kill counters, bestiary byte, message `0x94`; the summon-cap job (`+0x148`, 12.6; needs the Summon spell); structure targets (`FUN_00516ea0`); sound (the `0x73` reaction has no animation, only a sound: 16.1).
+swapping in play; kill counters, bestiary byte, message `0x94`; the summon-cap job (`+0x148`, 12.6; needs the Summon spell); structure targets as order targets (5.4: hits are modelled); sound (the `0x73` reaction has no animation, only a sound: 16.1).
 
 ## 11. VERIFY IN GAME
 

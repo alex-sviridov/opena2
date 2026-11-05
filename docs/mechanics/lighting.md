@@ -33,6 +33,35 @@ tint = (0, 12, 48)). The tint is added to every palette in modes 1–3
 tinted tables). `0x6226cc/0x6226d0` are the shadow levels (§5), passed to
 sprite method `+0x3c` (`FUN_00424af4`, shadow blitters).
 
+## 1a. When the exe recomputes light, CONFIRMED
+
+`FUN_0041d3b9(force)` (checked in REA, GOG build) is the only path to
+`FUN_00474d98` and (besides `FUN_0041c18c`, which re-lights a 2x2 patch for
+cell flags 14/15) to `FUN_004a5dd2`. Callers: scenario load `FUN_0041bee2`
+(force 1), the view's message 0x401 (force 0), the option toggle `FUN_0040c8a0`
+(key `N`, only in debug mode `DAT_006227d8`; force 1), the options dialog
+`FUN_00442e8b` (force 1 when `DAT_00622770` changed). With force 0 it runs
+only when the view is in game state (`+0x404 & 1`), `DAT_00622770 ≠ 0`,
+`clock & 15 == 0` and `m = (clock >> 4) + 360` is a multiple of 20: every 320
+ticks, starting at tick 0. The sequence is `FUN_00474d98(m)`, `FUN_004a5dd2`
+(whole map), `FUN_00404910`, `FUN_0047e345`, then redraw flags.
+
+`DAT_00622770` is the "ShowTimeFlow" option (`GameOptions/ShowTimeFlow` in
+`game%d.sav`, [saves](../formats/saves.md)); its static default is 0, so a
+new game has no time of day: the load call applies the option-off row (A 14,
+D 32, α +π/4, no tint) over the map header's light fields. No script
+instruction, trigger or unit touches the light; nothing else writes
+`0x6226c0..d8`. For map 32 (J4) the header light is therefore never used and
+the light is constant unless the option is switched on. INFERRED: the clock is
+the game tick counter (`+0x408`).
+
+Engine: `TerrainView(time_flow=False)` is that default; `set_clock(tick)`
+repeats the cadence above and `set_time_flow` is the toggle. Client-only
+(view light, not simulation state): the replay hash is unaffected. A light
+change bumps `TerrainView.version`, which empties the surface cache, so a
+step costs one cold frame (~730 ms on a 1024x768 view, every 320 ticks and only
+with the option on); off, there is no cost.
+
 ## 2. Terrain light map (`FUN_004a5dd2`), CONFIRMED
 
 Per vertex `(x, y)`, x in 1..w−2, y in 1..h−2, signed heights `H`

@@ -13,9 +13,13 @@ class SurfaceCache:
     def __init__(self, terrain_view, capacity=8192):
         self.tv, self.capacity = terrain_view, capacity
         self._d = OrderedDict()
+        self._version = terrain_view.version
         self.hits = self.misses = 0
 
     def get(self, item):
+        if self.tv.version != self._version:        # the light changed (day/night step)
+            self._d.clear()
+            self._version = self.tv.version
         key = item.key
         d = self._d
         if key in d:

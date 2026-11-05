@@ -1,6 +1,7 @@
 """Synthetic tests, one per rule in docs/mechanics/lighting.md (sections 3-5)."""
 
 import numpy as np
+import pytest
 
 from allods2 import graphics as gfx
 from allods2.graphics.lighting import NO_LIGHT, STATIC_LIGHT_PHASES
@@ -162,3 +163,72 @@ def test_fog_column_quads_overlap_only_on_63_and_127():
     vy = np.array([[0, 0], [32, 95], [96, 160]])
     gfx.draw_fog(s, L, vy, 1, 2)
     assert s[31, 0] == 0x7BEF and s[32, 0] == 0x39E7 and s[33, 0] == 0x7BEF
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_fog_layers_equal_draw_fog(seed):
+    """The cached layer form of the fog pass is bit-identical to the reference per-column draw (overlapping relief folds included)."""
+    rng = np.random.default_rng(seed)
+    cols, rows = 6, 7
+    L = rng.choice([0, 0, 8, 16, 3, 11], size=(rows + 3, cols + 1))
+    L[2:5, :] = np.where(rng.random((3, cols + 1)) < 0.5, 8, L[2:5, :])
+    vy = np.arange(rows + 3)[:, None] * 32 + rng.choice([0, 0, 31, 63, 127, -40, 17], size=(rows + 3, cols + 1))
+    H, W = 190, 200
+    px = rng.integers(0, 65536, size=(H, W)).astype(np.uint16)
+    for clip in (None, (0, 0, 190, 150), (10, 20, 170, 170)):
+        a, b = px.copy(), px.copy()
+        gfx.draw_fog(a, L, vy, cols, rows, clip=clip)
+        gfx.apply_fog_layers(b, gfx.fog_layers(L, vy, cols, rows, (H, W), clip=clip))
+        assert (a == b).all()
+        assert not (a == px).all()
+
+
+def test_fog_rgb_path_equals_the_16_bit_round_trip():
+    from allods2.graphics.palette import pack16, unpack16
+    rng = np.random.default_rng(3)
+    cols, rows = 5, 6
+    L = rng.choice([0, 8, 16, 5, 13], size=(rows + 3, cols + 1))
+    vy = np.arange(rows + 3)[:, None] * 32 + rng.choice([0, 63, -20, 127], size=(rows + 3, cols + 1))
+    H, W = 170, 160
+    words = rng.integers(0, 2**32, size=H * W, dtype=np.uint64).astype(np.uint32)
+    rgb = words.view(np.uint8).reshape(H, W, 4).copy()
+    px = pack16(rgb[..., :3])
+    gfx.draw_fog(px, L, vy, cols, rows)
+    want = unpack16(px)
+    w2 = words.copy()
+    gfx.lighting.apply_fog_layers_rgb(w2, gfx.fog_layers(L, vy, cols, rows, (H, W)))
+    assert (w2.view(np.uint8).reshape(H, W, 4)[..., :3] == want).all()
+    assert (w2.view(np.uint8).reshape(H, W, 4)[..., 3] == rgb[..., 3]).all()      # the X byte is left alone
+
+
+def _flow_view(time_flow):
+    from allods2.graphics.terrain import TerrainSet
+    from engine.view import TerrainView
+    from engine.world import World
+    w = World.__new__(World)
+    w.heights = np.zeros((8, 8), np.int16)
+    w.cells = np.zeros((7, 7), np.uint16)
+    return TerrainView(w, TerrainSet({}, np.zeros((128, 32), np.uint8), np.zeros((256, 3), np.uint8)),
+                       time_flow=time_flow)
+
+
+def test_time_flow_off_never_recomputes():
+    tv = _flow_view(False)
+    v = tv.version
+    assert not any(tv.set_clock(t) for t in range(0, 2000))
+    assert tv.version == v and tv.day.ambient == 14 and tv.day.angle == pytest.approx(0.78539815)
+
+
+def test_time_flow_cadence_every_320_ticks():
+    tv = _flow_view(True)
+    hits = [t for t in range(0, 6000) if tv.set_clock(t)]
+    assert hits == list(range(0, 6000, 320))              # (tick >> 4) + 360 a multiple of 20; tick 0 steps off the seed value
+
+
+def test_time_flow_night_light_and_toggle():
+    tv = _flow_view(True)
+    tv.set_clock((22 * 60 - 360) * 16)                    # 22:00: night
+    assert (tv.day.ambient, tv.day.diffuse, tv.day.tint) == (32, 8, (0, 12, 48))
+    assert tv.light[3, 3] == 64                           # flat: 68 - 8 * 0.5
+    tv.set_time_flow(False, 0)
+    assert tv.day.ambient == 14 and tv.light[3, 3] == 46

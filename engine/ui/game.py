@@ -398,7 +398,9 @@ class GameUi:
             return 0
         self._failed_shown = True
         self._close_book_for_result()
-        self.modals.push(modal.failed_dialog(self.layout, self.main_text, self.dialog_text, wrap=self.wrap))
+        cause = self.world.players[self.player_id].death_code      # message 0xb4's cause (2 = the hero died, 3.. = the script's fail code)
+        reason = story.failure_text(self.mission_text, self.main_text, cause)
+        self.modals.push(modal.failed_dialog(self.layout, self.main_text, self.dialog_text, reason, self.wrap))
         return 1
 
     def after_step(self):

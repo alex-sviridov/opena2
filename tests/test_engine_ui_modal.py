@@ -9,7 +9,7 @@ from engine.world import Player
 from allods2.formats import saves as S
 from test_engine_death import hero, unit, world
 
-MAIN = MainText(["m%02x" % i for i in range(0x100)])
+MAIN = MainText(["m%02x" % i for i in range(0x140)])
 DIALOGS = MainText(["d%02x" % i for i in range(0xA0)])
 PATCH = MainText(["p%02x" % i for i in range(0x80)])
 MISSION = ("#briefing\r\nx\r\n#\r\n#event1\r\n<NPC=21, IAMMALE, IAMFIGHTER, PART=1>\r\nmale fighter\r\n<NPC=21, IAMFEMALE, IAMFIGHTER, PART=1>\r\nfemale fighter\r\n"
@@ -169,14 +169,15 @@ def test_mission_complete_dialog_is_the_menu_class_window_with_victory_and_conti
 def test_mission_failed_dialog_is_a_text_window_with_two_stacked_buttons_and_the_plus_0x40_quirk():
     ui, w = make()
     w.players[1].defeat_dialog = True
+    w.players[1].death_code = 2
     assert ui.poll(0) == 1 and ui.modals.kinds() == ("failed",)
     d = ui.modals.top
     f = d.frame
-    assert d.caption == "m8d" and d.text == "" and d.lines == ()                                   # caption `main 0x8d`; the reason text of the exe (string list `0x6227b0`) is empty in J1
+    assert d.caption == "m8d" and d.text == "m11a" and d.lines == ("m11a",)                        # caption `main 0x8d`; no `#failure2` section: the default `main 0x118 + 2`
     assert (f.w, f.h) == (488, 232) and f.x == 76 and f.y == (480 - 168) // 2                      # centred with 168, then `bottom += 0x40` (`0x44d263`): 32 px low
     assert [(b.rect.x - f.x, b.rect.y - f.y, b.rect.w, b.rect.h) for b in d.buttons] == [(61, 136, 366, 24), (61, 160, 366, 24)]      # w/8 .. 7w/8, h-0x60 / h-0x48
     assert (d.caption_rect.x - f.x, d.caption_rect.y - f.y) == (0x28, 0x30) and d.align == "left"
-    assert ui.poll(1) == 0 and ui.key("escape") and ui.key("return") and ui.frozen                  # no way out but a button
+    assert ui.poll(1) == 0 and ui.key("escape") and ui.key("return") and ui.frozen                  # ESC = message 0x446 (Load Game, unbuilt): no way out but a button
     load = d.buttons[1]
     assert not load.enabled and d.click((load.rect.x + 1, load.rect.y + 1)) is None                 # Load Game stays disabled in J1
     click(ui, d.buttons[0])
@@ -265,3 +266,26 @@ def test_the_result_dialogs_close_an_open_spell_book_but_not_the_inventory():
     ui.key("b")
     assert ui.book.open
     assert ui._open_failed() == 1 and not ui.book.open              # `0x42b` -> `FUN_0048b885`
+
+
+FAIL = "#briefing\r\nx\r\n#\r\n#failure2 \r\nHero died\r\n#\r\n#failure3\r\nIgles\r\nsecond line\r\n# \r\n#failure5\r\nSword\r\n#\r\n#event1\r\nx\r\n"
+
+
+def test_failure_reason_list_follows_the_exes_table_with_defaults_for_2_to_4():
+    from engine.ui import story
+    assert story.failure_texts(FAIL, MAIN.line) == ["Hero died", "Igles\nsecond line", "m11c", "Sword"]      # #failure4 missing: main 0x11c; #failure6 missing and n >= 5: end
+    assert story.failure_texts(None, MAIN.line) == ["m11a", "m11b", "m11c"]
+    assert [story.failure_text(FAIL, MAIN.line, c) for c in (1, 2, 3, 4, 5, 6)] == ["", "Hero died", "Igles\nsecond line", "m11c", "Sword", ""]
+
+
+def test_failed_window_shows_the_reason_of_the_players_death_code():
+    ui, w = make(mission=FAIL)
+    w.players[1].defeat_dialog = True
+    w.players[1].death_code = 5
+    ui.poll(0)
+    assert ui.modals.top.text == "Sword"
+    ui, w = make(mission=FAIL)
+    w.players[1].defeat_dialog = True
+    w.players[1].death_code = 3
+    ui.poll(0)
+    assert ui.modals.top.lines == ("Igles", "second line") and ui.modals.top.escape == modal.NOOP

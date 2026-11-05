@@ -1,9 +1,15 @@
-"""python -m engine run MAP [--x PX --y PX] [--speed N] [--size 640x480|800x600|1024x768] [--install DIR]
+"""python -m engine play MAP starts a campaign map as the game does (map script, the hero of the map, monsters, fog, no debug flag) and records
+the session in ~/.allods2/sessions/<map>-<time>/ (session.json = seed + commands, final.json = tick / result / world hash, engine.log =
+reports and crash traceback; docs/superpowers/specs/2026-11-05-prototype-j4-design.md); `replay SESSION` runs it again headless, `--verify` checks the hash.
+
+   python -m engine run MAP [--x PX --y PX] [--speed N] [--size 640x480|800x600|1024x768] [--install DIR]
    python -m engine screenshot MAP X Y DEST.png [--tick N] [--size WxH] [--interface [--select UID,...]]
                                                 [--install DIR]
    python -m engine world-info MAP [--install DIR] [--strict]
    python -m engine world-dump MAP DEST.json [--install DIR]
    python -m engine minimap MAP DEST.png [--units] [--install DIR]
+   python -m engine play MAP [--out DIR] [--size WxH] [--speed N] [--difficulty 1|2|3] [--seed N] [--hero-name NAME] [--install DIR]
+   python -m engine replay SESSION [--verify] [--install DIR]
 
 MAP as for `python -m allods2 map` (10, scenario/10.alm, or a file).  X, Y =
 the viewport's top-left in world pixels (x = 32*col, y = 32*row - height).
@@ -200,6 +206,72 @@ def debug_move_commands(world, args):
     return [FollowPath(uid, expand_line((u.x, u.y), ends))]
 
 
+def replay_cmd(a):
+    """`replay SESSION`: tick, result and hash of the run; with `--verify` exit 1 on a hash different from final.json."""
+    from engine import session
+    try:
+        world, got, recorded = session.replay_session(a.session, a.install)
+    except (OSError, ValueError, KeyError) as e:
+        print("replay: %s" % e, file=sys.stderr)
+        return 2
+    print("tick %d result %s hash %s" % (got["tick"], got["result"] or "-", got["hash"]))
+    if a.verify:
+        if not recorded or "hash" not in recorded:
+            print("replay: no recorded hash (final.json missing or the session was killed)", file=sys.stderr)
+            return 2
+        if recorded["hash"] != got["hash"] or recorded["tick"] != got["tick"]:
+            print("MISMATCH: recorded tick %s hash %s" % (recorded["tick"], recorded["hash"]), file=sys.stderr)
+            return 1
+        print("verified")
+    return 0
+
+
+def play_cmd(a, parser):
+    """`play MAP`: the game's own start (map script, the map's hero, AI, fog, Medium), session files in a known place."""
+    from engine import session
+    a.cmd = "run"                                  # the run path's defaults, as a player has them
+    a.x = a.y = 256
+    a.no_shadows = a.no_light = a.no_smoothing = a.no_objects = False
+    a.debug, a.triggers, a.party, a.interface = "", True, 0, True
+    a.seed = a.seed if a.seed is not None else time.time_ns() & 0xFFFFFFFF
+    try:
+        directory = session.new_session_dir(a.map, a.out)
+    except OSError as e:
+        parser.error("session directory: %s" % e)
+    rec = session.Recorder(directory, a.map, a.seed, a.difficulty, a.size)
+    rec.start_logging()
+    print("session %s (seed %d)" % (directory, a.seed))
+    reason, error = "quit", None
+    try:
+        world, tv, camera, assets, opts, debug = _setup(a)
+        hero = world.units.get(world.players[1].main_hero)
+        if hero is not None:                       # start with the hero in view
+            camera.move_to(hero.x * 32 - camera.view_w / 2, hero.y * 32 - camera.view_h / 2)
+        from engine.backend_pygame import window
+        from engine.sim import triggers, vision
+        vision.enable(world)
+        vision.vision_system(world, [])
+        from allods2.common import as_fs
+        from allods2.minimap import load_color_table, load_dot_colors
+        from engine.view import Minimap
+        mm = Minimap(world, load_color_table(as_fs(a.install)), load_dot_colors(as_fs(a.install)))
+        import re
+        mission = re.search(r"(\d+)(?:\.alm)?$", os.path.basename(a.map.rstrip("/\\")), re.I)
+        window.run(world, tv, camera, a.layout, a.speed, "Allods 2 - " + world.name, assets=assets, options=opts,
+                   debug=debug, minimap=mm, ai=True, hero_name=a.hero_name,
+                   mission_id=mission.group(1) if mission else None,
+                   frame_hook=rec.frame, sim_hook=rec.attach)
+        reason = {"won": "victory", "lost": "defeat"}.get(triggers.result(world), "quit")
+    except BaseException as e:                     # a crash or Ctrl+C: the session is still written
+        reason = "interrupted" if isinstance(e, KeyboardInterrupt) else "crash"
+        error = session.crash_text()
+        print(error, file=sys.stderr)
+    final = rec.finish(reason, error)
+    print("session %s: %s, tick %s" % (directory, reason, final.get("tick", "-")))
+    print("replay: python -m engine replay %s --verify" % directory)
+    return 1 if reason == "crash" else 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="python -m engine")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -257,7 +329,24 @@ def main(argv=None):
                    help="game difficulty option 1 easy, 2 medium (default, no tweak), 3 hard: the new-game screen's "
                         "Easy/Medium/Hard (docs/engine/ai.md 10.1)")
     r.add_argument("--seed", type=int, help="RNG seed (default: the clock, printed; the exe seeds from it too)")
+    pl = sub.add_parser("play", help="play a campaign map and record the session")
+    pl.add_argument("map")
+    pl.add_argument("--out", help="session directory (default ~/.allods2/sessions/<map>-<time>)")
+    pl.add_argument("--size", type=_size, default=(640, 480))
+    pl.add_argument("--speed", type=int, default=4, choices=range(9))
+    pl.add_argument("--difficulty", type=int, choices=(1, 2, 3), default=DEFAULT_DIFFICULTY)
+    pl.add_argument("--seed", type=int)
+    pl.add_argument("--hero-name", default="Hero")
+    pl.add_argument("--install")
+    rp = sub.add_parser("replay", help="run a recorded session again, headless")
+    rp.add_argument("session", help="a session directory or its session.json")
+    rp.add_argument("--verify", action="store_true", help="exit 1 when the world hash differs from final.json")
+    rp.add_argument("--install")
     a = p.parse_args(argv)
+    if a.cmd == "replay":
+        return replay_cmd(a)
+    if a.cmd == "play":
+        return play_cmd(a, p)
     if a.cmd == "minimap":
         return minimap_cmd(a)
     if a.cmd == "world-info":

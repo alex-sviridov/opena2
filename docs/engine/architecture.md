@@ -146,7 +146,7 @@ written row; the backend turns it into a surface once (`SurfaceCache`, LRU,
 key `(col, row, water phase)`). Static cells are cached once, water cells once
 per animation phase (4). Cells are drawn row by row, top to bottom. Light is
 the map's terrain light at the fixed default daylight, as `map render
---relief` (DECISION; day/night is a later task). The dirt flag is cleared as
+--relief` (the game's default, "ShowTimeFlow" off; the day/night cycle is `TerrainView.time_flow`, [lighting §1a](../mechanics/lighting.md#1a-when-the-exe-recomputes-light-confirmed)). The dirt flag is cleared as
 on load (`Map.runtime_terrain`).
 
 Measured (map 10, 80x80, 1024x768 viewport, 896 cells, SDL dummy driver):
@@ -244,8 +244,6 @@ Open: see [open-questions](../open-questions.md#rendering-and-engine).
 
 - Scroll: answered in G3b (whole cell per tick, border rule, 8-cell clamp; ui-layout §5). The view's exact
   "centre on unit" call is not wired (`(unit.x >> 8) - W/2`, no height term, CONFIRMED earlier).
-- Day/night light in the engine (the exe recomputes the light map with the
-  clock; G1 uses the fixed default).
 - Renderer: 31.6 ms (640x480) / 46 ms (1024x768) on the map 73 fight (combat.md 14.1); `build_draw_list` (~10 ms, per-object work for every tree in the window) is the next target for 30 fps at 1024x768.
 - Scroll hitch of about 27 ms when new cells enter (pre-warm water phases or add a
   flat-cell fast path to `composite`).

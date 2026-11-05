@@ -325,3 +325,124 @@ def draw_fog(surface, levels, vy, cols, rows, clip=None, bits=(5, 6, 5)):
             ok = (yy >= top) & (yy < bottom)
             col = surface[yy[ok], x + c]
             surface[yy[ok], x + c] = fog_shade(col, k[ok], bits)
+
+
+_FOG_LUTS = {}
+
+
+def fog_lut(bits=(5, 6, 5)):
+    """(17, 65536) uint16: `fog_shade` of every 16-bit pixel at every blend row (row 0 = identity)."""
+    if bits not in _FOG_LUTS:
+        px = np.arange(65536, dtype=np.uint16)
+        _FOG_LUTS[bits] = np.stack([fog_shade(px, k, bits) for k in range(17)])
+    return _FOG_LUTS[bits]
+
+
+_QUAD_CACHE = {}
+
+
+def _quad_columns(ytl, ytr, ybl, ybr, lv):
+    """`fog_quad_columns` memoised: the edges step by the height differences only, so a quad's columns are the same shifted by `ytl`
+    wherever it is on the screen (a scrolled view reuses nearly every quad)."""
+    key = (ytr - ytl, ybl - ytl, ybr - ytl, lv)
+    cols = _QUAD_CACHE.get(key)
+    if cols is None:
+        if len(_QUAD_CACHE) > 50000:
+            _QUAD_CACHE.clear()
+        cols = _QUAD_CACHE[key] = list(fog_quad_columns(0, key[0], key[1], key[2], lv))
+    return [(c, y0 + ytl, k) for c, y0, k in cols]
+
+
+def fog_layers(levels, vy, cols, rows, shape, clip=None):
+    """The same fog pass as `draw_fog`, as data: a list of (H, W) uint8 blend-row maps, applied in order by `apply_fog_layers`.
+
+    Every quad column / solid rectangle goes to the first layer after the last one that touched any of its pixels, so the layers
+    each hold disjoint pixels and the order of the overlapping draws (relief folds) is kept; row 0 = untouched.  The result of
+    `apply_fog_layers` equals `draw_fog` bit for bit (`tests/test_lighting.py`).  The point is to build it once per fog / camera
+    state and reuse it while the picture only changes inside."""
+    H, W = shape
+    left, top, right, bottom = clip or (0, 0, W, H)
+    depth = np.zeros((H, W), np.int16)
+    layers = []
+
+    def put(ys, xs, k):
+        layer = int(depth[ys, xs].max())
+        depth[ys, xs] = layer + 1
+        while len(layers) <= layer:
+            layers.append(np.zeros((H, W), np.uint8))
+        layers[layer][ys, xs] = k
+
+    for x, ytl, ytr, ybl, ybr, lv, solid in fog_runs(levels, vy, cols, rows):
+        if solid:
+            y0, y1 = max(ytl, top), min(ybl, bottom)
+            x0, x1 = max(x, 0), min(x + 32, W)
+            if y0 < y1 and x0 < x1:
+                put(slice(y0, y1), slice(x0, x1), lv[0])
+            continue
+        if x < left or x + 32 > right:
+            continue
+        if not ((ytl < bottom or ytr < bottom) and (ybl >= top or ybr >= top)):
+            continue
+        for c, y0, k in _quad_columns(ytl, ytr, ybl, ybr, lv):
+            a = max(top - y0, 0)
+            b = min(bottom - y0, len(k))
+            if a < b:
+                put(slice(y0 + a, y0 + b), x + c, k[a:b])
+    return layers
+
+
+def apply_fog_layers(surface, layers, bits=(5, 6, 5)):
+    """Darken a 16-bit view surface (H x W uint16, contiguous, in place) with `fog_layers`."""
+    lut = fog_lut(bits)
+    flat = surface.reshape(-1)
+    for k in layers:
+        kf = k.reshape(-1)
+        idx = np.flatnonzero(kf)
+        if len(idx):
+            flat[idx] = lut[kf[idx], flat[idx]]
+
+
+_FOG_BYTE_LUTS = {}
+
+
+def fog_byte_lut(bits=(5, 6, 5)):
+    """(17, 3, 256) uint8: channel value c at blend row k -> the 8-bit channel after pack16, `fog_shade`, unpack16 (the channels are
+    independent, so the 16-bit round trip of an RGB image is this table per channel)."""
+    if bits not in _FOG_BYTE_LUTS:
+        from .palette import pack16, unpack16
+        c = np.arange(256, dtype=np.uint8)
+        lut = np.zeros((17, 3, 256), np.uint8)
+        for ch in range(3):
+            rgb = np.zeros((256, 3), np.uint8)
+            rgb[:, ch] = c
+            px = pack16(rgb, bits)
+            for k in range(17):
+                lut[k, ch] = unpack16(fog_shade(px, k, bits), bits)[:, ch]
+        _FOG_BYTE_LUTS[bits] = lut
+    return _FOG_BYTE_LUTS[bits]
+
+
+def quantize_words_565(words):
+    """`unpack16(pack16(.))` of RGBX words (R, G, B, X bytes, little-endian uint32), in place: R and B keep 5 bits, G 6, the low bits
+    repeat the high ones."""
+    keep = np.uint32(0xFFF8FCF8)
+    low = ((words >> 5) & np.uint32(0x00070007)) | ((words >> 6) & np.uint32(0x00000300))
+    words &= keep
+    words |= low
+
+
+def apply_fog_layers_rgb(words, layers):
+    """The 16-bit fog pass on an RGBX frame (`words` = its (h*w,) uint32 view, bytes R, G, B, X): the whole frame goes through the
+    565 round trip as the game's 16-bit surface does, the fogged pixels take their blend rows.  Equals pack16 + `apply_fog_layers` +
+    unpack16 (`tests/test_lighting.py`)."""
+    quantize_words_565(words)
+    lut = fog_byte_lut()
+    lr, lg, lb = (lut[:, ch, :].astype(np.uint32).reshape(-1) << (8 * ch) for ch in range(3))
+    for k in layers:
+        kf = k.reshape(-1)
+        idx = np.flatnonzero(kf)
+        if len(idx):
+            w = words[idx]
+            base = kf[idx].astype(np.uint32) << 8
+            out = lr[base | (w & 255)] | lg[base | ((w >> 8) & 255)] | lb[base | ((w >> 16) & 255)]
+            words[idx] = out | (w & np.uint32(0xFF000000))

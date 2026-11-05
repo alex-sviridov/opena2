@@ -189,7 +189,7 @@ def key_name(ev):
 
 def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Allods 2", max_frames=None,
         assets=None, options=None, debug=None, minimap=None, player_id=PLAYER_ID, commands=(), ai=True,
-        trace=False, hero_name="Hero", mission_id=None, frame_hook=None):
+        trace=False, hero_name="Hero", mission_id=None, frame_hook=None, sim_hook=None):
     """Accumulator main loop: fixed-step sim, variable-rate drawing.  Returns the `Simulation` when the window
     closes (or after `max_frames`, for tests).  `layout`: `Layout` of the window size (the camera is built from
     `layout.viewport`).  `ai`: the monsters think (docs/engine/ai.md; `--no-ai` of the CLI).  F1-F3 and Shift+F4/F5 toggle the debug overlays, F4-F12 are the spell shortcuts, Ctrl+H the health bars, Ctrl+F cycles the formation.
@@ -202,7 +202,8 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     The interface is `engine.ui.GameUi` (docs/engine/ui-layout.md 11): ESC opens the menu (End Quest -> Exit leaves), the Pause key a notice
     window, TAB toggles the info panel's picture / text mode; while any dialog is open the loop skips `sim.step`, closes the tick block at resume (`TickClock.resume`: one tick, no burst), freezes the edge scroll and the world input, and keeps drawing.  Closing the window quits at once.  `trace`: the "No way" line (the
     exe's `-trace`), `hero_name`: the name of the player's heroes, `mission_id`: the `mission<id>.txt` of the story windows.
-    `frame_hook(frame, ui, world)` runs at the start of every frame (a test hook)."""
+    `frame_hook(frame, ui, world)` runs at the start of every frame (a test hook); `sim_hook(sim)` gets the `Simulation` once built
+    (the session recorder of `play`)."""
     options, debug = options or DrawOptions(), debug or DebugFlags()
     layout = layout or Layout.for_size(camera.view_w + 160, camera.view_h)
     screen = ensure_display(*layout.size)
@@ -219,6 +220,8 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     panel = MinimapPanel.from_layout(minimap.geometry, layout) if minimap else None
     sim, queue, scroll = Simulation(world, ai=ai, triggers=world.script is not None, vision=world.fog is not None), CommandQueue(), ScrollInput()
     sim.ui = ui
+    if sim_hook is not None:
+        sim_hook(sim)
     for cmd in commands:
         queue.put(cmd)
     player = world.players[player_id]
@@ -412,6 +415,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
                 was_frozen = False
             for _ in range(ticks.advance(pygame.time.get_ticks())):
                 sim.step(queue.drain())
+                terrain_view.set_clock(world.tick)      # FUN_0041d3b9 cadence: every 320 ticks, option on only
                 steps += 1
         now = pygame.time.get_ticks()
         ui.knowledge.feed(world, player_id)            # before feed_fight_log drains the Killed entries

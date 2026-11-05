@@ -192,9 +192,9 @@ def complete_dialog(layout, main, dialogs):
 
 
 def failed_dialog(layout, main, dialogs, reason="", wrap=plain_wrap):
-    """Mission failed (`0x431`; CONFIRMED `FUN_0044d1e2` / `FUN_0044d237`): a text window with caption `main 0x8d`, the mission's reason text `reason` (the exe takes it from the string list
-    `0x6227b0`; J1 has none: empty) and two stacked buttons, `Exit to Main Menu` (ends the program in J1) and `Load Game` (disabled: no saves in J1).  The window is centred with its
-    height before the `+0x40` the failed class adds, so it sits 32 px low.  No ESC / Enter action (DECISION)."""
+    """Mission failed (`0x431`; CONFIRMED `FUN_0044d1e2` / `FUN_0044d237`): a text window with caption `main 0x8d`, the mission's reason text `reason` (the exe's string list `0x6227b0`: `story.failure_text`) and two stacked buttons, `Exit to Main Menu` (ends the program in J1) and `Load Game` (disabled: no saves in J1).  The window is centred with its
+    height before the `+0x40` the failed class adds, so it sits 32 px low.  ESC sends message `0x446` (CONFIRMED `FUN_004dc595` -> slot `0x48` = `FUN_004441c1`), the message of the Load Game button, even though that button is disabled;
+    J1 has no load window, so ESC does nothing.  Enter only presses a focused button (`FUN_004d5f0f`; initial focus not decoded): no Enter action (DECISION)."""
     tw = failed_window((576, 280), lambda w: len(wrap(reason, w)) if reason else 0, True)
     frame = _place(layout, tw)
     entries = [(dialogs(D_EXIT_MENU), True, ("quit", "defeat")), (dialogs(D_LOAD), False, NOOP)]
@@ -203,7 +203,7 @@ def failed_dialog(layout, main, dialogs, reason="", wrap=plain_wrap):
         text, key = split_label(lbl)
         rows.append(DButton(_rect(frame, r), text, en, act, key))
     tr = _rect(frame, tw.text)
-    return Dialog("failed", frame, tuple(rows), reason, tr, tuple(wrap(reason, tr.w)) if reason else (), main(M_FAILED), _rect(frame, tw.caption), "left", escape=None, enter=None)
+    return Dialog("failed", frame, tuple(rows), reason, tr, tuple(wrap(reason, tr.w)) if reason else (), main(M_FAILED), _rect(frame, tw.caption), "left", escape=NOOP, enter=None)
 
 
 class ModalStack:

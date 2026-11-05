@@ -276,12 +276,13 @@ def swing_tick(world, u):
         spells.cast_tick(world, u)
         return
     t = world.find_unit(u.swing_target)
+    ob = world.objects.get(u.swing_target) if t is None and u.swing_target is not None else None   # FUN_00516c1f: a structure target (class dispatch)
     if u.phase == PHASE_START:
         extra = 0
-        if t is not None and u.hp > 0:              # FUN_00516b2f: the start message needs both units and the attacker's HP
+        if (t is not None or ob is not None) and u.hp > 0:              # FUN_00516b2f: the start message needs both units and the attacker's HP
             from . import effects                                       # FUN_00516b2f: `FUN_005106d2(0xc)` -> the Invisibility effects get `+0x42 := 1`
             effects.end_invisibility(u)
-            extra = attack_extra(attack_gap(foot(u), foot(t)))
+            extra = attack_extra(attack_gap(foot(u), foot(t)) if ob is None else structure_gap(u, ob))
             u.action, u.action_start_tick = mv.ATTACK, world.tick       # message 0x71: the client restarts the attack animation
             rest = st.windup + st.recovery                              # FUN_00504ab8: +0x138 = tick + +0x134 + +0x135 (the rest test, combat.md 12.5)
             u.step_end = world.tick + (rest if st.range > 1 else rest & 0xFF)   # +0x12c > 1: message 0x72 (dword); else 0x71 (byte argument)
@@ -291,7 +292,9 @@ def swing_tick(world, u):
     elif u.phase == PHASE_WINDUP:
         u.timer = (u.timer - 1) & 0xFF
         if u.timer == 0:
-            if t is not None:
+            if ob is not None:
+                resolve_structure_attack(world, u, ob, st)
+            elif t is not None:
                 resolve_attack(world, u, t, st)
             u.phase = PHASE_RECOVERY
             delay = hero_delay(st.weapon_weight, st.reaction) if st.human and st.has_weapon else 0
@@ -322,6 +325,46 @@ def resolve_attack(world, a, t, st):
     xp.damage_credit(world, a, t, res.damage, before)
     if before > 0 and t.hp <= 0:
         log(world, Died(world.tick, t.id, a.id))
+
+
+STRUCTURE_ARMOUR = 5               # FUN_005201b2: flat reduction of every structure hit
+
+
+def structure_damage(rec, rng):
+    """`FUN_005201b2` damage part (CONFIRMED): only the attack record's ELEMENTAL part counts: `d = emin + rand(espread)` (the spread is drawn only when
+    `espread > 0`, `FUN_0051fa25`), minus 5, floored at 0.  Physical damage, to-hit and the second part are never read."""
+    d = rec.elo
+    if rec.esp > 0:
+        d += rng.rand(rec.esp)               # FUN_0051fa25(n) = (rand15 * (n + 1)) >> 15 = rng.rand(n)
+    d -= STRUCTURE_ARMOUR
+    return d if d > 0 else 0
+
+
+def structure_gap(a, ob):
+    """`FUN_005169de` against a structure (INFERRED: the exe calls the creature centre routines `FUN_0050d884` / `FUN_0050d8c0` on the structure object;
+    here the centre of its `w x h` footprint and size = max(w, h))."""
+    w, h = ob.size if ob.size else (max(c for c, _, _ in ob.footprint) + 1, max(r for _, r, _ in ob.footprint) + 1)
+    cx = ((ob.x << 8) + ob.sub_x - 128 + (w << 7)) & 0xFFFF
+    cy = ((ob.y << 8) + ob.sub_y - 128 + (h << 7)) & 0xFFFF
+    f = foot(a)
+    d = max(abs(centre_x(f) - cx), abs(centre_y(f) - cy))
+    d -= (f.size + max(w, h)) * 128 - 256
+    return 1 if d <= 0x180 else (d + 0x40) >> 8
+
+
+def resolve_structure_attack(world, a, ob, st):
+    """`FUN_00516c1f` -> `FUN_00516ea0` (CONFIRMED): nothing unless the attacker has HP > 0 and an owner and the gap is in range; then
+    `structure.HP -= structure_damage` (s16; an indestructible structure (data.bin healthMax 0, server `+0x44`) takes 0) and message 0x73 when the
+    structure had HP > 0 before or has HP > -10 now.  Nothing else happens at lethal damage (no block release, no removal: the exe only purges
+    list entries, combat.md 5.4).  Returns the damage or None."""
+    if a.hp <= 0 or a.owner is None or ob.kind not in ("structure", "bridge") or structure_gap(a, ob) > a.range:
+        return None
+    dmg = 0 if ob.hp_max == 0 or getattr(ob, "indestructible", False) else structure_damage(st.record, world.rng)
+    before = ob.hp
+    ob.hp = before - dmg
+    if before > 0 or ob.hp > -10:
+        log(world, Damage(world.tick, a.id, ob.id, dmg, ob.hp))
+    return dmg
 
 
 from . import ai, spells, xp    # noqa: E402  xp reads `combat_stats` and `log` from this module: bound at the end (circular on purpose)

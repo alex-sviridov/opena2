@@ -8,7 +8,7 @@ from .canvas import Canvas, checker, over_checker
 from .font import (ALIGN_BOTTOM, ALIGN_CENTER, ALIGN_MIDDLE, ALIGN_RIGHT, Font,
                    ansi_to_oem, blend, last_ink_columns, locale_flag, map_char, read_metrics)
 from .lighting import (FOG_EXPLORED, FOG_SEEN, FOG_UNSEEN, Daylight, daylight, daylight_tint,
-                       draw_fog, fog_level, fog_quad_columns, fog_runs, fog_shade,
+                       apply_fog_layers, draw_fog, fog_layers, fog_level, fog_quad_columns, fog_runs, fog_shade,
                        lit_terrain_corner,
                        object_light_row, object_light_row_lit, projectile_light,
                        shadow_angle, shadow_pixel, shadow_row_offsets, shadow_shear,

@@ -11,7 +11,7 @@
   - `engine.log`: python logging of `engine.*` at INFO (the "not implemented" reports), and the traceback of a crash.
 - The log is written at exit, on a crash (`finally`), and every ~10 s of wall time (a hard kill loses at most that).
 - `python -m engine replay <session dir | session.json> [--verify] [--window]`: headless by default, prints tick, result, hash; `--verify` exits 1 when the hash differs from `final.json`. `--window` = visual playback is **not** built (VERIFY: user did not ask; a replay shows through `screenshot`-like tools only if needed by a bug).
-- Replay steps the same systems as play (triggers, AI); fog (client state, no reader in the simulation) is left off in replay unless a test shows it changes the hash.
+- Replay steps the same systems as play (triggers, AI, **fog**): the world dump holds the fog bits, so a replay without fog gives another hash (found by the first smoke run).
 - Bug pass: each reported issue is reproduced with `replay`, written as a failing test (a trimmed log or a scripted scenario), fixed, and the spec checked and corrected where the cause was a spec error (CONFIRMED / INFERRED marks as in CLAUDE.md).
 
 ## Components
@@ -34,4 +34,3 @@ All tests pass, golden tests reviewed; the user's recorded run replays to the sa
 ## Open questions
 
 - Visual replay (`--window`) is deferred.
-- Whether fog changes the replayed hash (expected no: `Simulation` vision is "client state, nothing reads it").
