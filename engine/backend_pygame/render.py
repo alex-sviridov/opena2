@@ -8,7 +8,10 @@ import pygame
 
 from allods2.graphics import write_png
 
+from allods2.graphics import lighting as lt
+from allods2.graphics.palette import pack16, unpack16
 from engine.view import build_draw_list, build_terrain_items
+from engine.view import fog as fog_view
 
 from .sprites import Frame, blend_half, blend_shadow, frame_alpha, frame_half, frame_shadow  # noqa: F401 (the surface variants are the tests' API)
 from .text import draw_text, render_text
@@ -77,9 +80,9 @@ def _overlay(surface, caches, it):
         surface.blit(render_text(it.text, DEPTH_COLOR, font=3, shadow=False, background=(0, 0, 0)), r.topleft)
 
 
-def draw_frame(surface, caches, terrain_items, items, camera):
+def draw_frame(surface, caches, terrain_items, items, camera, world=None):
     """Black background, the terrain items in list order, then the draw list's items in list order: sprites blit,
-    smoothing and shadows blend per pixel (numpy).  Everything is drawn into a `Frame` (a lock-free numpy-writable
+    smoothing and shadows blend per pixel (numpy); with `world` whose `fog` is set, the fog pass darkens the result last (vision.md).  Everything is drawn into a `Frame` (a lock-free numpy-writable
     surface) that is copied to `surface` at the end."""
     frame = Frame.get(*surface.get_size())
     target = surface
@@ -111,7 +114,19 @@ def draw_frame(surface, caches, terrain_items, items, camera):
             draw_bar(surface, it, caches.ball)
         else:
             _overlay(surface, caches, it)
+    if world is not None and world.fog is not None:
+        draw_fog_pass(frame, fog_view.overlay(world, camera, caches.terrain.tv.proj.vy))
     target.blit(surface, (0, 0))
+
+
+def draw_fog_pass(frame, ov):
+    """The exe's fog pass (`0x40a06a`-`0x40a5bc`, lighting.md 3) on the 16-bit (565) image of the frame."""
+    levels, vy, cols, rows = ov
+    if not (levels != lt.FOG_SEEN).any():
+        return
+    px = pack16(frame.bytes[..., :3])
+    lt.draw_fog(px, levels, vy, cols, rows)
+    frame.bytes[..., :3] = unpack16(px)
 
 
 def surface_rgb(surface):
@@ -135,7 +150,7 @@ def screenshot(terrain_view, camera, tick, dest, cache=None, assets=None, option
         items = build_draw_list(terrain_view.world, camera, tick, assets, options, debug)
     surf = pygame.Surface((camera.view_w, camera.view_h))
     draw_frame(surf, Caches(cache, sprite_cache), build_terrain_items(terrain_view, camera, tick),
-               items, camera)
+               items, camera, terrain_view.world)
     rgb = surface_rgb(surf)
     if dest:
         os.makedirs(os.path.dirname(os.path.abspath(dest)), exist_ok=True)

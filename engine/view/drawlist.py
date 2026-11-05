@@ -19,6 +19,7 @@ from allods2.formats import objects as fobj
 from allods2.graphics import lighting as lt
 from allods2.graphics.terrain import TILE
 
+from . import fog
 from .pick import PickRect
 
 CELL = TILE
@@ -248,15 +249,19 @@ def _structure(ctx, ent):
     """Structure or bridge: P0 shadows (not bridges), P1 flat, P3 (a) slices."""
     opts = ctx.opts
     bridge = ent.kind == "bridge"
+    state = fog.structure_state(ctx.world, ent)         # 0 in sight, 1 explored (frozen, not pickable), 2 never seen (not drawn)
+    if state == 2:
+        return
+    animate = opts.animate and state == 0
     aset = ctx.assets.structure_set(ent.type_id, ent.size if bridge else None)
     if aset is None:
         ctx.items.missing += 1
         return
     if bridge:
-        cells, _ = piece_cells(aset, False, ctx.tick, opts.animate)
+        cells, _ = piece_cells(aset, False, ctx.tick, animate)
         sx_, sy_ = aset.w, aset.h
     else:
-        cells, _ = piece_cells(aset, _destroyed(ent, aset), ctx.tick, opts.animate)
+        cells, _ = piece_cells(aset, _destroyed(ent, aset), ctx.tick, animate)
         sx_, sy_ = aset.W, aset.TH
     flat = bool(aset.rec.get("Flat"))
     g = fobj.ground_height(ctx.world.heights, (ent.x << 8) + 0x80, (ent.y << 8) + 0x80, sx_, sy_)
@@ -267,7 +272,7 @@ def _structure(ctx, ent):
     ov = aset.overlay() if opts.smoothing else None
     key = ("bridge" if bridge else "structure", ent.type_id)
     X0, Y0 = CELL * ent.x, CELL * ent.y - g
-    if not bridge and structure_hoverable(ent, aset) and in_window(ctx.win, ent.x, ent.y):
+    if not bridge and state == 0 and structure_hoverable(ent, aset) and in_window(ctx.win, ent.x, ent.y):
         ox, oy = X0 - ctx.cx, Y0 + (aset.TH - aset.FH) * CELL - ctx.cy      # `0x4085ac`-`0x4086b7`: (x << 5, ((y + TH - FH) << 5) - ground)
         r = aset.rec
         ctx.struct_picks.append(((PASS_CELL, ent.y, -ent.x, SLOT_STRUCTURE, ent.seq, 0),
@@ -355,6 +360,8 @@ def unit_remap(world, u):
 def _unit(ctx, u):
     """Ground unit, P3 (b): shadow main, shadow b, sprite, b overlay at 50 % (0x464487, 0x4632a1)."""
     opts = ctx.opts
+    if not fog.unit_visible(ctx.world, u):              # S != 0: neither the sprite, the shadow nor the pick rect (vision.md 2)
+        return
     aset = ctx.assets.unit_set(u.type_id)
     if aset is None:
         ctx.items.missing += 1
@@ -491,6 +498,8 @@ def _item(ctx, it):
     b overlay (Smoothing).  FUN_00461292 / 0x4611bf: anchor the cell centre, frame-0 size."""
     if not in_window(ctx.win, it.x, it.y):
         ctx.items.culled += 1
+        return
+    if not fog.item_visible(ctx.world, it):
         return
     sf = ctx.assets.sprite(BACKPACK + ".256")
     frame = backpack_frame(it.gold)

@@ -3,6 +3,7 @@
 from . import ai as ai_mod
 from . import gear as gear_mod
 from . import triggers as triggers_mod
+from . import vision as vision_mod
 from .movement import movement_system
 from .orders import orders_system
 from .selection import selection_system
@@ -15,14 +16,14 @@ class Simulation:
     """`step(commands)` advances the world one tick: systems run in list
     order, each as `system(world, commands)`; then the tick counter grows.  Every command
     is appended to `log` as `(tick, command)`.  `systems=None` installs the vitals job (tick & 15 == 12), order, selection and movement systems;
-    `ai=True` the squads' group pass, `triggers=True` (after `triggers.enable`, implies `ai`) the map script and the victory / defeat pass.
+    `vision=True` the player's fog of war (sim/vision.py: `World.fog`, enabled here when missing; docs/engine/vision.md), `ai=True` the squads' group pass, `triggers=True` (after `triggers.enable`, implies `ai`) the map script and the victory / defeat pass.
 
     Timing (CONFIRMED, docs/engine/simulation.md 1.1): `world.tick` is the exe's server counter `server+4` *before* its
     increment in `FUN_004f8521`; it starts at 0 on a new game (`FUN_004eb715`, `0x4eba47`).  A command handed to `step`
     is applied by that very step (the exe's loop-back delivers synchronously: no extra tick of latency), so the caller
     puts a command into the next step after it was issued."""
 
-    def __init__(self, world, systems=None, ai=False, triggers=False):
+    def __init__(self, world, systems=None, ai=False, triggers=False, vision=False):
         self.world = world
         if triggers:                            # the scenario script (sim/triggers.py) runs inside the AI's group pass
             if world.script is None:
@@ -33,6 +34,10 @@ class Simulation:
             if not world.ai_on:
                 ai_mod.enable(world)
             self.systems.insert(self.systems.index(orders_system) if orders_system in self.systems else 0, ai_mod.ai_system)
+        if vision:                              # client state: reveals after the units moved, nothing reads it
+            if world.fog is None:
+                vision_mod.enable(world)
+            self.systems.append(vision_mod.vision_system)
         if triggers:
             self.systems.append(triggers_mod.mission_system)   # FUN_004f8967 at the end of the step (docs/engine/triggers.md 6)
         self.log = []

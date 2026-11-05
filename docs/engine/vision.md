@@ -78,6 +78,9 @@ with sight 0 get none); colour palette entry 164 of the owner's row. Minimap rig
 
 ## 5. Engine design
 
+* Status: built (J2). Update cost on a 256 x 256 map with 24 own units: 24 cold masks about 11 ms once (cached per `(x, y, sight)`), a full refresh about 4 ms warm (`tests/test_engine_vision_view.py`, limit 15 ms).
+* DECISION: the very first `vision_system` pass reveals every own observer at once (no stored cell yet = a changed cell, the exe's `+0xc8/+0xcc` start unequal), instead of waiting for tick 32; VERIFY IN GAME 1 decides.
+* Not built: save/load of `World.fog` (needs the phase K writers), a debug key for `reveal_all` / `hide_all`, structure dots on the minimap (the engine draws none yet), frozen animation of explored structures follows `animate=False` only.
 * `World.fog`: `(h, w) uint16` tile words (bit constants `FOG_SEEN = 0x4000`, `FOG_EXPLORED = 0x8000`), `None` = no fog (everything visible);
   `World.fog_viewer` = player id (1); `World.fog_rev` counter (bumped on any change, minimap/overlay caches key on it); entities' last revealed cell in
   `vision` side table `world.fog_cells` (`obj+0xc8/+0xcc`). `dump()` adds `"fog"` (a crc of the array) only when on.

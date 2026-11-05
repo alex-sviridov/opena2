@@ -156,6 +156,31 @@ def interface_hash(install=None):
                                       DrawOptions(), None, (u.id,)))
 
 
+def fog_hashes(install=None):
+    """{"window": sha256 of the 640x480 window, "minimap": of the fogged minimap image} of map 10 with the fog of war as after the first vision pass
+    (docs/engine/vision.md): the human unit's owner is the viewer, nothing else seen; the explored ring is a second pass after moving the unit 6 cells."""
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    from engine.backend_pygame.interface import screenshot_window
+    from engine.sim import vision
+    from engine.ui import Layout
+    from engine.view import Camera, DrawOptions, Minimap, TerrainView
+    from allods2.common import as_fs
+    from allods2.minimap import load_color_table
+    assets = AssetCache(install)
+    w = World.from_map(open_map("10", install), assets)
+    u = next(u for u in w.units.values() if u.human)
+    vision.enable(w, u.owner)
+    vision.vision_system(w, [])
+    u.x += 6
+    vision.vision_system(w, [])
+    lay = Layout.for_size(640, 480)
+    v = lay.viewport
+    cam = Camera(v.w, v.h, w.width, w.height, u.x * 32 - v.w // 2, u.y * 32 - v.h // 2, border=8 * 32)
+    win = screenshot_window(TerrainView(w, assets.tileset()), cam, lay, 0, None, assets, DrawOptions(), None, (u.id,), player_id=u.owner)
+    mm = Minimap(w, load_color_table(as_fs(install)))
+    return {"window": rgb_hash(win), "minimap": rgb_hash(mm.image(cam))}
+
+
 def minimap_hashes(install=None):
     """{map: sha256 of the minimap RGB bytes} for MAPS (no pygame)."""
     from allods2.common import as_fs
@@ -300,7 +325,7 @@ def main(argv):
     if only is not None:
         with open(GOLDEN, encoding="ascii") as f:
             out = json.load(f)
-        makers = {"interface": interface_hash, "ui": ui_hashes}
+        makers = {"interface": interface_hash, "ui": ui_hashes, "fog": fog_hashes}
         for k in only:
             out[k] = makers[k](install)
         _write(out)
@@ -317,6 +342,7 @@ def main(argv):
     out["orders_slots"] = orders_summaries()      # was "orders" before the cell-record slots (simulation 7.4); old key dropped on regeneration
     out["casts"] = casts_summaries()
     out["ui"] = ui_hashes(install)
+    out["fog"] = fog_hashes(install)
     _write(out)
 
 

@@ -219,6 +219,7 @@ def main(argv=None):
     s.add_argument("--size", type=_size, default=None)
     s.add_argument("--interface", action="store_true", help="render the full window (640x480 default)")
     s.add_argument("--select", default="", metavar="UID,...", help="with --interface: unit ids to select")
+    s.add_argument("--fog", action="store_true", help="fog of war as after the first refresh: the first player's units reveal their sight (docs/engine/vision.md)")
     s.add_argument("--install")
     for q in (r, s):
         q.add_argument("--no-shadows", action="store_true")
@@ -241,6 +242,7 @@ def main(argv=None):
     m.add_argument("--install")
     m.add_argument("--units", action="store_true", help="add the unit dots")
     r.add_argument("--no-minimap", action="store_true")
+    r.add_argument("--no-fog", action="store_true", help="draw the whole map (the game's fog of war is on by default, docs/engine/vision.md)")
     r.add_argument("--trace", action="store_true", help="show the \"No way\" message line (the exe's -trace flag; off by default)")
     r.add_argument("--hero-name", default="Hero", help="name of the player's heroes in the info panel and level-up lines (default Hero)")
     r.add_argument("--no-ai", action="store_true", help="monsters do not think (docs/engine/ai.md)")
@@ -273,6 +275,10 @@ def main(argv=None):
     except ValueError as e:
         p.error(str(e))
     from engine.backend_pygame import render, window
+    if (a.cmd == "run" and not a.no_fog) or getattr(a, "fog", False):
+        from engine.sim import vision
+        vision.enable(world)
+        vision.vision_system(world, [])
     if a.cmd == "run":
         from allods2.common import as_fs
         from allods2.minimap import load_color_table, load_dot_colors

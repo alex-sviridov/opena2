@@ -4,6 +4,9 @@ Spec: docs/superpowers/specs/2026-10-16-minimap-design.md.  Image pixels per cel
 (`allods2.minimap.scale_shift`); image pixel `(px, py)` is cell `(px / s + 8, py / s + 8)`.
 """
 
+import numpy as np
+
+from allods2 import vision as v
 from allods2.graphics.terrain import TILE
 from allods2.minimap import BORDER, minimap_rgb, minimap_size, scale_shift
 
@@ -60,13 +63,39 @@ def draw_unit_dots(image, geometry, world, colors):
     The exe draws a dot for the viewer's own units and any unit in sight; the engine has no fog
     yet, so every unit gets one (DECISION until fog).  Bodies of death stage >= 2 (HP <= -11) get none (`0x465f3f`); dying bodies and
     the corpses of stage 1 keep theirs (combat.md 12.6)."""
+    fog = world.fog
     for u in (*world.units.values(), *world.corpses.values()):
         if u.hp <= -11:
+            continue
+        if fog is not None and not v.cell_in_sight(fog, u.x, u.y):          # `0x465f3f`: the four tiles must OR to 0xc000 (no ownership gate)
             continue
         box = dot_box(geometry, u.x, u.y)
         p = world.players.get(u.owner)
         if box is not None and p is not None:
             image[box[1]:box[3] + 1, box[0]:box[2] + 1] = colors[p.colour & 15]
+
+
+def apply_fog(image, geometry, fog, background=None):
+    """`FUN_004ac414` fog blocks, in place: per image pixel the OR of the four tile words at its cell; no 0xc000 bit -> the panel background pixel
+    (`background`, an (h, w, 3) uint8 crop of the panel under the image; black when None), exactly 0x8000 -> `(a >> 1) + (b >> 1)` per channel of
+    background and map, else the map pixel (vision.md 3).  For k = -1 each pixel stands for the 2 x 2 cells at `px * 2 + 8`."""
+    h, w = fog.shape
+    pad = np.zeros((h + 1, w + 1), np.uint16)
+    pad[:h, :w] = fog
+    or4 = pad[:-1, :-1] | pad[:-1, 1:] | pad[1:, :-1] | pad[1:, 1:]
+    k = geometry.k
+    px = np.arange(geometry.width)
+    py = np.arange(geometry.height)
+    cx = ((px >> k) if k >= 0 else (px << 1)) + BORDER
+    cy = ((py >> k) if k >= 0 else (py << 1)) + BORDER
+    bits = or4[np.ix_(np.minimum(cy, h - 1), np.minimum(cx, w - 1))] & np.uint16(v.IN_SIGHT)
+    bg = np.zeros_like(image) if background is None else background
+    unseen = (bits & np.uint16(v.IN_SIGHT)) == 0
+    explored = bits == v.EXPLORED
+    half = ((bg >> 1) + (image >> 1))
+    image[explored] = half[explored]
+    image[unseen] = bg[unseen]
+    return image
 
 
 def draw_camera_rect(image, rect, color=RECT_COLOR):
@@ -103,9 +132,12 @@ class Minimap:
             self.builds += 1
         return self._base
 
-    def image(self, camera):
-        """Base image, then the unit dots, then the camera rectangle (the exe's order)."""
+    def image(self, camera, background=None):
+        """Base image, the fog blocks (when `world.fog` is set; `background` = the panel pixels under the image), then the unit dots, then the camera
+        rectangle (the exe's order)."""
         img = self.base.copy()
+        if self.world.fog is not None:
+            apply_fog(img, self.geometry, self.world.fog, background)
         if self.dot_colors is not None:
             draw_unit_dots(img, self.geometry, self.world, self.dot_colors)
         return draw_camera_rect(img, self.geometry.camera_rect(camera))

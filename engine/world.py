@@ -8,6 +8,7 @@ ui or pygame.
 parsed section 3 record) is imported under the alias `PlacedObject`.
 """
 
+import zlib
 import hashlib
 import json
 from dataclasses import dataclass, field
@@ -64,6 +65,7 @@ class MapObject:
     known: bool = True
     seq: int = 0
     size: tuple = None          # (w, h) cells of a sized bridge (section 4), else None
+    sight: int = 0              # client sight word `obj+0x10a` (8.8): data.bin `scanRange << 8` (vision.md)
 
 
 @dataclass
@@ -635,6 +637,11 @@ class World:
         self.ai_emitted = []        # AI commands since the last drain by `Simulation.step` (the log), not part of dump()
         self.unbuilt_casts = {}     # spell number -> releases whose effect handler is not built (sim/spells.py `stub_release`), not part of dump()
         self.script = None          # sim/triggers.py `Script` once `triggers.enable` compiled the map's section 7; dumped only then
+        self.fog = None             # (h, w) uint16 tile words with the exe's fog bits (allods2.vision), None = no fog; sim/vision.py `enable`
+        self.fog_viewer = 1         # the player whose units reveal cells (FUN_0041e860: only the viewer's own)
+        self.fog_rev = 0            # bumped whenever the tile words change (overlay / minimap cache key), not dumped
+        self.fog_cells = {}         # entity id -> (x, y) last revealed cell (`obj+0xc8/+0xcc`), not dumped
+        self._fog_masks = {}        # (x, y, sight word) -> list of mask cells (allods2.vision.sight_mask), not dumped
         self._sight = {}            # (x, y, scan) -> frozenset of visible cells (the heights never change), not part of dump()
         self.report = BuildReport()
         self._cells = {}            # (x, y) -> set of ids over present footprint cells
@@ -1062,7 +1069,8 @@ class World:
             ob = MapObject(STRUCTURE_ID_BASE + s.uid, kind, s.type, s.x, s.y, owner=s.owner,
                            hp=hp_max if s.intact else 0, hp_max=hp_max,
                            flags=0 if s.intact else FLAG_DESTROYED, uid=s.uid, footprint=fp,
-                           known=known, size=s.size)
+                           known=known, size=s.size,
+                           sight=(stats[s.type - 1].params[2] << 8) if known and s.size is None and 1 <= s.type <= len(stats) else 0)
             if ob.id in w.objects:
                 raise ValueError("duplicate structure id %#x (uid %d)" % (ob.id, s.uid))
             w._check(ob)
@@ -1293,6 +1301,7 @@ class World:
                 **({"thresholds": [[u.id, u.wimpy_hp, u.withdraw_hp] for _, u in sorted(self.units.items()) if u.wimpy_hp is not None]}
                    if any(u.wimpy_hp is not None for u in self.units.values()) else {}),
                 **({"ai": self._ai_dump()} if self.ai_on else {}),
+                **({"fog": int(zlib.crc32(self.fog.tobytes()))} if self.fog is not None else {}),
                 **({"script": self.script.dump()} if self.script is not None else {}),
                 **({"rng": self.rng.state} if self.rng.state != self.seed else {})}
 

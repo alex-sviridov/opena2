@@ -217,7 +217,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     ui.doll_mask = lambda u: iface.panels.doll_mask(world, u)
     texts, messages = ui.main, ui.messages
     panel = MinimapPanel.from_layout(minimap.geometry, layout) if minimap else None
-    sim, queue, scroll = Simulation(world, ai=ai, triggers=world.script is not None), CommandQueue(), ScrollInput()
+    sim, queue, scroll = Simulation(world, ai=ai, triggers=world.script is not None, vision=world.fog is not None), CommandQueue(), ScrollInput()
     sim.ui = ui
     for cmd in commands:
         queue.put(cmd)

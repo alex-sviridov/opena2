@@ -6,7 +6,7 @@ import pygame
 
 from allods2.graphics.bmp import load_bmp
 
-from .render import draw_frame, draw_numbers
+from .render import draw_frame, draw_numbers, surface_rgb
 from .panels import Panels
 from .text import draw_text, game_font
 
@@ -86,7 +86,7 @@ class Interface:
         if caches.ball is None:
             caches.ball = self.art.get(BALL)
         window.fill((0, 0, 0))
-        draw_frame(self.view, caches, terrain_items, items, camera)
+        draw_frame(self.view, caches, terrain_items, items, camera, world)
         if numbers:
             draw_numbers(self.view, numbers)                # floating damage: over the units, under the panels
         window.blit(self.view, (lay.viewport.x, lay.viewport.y))
@@ -107,7 +107,11 @@ class Interface:
                 self.blit(window, lay.extra_text, "graphics/interface/TextBackR.bmp")
             self.blit(window, lay.extra_panel.rect, lay.extra_panel.graphics[0])
         if minimap is not None and panel is not None:
-            img = minimap.image(camera)
+            bg = None
+            if world.fog is not None:                       # unseen blocks show the panel picture under the image (vision.md 3)
+                g = minimap.geometry
+                bg = surface_rgb(window.subsurface((panel.left, panel.top, g.width, g.height)))
+            img = minimap.image(camera, bg)
             window.blit(rgb_surface(img), (panel.left, panel.top))
         if ui is not None:
             self.panels.draw_bar(window, cells)

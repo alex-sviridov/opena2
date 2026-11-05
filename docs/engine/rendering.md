@@ -175,7 +175,7 @@ rectangle), `engine/ui/minimap.py` (click/drag), `python -m engine minimap MAP D
 | Camera rectangle: white 1 px outline from `((view+0x5c) - 8) * s` , `((view+0x60) - 8) * s`, size `(view+0x64, view+0x68) * s - 1`; `/2` for `k = -1` | `FUN_004569a3` call | CONFIRMED |
 | Final per-channel pass | `0x4ac030`-`0x4ac413` | not identified |
 
-Engine deviations (DECISION): `k = -1` takes every second pixel; no final pass, no fog; unit dots: section 13;
+Engine deviations (DECISION): `k = -1` takes every second pixel; no final pass; fog blocks and the dot gate since J2 ([vision §3](vision.md)); unit dots: section 13;
 camera position is `camera / 32` in cells with relief ignored; the panel is the right column's top, flush at
 `(W-160, 0)`, image centre at panel point (72, 82) (CONFIRMED, [ui-layout §4](ui-layout.md); replaces the 8 px margin). The image is built once per
 `Minimap` (no World hook: the exe's picture never depends on passability or objects);
@@ -199,7 +199,7 @@ World side: [architecture §9](architecture.md#9-world-state); code `engine/view
 | Shadow | like an object's: main `k = 0x6226cc`, `b` `0x6226d0` (Smoothing only); anchor `x = px - anchor - dx`, `dx = trunc(T (h/2 + Height/2 - CenterY))`, `y = py - anchor - z`; current frame, mirrored with the sprite |
 | Flyers | `Z != 0` (bat 70, dragon 71, succubus 105; 494 map units): own view class, layer `+0x90`; shadow in **P4** with the *unsheared* blitter at `x + trunc(shear16 / 2000)`, drawn on the ground (`U+0x10` excluded); sprite in **P7** raised by `U+0x10 = 16` (`FLYER_ALTITUDE`, constructor `0x46bfc1`), so flyers cover every ground unit; a flyer and a ground unit on one cell both draw |
 | Layers | alive and the fresh corpse (death stage 0, 1) stay in the P3 slot; bones (stage 2-4) move to the corpse layer (P2); stage 5 is not drawn; re-decided every frame. A walker at HP 0 stays at stage 1 for good |
-| Not drawn yet | invisibility (effect 0x20: skipped unless the owner is visible to the viewer, else 50 %), stone curse grey table (0x2c), fog `S`, hover row 0, corpses, selection |
+| Not drawn yet | invisibility (effect 0x20: skipped unless the owner is visible to the viewer, else 50 %), stone curse grey table (0x2c), hover row 0, corpses, selection |
 
 **Piles** (`Item`, P2 after corpses, `FUN_00461292`, `0x4611bf`): sprite `graphics/backpack/sprites.256`
 (+ `spritesb.256`), frame `min(5, floor(log10(gold)))` (0 when empty; the items' own `+0x1c` is not decoded,
@@ -215,7 +215,7 @@ differently from objects except the pass (flyers: P4 / P7) and the size-aware fi
 rectangle): a `1 << k` square at `((c - 8) << k, (r - 8) << k)` of the unit's cell `pos >> 8` (k = -1: one pixel at `>> 1`),
 colour = palette entry 164 of the owner's `human.pal` row (`allods2.minimap.load_dot_colors`; the exe reads it from the
 16-bit table, 5-6-5 rounding not reproduced). Gates: viewer's own units and any unit in sight, not invisible, not corpse
-(stage < 2, flag 0x80 clear). The engine has no fog yet, so it draws a dot for every unit (DECISION until fog);
+(stage < 2, flag 0x80 clear). With fog on (J2) a dot needs a seen cell, without fog every unit gets one;
 `python -m engine minimap MAP DEST --units`.
 
 **Tests**: `tests/test_engine_unit_draw.py` (synthetic depth, filing cell, flyer layers, animation clock at 30 vs 60 fps

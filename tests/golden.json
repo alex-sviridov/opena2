@@ -80,6 +80,10 @@
    "started": 4
   }
  },
+ "fog": {
+  "minimap": "a076c3286b1ece7d5cc2109ac96f44957701d31d8c0671cc5d1fbf5948ee6857",
+  "window": "3f30c6a14d59c3b5ec48eee78800ca13b4d3591020a0fd5c984ca51542578af4"
+ },
  "interface": "729ef844d167b3579673b99f69cdcc210bbe2b21a067a589c837d86829ff9fa0",
  "items": {
   "sha256": "067d96e6a9aa5fbf7541f39dd920bbc445bf15aa8b8571bb4215511855e7e85c"
