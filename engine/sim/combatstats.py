@@ -440,3 +440,10 @@ def equipment_bag(t, items):
 def equipment_codes(t, items):
     """The item codes of `equipment_bag` (the effects dropped)."""
     return [c for c, _ in equipment_bag(t, items)]
+
+
+def human_sight_word(u, st):
+    """A human's sight word (server `+0xa4`, 8.8 fixed point): the recompute `FUN_0051366b` (`0x513a54`) writes `ftol(((mind + reaction) / 25 + 4) * 256)`
+    (truncating) and `FUN_005113e7` adds the bonus word `+0xe4` (equipment and spell scan changes, `<< 8`).  The sim's sight byte `+0xa5` is its high byte."""
+    mind, reaction = st.attrs[2], st.attrs[1]
+    return (int(((mind + reaction) / 25.0 + 4.0) * 256.0) + ((st.scan_bonus + u.fx.scan + u.fx.scan_direct) << 8)) & 0xFFFF

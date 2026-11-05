@@ -677,3 +677,12 @@ def test_a_sleeping_member_with_a_step_in_progress_finishes_the_step():
     assert ai.asleep(w, m)
     m.brain_order = 1                                           # a swing in progress is Brain order 1
     assert not ai.asleep(w, m)
+
+
+def test_a_humans_sight_byte_is_the_attribute_recompute_not_the_template_scan():
+    w = world()
+    h = hero(w, 1, 10, 10)
+    h.human = True
+    h.combat = CombatStats(AttackRecord(skill=500, lo=3, sp=0), ArmourBlock(0, 0), attrs=(0, 36, 25, 0), scan_bonus=2)
+    assert ai._scan_range(h, w) == int((61 / 25 + 4) * 256) + (2 << 8) >> 8 == 8       # level-1 hero 6.4 + item +2 (FUN_0051366b)
+    assert ai._scan_range(h) == 0                                                      # without the world: the template byte (monsters)

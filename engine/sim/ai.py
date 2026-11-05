@@ -11,6 +11,7 @@ import struct
 from engine.world import DEAD, AiGroup, AiState
 
 from . import combat as cb
+from . import combatstats
 from . import effects
 from . import movement as mv
 from . import spells
@@ -125,8 +126,13 @@ def at_war(world, owner, other):
     return pl is not None and 0 < other <= len(pl.relations) and bool(pl.relations[other - 1] & 1)
 
 
-def _scan_range(u):
-    """The scan byte `+0xa5`: the template's scan range plus the effects' changes (Light, Darkness), wrapped to a byte (docs/engine/effects.md 2.1)."""
+def _scan_range(u, world=None):
+    """The scan byte `+0xa5`: a human's recompute (high byte of `combatstats.human_sight_word`, needs `world` for the lazily built stats);
+    else the template's scan range plus the effects' changes (Light, Darkness), wrapped to a byte (docs/engine/effects.md 2.1)."""
+    if world is not None and u.human:
+        st = cb.combat_stats(world, u)
+        if st.attrs is not None:
+            return combatstats.human_sight_word(u, st) >> 8
     base = int(u.stats.get("scan_range", 0) or 0) if u.stats is not None else 0
     return effects.scan_range(u, base) if (u.fx.scan or u.fx.scan_direct) else base
 
@@ -135,7 +141,7 @@ def _visible(world, observers):
     """`FUN_00571c4d` steps 1-2: the union of the observers' sight, plus the attacker cells their hit marks reveal (the mark ages)."""
     vis = set()
     for m in observers:
-        vis |= sight(world, m.x, m.y, _scan_range(m))
+        vis |= sight(world, m.x, m.y, _scan_range(m, world))
         pl = world.players.get(m.owner)
         if pl is not None and not pl.human and m.ai.mark_cell:
             vis.add(unword(m.ai.mark_cell))
@@ -251,7 +257,7 @@ def centroid_stats(world, g):
     cx, cy = sum(u.x for u in mem) // n, sum(u.y for u in mem) // n
     g.centre = word(cx, cy)
     g.spread = max(chebyshev((u.x, u.y), (cx, cy)) for u in mem)
-    g.reach = max(chebyshev((u.x, u.y), (cx, cy)) + _scan_range(u) for u in mem)
+    g.reach = max(chebyshev((u.x, u.y), (cx, cy)) + _scan_range(u, world) for u in mem)
     return mem
 
 
@@ -358,7 +364,7 @@ def record_stats(world, g, mem):
     cx, cy = (sx // n) >> 8 & 0xFF, (sy // n) >> 8 & 0xFF
     g.centre = word(cx, cy)
     g.spread = max(chebyshev((u.x, u.y), (cx, cy)) for u in mem)
-    g.reach = max(chebyshev((u.x, u.y), (cx, cy)) + _scan_range(u) for u in mem)
+    g.reach = max(chebyshev((u.x, u.y), (cx, cy)) + _scan_range(u, world) for u in mem)
     g.radius = g.base = g.reach
 
 
@@ -1403,7 +1409,7 @@ def overlay(world, u):
     ring |= {(x, y) for y in range(cy - r, cy + r + 1) for x in (cx - r, cx + r) if 0 <= x < world.width and 0 <= y < world.height}
     t = world.units.get(u.ai.target) if u.ai.target is not None else None
     label = "%s order %#x t=%s R=%d stamp=%d" % (mode_name(u), u.order, "-" if t is None else t.uid, r, u.ai.stamp)
-    return {"sight": set(sight(world, u.x, u.y, _scan_range(u))), "ring": ring, "post": u.anchor,
+    return {"sight": set(sight(world, u.x, u.y, _scan_range(u, world))), "ring": ring, "post": u.anchor,
             "target": (t.x, t.y) if t is not None else None, "label": label}
 
 

@@ -347,8 +347,7 @@ def sight_word(u, st):
     `ftol(((mind + reaction) / 25 + 4) * 256)` (truncating) and `FUN_005113e7` adds the bonus word `+0xe4` (equipment and spell scan changes, `<< 8`);
     a monster's word is its template scan byte `<< 8` plus the spell changes (`+0xa4 += a << 8`).  Wrapped to 16 bits."""
     if st.human:
-        mind, reaction = st.attrs[2], st.attrs[1]
-        word = int(((mind + reaction) / 25.0 + 4.0) * 256.0) + ((st.scan_bonus + u.fx.scan + u.fx.scan_direct) << 8)
+        word = combatstats.human_sight_word(u, st)
     else:
         word = ((int((u.stats.get("scan_range", 0) or 0) if u.stats else 0) + u.fx.scan + u.fx.scan_direct) & 0xFF) << 8
     return word & 0xFFFF

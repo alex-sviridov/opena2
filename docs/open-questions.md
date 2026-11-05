@@ -58,7 +58,7 @@ from both places when answered).
 - Tooltip leftovers: box corner blits (`DAT_00626cac`), option byte `mgr+0xa0`, clip globals `DAT_00621414/18`, tooltip font, hide path `FUN_00427ea5`. [ui-layout 11.6b](engine/ui-layout.md#116b-tooltips-mouse-manager-fun_004268c4-bar-fun_004ad61c-box-fun_0042787b--fun_00427999)
 - Story window leftovers: `FUN_0041d8bb` (second unit list), portrait crop orientation, consumers of the `sound:` / `tune:` / `tips:` tag keys (message `0x45b`). [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages) (`FUN_004dd226`)
 - Info-panel knowledge table: character-file load / write-back (`Knowledge(blob)` / `to_blob`) and the exact engine mapping of client relation bit 8 (`FUN_0041e860`). [ui-layout](engine/ui-layout.md#open-questions) (`FUN_004ea6ab`, `0x4141fa`)
-- Info panel: sim sight radius of humans vs the recompute formula `(Mind + Reaction) / 25 + 4` (`FUN_0051366b`); whether the new-game name field accepts `|`. [ui-layout open questions](engine/ui-layout.md#open-questions)
+- Info panel: whether the new-game name field accepts `|`. [ui-layout open questions](engine/ui-layout.md#open-questions)
 - Message list: quest-event lines need a quest system (none in the engine), alternative message colour tables `0x61fb08` / `0x61fba8`. [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages)
 
 ## Rendering and engine

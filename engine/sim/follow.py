@@ -60,7 +60,7 @@ def set_mode4(world, u, leader, rng):
     _clear_modes(u)
     u.mode_follow = True
     u.follow_target = leader.id
-    u.range = rng if rng else ai._scan_range(u)
+    u.range = rng if rng else ai._scan_range(u, world)
     u.mover.waiting = u.mover.parked = False
 
 
@@ -163,7 +163,7 @@ def guard_around(world, u):
     if u.anchor is None:
         u.anchor = (u.x, u.y)
     a = u.anchor
-    if chebyshev((u.x, u.y), a) & 0xFF >= ai._scan_range(u):
+    if chebyshev((u.x, u.y), a) & 0xFF >= ai._scan_range(u, world):
         ai.go(world, u, ai.word(*a))
     lst = ai.enemies_around(world, u, a[0], a[1], DEFEND_RADIUS) if world.ai_on else []
     if lst:
