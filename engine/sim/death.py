@@ -83,7 +83,8 @@ def remove_dead(world, u):
             pl.hero_deaths += 1
             u.hp = HERO_DEATH_HP
         if pl.human and u.human and u.stats is not None and prog.is_hero_name(u.stats.name):     # step 8: hero types 0x21..0x3f, the human owner
-            pl.death_code = (u.server_id - 0x13) & 0xFF
+            sid = (u.server_id // 10) % 1000 if u.server_id > 10000 else u.server_id       # +0x14c is the reduced id (units.md): Start_MF 10210 -> 21
+            pl.death_code = (sid - 0x13) & 0xFF
             pl.defeat_dialog = True             # client message 0xb4 -> window message 0x433/0xff -> 0x431 (C§12.4)
             hero_event = HeroDied(world.tick, u.id, pl.death_code, main)
     decay_step(world, u)

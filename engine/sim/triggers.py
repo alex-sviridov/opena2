@@ -9,6 +9,7 @@ without a variable reference is evaluated into `values`, then every trigger in f
 system of a step) runs the victory / defeat test (T§6) when the step's counter after the increment is 15 mod 16.
 """
 
+import logging
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -18,6 +19,28 @@ from engine.world import DEAD, OrderGroup
 from . import ai, campaign, place, traps
 from .combat import combat_stats
 from .pathfinding import chebyshev
+
+log = logging.getLogger(__name__)
+
+# Editor names (T§3, T§4; INFERRED from `Description Checks.ini` / `Description Instants.ini`) for the "not implemented" report.
+CHECK_NAMES = {1: "How many units contains this group", 2: "Is unit in a box", 3: "Is unit in a circle", 4: "Get unit parameter",
+               5: "Is unit alive?", 6: "Distance between units", 7: "Distance from point to unit", 8: "How many units this player have",
+               9: "Is unit make attack", 10: "Get diplomacy", 12: "Item in inventory", 14: "Get sack", 15: "Distance to nearest units of player",
+               16: "Item to point", 17: "Item in inventory", 18: "VIP", 19: "Return value of variable", 20: "How many buildings this player have",
+               21: "Health of building", 22: "Teleportation", 23: "Get Scenario Variable", 24: "Get Subobjective", 25: "Spell on Tile",
+               26: "Spell on Unit", 27: "Centered on Tile"}
+INSTANT_NAMES = {1: "Increment mission stage", 2: "Send message", 3: "Set value to variable", 4: 'Force "Mission Complete" state',
+                 5: 'Force "Mission Fail" state', 6: "Group Command", 7: "Set formation", 8: "Increment variable",
+                 10: "Change diplomacy", 11: "Give item from one unit to another", 12: "Add item to unit's inventory",
+                 13: "Remove item from unit's inventory", 16: "Phase out unit", 17: "Phase in unit", 18: "Polymorph unit",
+                 19: "Change unit's owner", 20: "Drop all", 21: "Make spell effect", 22: "Change group's owner", 23: "Give money to player",
+                 24: "Cast spell to unit", 25: "Set trap", 26: "Set building's health", 27: "Teleport unit", 28: "Give All",
+                 29: "Tile Spell Duration", 30: "Unit Spell Duration", 31: "Repop Delay", 32: "Phase Out Group", 33: "Phase In Group",
+                 34: "Set Unit Parameter", 35: "Set Scenario Variable", 36: "Set Subobjective", 38: "Remove item from everybody's inventory",
+                 39: "Suspend group"}
+GROUP_NAMES = {1: "Guard", 2: "Swarm", 3: "Stand Ground", 4: "Move", 5: "Swarm 2", 10: "Attack", 11: "Defend", 14: "Patrol", 15: "Follow",
+               17: "Roam", 18: "Dwell"}
+_NAMES = {"check": CHECK_NAMES, "instant": INSTANT_NAMES, "group": GROUP_NAMES}
 
 SLOTS = 1000                        # S+0xc784 values (4000 bytes) and S+0xe6c4 fired flags (1000 bytes), FUN_0057468d
 HERO_TYPE = 0x15                    # FUN_00562518: hero k = the unit with (u16)(+0x14c) - 0x15 == k
@@ -341,6 +364,8 @@ def enable(world, m, strict=False, assets=None, party=0):
 def _unsupported(script, what, kind):
     if script.strict:
         raise NotImplementedError("%s kind %#x is not implemented (docs/engine/triggers.md)" % (what, kind))
+    if (what, kind) not in script.unsupported:      # reported once per kind and script, then only counted
+        log.warning("not implemented: %s %d (%s)", what, kind, _NAMES[what].get(kind, "unnamed"))
     script.unsupported[(what, kind)] += 1
 
 
@@ -748,6 +773,12 @@ def mission_pass(world):
             p.death_code = STATE_COMPLETE
             world.mission_complete = True               # message 0xb5 -> window message 0x430 (sim/campaign.poll)
             world.events.append(MissionComplete(world.tick, p.id))
+
+
+def result(world, player_id=1):
+    """The mission's outcome for a human player from `Player.death_code` (T§6): "won" (1), "lost" (>= 2: the hero died or the script failed it), else None."""
+    code = world.players[player_id].death_code
+    return "won" if code == STATE_COMPLETE else "lost" if code >= 2 else None
 
 
 def mission_system(world, commands):

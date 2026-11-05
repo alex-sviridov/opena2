@@ -421,6 +421,33 @@ and enters it; `ScenarioEnterLocation` zeroes the 16 variables `0x2f0..0x2ff` (t
 ([items §13](../data/items.md#13-campaign-town-shops-scenariodll)). Not modelled: the "new / updated" markers of the 20-word tables at `0x214` / `0x228`, the other `Var(0x30x)` flags that gate the optional unlocks, and
 the shop tables.
 
+## 12. J3: win and lose on map 32
+
+**Map choice (DECISION).** `scenario/32.alm` is the smallest playable script of the install: 80 x 80, 20 units (wolves, an ogre, a turtle, squirrels, bats, brigands, one
+`CH_SwordCarrier`), 6 triggers. Next smallest: map 10 (29 units, 16 triggers, quest instants 23 / 28 / 36), 83 (two triggers but 92 units on 144 x 144). Its win, script loss and
+hero loss are each one trigger or one pass, so the three ends need no more than checks 1, 5, 7, 15, 19, the constant, and instants 2, 4, 5, 6 (sub-commands 2 / 5), 8: all built.
+
+| End | Rule on map 32 | Engine path |
+|---|---|---|
+| Win | 'Swordsman alive ?' (check 5 on unit uid 8, the sword carrier) `==` 0 -> instant 4 (`complete += 1`); fires on every pass until the pass at the end of the block sets `death_code = 1`, message `0xb5` | `run_pass`, `mission_pass` |
+| Script loss | 'Swordsman swarmed succesfully': check 7, distance from point (71, 13) to unit 8, `<=` 1 -> instant 5 (cause 5); the swarm starts once the brigands (squad 1) are down to 2 | same, `death_code = 5`, message `0xb4` |
+| Hero loss | the main hero's death flag (T§6 step 1), no script involved: `death_code = (reduced id - 0x13)` = 2 for `Start_MF` | `death.remove_dead`, `mission_pass` |
+
+Triggers are evaluated as in T§1 (every 16 ticks at `tick & 15 == 6`, checks before triggers, file order, a `once` trigger never again, others re-armed every pass; variables
+and the 1000-slot value array are `Script.values`); the conclusion is T§6 at the end of each 16-tick block. **Fix** found by J3: `death_code` used the raw server id
+(`10210 - 0x13` = 207); the exe stores the reduced `+0x14c` (21), so Start_MF gives 2 (any other value is still >= 2 = lost).
+
+**Engine API.** `triggers.result(world)` = `"won"` / `"lost"` / `None` from the human's `death_code`; the end dialogs and the single exit (`Quit`
+reasons `victory` / `defeat`, `engine/ui/game.py`) are J1's. **No start menu** (DECISION): the shell exits after the dialog; returning to a main menu needs the
+new-game chain (open question "Main shell"). **Unimplemented kinds** log `not implemented: <check|instant|group> <n> (<editor name>)` once per kind and script
+(`log` = `logging.getLogger("engine.sim.triggers")`, tables `CHECK_NAMES` / `INSTANT_NAMES` / `GROUP_NAMES`) and are counted in `Script.unsupported`; `Script.strict` raises.
+
+Tests: `tests/test_engine_mission32.py` (win by attacking the sword carrier, script loss, hero loss, replay hash, no unsupported kinds, the once-only report).
+
+**Left for phase K** (documented no-ops or absent): instants 29 / 30 (spell durations; counted in `Script.unbuilt`), the `Spell on Tile / Unit` checks 25 / 26 for effect kinds the
+engine lacks, variable references 8000-9999 (never written in the exe), unit names `>= 11001`, instant 37 (set music) and the other unnamed kinds ("Bad instant"),
+hero recruit `FUN_004f312a`, roster carry-over, campaign variables `0x301`-`0x30d`, the start menu / new-game screen, sound of the `0xfe` / `0xfd` / `0xfa` messages.
+
 ## Open questions
 
 * The item rules of `FUN_00529ae2` (add: stacking, weight / capacity limits) for instants 11, 12, 28.
