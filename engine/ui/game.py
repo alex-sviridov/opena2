@@ -9,6 +9,7 @@ from engine.sim import campaign as campaign_mod, spells as spells_mod
 
 from . import bar, info, messages as messages_mod, modal, story
 from .book import SpellBookWindow
+from .chat import CHAT_MS, CHEAT_COMMANDS, CHEAT_LEVEL, ChatLine
 from .pack import PackWindow
 from .messages import PickupWatch
 from .knowledge import Knowledge
@@ -37,6 +38,8 @@ class GameUi:
         self.camp = camp or campaign_mod.Campaign()
         self.panel_mode = info.MODE_PICTURE
         self.book = SpellBookWindow(layout)        # the spell book window (bottom bar id 3), closed at the start (ui-layout 11.12)
+        self.chat = ChatLine(layout)               # the chat input line (strip 0x4b0), closed at the start (ui-layout 11.5)
+        self.cheat_level = 0                       # the player's `+0xa78` byte; `#show map` needs > 0x32 (origin of the byte not found: the engine default is off)
         self.pack = PackWindow(layout)             # the backpack window (bottom bar id 2), closed at the start (ui-layout 11.13)
         self.doll_mask = None                      # (unit) -> the 240x160 hit mask of its paper doll (ids slot + 1, 0 none); the backend supplies it
         self.quit = None                        # a QUIT_REASONS value once the player left the mission
@@ -157,11 +160,16 @@ class GameUi:
         """Route a key.  Returns True when the UI consumed it (a modal open: always; ESC / Pause / TAB otherwise).  In mission mode 1 (no modal) the other
         keys are left to `OrderInput` and the loop."""
         top = self.modals.top
+        if top is None and self.chat.open:
+            return True                         # while the line is open every key goes to it (`0x40c8db`); `chat_key` carries the character
         if top is not None:
             if name == "pause" and top.kind == "pause":
                 self.modals.pop()
             else:
                 self.apply(top.key(name))
+            return True
+        if name == "return":
+            self.open_chat()                    # `FUN_0040c8a0` key 0x0d -> `FUN_0048f36e` (mission mode, no network test)
             return True
         if name == "escape":
             return self.open_menu()
@@ -180,6 +188,30 @@ class GameUi:
             self.toggle_mode()
             return True
         return False
+
+    # -- the chat input line ---------------------------------------------------------------------------------------------------------
+    def open_chat(self):
+        """Enter: the rect sits above the open bottom windows (`FUN_0043b548`: the heights of window 3 = the book and window 2 = the pack, when present)."""
+        bars = (self.book.rect.h if self.book.open else 0) + (self.pack.rect.h if self.pack.open else 0)
+        self.chat.activate(bars)
+
+    def chat_key(self, name, char, now_ms):
+        """A key while the line is open (`FUN_0043b495`); Enter submits, Esc cancels.  Returns the action of the chat line."""
+        act = self.chat.key(name, char)
+        if act is not None and act[0] == "send" and act[1]:
+            self.send_chat(act[1], now_ms)
+        return act
+
+    def send_chat(self, text, now_ms):
+        """The single-player path of message `0x91` (`FUN_0041ace5` -> local channel -> server `FUN_004f515d`): `#` = command, else the echo line."""
+        if text.startswith("#"):
+            value = CHEAT_COMMANDS.get(text)
+            if value is not None and self.cheat_level > CHEAT_LEVEL and self.world.fog is not None:
+                from engine.sim import vision
+                (vision.reveal_all if value else vision.hide_all)(self.world)
+            return
+        p = self.world.players[self.player_id]
+        self.messages.show("%s: %s" % (p.name, text), now_ms, CHAT_MS, ("player", p.colour))
 
     def toggle_pack(self):
         """Message `0x40e` (`FUN_0041adc2` open / `FUN_0041ae4f` close): the book window stacks above an open inventory."""

@@ -37,6 +37,7 @@ OPTION_KEYS = {pygame.K_w: "w", pygame.K_n: "n", pygame.K_c: "c", pygame.K_u: "u
 FLYING_TEXT = 0x66                                                   # main.txt 0x66 + state: "Flying damage is Off" / "On"
 ORDER_KEYS = {pygame.K_m: "m", pygame.K_a: "a", pygame.K_d: "d", pygame.K_s: "s", pygame.K_t: "t", pygame.K_g: "g", pygame.K_r: "r", pygame.K_l: "l", pygame.K_c: "c"}
 BOOK_KEYS = {pygame.K_b, pygame.K_q, pygame.K_SPACE, pygame.K_i, pygame.K_BACKQUOTE}     # message 0x40f (B, Q) / 0x40e (I, backquote) / both (Space): the spell book and the backpack (`0x40cd29`, `0x40ccb6`, `0x40cd6e`)
+CHAT_KEYS = {pygame.K_BACKSPACE: "backspace", pygame.K_UP: "up"}       # the edit line's extra keys (engine.ui.chat)
 NAMED_KEYS = {pygame.K_ESCAPE: "escape", pygame.K_PAUSE: "pause", pygame.K_TAB: "tab", pygame.K_RETURN: "return", pygame.K_KP_ENTER: "return"}
 KEYS = {pygame.K_LEFT: "left", pygame.K_RIGHT: "right", pygame.K_UP: "up", pygame.K_DOWN: "down"}
 PLAYER_ID = 1       # single player: the human is record 1 (map.md part 5)
@@ -288,6 +289,8 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
                 running = False
             elif ev.type == pygame.KEYUP and ev.key in KEYS:
                 held.discard(KEYS[ev.key])                      # always: a key released inside a dialog must not stay down
+            elif ev.type == pygame.KEYDOWN and ui.chat.open and not ui.frozen:
+                ui.chat_key(CHAT_KEYS.get(ev.key) or NAMED_KEYS.get(ev.key) or "", ev.unicode, pygame.time.get_ticks())     # every key goes to the line (ui-layout 11.5)
             elif ev.type == pygame.KEYDOWN and (ui.frozen or ev.key in NAMED_KEYS) and ui.key(key_name(ev)):
                 pass                                            # ESC / Pause / TAB / a dialog's keys (ui-layout 11.4)
             elif ui.frozen:
@@ -453,7 +456,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
                  else None)
         items = build_draw_list(world, camera, world.tick, assets, options, debug, player.selection, hover,
                                 ai_info=ai_overlay(world, debug, player.selection))
-        lines = messages.entries(now)
+        lines = [(t, player_ramp(c[1], fs) if isinstance(c, tuple) else c) for t, c in messages.entries(now)]      # ("player", colour row) = `0x61fac8 + 32 * row`
         numbers = floating_entries(world, floats, camera, assets, fs, now) if options.flying_damage else ()
         sel_state = selection_state(world, player_id)
         cast_enabled = bool(ordering.slot_mask()) if sel_state == "own" else False

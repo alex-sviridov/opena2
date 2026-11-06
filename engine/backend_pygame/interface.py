@@ -123,6 +123,8 @@ class Interface:
             self.panels.draw_pack(window, ui, pack, ui.main, mouse)
         if message:
             self.draw_message(window, message)
+        if ui is not None and ui.chat.open:
+            self.draw_chat(window, ui.chat)
         if ui is not None and ui.frozen:
             self.panels.draw_dialogs(window, ui, mouse, info_picture)
         if tooltip is not None:
@@ -135,6 +137,12 @@ class Interface:
         for i, line in enumerate(lines):
             text, col = (line, None) if isinstance(line, (str, bytes)) else line
             draw_text(window, text, MESSAGE_POS[0], MESSAGE_POS[1] + i * pitch, col or colour, font=MESSAGE_FONT)
+
+
+    def draw_chat(self, window, chat):
+        """The chat input line (`FUN_0043a9d8`): the text at the rect's left, its bottom on the rect's bottom, the system colour table, font1 (INFERRED font)."""
+        x, y, _, h = chat.rect
+        draw_text(window, chat.shown_text(), x, y + h - (game_font(MESSAGE_FONT).cell_height() if game_font(MESSAGE_FONT) else 15), MESSAGE_COLOUR, font=MESSAGE_FONT)
 
 
 def unit_title_fn(assets):

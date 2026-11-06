@@ -71,7 +71,7 @@ with sight 0 get none; the engine draws structure dots too, `minimap.draw_struct
 * No fog option in the GOG exe (no "fog" string among the options). `#show map` / `#hide map` (cheat level `> 0x32`, message `0xaa` value 1/0):
   1 sets global `0x62280c` and ORs `0xc000` into all tiles (refresh skipped while set); 0 clears the flag only (tiles keep `0x8000`: everything explored).
   Value 2 only calls `FUN_0041e3f0(0x430, 0)`, a `PostMessage` of window message `0x430` to the client's window (`this+0x1c`): no fog effect (CONFIRMED).
-  CONFIRMED. Engine: `vision.reveal_all(world)`, `vision.hide_all(world)` (debug keys, not a cheat chat).
+  CONFIRMED. Engine: `vision.reveal_all(world)`, `vision.hide_all(world)`, reachable through the chat line (`GameUi.send_chat`, [ui-layout 11.5](ui-layout.md)) once `GameUi.cheat_level > 0x32`; the cheat byte `+0xa78` of `FUN_0053dd90` has no known source, so the default is off.
 * Saves: `game%d.sav` section `Fog` (`FirstState`, `Data` = run lengths of bit `0x8000` over all tiles), written `0x48e537`-`0x48e629`, read
   `0x48d699`-`0x48d795` only with `InBattle`; bit `0x4000` is recomputed at the next refresh. The engine saves/loads when phase K builds save/load (state: `World.fog`).
 * DECISION: `engine run` draws fog (the game always does); `--no-fog` switches it off. `engine screenshot`/world defaults stay fog-free so the existing
@@ -104,7 +104,7 @@ with sight 0 get none; the engine draws structure dots too, `minimap.draw_struct
 5. Corpses and item piles in explored-only cells: gone (both rules are exact, CONFIRMED).
 6. A projectile or spell effect flying through fog: visible at all? (exe: drawn, then darkened.)
 7. Monsters' dots on the minimap appear only while seen; the explored area is a 50 % mix with the panel picture, unseen area the panel picture.
-8. The cheat availability in single player (message `0xaa` value 2 is only a window-message post, section 4).
+8. The cheat availability in single player: the gate is `FUN_0053dd90` (`+0xa78 > 0x32`), its setter is unknown (message `0xaa` value 2 is only a window-message post, section 4).
 
 ## Answered round (REA, GOG exe)
 

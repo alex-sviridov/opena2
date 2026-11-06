@@ -93,7 +93,8 @@ def test_pause_key_opens_the_notice_and_a_second_press_closes_it_but_not_inside_
 def test_every_click_is_taken_by_the_dialog_and_tab_toggles_the_panel_mode():
     ui, w = make()
     assert ui.panel_mode == "picture" and ui.key("tab") and ui.panel_mode == "text" and ui.key("tab") and ui.panel_mode == "picture"
-    assert not ui.key("a") and not ui.key("return")                  # letters go to OrderInput, Enter does nothing in the game
+    assert not ui.key("a") and ui.key("return") and ui.chat.open     # letters go to OrderInput, Enter opens the chat line
+    ui.chat_key("escape", "", 0)
     ui.open_menu()
     assert ui.mouse_down((10, 10)) == (True, None)
     assert ui.key("tab") and ui.panel_mode == "picture"              # a dialog swallows TAB
