@@ -133,6 +133,7 @@ class Frame:
         self.flat = self.arr.reshape(-1)
         self.bytes = self.arr.view(np.uint8).reshape(h, w, 4)       # [..., :3] = R, G, B
         self.surf = pygame.image.frombuffer(self.arr, (w, h), "RGBX")
+        self.flat8 = self.arr.view(np.uint8).reshape(-1)            # every byte: R, G, B, X of word 0, then word 1, ...
 
     @classmethod
     def get(cls, w, h):
@@ -163,13 +164,14 @@ class SparseMask:
     left of the sprite, with their packed source words `vals` (half) or None (shadow).  Most of the box is empty, so the
     blends gather / scatter only these; the flat framebuffer indices are cached per frame width."""
 
-    __slots__ = ("ys", "xs", "vals", "dx", "w", "h", "fw", "base", "memo")
+    __slots__ = ("ys", "xs", "vals", "dx", "w", "h", "fw", "base", "memo", "memo3")
 
     def __init__(self, mask, dx=0, vals=None):
         self.ys, self.xs = np.nonzero(mask)
         self.vals = None if vals is None else vals[self.ys, self.xs]
         self.dx, (self.h, self.w), self.fw, self.base = dx, mask.shape, -1, None
         self.memo = {}
+        self.memo3 = {}
 
     def clipped(self, frame, x, y, clip):
         """`indices` limited to the box `clip` = (x0, y0, x1, y1) (inside the frame); None when nothing is left."""
@@ -189,6 +191,7 @@ class SparseMask:
         if self.fw != fw:
             self.fw, self.base = fw, self.ys * fw + self.xs
             self.memo.clear()
+            self.memo3.clear()
         key = (x, y, fh)
         r = self.memo.get(key)                  # a still camera draws the same sprite at the same place every frame
         if r is not None:
@@ -204,6 +207,19 @@ class SparseMask:
         self.memo[key] = r
         return r
 
+    def indices3(self, frame, x, y):
+        """Byte indices of the R, G, B bytes of the covered pixels (`indices` x 4 + 0..2), memoised like `indices`; None when nothing is covered."""
+        r = self.indices(frame, x, y)
+        if r is None:
+            return None
+        key = (x + self.dx, y, frame.h)
+        i3 = self.memo3.get(key)
+        if i3 is None:
+            if len(self.memo3) >= 24:
+                self.memo3.clear()
+            i3 = self.memo3[key] = _rgb_bytes(r[0])
+        return i3
+
 
 def frame_half(frame, x, y, entry, clip=None):
     """50 % smoothing overlay: (src >> 1) + (dst >> 1) per channel; src is already halved (<= 0x7F), so the fields add
@@ -217,18 +233,27 @@ def frame_half(frame, x, y, entry, clip=None):
 
 
 _SHADOW_LUT = np.array([[(v * (16 - k)) >> 4 for v in range(256)] for k in range(17)], np.uint8)
-RGB_WORD = np.uint32(0x00FFFFFF)
+
+
+_RGB = np.arange(3, dtype=np.intp)
+
+
+def _rgb_bytes(idx):
+    """Flat word indices -> the byte indices of their R, G, B bytes."""
+    return (idx[:, None] * 4 + _RGB).ravel()
 
 
 def frame_shadow(frame, x, y, entry, level, clip=None):
-    """Shadow: dst * (16 - level) / 16 per channel on the covered pixels, one byte table for the three channels (the X byte comes out 0)."""
-    r = entry.indices(frame, x, y) if clip is None else entry.clipped(frame, x, y, clip)
-    if r is None:
+    """Shadow: dst * (16 - level) / 16 per channel on the covered pixels, one byte table over the R, G, B bytes (the X byte is left alone, it is 0)."""
+    if clip is None:
+        i3 = entry.indices3(frame, x, y)
+    else:
+        r = entry.clipped(frame, x, y, clip)
+        i3 = None if r is None else _rgb_bytes(r[0])
+    if i3 is None:
         return
-    idx = r[0]
-    flat = frame.flat
-    v = flat.take(idx)
-    flat[idx] = _SHADOW_LUT[level][v.view(np.uint8)].view(np.uint32) & RGB_WORD
+    b = frame.flat8
+    b[i3] = _SHADOW_LUT[level].take(b.take(i3))
 
 
 def alpha_mix(src, dst, a):
