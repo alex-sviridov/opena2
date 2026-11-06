@@ -22,7 +22,7 @@ from both places when answered).
 ## Combat and death
 
 - Sound tables (unit sound set entries, hero voices, UI sound `0x627740[0xf]`, the hit sound set); the engine has no audio. [combat §12.11](engine/combat.md#1211-open-questions) 1
-- Attack order aimed at a structure: the order matrix reads creature-only fields of the structure object, outcome untraced. [combat](engine/combat.md#open-questions); start `FUN_005711ea`.
+- Attack order aimed at a structure: answered (accepted, fought like a creature; [combat 5.5](engine/combat.md)); only the mage / spell-carrier branch against a structure is untraced.
 
 ## AI
 
@@ -62,9 +62,9 @@ from both places when answered).
 
 ## Rendering and engine
 
-- [Engine drawing](engine/rendering.md#open-questions): dynamic lights of burning cells (fire explosions), projectile 13 explosion phases and lightning segments (`FUN_0040403b`, `FUN_0046d0ef`); burning trees.
-- Unit flag `+0x1b8 & 0x80` at the mission start: which masks the first announce of every map-loaded monster sends (`FUN_0052be01` in `FUN_004f1d9c`; the mechanism is answered, [rendering](engine/rendering.md#open-questions)).
-- Renderer speed: the densest 1024x768 view is now 26.5 ms mean (worst frame ~34 ms, above 30 fps only in spikes); a per-object item cache and shadow batching are left. [architecture](engine/architecture.md#open-questions)
+- [Engine drawing](engine/rendering.md#open-questions): fire explosion (projectile 13) and lightning segment lights need those objects in the sim (formulas CONFIRMED, lighting.md 3; burning cells from Wall of Fire are lit).  (Burning trees: resolved, [rendering](engine/rendering.md#open-questions).)
+- (answered) Unit flag `+0x1b8 & 0x80` at the mission start: `FUN_0052be01` sends nothing, see [rendering](engine/rendering.md#open-questions).
+- Renderer speed: the densest 1024x768 view is now ~19.5 ms mean (terrain layer cache and per-object item memo; was 26.5), still 11 ms, scrolling ~26 ms; shadow batching was measured and gives nothing (cost is per covered pixel, overlapping pairs). A static-scene cache is left. [architecture](engine/architecture.md#open-questions)
 - Unregistering a structure (`FUN_0055995a`) clears cells held by another structure; the engine releases only its own cells. [architecture](engine/architecture.md#open-questions)
 
 ## Formats and not started

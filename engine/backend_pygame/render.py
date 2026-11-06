@@ -91,10 +91,14 @@ def draw_frame(surface, caches, terrain_items, items, camera, world=None):
     cy = camera.iy
     blit = surface.blit
     terrain = caches.terrain
-    for item in terrain_items:
-        val = terrain.get(item)
-        if val is not None:
-            blit(val[0], (item.sx, val[1] - cy))
+    layer = getattr(terrain, "layer", None)
+    if layer is not None:                           # the whole terrain layer from the cache (surfaces.py `layer`)
+        blit(layer(terrain_items, cy, surface), (0, 0))
+    else:
+        for item in terrain_items:
+            val = terrain.get(item)
+            if val is not None:
+                blit(val[0], (item.sx, val[1] - cy))
     sprites = caches.sprites
     for it in items:
         kind = it.kind

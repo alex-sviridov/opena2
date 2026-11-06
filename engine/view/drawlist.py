@@ -220,13 +220,27 @@ def _objects(ctx, ent):
     if aset is None:
         ctx.items.missing += 1
         return
-    ref = aset.frame_at("anim" if aset.rec["seq"] else "still", 0, ctx.tick, x=x, y=y,
-                        animate=opts.animate)
+    if aset.dead is not None and ctx.world.cells[y, x] & 0x2000:       # burnt cell (CONFIRMED `0x408b0f`/`0x408c10`): frame 0 of the DeadObject's file
+        ref = aset.frame_at("dead", 0, ctx.tick)
+    else:
+        ref = aset.frame_at("anim" if aset.rec["seq"] else "still", 0, ctx.tick, x=x, y=y,
+                            animate=opts.animate)
     st = _object_static(ctx, aset, ent.type_id, ref)
     if st is None:
         ctx.items.missing += 1
         return
     wh, ov, shadows, bxy, dx = st
+    row = ctx.row_at(x, y)
+    # the items of one object are a pure function of this key (DrawItem is immutable), so a still camera and a still frame
+    # share them from one frame to the next; kept on the world (entity ids are per world), dropped past 4096 entries
+    memo = ctx.world.__dict__.setdefault("_object_items", {})
+    mk = (ent.id, ent.seq, ent.type_id, x, y, ref.source, ref.index, ctx.cx, ctx.cy, row, ctx.T, ctx.k1, ctx.k2,
+          opts.smoothing, opts.shadows, ctx.cam.view_w, ctx.cam.view_h)
+    hit = memo.get(mk)
+    if hit is not None:
+        ctx.items.extend(hit)
+        return
+    n0 = len(ctx.items)
     z = int(ctx.relief[y, x])
     ax, ay = CELL * x + CELL // 2, CELL * y + CELL // 2 - z           # the anchor
     key = ("object", ent.type_id)
@@ -234,11 +248,13 @@ def _objects(ctx, ent):
     for sub, src, size, px, py, k in shadows:
         ctx.shadow(ent, key, src, ref.index, ax - px - dx, ay - py, size[0], size[1], k, dep + (0, sub))
     hx, hy = ref.hotspot
-    row = ctx.row_at(x, y)
     ctx.sprite(ent, key, ref.source, ref.index, ax - hx, ay - hy, wh[0], wh[1], dep + (0, 2), row=row)
     if ov is not None:
         ctx.sprite(ent, key, ref.source + "_b", ref.index, ax - bxy[0], ay - bxy[1], ov[0], ov[1],
                    dep + (0, 3), "half", row=row)
+    if len(memo) > 4096:
+        memo.clear()
+    memo[mk] = tuple(ctx.items[n0:])
 
 
 def _object_static(ctx, aset, type_id, ref):

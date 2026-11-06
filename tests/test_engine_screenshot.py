@@ -78,7 +78,10 @@ def test_cache_does_not_change_pixels_and_hits_on_second_frame():
     a, _ = shot(tv, 320, 240, 64, 40, 4, cache)
     misses = cache.misses
     b, _ = shot(tv, 320, 240, 64, 40, 4, cache)
-    assert np.array_equal(a, b) and cache.misses == misses and cache.hits > 0
+    assert np.array_equal(a, b) and cache.misses == misses and cache.layer_hits > 0     # the second frame is one cached layer, no cell lookups
+    cache.layer_hits = 0
+    d, _ = shot(tv, 320, 240, 64, 41, 4, cache)         # another camera row: the layer misses, the cells hit
+    assert cache.layer_misses == 2 and cache.hits > 0
     c, _ = shot(tv, 320, 240, 64, 40, 4, SurfaceCache(tv, capacity=0))
     assert np.array_equal(a, c)
 

@@ -156,11 +156,23 @@ phase `+0x74`: 0 (1, 16), 1 (2, 8), 2–3 (3, 0), 4 (3, 8), 5 (3, 16), 6
 (3, 24), 7 (3, 32), 8 (3, 40), 9–10 (3, 46); 28 lightnin, 30 chain: each
 segment writes `phase·10` to its 2×2 vertices directly.
 
+**Verified (CONFIRMED `FUN_0046d0ef`, `FUN_0041c18c`, `FUN_0040c0b0`, GOG exe):** no light has a colour, a decay or a lifetime of its own: the map holds one
+brightness byte per vertex (0 brightest, 0xFF none), rebuilt from scratch each frame, so "decay" is only the phase table of the source. Projectile 13 (fire
+explosion) uses phase `+0x74` (ticks since the explosion started) as above (radius 3 plateau 46 = nearly dark at phases 9-10, i.e. a flash that fades out);
+the burning list counter (`+1` per `FUN_0040b2b8` call, entry dropped at 22, `FUN_0040c0b0` `0x40c0b0`) indexes `BURNING_LIGHT_PHASES`. Lightning (28) and
+prismatic spray (30) bypass the stamp: `FUN_0046d0ef` writes `phase * 10` (byte) straight into the 2 x 2 vertices at each segment point (cell `x >> 5`,
+`FUN_00417f31(x, y)`; points inside the window only) and **without** the Lighting-option gate; every other projectile id only dirties the 5 x 5 cell
+redraw rect (`FUN_0041e210`) when the option `0x5f17ec` is 0. Wall of Fire (cell flag 3, `FUN_0041c18c` `0x41c44f`-`0x41c4c0`): only when the cell's tile
+bit `0x2000` was clear and its map object has `DeadObject != -1` does it add `{cell, 0}` to the burning list (then sets `0x2000`). Applied: lit terrain
+corners and object rows as above. `hydra` / `bracelet` data: irrelevant (no light field in monsters / items; a structure's `LightRadius`/`LightPulse` is the only
+data-driven light).
+
 **Terrain under lights** (`FUN_00405cf4`): tiles with any corner ≠ 0xFF
 are redrawn with `corner = min(terrain_light, light)` (terrain light from
 §2 where the light map is 0xFF).
 
-Built in the engine: structure and missile lights, cell rows, lit terrain corners, and the Light / Darkness
+Built in the engine: structure and missile lights, burning cells from a Wall of Fire flag (`World.burn_start`, counter = ticks since the flag, INFERRED
+one counter step per tick; stamped after the object lights), cell rows, lit terrain corners, and the Light / Darkness
 vertex writes (`engine/view/lights.py`, [rendering](../engine/rendering.md#structure-pick-rects-and-dynamic-lights-confirmed-engine-drawlistpick_cell-lightspy)).
 Implementation: `stamp_light`, `projectile_light`, `BURNING_LIGHT_PHASES`
 (= `STATIC_LIGHT_PHASES`), `structure_light_value`, `lit_terrain_corner`.

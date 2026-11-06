@@ -27,6 +27,7 @@ class _World:
     def __init__(self, objs):
         self.objects = {i: o for i, o in enumerate(objs)}
         self.carriers = []
+        self.burn_start = {}
 
 
 def test_structure_light_writes_the_footprint_corner_vertices_with_the_pulse():
@@ -46,3 +47,29 @@ def test_cell_row_and_terrain_corners_follow_the_light_map():
     assert L.corner_lights(lights, base, 5, 7) == (0, 0, 0, 0)
     assert L.corner_lights(lights, base, 6, 7) == (0, 30, 0, 30)              # min(terrain, light) only where lit
     assert L.corner_lights(lights, base, 9, 9) is None
+
+
+class _ObjAssets(_Assets):
+    def object_set(self, tid):
+        return _Aset({"DeadObject": 5 if tid == 1 else -1})
+
+
+class _BurnWorld(_World):
+    def __init__(self, objs, burn):
+        super().__init__(objs)
+        self.burn_start = burn
+
+    def objects_at(self, x, y):
+        return frozenset(i for i, o in self.objects.items() if (o.x, o.y) == (x, y))
+
+
+def test_burning_cell_stamps_radius_one_by_counter_and_ends_at_22():
+    w = _BurnWorld([_Ent(1, 4, 4, kind="object"), _Ent(2, 9, 9, kind="object")], {(4, 4): 100, (9, 9): 100})
+    a = _ObjAssets({})
+    plus = {(4, 4), (3, 4), (5, 4), (4, 3), (4, 5)}                            # r = 1: dx^2 + dy^2 < 2
+    assert L.light_map(w, a, 100) == {v: 36 for v in plus}                     # counter 0: phase 0 = 36
+    assert L.light_map(w, a, 106)[(4, 4)] == 0                                 # counter 6 -> phase 3
+    assert L.light_map(w, a, 116)[(4, 4)] == 20                                # counter 16 -> phase 8
+    assert L.light_map(w, a, 121)[(4, 4)] == 36                                # counter 21 -> phase 10
+    assert L.light_map(w, a, 122) == {} and L.light_map(w, a, 99) == {}        # removed at 22; not yet born
+    assert (9, 9) not in L.light_map(w, a, 100)                                # object without DeadObject: no entry

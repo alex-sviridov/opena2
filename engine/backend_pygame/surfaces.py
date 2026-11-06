@@ -19,6 +19,40 @@ class SurfaceCache:
         self._d = OrderedDict()
         self._version = terrain_view.version
         self.hits = self.misses = 0
+        self._layers = OrderedDict()                # whole-view terrain composites, see `layer`
+        self.layer_hits = self.layer_misses = 0
+
+    def layer(self, items, cy, like):
+        """The terrain items drawn in list order onto black as one `size` surface (the static layer of a frame), cached per
+        (items, cy, size of `like`): a still camera (and a water phase seen before) blits one surface instead of every cell.  The
+        key is each item's cell, phase, light and screen x, so any change of the cells, the light or the version misses; the
+        surface (pixel format of `like`, so the blits are as fast as onto the frame) is built with the very blits of the uncached path (pixel-identical)."""
+        if self.tv.version != self._version:
+            self._d.clear()
+            self._layers.clear()
+            self._version = self.tv.version
+        size = like.get_size()
+        key = (cy, size, like.get_masks(), tuple([(i.col, i.row, i.phase, i.sx, i.lit) for i in items]))
+        layers = self._layers
+        surf = layers.get(key)
+        if surf is not None:
+            layers.move_to_end(key)
+            self.layer_hits += 1
+            return surf
+        self.layer_misses += 1
+        surf = pygame.Surface(size, 0, like)
+        surf.fill((0, 0, 0))
+        blit, get = surf.blit, self.get
+        for item in items:
+            val = get(item)
+            if val is not None:
+                blit(val[0], (item.sx, val[1] - cy))
+        layers[key] = surf
+        if len(layers) > self.LAYERS:
+            layers.popitem(last=False)
+        return surf
+
+    LAYERS = 6
 
     def prewarm(self, camera, tick, budget_ms=4.0, margin=2):
         """Build the cells in a ring of `margin` cells around the visible ones that are not cached yet, nearest rows first, for at most

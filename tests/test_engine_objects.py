@@ -458,6 +458,43 @@ def test_draw_frame_draws_list_order_and_overlays(tmp_path):
     assert ts.shape == (160, 160, 3) and (tmp_path / "o.png").exists()
 
 
+def test_cached_frame_equals_uncached(tmp_path):
+    """The terrain layer cache and the per-object item memo change no pixel: a warm frame, a moved camera, a changed
+    light and a frame with the memos cleared all equal the uncached path (terrain cell by cell, fresh caches)."""
+    from engine.backend_pygame.render import Caches, draw_frame
+    from engine.backend_pygame.surfaces import SurfaceCache
+    from engine.view import TerrainView, build_terrain_items
+    from allods2.graphics.terrain import TerrainSet
+
+    class NoLayer(SurfaceCache):                                  # the pre-cache path: every cell blitted per frame
+        layer = None
+
+    w = flat_world([obj(1, 2, 2), obj(2, 3, 4), obj(3, 5, 3)])
+    tv = TerrainView(w, TerrainSet({}, np.zeros((128, 32), np.uint8), np.zeros((256, 3), np.uint8)))
+    a = assets()
+    ensure_display(160, 160)
+    sprites = SpriteCache(a)
+    warm = Caches(SurfaceCache(tv), sprites)
+
+    def frame(caches, x, y, tick, opts=DrawOptions()):
+        c = Camera(160, 160, W, H, x, y)
+        items = build_draw_list(w, c, tick, a, opts)
+        surf = pygame.Surface((160, 160))
+        draw_frame(surf, caches, build_terrain_items(tv, c, tick, items.lights), items, c)
+        return pygame.image.tobytes(surf, "RGB")
+
+    for opts in (DrawOptions(), PLAIN):
+        for x, y, tick in ((0, 0, 0), (0, 0, 0), (13, 7, 0), (13, 7, 5), (0, 0, 0)):
+            ref = frame(Caches(NoLayer(tv), SpriteCache(a)), x, y, tick, opts)
+            w.__dict__.pop("_object_items", None)
+            assert frame(warm, x, y, tick, opts) == ref
+            assert frame(warm, x, y, tick, opts) == ref            # second time: layer and item memo hit
+    assert warm.terrain.layer_hits > 0 and warm.terrain.layer_misses > 0
+    w.cells_version = getattr(w, "cells_version", 0) + 1         # burnt ground: every cached cell and layer is stale
+    frame(warm, 0, 0, 0)
+    assert warm.terrain._version == tv.version and len(warm.terrain._layers) == 1
+
+
 # --- install: parity with E4, goldens --------------------------------------------------------------
 
 def _tool():
@@ -620,3 +657,18 @@ def test_main_loop_runs_with_objects_and_debug_keys():
     a.fs = None                                     # no game files: panels and cursors draw nothing
     window.run(w, tv, Camera(lay.viewport.w, lay.viewport.h, W, H), lay, assets=a, debug=dbg, max_frames=3)
     assert dbg.passability and dbg.markers and dbg.depth
+
+
+def test_burnt_cell_draws_the_dead_object_frame_zero():
+    """Tile bit 0x2000 + DeadObject != -1: the object is drawn from the DeadObject's file, frame 0 (CONFIRMED 0x408b0f / 0x408c10)."""
+    dead = orec(ID=7, Index=0)
+    s = ObjectSet(orec(Index=2, DeadObject=7), dead,
+                  sprites={"main": sprite_file(4), "main_b": sprite_file(4), "dead": sprite_file(2), "dead_b": sprite_file(2)})
+    a = FakeAssets(objects={5: s})
+    w = flat_world([obj(1, 10, 10)])
+    src = lambda: [i.sprite[2] for i in build_draw_list(w, cam(), 0, a, PLAIN) if i.kind == "sprite"]
+    assert src() == ["main"]
+    w.scorch(10, 10)
+    items = [i for i in build_draw_list(w, cam(), 0, a, PLAIN) if i.kind == "sprite"]
+    assert [(i.sprite[2], i.frame) for i in items] == [("dead", 0)]
+    w.scorch(11, 11)                                                    # a different cell: unaffected

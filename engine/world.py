@@ -660,6 +660,7 @@ class World:
         self.slots = CellSlots()    # occupant and stamp slots of the cell records (simulation.md 7.4); not dumped
         self.cell_effects = {}      # (x, y) -> the record's 6-byte effect (spell, power, sx, sy, tx, ty): traps (sim/traps.py, which hooks `slots.on_enter`); dumped while non-empty
         self.transients = []        # the list server+0x2c: hidden casters (sim/traps.py), ticked in step 2; dumped while non-empty
+        self.burn_start = {}        # (x, y) -> tick of the first Wall of Fire flag: the client's burning-cell list `view+0xa94` (client only, not dumped; lights.py)
         self.cell_fx = {}           # (x, y) -> [6 carrier uids or None]: the cell records' effect slots (effects.md 6.4); dumped while non-empty
         self._fx_saved = {}         # (x, y) -> the cost byte the record saved at creation
         self.costs = pas.DEFAULT_COSTS      # map.reg [Terrain] Cost<name> (from_map loads the install's)
@@ -738,6 +739,8 @@ class World:
         if 0 <= x < self.width and 0 <= y < self.height and not self.cells[y, x] & 0x2000:
             self.cells[y, x] |= 0x2000
             self.cells_version += 1
+            self.burn_start = {c: t for c, t in self.burn_start.items() if self.tick - t < 22}      # drop the finished entries (BURN_TICKS)
+            self.burn_start[(x, y)] = self.tick
 
     def set_costs(self, costs):
         """Install a terrain cost table (index = terrain type, `passability.costs_from_reg`)."""

@@ -262,7 +262,19 @@ Open: see [open-questions](../open-questions.md#rendering-and-engine).
   (about 300 map objects in the window); the rest of the dense frame is ~470 shadow blends and ~1100 blits. Remaining frame time at 1024x768
   was above 30 fps only in the densest views (35 ms): `SparseMask.indices` now remembers the flat framebuffer indices per screen position (24 positions
   per sprite entry), so a still camera pays the index arithmetic of the ~470 shadow blends and ~100 half overlays once (dense 1024x768: 34.8 -> 26.5 ms mean, worst frame about 34 ms; scrolling
-  gains nothing, ~25.8 ms). The dynamic light map (lights.py) adds nothing measurable on this map (no lit structure in view). Next, if needed: a per-object item cache for the draw list (6 ms
-  dense) or batching non-overlapping shadows (their truncation order must be kept to stay pixel-identical).
+  gains nothing, ~25.8 ms). The dynamic light map (lights.py) adds nothing measurable on this map (no lit structure in view).
+  Round 3 (still pixel-identical; `test_cached_frame_equals_uncached`, goldens): `SurfaceCache.layer` caches the whole terrain layer
+  of a frame (~900 cells = 900 blits + lookups) as one surface keyed by the items' cell / phase / light / screen x, `cy` and the pixel
+  format, so a still camera does one blit (a scroll misses and pays one extra 1024x768 copy; a surface of another pixel format is 2x slower
+  to fill, hence `like=` the frame); `_objects` memoises each object's `DrawItem`s on the world (key: entity, frame, camera, light row,
+  shadow angle, options; at most 4096 entries), so a still camera rebuilds nothing. Measured, same machine, A/B interleaved, ms
+  (list + draw, 1024x768): still 14.1-15.5 -> 11.0-11.6; densest (9 units, ~500 shadows, ~250 objects) 25.9-26.1 -> 19.3-20.3
+  (list 6.0 -> 2.4); scrolling unchanged (25.2-26.3 -> 26.2-27.7: every object misses the memo, +0.5 ms of list).
+  Shadow batching was tried and dropped: the two shadows of an object overlap each other (the pixel is darkened twice, in order), so a run
+  has to be split or merged into a combined mask with a per-pixel table (`pair mask`, built and measured); the blends cost ~10 us for the
+  mean 570 covered pixels, i.e. per pixel not per call, and the merged form was 3-6 ms slower per dense frame (2-D table gather).
+  A word-arithmetic shade (`(v & 0xFF00FF) * m >> 4`) is equal but slower below ~1000 pixels than the byte table. Remaining dense
+  frame: ~500 shadow blends (~7 ms), ~250 sprite blits, ~250 half overlays, fog pass. Next, if needed: a static-scene cache (objects
+  over terrain composited once per camera, only animated things redrawn), which needs an overlap analysis to stay exact.
 - Removing a structure: the exe clears every present cell, also those held by another structure
   (`FUN_0055995a`); the engine releases only the cells the structure holds.

@@ -1,8 +1,8 @@
 """The dynamic light map (`view+0xa8`, rebuilt every frame by `FUN_0040403b`; docs/mechanics/lighting.md section 3): vertex -> value, 0xFF = no light.
 
 Sources built: structures with `LightRadius` (`FUN_00462386`) and missile projectiles (`FUN_0046d0ef`: firebolt / icemissile / meteorit radius 0, fireball
-radius 1, value 16, stamped at the projectile's cell).  Not built (the engine has no such objects): the burning-cell list (fire explosions, server
-message), the explosion phases of projectile 13 and the lightning segments of 28 / 30.  Pure: no pygame."""
+radius 1, value 16, stamped at the projectile's cell).  Burning cells (Wall of Fire flag on a cell whose map object has a DeadObject, `World.burn_start`) are built.  Not built (the engine has no such objects):
+fire explosions (projectile 13 and its list entries) and the lightning segments of 28 / 30.  Pure: no pygame."""
 
 from allods2.graphics import lighting as lt
 
@@ -32,7 +32,21 @@ def light_map(world, assets, tick):
         cell = missile_cell(world, c, tick)
         if light is not None and cell is not None:
             _stamp(out, cell[0], cell[1], *light)
+    for (x, y), born in world.burn_start.items():           # `FUN_0040403b` step 3, after the object lights: overwrites them
+        counter = tick - born
+        if 0 <= counter < lt.BURN_TICKS and burns(world, assets, x, y):
+            _stamp(out, x, y, 1, lt.BURNING_LIGHT_PHASES[counter >> 1])
     return out
+
+
+def burns(world, assets, x, y):
+    """`FUN_0041c18c` flag 3: the cell enters the burning list only when its map object has a `DeadObject` (`objects.reg` `+0x44 != -1`)."""
+    for i in world.objects_at(x, y):
+        ent = world.objects[i]
+        if ent.kind == "object":
+            aset = assets.object_set(ent.type_id)
+            return aset is not None and aset.rec["DeadObject"] != -1
+    return False
 
 
 def missile_cell(world, c, tick):
