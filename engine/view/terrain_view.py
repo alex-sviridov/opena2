@@ -13,6 +13,10 @@ from allods2.graphics.terrain import LIGHT_ROWS, TILE, WATER, decode_cell, edge_
 from .coords import Projection
 
 
+_WATER_SETS = np.zeros(128, np.intp)        # tile set (0..127) -> 1 when it is one of the animated water sets
+_WATER_SETS[list(WATER)] = 1
+
+
 class TerrainView:
     def __init__(self, world, terrain, animate=True, minutes=0, time_flow=False):
         """`terrain`: a `TerrainSet`.  Light = terrain light at the fixed default
@@ -89,6 +93,14 @@ class TerrainView:
         if not self.animate or decode_cell(self.world.cells[row, col]).set not in WATER:
             return 0
         return (tick >> 2) & 3
+
+    def phase_grid(self, x0, x1, y0, y1, tick):
+        """`phase` of the cells x0 <= col < x1, y0 <= row < y1 as a nested list (rows of columns), in one numpy pass."""
+        if not self.animate:
+            return [[0] * (x1 - x0) for _ in range(y1 - y0)]
+        v = self.world.cells[y0:y1, x0:x1]
+        water = _WATER_SETS[(v.astype(np.intp) & 0x1FFF) >> 6]
+        return (water * ((tick >> 2) & 3)).tolist()
 
     def composite_reference(self, col, row, phase=0):
         """(rgba, y0): the cell as an (n, 32, 4) uint8 array, alpha 255 where the

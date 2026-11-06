@@ -10,6 +10,7 @@ import functools
 import math
 import weakref
 from dataclasses import dataclass
+from typing import NamedTuple
 
 import numpy as np
 
@@ -40,8 +41,8 @@ MANA_TIER = 3                   # `bar` tier of the mana bar (blue)
 FLAG_DESTROYED = 1              # engine.world.FLAG_DESTROYED (view must not import it)
 
 
-@dataclass(frozen=True)
-class TerrainItem:
+class TerrainItem(NamedTuple):
+    """One visible terrain cell (a tuple: ~1000 are built per frame)."""
     col: int
     row: int
     phase: int            # water animation phase 0..3 (0 for static cells)
@@ -59,12 +60,13 @@ def build_terrain_items(terrain_view, camera, tick, lights=None):
     corner get `lit` = min(terrain light, light) per corner."""
     x0, x1, y0, y1 = terrain_view.proj.visible_cells(camera)
     cx = camera.ix
+    phases = terrain_view.phase_grid(x0, x1, y0, y1, tick)
     if not lights:
-        return [TerrainItem(col, row, terrain_view.phase(col, row, tick), col * TILE - cx)
-                for row in range(y0, y1) for col in range(x0, x1)]
+        return [TerrainItem(col, row, ph, col * TILE - cx)
+                for row, prow in zip(range(y0, y1), phases) for col, ph in zip(range(x0, x1), prow)]
     base = terrain_view.light
-    return [TerrainItem(col, row, terrain_view.phase(col, row, tick), col * TILE - cx, corner_lights(lights, base, col, row))
-            for row in range(y0, y1) for col in range(x0, x1)]
+    return [TerrainItem(col, row, ph, col * TILE - cx, corner_lights(lights, base, col, row))
+            for row, prow in zip(range(y0, y1), phases) for col, ph in zip(range(x0, x1), prow)]
 
 
 @dataclass(frozen=True)
