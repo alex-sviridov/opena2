@@ -9,7 +9,7 @@ from engine.world import OrderGroup
 
 from .commands import (AttackUnit, CastScroll, CastSpell, DropGold, Guard, MoveItem, MoveUnits, PickUp, Retreat, SetAutoCast, SetAutoSpell, SetFormation, SetRetreatMode, StandStill, Stop,
                        Swarm)
-from .combat import can_order_attack, refresh_attack, set_attack
+from .combat import can_order_attack, find_target, refresh_attack, set_attack
 from .movement import (ATTACK_ORDER, CENTRE, RETREAT_ORDER, MoveTo, _in_map, _set_action, IDLE, cancel, fail_stop, live_cells, path_grid,
                        set_guard, set_move, set_retreat, set_stand, set_still, stop_unit, unit_size, unit_speed)
 from .pathfinding import chebyshev
@@ -309,7 +309,7 @@ def orders_system(world, commands):
                 move_group(world, g, *cmd.cell)
         elif isinstance(cmd, AttackUnit):
             g = intake(world, cmd.player_id, cmd.unit_ids)      # the group exists before the target is looked up (0x4f5283)
-            target = world.find_unit(cmd.target_id)      # a corpse is a legal target (combat.md 12.2)
+            target = find_target(world, cmd.target_id)   # a corpse or a structure is a legal target (combat.md 12.2, 5.5)
             if g is not None and target is not None:
                 attack_group(world, g, target)
         elif isinstance(cmd, CastSpell) and cmd.cell is not None:

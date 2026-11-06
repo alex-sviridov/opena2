@@ -172,6 +172,7 @@ if cand.flags & 0x40000: score = max(score + 0x7f, 1)      # effect bit: engine 
 The table values are *classes*, not weights: 0 = never a target (a melee walker or ghost never targets a flyer), 2 = plain, 1 = a 50 % worse score
 and 4 = a 25 % better score, both only for a small unit (size < 2) with mind >= 15. A melee walker (row 1) therefore favours ranged walkers (4) and
 penalises ghosts only through 1 -> cand class 2 (value 1). The smallest score wins: **nearest in cells, then smallest facing change**. `me.facing` is `mover+0` (the current direction byte, `Unit.facing`), `octant` is `FUN_005568e4`.
+A **structure** as `cand` (only a player order can name one; the AI pools hold creatures) is class 0 (vtable `+0x20` = `0x541ff0`), so `pref` is column 0 = 2 / 4 / 2 / 2 and the score is never `0xffffff` ([combat 5.5](combat.md)).
 `mind` = `u+0x88`, size = vtable `+0x1c` = `u+0x49` (token size).
 
 ## 6. Attack and return execution (CONFIRMED)

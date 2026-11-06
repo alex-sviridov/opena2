@@ -192,8 +192,45 @@ def move_class(u):
     return u.move_type if u.move_type in (1, 2, 3) else 1
 
 
+class StructureTarget:
+    """A structure (`world.objects`, kind structure / bridge) seen as an attack-order target (docs/engine/combat.md 5.5).  The exe hands the
+    structure object to the same order code as a creature; everything those routines read of it is answered here: id, the anchor cell and
+    sub-cell offsets (position object `obj+0x10`), token size 1 (vtable `+0x1c`, `0x541fe0`), movement class 0 (vtable `+0x20`, `0x541ff0`),
+    flags `+0x4c` and state `+0x54` zero (the constructor clears `+0x4a..+0x5f`, `0x5155dd`)."""
+    __slots__ = ("ob",)
+    stats = None            # unit_size() -> 1
+    state = 0
+    move_type = 0
+    hidden = False
+
+    def __init__(self, ob):
+        self.ob = ob
+
+    id = property(lambda s: s.ob.id)
+    x = property(lambda s: s.ob.x)
+    y = property(lambda s: s.ob.y)
+    sub_x = property(lambda s: s.ob.sub_x)
+    sub_y = property(lambda s: s.ob.sub_y)
+    owner = property(lambda s: s.ob.owner)
+    hp = property(lambda s: s.ob.hp)
+
+
+def find_target(world, tid):
+    """The attack-order target lookup of command 0x19 (`0x4f52b4`): the creature table (`FUN_0052b2bd`), else the structure table
+    (`FUN_0052bfa3`); None when neither has the id."""
+    t = world.find_unit(tid)
+    if t is None:
+        ob = world.objects.get(tid)
+        if ob is not None and ob.kind in ("structure", "bridge"):
+            return StructureTarget(ob)
+    return t
+
+
 def can_order_attack(world, u, t):
-    """`FUN_005711ea` != 0xffffff: the matrix of C§2.2 for attacker `u` and target `t`."""
+    """`FUN_005711ea` != 0xffffff: the matrix of C§2.2 for attacker `u` and target `t`.  A structure is class 0 whatever the attacker (column 0
+    is never 0: C§5.5), so it is always accepted."""
+    if isinstance(t, StructureTarget):
+        return True
     return can_attack(move_class(u), attack_range(world, u), move_class(t), attack_range(world, t))
 
 
@@ -216,11 +253,11 @@ def set_attack(world, u, t):
 def refresh_attack(world, u):
     """`FUN_00569321` case 3 -> `FUN_0056acc8`, run for every member of a group with order 0 at `tick & 15 == 6`: stop when the target is gone
     (state 0x10, a corpse, or an id the world freed), else Brain mode 5 with the target and the range."""
-    t = world.find_unit(u.target)
+    t = find_target(world, u.target)
     if t is None or t.state == DEAD:
         mv.stop_unit(world, u)
         return
-    if world.ai_on and combat_stats(world, u).mage:
+    if world.ai_on and combat_stats(world, u).mage and not isinstance(t, StructureTarget):
         pl = world.players.get(u.owner)
         if pl is not None and pl.human:
             from . import ai
@@ -235,7 +272,7 @@ def refresh_attack(world, u):
 
 def attack_mode(world, u):
     """Brain mode 5 (`FUN_0056eab5`): in range -> start the swing (`FUN_0056e8c3`), else approach with the follow driver (`FUN_0056ea52`)."""
-    t = world.find_unit(u.target)
+    t = find_target(world, u.target)
     if t is None:
         if world.ai_on and (u.order == ai.GUARD_ORDER or ai.pool_driven(world, u)):
             u.mode_attack = False                   # a unit of a pool-driven group keeps its order; the next group pass picks a new target or the post (INFERRED)

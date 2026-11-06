@@ -12,7 +12,7 @@ from engine.rng import Rng
 from engine.world import MapObject, World
 
 from helpers import GFS, needs_data
-from test_engine_combat import damages, fighter, world
+from test_engine_combat import damages, fighter, run_until, world
 
 
 def tower(w, hp=500, x=12, y=10, **kw):
@@ -93,15 +93,28 @@ def test_swing_through_the_simulation_hits_the_structure():
     assert ob.hp < 500 and all(d.target == ob.id for d in damages(w))
 
 
-def test_attack_order_on_a_structure_is_dropped_without_crash():
+def test_attack_order_on_a_structure_is_accepted_and_fought():
+    """combat.md 5.5: the exe accepts the order (the matrix column of a structure is class 0, never refused), the member walks up and swings."""
     w = world()
-    ob = tower(w)
-    a = fighter(w, 1, 5, 10)
+    ob = tower(w, x=20, y=14)
+    a = fighter(w, 1, 12, 14, windup=3, recovery=2)       # the synthetic world blocks a margin of cells at the map edge
+    a.range = 1
+    a.combat.record.elo = 30
     sim = Simulation(w)
     sim.step([AttackUnit(1, (a.id,), ob.id)])
-    for _ in range(40):
-        sim.step()
-    assert a.order == 0 and ob.hp == 500 and (a.x, a.y) == (5, 10)
+    assert a.order == 3 and a.target == ob.id
+    run_until(sim, lambda: damages(w), 4000)
+    assert a.x > 12 and ob.hp < 500 and all(d.target == ob.id for d in damages(w))
+
+
+def test_structure_is_never_refused_by_the_matrix():
+    from engine.sim.combat import StructureTarget, can_order_attack
+    w = world()
+    ob = tower(w)
+    for mt in (1, 2, 3):
+        a = fighter(w, 10 + mt, 3, 3 + mt)
+        a.move_type = mt
+        assert can_order_attack(w, a, StructureTarget(ob))
 
 
 @needs_data
