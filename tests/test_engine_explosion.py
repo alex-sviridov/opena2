@@ -102,5 +102,5 @@ def test_explosion_sprite_and_steam_are_drawn():
     def pics(tick):
         return sorted((i.sprite[1], i.frame) for i in build_draw_list(w, cam(20, 20), tick, a, PLAIN)
                       if i.kind == "sprite" and i.sprite[0] == "projectile")
-    assert pics(6) == [(8, 1), (13, 3), (15, 1)]
+    assert pics(6) == [(8, 1), (13, 3)]                              # bare water: steam only, the fire needs a map object (`0x408981` gate)
     assert [p for p in pics(22) if p[0] == 13] == [] and pics(26) == []         # the explosion ends at age 22, the list entry at 4 + 22

@@ -62,3 +62,23 @@ def test_steam_on_water_until_counter_18_before_the_object():
     assert fx(w, a, 104)[0] == [(8, 2, 2), (15, 2, 4)]
     assert fx(w, a, 117)[0] == [(8, 8, 2), (15, 8, 4)]
     assert fx(w, a, 118)[0] == [(15, 9, 4)]
+
+
+def test_steam_needs_the_lighting_option_fire_needs_a_map_object():
+    import dataclasses
+    w, a = setup(water=True)
+    off = dataclasses.replace(PLAIN, lights=False)
+    got = [(i.sprite[1], i.frame, i.depth[3]) for i in build_draw_list(w, cam(), 104, a, off)
+           if i.kind == "sprite" and i.sprite[0] == "projectile"]
+    assert got == [(15, 2, 4)]
+    w2, a2 = setup(water=True)
+    w2.burn_start.clear()
+    w2.burn_fx[(11, 10)] = (100, True)             # a water cell without an object: steam only
+    w2.cells[10, 11] |= 8 << 6
+    assert fx(w2, a2, 104)[0] == [(8, 2, 2)]
+
+
+def test_effect_sprites_ignore_the_fog():
+    w, a = setup(water=True)
+    w.cells[10, 10] &= 0x3FFF                     # unexplored (tile bits 0xc000 clear)
+    assert fx(w, a, 104)[0] == [(8, 2, 2), (15, 2, 4)]

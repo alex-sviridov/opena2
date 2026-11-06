@@ -131,3 +131,39 @@ def test_item_boxes_cover_what_is_drawn():
         else:
             assert (b[2] - b[0], b[3] - b[1]) == val.get_size(), it
     assert n > 100
+
+
+@needs_data
+def test_shared_fog_plan_equals_the_plan_of_each_offset():
+    """The fog pass at every vertical camera offset (one plan per origin cell, applied in a padded copy) equals the plan built for that exact
+    offset, on map 32's real fog and relief, at several sizes (rows not a multiple of the cell included), with the cache hit and miss paths."""
+    from allods2.graphics import lighting as lt
+    from engine.backend_pygame import render as R
+    from engine.backend_pygame.sprites import Frame
+    from engine.session import build_game
+    from engine.view import fog as fog_view
+    w, a = build_game("32", seed=1, vision=True)
+    ensure_display(64, 64)
+    tv = TerrainView(w, a.tileset())
+    hero = w.units[w.players[1].main_hero]
+    rng = np.random.default_rng(3)
+    checked = hits = 0
+    for vw, vh in ((200, 160), (224, 191), (256, 256)):
+        frame = Frame.get(vw, vh)
+        base = rng.integers(0, 2**24, size=(vh, vw), dtype=np.uint32)
+        for ox in (0, 17):
+            for iy in range(hero.y * 32 - 70, hero.y * 32 - 70 + 70):        # two origin cells, every offset
+                cam = Camera(vw, vh, w.width, w.height, hero.x * 32 - vw // 2 + ox, iy)
+                ov = fog_view.overlay(w, cam, tv.proj.vy)
+                levels, vy, cols, rows = ov
+                if not (levels != lt.FOG_SEEN).any():
+                    continue
+                np.copyto(frame.arr, base)
+                want = frame.arr.copy().reshape(-1)
+                lt.apply_fog_plan_rgb(want, lt.fog_plan(levels, vy, cols, rows, (vh, vw)), (vh, vw))
+                before = R._fog_cache[0]
+                R.draw_fog_pass(frame, ov, None, cam.iy & 31)
+                hits += before == R._fog_cache[0]
+                assert (frame.arr.reshape(-1) == want).all(), (vw, vh, ox, iy)
+                checked += 1
+    assert checked > 200 and hits > 100            # most offsets reuse the plan of their origin cell

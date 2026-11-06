@@ -512,7 +512,7 @@ sprite they belong to, except structures (P0, before everything) and flyers
 `b`. Shadow casters: structures, map objects, ground and flying units,
 corpses, backpacks; **not** bridges and projectiles (`+0x2c` is a `ret`
 stub). Shadow geometry: [lighting §5](../mechanics/lighting.md#5-shadows-confirmed).
-Unit layers, filing, flyer passes P4/P7 and the unit shadow: CONFIRMED, [rendering §13](../engine/rendering.md#13-units-team-colours-piles-g3a); burning-cell effects stay INFERRED.
+Unit layers, filing, flyer passes P4/P7 and the unit shadow: CONFIRMED, [rendering §13](../engine/rendering.md#13-units-team-colours-piles-g3a); burning-cell effects: CONFIRMED gates, see [rendering](../engine/rendering.md) (steam needs Lighting `0x5f17f0`, fire needs a map object, no fog test).
 
 A structure is drawn once per footprint cell ([animation §4.2](animation.md#42-structures-and-bridges)):
 cell `(c, r)` of the W × TH footprint draws the pieces of picture column `c` in

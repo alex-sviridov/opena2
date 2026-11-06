@@ -107,7 +107,7 @@ def draw_frame(surface, caches, terrain_items, items, camera, world=None):
     if clean:
         memo.restore(frame)
     if fog is not None:
-        draw_fog_pass(frame, fog, fkey)
+        draw_fog_pass(frame, fog, fkey, camera.iy & 31)
     if memo is not False:
         memo.keep_final(frame, fkey, camera)
     target.blit(surface, (0, 0))
@@ -118,19 +118,41 @@ def fog_key(frame, ov):
     return (np.asarray(levels).tobytes(), np.asarray(vy).tobytes(), cols, rows, frame.arr.shape)
 
 
-def draw_fog_pass(frame, ov, key=None):
-    """The exe's fog pass (`0x40a06a`-`0x40a5bc`, lighting.md 3) on the 16-bit (565) image of the frame."""
+def draw_fog_pass(frame, ov, key=None, phase=None):
+    """The exe's fog pass (`0x40a06a`-`0x40a5bc`, lighting.md 3) on the 16-bit (565) image of the frame.
+
+    With `phase` (the camera's vertical pixel offset inside its cell, `iy & 31`) the plan is built once per fog state and shared by every
+    vertical offset: the quads' screen y are `world y - iy`, the same for all offsets of one origin cell up to a shift by `phase`, and a
+    pixel's blend rows depend only on the quads that cover it and their order, so the plan is made for the canonical frame (`vy + phase`,
+    32 rows taller: real row r is canonical row r + phase) and the frame is applied inside a padded copy.  Pixel-identical to the plan of
+    the real offset (`tests/test_engine_scene.py`)."""
     levels, vy, cols, rows = ov
     if not (levels != lt.FOG_SEEN).any():
         return
     shape = frame.arr.shape
-    key = key or fog_key(frame, ov)
-    if _fog_cache[0] != key:                        # the pass only changes with the fog bits or the camera cell / offset
-        _fog_cache[:] = [key, lt.fog_plan(levels, vy, cols, rows, shape)]
-    lt.apply_fog_plan_rgb(frame.flat, _fog_cache[1], shape)
+    if phase is None:
+        key = key or fog_key(frame, ov)
+        if _fog_cache[0] != key:
+            _fog_cache[:] = [key, lt.fog_plan(levels, vy, cols, rows, shape)]
+        lt.apply_fog_plan_rgb(frame.flat, _fog_cache[1], shape)
+        return
+    H, W = shape
+    pshape = (H + 32, W)
+    pkey = ("pad", np.asarray(levels).tobytes(), (np.asarray(vy) + phase).tobytes(), cols, rows, shape)
+    if _fog_cache[0] != pkey:                       # the pass only changes with the fog bits or the camera cell
+        _fog_cache[:] = [pkey, lt.fog_plan(levels, np.asarray(vy) + phase, cols, rows, pshape)]
+    pad = _fog_pad.get(pshape)
+    if pad is None:
+        _fog_pad.clear()
+        pad = _fog_pad[pshape] = np.zeros(pshape, np.uint32)
+    inner = pad[phase:phase + H]
+    np.copyto(inner, frame.arr)
+    lt.apply_fog_plan_rgb(pad.reshape(-1), _fog_cache[1], pshape)
+    np.copyto(frame.arr, inner)
 
 
 _fog_cache = [None, None]
+_fog_pad = {}
 
 
 def surface_rgb(surface):

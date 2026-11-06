@@ -288,8 +288,8 @@ Open: see [open-questions](../open-questions.md#rendering-and-engine).
   when: debug overlays are in the list, the terrain version / frame size / sprite cache / bar cap changed, the camera moved by a frame or more,
   more than 48 rectangles or 45 % of the frame are dirty. A frame identical to the last (same camera pixel, nothing dirty, same fog bits) reuses
   the fogged output copy and costs one blit. Everything is skipped with `Caches(scene=False)` (the reference the tests compare against).
-  The fog pass (`fog_plan` + apply) still runs on every scrolled or changed frame: ~6.7 ms plan per camera pixel row at 1024x768 (the plan
-  depends on the vertical offset; a transposed running sum was measured slower and dropped). `tools/bench_render.py` gained the "live" rows
+  The fog pass (`fog_plan` + apply) still runs on every scrolled or changed frame; the plan (~6.7 ms at 1024x768) is now shared by all vertical
+  offsets of one origin cell (round 5 below; a transposed running sum was measured slower and dropped). `tools/bench_render.py` gained the "live" rows
   (world running: units walk, objects and water animate, the hero walking) and `--no-scene`. Measured, same machine, ms (list + draw, mean;
   before = `--no-scene`):
 
@@ -305,5 +305,16 @@ Open: see [open-questions](../open-questions.md#rendering-and-engine).
   rectangle merges with the neighbours; scrolling is now bounded by the fog plan (6.7 ms) and the draw list (3.4 ms). A camera-independent
   object memo was not done (it needs the items shifted per frame, as slow as building them). Next, if needed: a fog plan reusable across
   vertical offsets (needs the exe's per-quad cull test proved invariant) or re-fogging only the dirty rectangles.
+- Round 5, fog plan shared across vertical offsets (`render.draw_fog_pass(.., phase)`, `tests/test_engine_scene.py::test_shared_fog_plan_...`): the
+  quads' screen y are `world y - iy`, so within one origin cell (`iy >> 5`) the plan of offset `p = iy & 31` is the plan of offset 0 shifted by
+  `p` rows. A pixel's blend rows depend only on the quads covering it and their draw order (the layers only keep that order, black absorbs),
+  not on the clip or the layer numbering, so one plan is built for the canonical frame (`vy + p`, 32 rows taller, whole quads kept) and applied
+  to a padded copy of the frame (copy in at row `p`, apply, copy back, ~0.7 ms). The key is (fog levels, `vy + p`, cols, rows, size): it misses
+  only when the fog bits or the origin cell change (and once more for the `rows` a size changes at p = 0). Pixel-identical to the plan of the
+  exact offset (tested on map 32 fog/relief at three sizes, every offset of two origin cells, hit and miss). Measured (same machine, mean ms
+  list + draw, 30 frames; before = round 4): 1024x768 scrolling 20.5 -> 17.5, scrolling with the world running 22.6 -> 20.0; 640x480 scrolling
+  12.0 -> 9.8, live 13.2 -> 11.5; still rows unchanged (the plan was already reused). Re-fogging only the dirty rectangles was **not** done:
+  the fog quads sit at `x = 32 c` on the screen (`fog_runs`, no `ix`), so the fogged output of a horizontal scroll is not the shifted previous
+  output and only a pure vertical scroll could reuse it; the apply (quantise 1.9 ms + layers ~1.3 ms at 1024x768) stays whole-frame.
 - Removing a structure: the exe clears every present cell, also those held by another structure
   (`FUN_0055995a`); the engine releases only the cells the structure holds.

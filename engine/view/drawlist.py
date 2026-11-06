@@ -539,18 +539,27 @@ BURN_STEAM_TICKS = 18       # steam draws while the list counter is below 18 (`0
 STEAM_PROJECTILE, FIRE_PROJECTILE = 8, 15
 
 
+def _has_object(w, x, y):
+    return any(w.objects[i].kind == "object" for i in w.objects_at(x, y))
+
+
 def _burning_sprites(ctx):
     """Burning-list sprites (`view+0xa94`, CONFIRMED): per cell of the P3 scan, steam (`0x40883f`-`0x40895c`, before the map object: slot 2) when the
     entry's cell is water (tile word `& 0x1fff >> 6` in 8..11) and counter < 18: projectile 8, frame `counter >> 1`; fire (`0x409406`-`0x40949c`,
     after the object: slot 4): projectile 15 `firewall`, frame `counter >> 1`.  Both are the record's `Width x Height` box centred on
-    `(32 X + 16, 32 Y + 16 - relief)` (relief = the cell's mean corner height, as for objects), `.16a` alpha, no light row."""
+    `(32 X + 16, 32 Y + 16 - relief)` (relief = the cell's mean corner height, as for objects), `.16a` alpha, no light row.
+    Gates (CONFIRMED): steam needs the Lighting option (`0x5f17f0`), fire needs a map object on the cell (inside the object gate `0x408981`, then
+    `FUN_0040b117` = 0, skipped only when every fog vertex of the object's box is 16 = black, invisible); no fog (tile `0xc000`) test on either."""
     w = ctx.world
     for x, y, counter in burning_entries(w, ctx.assets, ctx.tick):
         if not in_window(ctx.win, x, y):
             continue
         water = 8 <= (int(w.cells[y, x]) & 0x1FFF) >> 6 < 12
-        kinds = ((STEAM_PROJECTILE, SLOT_STEAM),) if water and counter < BURN_STEAM_TICKS else ()
-        kinds += ((FIRE_PROJECTILE, SLOT_FIRE),)
+        # steam: only with the Lighting option (`cmp [0x5f17f0], 0` at `0x40883f`); fire: only on a cell with a map object (the block `0x409406` is
+        # inside the object gate `0x408981`); neither tests the fog (`0xc000`) words, projectiles and explosions neither (`FUN_0046cb7b`, list `0x40984e`)
+        kinds = ((STEAM_PROJECTILE, SLOT_STEAM),) if water and counter < BURN_STEAM_TICKS and ctx.opts.lights else ()
+        if _has_object(w, x, y):
+            kinds += ((FIRE_PROJECTILE, SLOT_FIRE),)
         for pid, slot in kinds:
             pset = ctx.assets.projectile_set(pid)
             if pset is None:
