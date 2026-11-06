@@ -39,7 +39,8 @@ selection, right click cancels a pending mode or deselects, right drag or the sc
 moves (own units selected) or moves the camera. Keys: `M` / `A` / `D` / `S` arm the move / attack / defend / swarm modes, `T`
 stand ground, `R` retreat, `G` guard, `L` stand still, `C` arms a cast, `Ctrl+F` formation, `Ctrl+W` retreat mode, `B` / `Q`
 spell book (`F4`-`F12` arm a spell, `Ctrl+F<n>` binds), `I` / backquote backpack (drag items: equip, use, drop), `Space` both,
-`Ctrl+A` auto-cast, `Tab` info panel picture / text, `Esc` menu, `Pause`. Options: `Ctrl+H` health bars, `Ctrl+L`
+`Ctrl+A` auto-cast, `Tab` info panel picture / text, `Esc` menu, `Pause`. `Enter` opens the chat line (type, `Enter` sends, `Esc`
+cancels); in the pause / failed / complete dialogs `Enter` acts as in the original. `Space` with a dead hero does nothing (as in single player). Options: `Ctrl+H` health bars, `Ctrl+L`
 damage numbers, `Ctrl+O` smoothing. Developer overlays: `F1`-`F3`, `Shift+F4` / `Shift+F5`.
 
 ## What works
@@ -75,15 +76,17 @@ height of the damage numbers, the hit-reaction flee, the story window layout.
 - No sound or music (the engine has no audio).
 - No save / load; no campaign flow between missions ([campaign](engine/triggers.md#11-the-end-of-mission-flow)): hero recruit, roster carry-over.
 - Interface: the Heads panel is only a picture (no hero windows), no town / shop windows, menu entries of later phases disabled.
-- Spells: the Prismatic Spray chain is a counted no-op; structures cannot be targeted; spell effects have no drawing of their own.
-- Triggers: instants 29 / 30 (spell durations), 37 (set music) and the unnamed kinds are counted no-ops
+- Spells: structures are not modelled as spell targets (attack orders on structures are accepted and fought like creatures);
+  the Prismatic Spray chain, Lightning / Spray bolts and the Fire Ball explosion (lights, steam, burnt ground, burning trees)
+  are built, but the status effects of units other than Invisibility and Stone Curse (poisoned, blessed, hasted, ...) have no drawing of their own.
+- Triggers: instants 29 / 30 (spell durations) are counted no-ops, 37 (set music) and the unnamed kinds are not implemented
   (`not implemented:` lines in `engine.log`).
 - Multiplayer is out of scope.
 
 ## Phase K backlog, by value
 
 1. **Inventory and hero windows**: the Heads panel, hero window with the paper doll, stats and skills, item shops.
-2. **More spells**: Prismatic Spray, structure targets, effect drawing (so a poisoned or blessed unit looks so), spell durations (instants 29 / 30).
+2. **More spells**: structure targets, effect drawing (so a poisoned or blessed unit looks so), spell durations (instants 29 / 30).
 3. **Full triggers**: the remaining check / instant kinds, variable references 8000-9999, unit names >= 11001.
 4. **Campaign**: end-of-mission chain, hero recruit, roster carry-over, the campaign variables `0x301`-`0x30d`, world map and towns.
 5. **Full UI**: start menu, new-game and options screens, in-game menu entries, town-scene animations, tooltips for every element.
