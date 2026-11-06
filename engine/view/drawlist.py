@@ -671,11 +671,10 @@ def _explosions(ctx):
 def _bolts(ctx):
     """P6: the Lightning / Prismatic Spray bolts (projectile 28 / 30, `FUN_0046cb7b` cases 0x1c / 0x1e): one sprite on every point of every segment,
     frame `phase` (Lightning) or `phase + 5 * variant` (Spray, variant = list index % 7), phase from the ping-pong table by age, `.16a` alpha."""
-    from .lights import bolt_phase, bolt_segments
+    from .lights import bolt_age, bolt_segments
     w = ctx.world
     for b in w.bolts:
-        age = ctx.tick - b.born + 1
-        if not 1 <= age <= b.life:
+        if bolt_age(b, ctx.tick) is None:
             continue
         pset = ctx.assets.projectile_set(b.pid)
         if pset is None:
@@ -684,7 +683,7 @@ def _bolts(ctx):
         a16 = bool(pset.rec["A16"])
         n = 0
         for var, pts in bolt_segments(w, b, ctx.tick):
-            ref = pset.frame_at("effect", 0, ctx.tick - b.born, age0=0, colour=var)
+            ref = pset.frame_at("effect", 0, ctx.tick - b.born, age0=b.age0, colour=var)
             for x, y in pts:
                 pos = (int(x) << 3, int(y) << 3)
                 dep = (PASS_PROJECTILE, int(y) >> 5, -(int(x) >> 5), 0, (1 << 22) + b.born, n)

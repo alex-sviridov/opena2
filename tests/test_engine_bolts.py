@@ -2,8 +2,12 @@
 `FUN_0046d46a`, `FUN_0046d0ef`): target list, chain release, bolt lifetime, phases, lights, draw.  Synthetic worlds, always run.
 Docs: docs/engine/effects.md 11, docs/mechanics/lighting.md 3."""
 
+import types
+
+import numpy as np
+
 from engine.sim import ai, effects, spells
-from engine.view import build_draw_list, lights
+from engine.view import boltline, build_draw_list, lights
 from engine.world import SpellCast
 from helpers import projectile, sprite_file
 from spell_helpers import effect_table
@@ -110,7 +114,9 @@ def test_the_chain_releases_every_target_at_the_cast_start_and_spends_the_mana_o
     assert c.mana == 500 - w.spell_table.get(SPRAY).mana_cost
     assert cast.chain == (t.id, foes[0].id, foes[1].id, foes[2].id)
     assert [(k.target, k.kind, k.ticks_left) for k in w.carriers] == [(i, "missile", 10) for i in cast.chain]
-    assert not w.unbuilt_casts and w.bolts == []              # the bolt starts at the cast action, not at the start
+    assert not w.unbuilt_casts
+    (b,) = w.bolts                                              # the cast message starts the cast action; its ShootDelay tick makes the bolt (no unit sets here: tick 0)
+    assert (b.pid, b.targets, b.born) == (30, cast.chain, w.tick)
 
 
 def test_the_target_count_is_capped_at_seven_and_floors_at_two():
@@ -126,17 +132,17 @@ def test_the_target_count_is_capped_at_seven_and_floors_at_two():
     assert len(start(w, c, t)[0].chain) == 7
 
 
-def test_the_release_does_nothing_but_start_the_bolt():
+def test_the_release_does_not_make_the_bolt():
     w = world()
     c = caster(w, level=40)
     t = foe(w, 2, 22, 20)
-    cast, st = start(w, c, t)
-    n = len(w.carriers)
     w.tick = 50
+    cast, st = start(w, c, t)
+    n, bolts = len(w.carriers), list(w.bolts)
+    w.tick = 60
     spells.cast_release(w, c, cast, st)
     assert len(w.carriers) == n                                 # FUN_00519d7f skips spell 11
-    (b,) = w.bolts
-    assert (b.pid, b.caster, b.targets, b.born) == (30, c.id, cast.chain, 50)
+    assert w.bolts == bolts and (bolts[0].pid, bolts[0].caster, bolts[0].targets, bolts[0].born) == (30, c.id, cast.chain, 50)
 
 
 def test_a_cast_from_an_item_uses_the_item_level_for_the_count():
@@ -147,16 +153,18 @@ def test_a_cast_from_an_item_uses_the_item_level_for_the_count():
     assert len(start(w, c, t, item_count=60)[0].chain) == 5     # 60 // 20 + 2
 
 
-def test_lightning_has_no_chain_and_starts_a_bolt_at_the_release():
+def test_lightning_has_no_chain_and_its_bolt_comes_from_the_cast_message():
     w = world()
     c = caster(w)
     t = foe(w, 2, 22, 20)
+    w.tick = 4
     cast, st = start(w, c, t, spell=LIGHTNING)
-    assert cast.chain is None and w.carriers == [] and w.bolts == []
-    w.tick = 9
-    spells.cast_release(w, c, cast, st)
+    assert cast.chain is None and w.carriers == []
     (b,) = w.bolts
-    assert (b.pid, b.targets, b.born) == (28, (t.id,), 9) and len(w.carriers) == 1
+    assert (b.pid, b.targets, b.born) == (28, (t.id,), 4)
+    w.tick = 9
+    spells.cast_release(w, c, cast, st)                         # the release makes the damage carrier only
+    assert len(w.bolts) == 1 and len(w.carriers) == 1
 
 
 # --- the client bolt ------------------------------------------------------------------------------------------------------------------
@@ -201,11 +209,151 @@ def test_the_spray_draws_a_segment_per_list_entry_with_the_variant_row():
     assert [v for v, _ in lights.bolt_segments(w, w.bolts[0], w.tick)] == [0, 2]
 
 
-def test_the_polyline_runs_from_origin_to_target():
-    import random
-    pts = lights.bolt_polyline((0, 0), (200, 0), random.Random(3))
-    assert pts[0] == (0, 0) and abs(pts[-1][0] - 200) < 1e-6 and abs(pts[-1][1]) < 1e-6
-    assert max(abs(y) for _, y in pts) <= 0.09 * 200 + 1e-6    # offset <= 3 * 0.03 * length
+# --- the exact line (FUN_004c8863 / FUN_004c819d / FUN_004c8069) and the spawn --------------------------------------------------------------
+
+def test_the_rand_is_the_msvc_crt_lcg():
+    r = boltline.CrtRand(1)                                     # FUN_00583290: holdrand * 214013 + 2531011, bits 16..30
+    assert [r() for _ in range(5)] == [41, 18467, 6334, 26500, 19169]
+
+
+def test_the_spline_is_the_quadratic_through_three_points_stepped_by_6():
+    xs, ys = [], []
+    boltline.spline(100.0, 10.0, 130.0, 25.0, 160.0, 16.0, xs, ys)
+    assert xs == [100.0 + 6 * i for i in range(10)]               # x < 160, step 6.0
+    coef = np.polyfit([100.0, 130.0, 160.0], [10.0, 25.0, 16.0], 2)
+    assert np.allclose(ys, np.polyval(coef, xs), atol=1e-6) and abs(ys[0] - 10.0) < 1e-6
+    xs, ys = [], []
+    boltline.spline(5.0, 0.0, 5.0, 0.0, 5.0, 0.0, xs, ys)         # x1 == x3: no sample
+    assert xs == []
+
+
+def test_the_control_line_stays_within_015_length_of_the_axis_and_is_jagged():
+    for seed in range(30):
+        xs, ys = boltline.control_line(0.0, 0.0, 200.0, 0.0, 200.0, boltline.CrtRand(seed * 7919 + 1))
+        assert xs[0] == 0.0 and abs(ys[0]) < 1e-9 and all(0 < b - a <= 6.0 for a, b in zip(xs, xs[1:]))      # each span restarts its 6 px stepping
+        assert all(abs(y) <= 0.15 * 200 for y in ys)               # the retry rule
+        assert len(xs) >= 30 and max(ys) - min(ys) > 0.5            # 200 px / 6 = 34 samples, with real lateral jumps
+
+
+def test_the_control_line_draws_in_the_exes_order():
+    """One hand-followed draw: the sign by `rand & 1`, then per iteration `rand % 7` and `rand % 50`; the same stream, replayed, gives the same line."""
+    r1, r2 = boltline.CrtRand(12345), boltline.CrtRand(12345)
+    assert boltline.control_line(0.0, 0.0, 120.0, 0.0, 120.0, r1) == boltline.control_line(0.0, 0.0, 120.0, 0.0, 120.0, r2)
+    assert r1.state == r2.state and r1.state != 12345
+
+
+def test_build_rotates_the_line_onto_the_target_and_truncates():
+    pts = boltline.build(10.0, 20.0, 210.0, 20.0, boltline.CrtRand(3))
+    assert pts[0] == (10, 20) and all(isinstance(v, int) for p in pts for v in p)
+    assert pts[-1][0] > 200 - 6 and max(abs(y - 20) for _, y in pts) <= 0.15 * 200 + 1     # the last sample lies < 6 px short of the end
+    d = boltline.build(0.0, 0.0, 0.0, 200.0, boltline.CrtRand(3))                           # vertical: the line is the horizontal one turned 90 degrees
+    h = boltline.build(0.0, 0.0, 200.0, 0.0, boltline.CrtRand(3))
+    assert len(d) == len(h) and all(abs(a[0] + b[1]) <= 1 and abs(a[1] - b[0]) <= 1 for a, b in zip(d, h))
+    assert boltline.build(5.0, 5.0, 5.0, 5.0, boltline.CrtRand(1)) == []                    # zero length: no point
+
+
+def test_lines_differ_between_ticks_and_are_repeatable():
+    w = world()
+    c = caster(w)
+    t = foe(w, 2, 26, 20)
+    effects.spawn_bolt(w, c, 28, (t.id,))
+    b = w.bolts[0]
+    a1, a2 = lights.bolt_segments(w, b, w.tick)[0][1], lights.bolt_segments(w, b, w.tick + 1)[0][1]
+    assert a1 == lights.bolt_segments(w, b, w.tick)[0][1] and a1 != a2
+
+
+def test_the_target_end_is_the_feet_with_the_flyers_altitude_and_no_chest_height():
+    w = world()
+    c = caster(w)
+    t = foe(w, 2, 26, 20)
+    effects.spawn_bolt(w, c, 28, (t.id,))
+    b = w.bolts[0]
+    pts = lights.bolt_segments(w, b, w.tick)[0][1]
+    ex, ey = (26 * 256 + 128) >> 3, (20 * 256 + 128) >> 3                # flat ground: the screen y of the cell centre
+    assert abs(pts[-1][0] - ex) <= 6 and abs(pts[-1][1] - ey) < 0.15 * 192
+    assert abs(pts[0][0] - (20 * 256 + 128) // 8) <= 1 and pts[0][1] == (20 * 256 + 128) // 8
+
+
+class FakeSet:
+    def __init__(self, delay=8, so=None, z=0, n=12):
+        self.t = types.SimpleNamespace(ShootOffset=so or [], CenterX=64, CenterY=78, Z=z, SelectionX1=0, SelectionX2=0, SelectionY1=0, SelectionY2=0)
+        self._ev = {"impact": 8, "release": delay} if delay is not None and delay < n else {"impact": 8}
+
+    def attack_events(self, kind):
+        return self._ev
+
+
+class FakeAssets:
+    def __init__(self, aset):
+        self.aset = aset
+
+    def unit_set(self, tid):
+        return self.aset
+
+
+def test_the_bolt_spawns_on_the_shoot_delay_tick_of_the_cast_action():
+    w = world()
+    w.assets = FakeAssets(FakeSet(delay=8))
+    c = caster(w)
+    t = foe(w, 2, 22, 20)
+    w.tick = 30
+    cast, st = start(w, c, t)
+    (b,) = w.bolts
+    assert b.born == 38 and c.action_start_tick == 30           # action tick 8 of the cast = world tick 38
+    assert lights.bolt_age(b, 37) is None and lights.bolt_age(b, 38) == 1 and lights.bolt_age(b, 50) == 13 and lights.bolt_age(b, 51) is None
+
+
+def test_a_shoot_delay_past_the_sequence_never_fires():
+    w = world()
+    w.assets = FakeAssets(FakeSet(delay=12, n=12))              # delay 12 >= length 12
+    c = caster(w)
+    t = foe(w, 2, 22, 20)
+    start(w, c, t)
+    assert w.bolts == []
+
+
+def test_the_bolt_is_dropped_when_its_first_target_is_gone_on_the_spawn_tick():
+    w = world()
+    w.assets = FakeAssets(FakeSet(delay=3))
+    c = caster(w)
+    t = foe(w, 2, 22, 20)
+    w.tick = 10
+    start(w, c, t)
+    w.units.pop(t.id)
+    for k in (10, 11, 12):
+        w.tick = k
+        effects.bolt_system(w, [])
+        assert len(w.bolts) == 1
+    w.tick = 13
+    effects.bolt_system(w, [])
+    assert w.bolts == []                                        # FUN_0046707e: the +0x8e lookup fails, nothing is made
+
+
+def test_the_origin_is_the_shoot_offset_point_by_direction():
+    w = world()
+    so = list(range(40, 56))                                    # 8 (x, y) pairs
+    w.assets = FakeAssets(FakeSet(so=so))
+    c = caster(w, x=20, y=20)
+    c.facing = 0x40                                             # direction 4: k = (4 - 8) & 14 = 12 -> (SO[12], SO[13]) = (52, 53)
+    assert effects.shoot_origin(w, c) == (20 * 256 + 128 - (64 - 52) * 8, 20 * 256 + 128 - (78 - 53) * 8)
+    c.facing = 0xB0                                             # direction 11: k = 3 & 14 = 2 -> (42, 43)
+    assert effects.shoot_origin(w, c) == (20 * 256 + 128 - (64 - 42) * 8, 20 * 256 + 128 - (78 - 43) * 8)
+    w.assets = FakeAssets(FakeSet(so=[]))                       # no table: only the unit's own centre (no selection box here)
+    assert effects.shoot_origin(w, c) == (20 * 256 + 128 - 64, 20 * 256 + 128 - 78)
+
+
+def test_a_hidden_caster_makes_the_spray_at_once_on_its_cell_and_no_lightning():
+    w = world()
+    hidden = types.SimpleNamespace(id=0, type_id=0, x=21, y=22)
+    t = foe(w, 2, 24, 20)
+    w.tick = 70
+    effects.spawn_bolt(w, hidden, 28, (t.id,))
+    assert w.bolts == []                                        # the 0x86 handler finds no caster view
+    effects.spawn_bolt(w, hidden, 30, (t.id,))
+    (b,) = w.bolts
+    assert (b.born, b.age0, b.origin, b.life) == (70, -1, (21 * 256 + 128, 22 * 256 + 128), 13)
+    assert [lights.bolt_age(b, 70 + k) for k in (0, 1, 12)] == [0, 1, 12] and lights.bolt_age(b, 83) is None
+    assert [lights.bolt_phase(a) for a in (0, 1, 2, 12)] == [0, 4, 3, 3]
 
 
 def test_pick_row_follows_the_relief():

@@ -742,15 +742,65 @@ def explosion_system(world, commands=()):
 BOLT_LIFE = 13              # `FUN_0046707e` switch: `obj+0xa8 = 0xd` for ids 0x1c / 0x1e; the tick returns "remove" when it is 0 on entry
 
 
+def shoot_origin(world, u):
+    """The projectile start `FUN_0046707e` computes for the cast action (CONFIRMED `0x46718c`-`0x4672e0`), in 1/256 cell: with a ShootOffset table on the
+    unit type, `centre - (CenterX - SO[k]) * 8`, `centre - (CenterY - SO[k + 1]) * 8` for `k = (direction - 8) & 14` (direction = `facing >> 4`),
+    else (empty table, or projectile 0x36) `centre - CenterX + (SelectionX2 - SelectionX1) / 2` (C division) and the same for y, an almost
+    unmoved point (the unit mixes 1/8 pixels with pixels; the Selection offsets `+0x84`..`+0x90` are INFERRED).  `centre` is the footprint centre
+    (`view+0x5c / +0x60`: position + `(size - 1) * 128`)."""
+    cx = u.x * 256 + u.sub_x + ((max(getattr(u, "size", 1), 1) - 1) << 7)
+    cy = u.y * 256 + u.sub_y + ((max(getattr(u, "size", 1), 1) - 1) << 7)
+    assets = getattr(world, "assets", None)
+    aset = assets.unit_set(u.type_id) if assets is not None and hasattr(assets, "unit_set") else None
+    if aset is None:
+        return (cx, cy)
+    t = aset.t
+    so = list(t.ShootOffset)
+    if so:
+        k = (((u.facing >> 4) & 15) - 8) & 14
+        return (cx - (t.CenterX - so[k]) * 8, cy - (t.CenterY - so[k + 1]) * 8)
+
+    def half(a, b):
+        return int((b - a) / 2)
+    return (cx - t.CenterX + half(getattr(t, "SelectionX1", 0), getattr(t, "SelectionX2", 0)),
+            cy - t.CenterY + half(getattr(t, "SelectionY1", 0), getattr(t, "SelectionY2", 0)))
+
+
+def shoot_delay(world, u):
+    """The tick of the caster's cast action (client action 8) at which `FUN_0046707e` fires: the unit type's ShootDelay (`UnitSet.attack_events("cast")`
+    "release", CONFIRMED animation.md 2.4); None when the delay is at or past the attack sequence (never fires).  A test double without unit
+    sets fires at once (0)."""
+    assets = getattr(world, "assets", None)
+    aset = assets.unit_set(u.type_id) if assets is not None and hasattr(assets, "unit_set") else None
+    if aset is None:
+        return 0
+    return aset.attack_events("cast").get("release")
+
+
 def spawn_bolt(world, caster, pid, targets):
-    """The cast action `FUN_0046707e` (client action 8, the caster's shoot frame): projectile `pid` (28 / 30) from the caster, `targets` = the view's
-    `+0x8e` target (Lightning) or the `+0xb0` list of message 0x8a (Spray).  The spawn tick is the release tick (INFERRED: the exe spawns at the
-    unit type's `ShootDelay` frame of action 8, which the engine does not model; its missiles are drawn from the release too)."""
+    """The client side of the cast message (CONFIRMED): a normal caster's action 8 starts at the message (world tick = the cast start) and
+    `FUN_0046707e` creates projectile `pid` (28 / 30) on its ShootDelay tick, at the ShootOffset point (`shoot_origin`), with the view's `+0x8e`
+    target (Lightning) or the `+0xb0` list of message 0x8a (Spray); a delay past the sequence never fires.  A hidden caster (type word 0, a
+    script's trap) sends 0x8c for the Spray instead: projectile 30 at once on the caster's cell centre, age -1 (handler `0x415812`); its Lightning
+    message finds no caster view (`0x4151f8`: the lookup fails, nothing is made).  The first target must still exist on the spawn tick
+    (`bolt_system`; `FUN_0046707e` returns when the `+0x8e` lookup fails).  Not modelled: a caster still busy in an earlier action (`+0xa8 != 0`)
+    ignores the message (INFERRED from `0x415258`)."""
     from engine.world import Bolt
-    world.bolts.append(Bolt(pid, caster.id, tuple(targets), (caster.x * 256 + caster.sub_x, caster.y * 256 + caster.sub_y), world.tick))
+    if not targets:
+        return
+    if caster.type_id == 0:
+        if pid == 30:
+            world.bolts.append(Bolt(pid, caster.id, tuple(targets), (caster.x * 256 + 128, caster.y * 256 + 128), world.tick, age0=-1))
+        return
+    delay = shoot_delay(world, caster)
+    if delay is None:
+        return
+    world.bolts.append(Bolt(pid, caster.id, tuple(targets), shoot_origin(world, caster), world.tick + delay))
 
 
 def bolt_system(world, commands=()):
-    """Drops the bolts whose 13 ticks are over (the view draws ages 1 .. 13 on the ticks `born .. born + 12`)."""
+    """Drops the bolts whose 13 ticks are over (the view draws ages 1 .. 13 on the ticks `born .. born + 12`) and, on its spawn tick, a cast-action
+    bolt whose first target is gone (`FUN_0046707e` makes nothing then)."""
     if world.bolts:
-        world.bolts = [b for b in world.bolts if world.tick - b.born < b.life]
+        world.bolts = [b for b in world.bolts if world.tick - b.born < b.life
+                       and not (b.age0 == 0 and world.tick == b.born and world.find_unit(b.targets[0]) is None)]

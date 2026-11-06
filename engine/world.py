@@ -303,14 +303,17 @@ class SpellCast:
 @dataclass
 class Bolt:
     """A client Lightning / Prismatic Spray projectile (projectile id 28 / 30, `FUN_0046707e`; docs/engine/effects.md 11): spawned by the caster's cast
-    action, 13 ticks of life, phase by the ping-pong table.  `targets`: Lightning the one target (view `+0x8e`), the Spray the list of message 0x8a
-    (view `+0xb0`).  `origin` is the caster's position in 1/256 cell at the spawn.  Client only, not dumped."""
+    action at the unit type's ShootDelay frame, 13 ticks of life, phase by the ping-pong table.  `targets`: Lightning the one target (view `+0x8e`), the
+    Spray the list of message 0x8a (view `+0xb0`).  `origin` is the projectile's start in 1/256 cell (the caster's ShootOffset point; the cell centre for
+    the hidden caster's 0x8c form); `born` may lie in the future (the cast action's ShootDelay tick); `age0` is -1 for the message-created form.
+    Client only, not dumped."""
     pid: int
     caster: int
     targets: tuple
     origin: tuple
     born: int
     life: int = 13
+    age0: int = 0
 
 
 @dataclass

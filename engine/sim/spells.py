@@ -427,10 +427,13 @@ def cast_start(world, u, c, st):
     from .combat import log
     if spell.number == PRISMATIC_SPRAY:
         if t is None:
-            stub_release(world, u, spell.number)    # a cell-form Spray (FUN_00579ddf with no target) is not reachable from the orders (INFERRED)
+            stub_release(world, u, spell.number)    # a cell-form Spray has no valid exe path (CONFIRMED: FUN_00519c04 with a null target faults, effects.md 11): counted no-op
         else:
             c.chain = spray_chain(world, u, c, st, spell, t)
     log(world, CastStarted(world.tick, u.id, t.id if t is not None else None, c.spell, client_flight_ticks(spell, bx - ax, by - ay)))
+    if spell.number in (LIGHTNING, PRISMATIC_SPRAY) and t is not None:      # the client message starts action 8; its ShootDelay tick makes the bolt
+        from . import effects
+        effects.spawn_bolt(world, u, 28 if spell.number == LIGHTNING else 30, (t.id,) if spell.number == LIGHTNING else (c.chain or ()))
     u.step_end = world.tick         # the client message `FUN_005041d6` stores the server tick in unit +0x138
     u.action, u.action_start_tick = mv.ATTACK, world.tick      # client action 8 plays the shared attack block (animation.md 2.4)
     return True
@@ -659,18 +662,13 @@ def spray_chain(world, u, c, st, spell, t):
 def cast_release(world, u, c, st):
     """`FUN_00519d7f` -> `FUN_00519db8` for a unit target: cast XP, level, off-map test, then Heal (24) and Drain Life (26), or the damage branch: the missile
     carrier (`delivery == 2`, flight time from the distance NOW) or the point carrier at once (`delivery == 1`).  Every other handler is `stub_release`.
-    Spell 11 does nothing here (`FUN_00519d7f` skips it: its targets were released at the cast start); the client's bolt starts."""
+    Spell 11 does nothing here (`FUN_00519d7f` skips it: its targets were released at the cast start).  The client's bolt is not made here but by the cast
+    message (`cast_start`, `effects.spawn_bolt`: at the unit type's ShootDelay tick)."""
     spell = world.spell_table.get(c.spell)
     if spell.number == PRISMATIC_SPRAY:
-        if c.chain:
-            from . import effects
-            effects.spawn_bolt(world, u, 30, c.chain)
         return
     t = world.find_unit(c.target)
     release_on(world, u, c, st, spell, t)
-    if spell.number == LIGHTNING and t is not None:
-        from . import effects
-        effects.spawn_bolt(world, u, 28, (t.id,))
 
 
 def release_on(world, u, c, st, spell, t):
