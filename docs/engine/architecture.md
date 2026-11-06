@@ -324,5 +324,11 @@ Open: see [open-questions](../open-questions.md#rendering-and-engine).
   has to be cheap. Shadow bytes through a memoised byte-index array + `take` (18 -> 12 us per shadow), then the shadow and half-overlay
   blends in C (4-5 us per call, nearly all ctypes argument overhead; the clipped patch path gains most). Real loop, ms per frame
   (mean / frames over 33 ms): scrolling 29.7 / 264 of 539 -> 18.3 / 37; still 15.1 / 92 -> 9.7 / 4.
+  Also in the play loop: `gc.freeze()` after the load (a gen-2 pass over the loaded world paused one frame ~30 ms; raising the GC thresholds
+  instead gave fewer but longer pauses, 14-25 ms, and was dropped), and `TerrainView.phase_grid` + `TerrainItem` as a `NamedTuple` (terrain items
+  1.25 -> 0.32 ms per frame). Fight on map 73 (bench_fight setup injected into the real loop, 1024x768): still 11.6 ms mean / 0 frames over 33 ms,
+  scrolling 17.8 / 6 of 739; numpy blends instead of C: 13.4 and 13 frames over 33 ms (still). What remains is the ~25 ms full redraw of a tick
+  frame (about 1200 items through `draw_items`: per-item `SpriteCache.get` key, a blit or a C call each) and the per-frame Python of
+  `SceneMemo.compose` / `_dirty` (~1.5 ms); the next step would be one C call per frame over a packed item list.
 - Removing a structure: the exe clears every present cell, also those held by another structure
   (`FUN_0055995a`); the engine releases only the cells the structure holds.
