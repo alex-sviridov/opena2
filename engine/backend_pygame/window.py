@@ -205,7 +205,7 @@ def hover_text(ui, ordering, world, selection, sel_state, cast_enabled, pos, spe
 
 def key_name(ev):
     """The `engine.ui` key name of a KEYDOWN event: 'escape', 'pause', 'tab', 'return', or the lower-case letter."""
-    return NAMED_KEYS.get(ev.key) or (chr(ev.key) if 32 <= ev.key < 127 else "")
+    return NAMED_KEYS.get(ev.key) or KEYS.get(ev.key) in ("up", "down") and KEYS[ev.key] or (chr(ev.key) if 32 <= ev.key < 127 else "")
 
 
 def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Allods 2", max_frames=None,

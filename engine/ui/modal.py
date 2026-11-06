@@ -43,7 +43,8 @@ class Dialog:
     table: str = "normal"           # colour table name of text and caption
     pitch: int = FONT1_PITCH        # line pitch of `lines` (font height + 2)
     escape: tuple = CLOSE           # the action of ESC (the dialog's key handler: message 0x446 = Return to Game)
-    enter: tuple = None             # the action of Enter (our DECISION: the single button of a notice window)
+    enter: tuple = None             # the action of Enter when no button is focused (CONFIRMED: the first visible button in child order, `FUN_004d460b`)
+    focus: int = None               # the focused button (mission complete: starts on the first, Up / Down move it, `FUN_00440082`); None = no focus tracking
     story: object = None            # `StoryState` of a story window
     picture: Rect = None            # the story window's speaker picture widget (None = the layout without `npc`)
     picture_unit: int = None        # engine id of the unit whose portrait it shows (None = blank)
@@ -67,7 +68,13 @@ class Dialog:
         """A key name ('escape', 'return' or a lower-case letter): the action it triggers, or None."""
         if name == "escape":
             return self.escape
+        if self.focus is not None and name in ("up", "down"):
+            n = len(self.buttons)
+            self.focus = (self.focus + (1 if name == "down" else -1)) % n          # `FUN_004d3e14`: next / previous focusable child, wrapping
+            return NOOP
         if name == "return":
+            if self.focus is not None:
+                return self.buttons[self.focus].action                              # the focused child gets the key first (`FUN_004d4769`)
             return self.enter
         for b in self.buttons:
             if b.enabled and b.key == name:
@@ -185,18 +192,20 @@ def advance(d):
 
 def complete_dialog(layout, main, dialogs):
     """Mission complete (`0x430`, chapter var < 0x78; CONFIRMED `FUN_0044da0f` / `FUN_0044da55`): a menu-class dialog 296x168 with the label `main 0x8c`, `Victory!` (message `0x41d`: ends the
-    mission; J1 ends the program) and `Continue` (`dialogs 0x9a`, message `0x446`: closes the window, play goes on).  ESC = Continue (INFERRED: the common dialog key handler), Enter does nothing (DECISION)."""
+    mission; J1 ends the program) and `Continue` (`dialogs 0x9a`, message `0x446`: closes the window, play goes on).  ESC = Continue (CONFIRMED: the common dialog key handler).
+    Enter presses the focused button (CONFIRMED: the dialog open `FUN_004dc232` focuses the first child with flags 1 and 2 = `Victory!`; Up / Down `FUN_00440082` move the focus, wrapping)."""
     tw = complete_window()
     frame = _place(layout, tw)
     victory = DButton(_rect(frame, tw.buttons[0]), dialogs(D_VICTORY), True, ("quit", "victory"), "v")
     cont = DButton(_rect(frame, tw.buttons[1]), dialogs(D_CONTINUE), True, RETURN, "c")
-    return Dialog("complete", frame, (victory, cont), main(M_COMPLETE), _rect(frame, tw.text), (main(M_COMPLETE),), escape=RETURN, enter=None, align="center")
+    return Dialog("complete", frame, (victory, cont), main(M_COMPLETE), _rect(frame, tw.text), (main(M_COMPLETE),), escape=RETURN, enter=None, focus=0, align="center")
 
 
 def failed_dialog(layout, main, dialogs, reason="", wrap=plain_wrap):
     """Mission failed (`0x431`; CONFIRMED `FUN_0044d1e2` / `FUN_0044d237`): a text window with caption `main 0x8d`, the mission's reason text `reason` (the exe's string list `0x6227b0`: `story.failure_text`) and two stacked buttons, `Exit to Main Menu` (ends the program in J1) and `Load Game` (disabled: no saves in J1).  The window is centred with its
     height before the `+0x40` the failed class adds, so it sits 32 px low.  ESC sends message `0x446` (CONFIRMED `FUN_004dc595` -> slot `0x48` = `FUN_004441c1`), the message of the Load Game button, even though that button is disabled;
-    J1 has no load window, so ESC does nothing.  Enter only presses a focused button (`FUN_004d5f0f`; initial focus not decoded): no Enter action (DECISION)."""
+    J1 has no load window, so ESC does nothing.  Enter (CONFIRMED): the focus lands on the text widget, which ignores Enter, and the key then goes to the children in order (`FUN_004d460b`):
+    the first visible button, `Exit to Main Menu`, presses (`FUN_004d5f0f`)."""
     tw = failed_window((576, 280), lambda w: len(wrap(reason, w)) if reason else 0, True)
     frame = _place(layout, tw)
     entries = [(dialogs(D_EXIT_MENU), True, ("quit", "defeat")), (dialogs(D_LOAD), False, NOOP)]
@@ -205,7 +214,7 @@ def failed_dialog(layout, main, dialogs, reason="", wrap=plain_wrap):
         text, key = split_label(lbl)
         rows.append(DButton(_rect(frame, r), text, en, act, key))
     tr = _rect(frame, tw.text)
-    return Dialog("failed", frame, tuple(rows), reason, tr, tuple(wrap(reason, tr.w)) if reason else (), main(M_FAILED), _rect(frame, tw.caption), "left", escape=NOOP, enter=None)
+    return Dialog("failed", frame, tuple(rows), reason, tr, tuple(wrap(reason, tr.w)) if reason else (), main(M_FAILED), _rect(frame, tw.caption), "left", escape=NOOP, enter=("quit", "defeat"))
 
 
 class ModalStack:

@@ -155,7 +155,9 @@ def test_mission_complete_dialog_is_the_menu_class_window_with_victory_and_conti
     assert [(b.rect.x - f.x, b.rect.y - f.y, b.rect.w, b.rect.h) for b in d.buttons] == [(0x28, 84, 208, 24), (0x28, 108, 208, 24)]      # stack from `h - 0x60`, 24 high
     assert [b.label for b in d.buttons] == ["d2b", "d9a"] and [b.key for b in d.buttons] == ["v", "c"]
     assert (d.text_rect.x - f.x, d.text_rect.y - f.y, d.text_rect.w, d.text_rect.h) == (0x28, 0x20, 0xC0, 0x30) and d.align == "center" and d.table == "normal"
-    assert d.key("return") is None and ui.quit is None and d.key("escape") == modal.RETURN         # Enter does nothing (DECISION), ESC = Continue
+    assert d.key("escape") == modal.RETURN and ui.quit is None                                    # ESC = Continue
+    assert d.key("return") == ("quit", "victory") and d.key("up") == modal.NOOP and d.key("return") == modal.RETURN      # Enter = the focused button: Victory! first (`FUN_004dc232`), Up / Down move it (`FUN_00440082`)
+    assert d.key("down") == modal.NOOP and d.key("return") == ("quit", "victory")
     assert d.key("c") == modal.RETURN and d.key("v") == ("quit", "victory")
     click(ui, d.buttons[1])                                                                        # Continue: the window closes, the mission goes on
     assert not ui.frozen and ui.quit is None and ui.poll(2) == 0
@@ -177,7 +179,8 @@ def test_mission_failed_dialog_is_a_text_window_with_two_stacked_buttons_and_the
     assert (f.w, f.h) == (488, 232) and f.x == 76 and f.y == (480 - 168) // 2                      # centred with 168, then `bottom += 0x40` (`0x44d263`): 32 px low
     assert [(b.rect.x - f.x, b.rect.y - f.y, b.rect.w, b.rect.h) for b in d.buttons] == [(61, 136, 366, 24), (61, 160, 366, 24)]      # w/8 .. 7w/8, h-0x60 / h-0x48
     assert (d.caption_rect.x - f.x, d.caption_rect.y - f.y) == (0x28, 0x30) and d.align == "left"
-    assert ui.poll(1) == 0 and ui.key("escape") and ui.key("return") and ui.frozen                  # ESC = message 0x446 (Load Game, unbuilt): no way out but a button
+    assert ui.poll(1) == 0 and ui.key("escape") and ui.frozen and ui.quit is None                   # ESC = message 0x446 (Load Game, unbuilt): nothing happens
+    assert d.key("return") == ("quit", "defeat")                                                     # Enter = the first button in child order, Exit to Main Menu (`FUN_004d460b`)
     load = d.buttons[1]
     assert not load.enabled and d.click((load.rect.x + 1, load.rect.y + 1)) is None                 # Load Game stays disabled in J1
     click(ui, d.buttons[0])
