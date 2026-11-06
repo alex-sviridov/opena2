@@ -62,7 +62,7 @@ from both places when answered).
 
 ## Rendering and engine
 
-- [Engine drawing](engine/rendering.md#open-questions): fire explosion (projectile 13) and lightning segment lights need those objects in the sim (formulas CONFIRMED, lighting.md 3; burning cells from Wall of Fire are lit).  (Burning trees: resolved, [rendering](engine/rendering.md#open-questions).)
+- [Engine drawing](engine/rendering.md#open-questions): fire explosion (projectile 13) and lightning segment lights need those objects in the sim (formulas CONFIRMED, lighting.md 3; burning cells from Wall of Fire are lit and draw the `firewall` sprite; `steam` is drawn for water entries but nothing queues them until projectile 13 exists).  (Burning trees: resolved, [rendering](engine/rendering.md#open-questions).)
 - (answered) Unit flag `+0x1b8 & 0x80` at the mission start: `FUN_0052be01` sends nothing, see [rendering](engine/rendering.md#open-questions).
 - Renderer speed: the densest 1024x768 view is now ~19.5 ms mean (terrain layer cache and per-object item memo; was 26.5), still 11 ms, scrolling ~26 ms; shadow batching was measured and gives nothing (cost is per covered pixel, overlapping pairs). A static-scene cache is left. [architecture](engine/architecture.md#open-questions)
 - Unregistering a structure (`FUN_0055995a`) clears cells held by another structure; the engine releases only its own cells. [architecture](engine/architecture.md#open-questions)

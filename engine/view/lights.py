@@ -32,11 +32,15 @@ def light_map(world, assets, tick):
         cell = missile_cell(world, c, tick)
         if light is not None and cell is not None:
             _stamp(out, cell[0], cell[1], *light)
-    for (x, y), born in world.burn_start.items():           # `FUN_0040403b` step 3, after the object lights: overwrites them
-        counter = tick - born
-        if 0 <= counter < lt.BURN_TICKS and burns(world, assets, x, y):
-            _stamp(out, x, y, 1, lt.BURNING_LIGHT_PHASES[counter >> 1])
+    for x, y, counter in burning_entries(world, assets, tick):      # `FUN_0040403b` step 3, after the object lights: overwrites them
+        _stamp(out, x, y, 1, lt.BURNING_LIGHT_PHASES[counter >> 1])
     return out
+
+
+def burning_entries(world, assets, tick):
+    """The live burning-list entries `(x, y, counter)` (`view+0xa94`; counter = ticks since the flag, `< 22`) of the cells that qualify (`burns`)."""
+    return [(x, y, tick - born) for (x, y), born in world.burn_start.items()
+            if 0 <= tick - born < lt.BURN_TICKS and burns(world, assets, x, y)]
 
 
 def burns(world, assets, x, y):

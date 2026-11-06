@@ -34,6 +34,9 @@ class FakeAssets:
     def object_set(self, oid):
         return self.objects.get(oid)
 
+    def projectile_set(self, pid):
+        return None
+
     def structure_set(self, tid, size=None):
         s = self.structures.get(tid)
         if isinstance(s, BridgeSet) and size:

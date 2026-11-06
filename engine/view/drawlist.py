@@ -21,7 +21,7 @@ from allods2.graphics.terrain import TILE
 
 from . import fog
 from .objmap import walk_order
-from .lights import cell_row, corner_lights, light_map
+from .lights import burning_entries, cell_row, corner_lights, light_map
 from .pick import PickRect
 
 CELL = TILE
@@ -535,6 +535,40 @@ def _cell_effects(ctx):
                                           blend="alpha" if pset.rec["A16"] else "opaque", light_row=None, depth=depth))
 
 
+BURN_STEAM_TICKS = 18       # steam draws while the list counter is below 18 (`0x4088b8`); the entry itself lives to 22 (`0x40c0f3`)
+STEAM_PROJECTILE, FIRE_PROJECTILE = 8, 15
+
+
+def _burning_sprites(ctx):
+    """Burning-list sprites (`view+0xa94`, CONFIRMED): per cell of the P3 scan, steam (`0x40883f`-`0x40895c`, before the map object: slot 2) when the
+    entry's cell is water (tile word `& 0x1fff >> 6` in 8..11) and counter < 18: projectile 8, frame `counter >> 1`; fire (`0x409406`-`0x40949c`,
+    after the object: slot 4): projectile 15 `firewall`, frame `counter >> 1`.  Both are the record's `Width x Height` box centred on
+    `(32 X + 16, 32 Y + 16 - relief)` (relief = the cell's mean corner height, as for objects), `.16a` alpha, no light row."""
+    w = ctx.world
+    for x, y, counter in burning_entries(w, ctx.assets, ctx.tick):
+        if not in_window(ctx.win, x, y):
+            continue
+        water = 8 <= (int(w.cells[y, x]) & 0x1FFF) >> 6 < 12
+        kinds = ((STEAM_PROJECTILE, SLOT_STEAM),) if water and counter < BURN_STEAM_TICKS else ()
+        kinds += ((FIRE_PROJECTILE, SLOT_FIRE),)
+        for pid, slot in kinds:
+            pset = ctx.assets.projectile_set(pid)
+            if pset is None:
+                ctx.items.missing += 1
+                continue
+            idx = counter >> 1
+            wh = pset.size("main", idx)
+            if wh is None:
+                ctx.items.missing += 1
+                continue
+            sx = CELL * x + CELL // 2 - pset.rec["Width"] // 2 - ctx.cx
+            sy = CELL * y + CELL // 2 - int(ctx.relief[y, x]) - pset.rec["Height"] // 2 - ctx.cy
+            if ctx.visible(sx, sy, wh[0], wh[1]):
+                ctx.items.append(DrawItem("sprite", -1, ("projectile", pid, "main"), idx, sx, sy, wh[0], wh[1],
+                                          blend="alpha" if pset.rec["A16"] else "opaque", light_row=None,
+                                          depth=(PASS_CELL, y, -x, slot, 0)))
+
+
 MISSILE_Z = 28              # px above the ground at the shooter and the target (DECISION: chest height; the exe adds the unit's shoot offset, INFERRED)
 
 
@@ -819,6 +853,7 @@ def build_draw_list(world, camera, tick, assets, options=None, debug=None, selec
                 _unit(ctx, u)
         _carriers(ctx)
         _cell_effects(ctx)
+        _burning_sprites(ctx)
     ctx.items.sort(key=lambda i: i.depth)
     ctx.items.picks = [r for _, r in sorted(ctx.picks, key=lambda p: p[0] + (0, 2))]
     ctx.items.hover_picks = [r for _, r in sorted([(d + (0, 2), r) for d, r in ctx.picks] + [(d + (0, 0), r) for d, r in ctx.struct_picks],
