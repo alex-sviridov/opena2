@@ -94,6 +94,24 @@ def test_space_opens_both_bars_when_none_is_open_else_closes_the_open_ones():
     assert not ui.book.open and not ui.pack.open                         # only the open one closes
 
 
+def test_space_is_swallowed_while_the_main_hero_is_dead():
+    w, u = hero_world()
+    w.players[1].main_hero = u.id
+    ui = GameUi(L[(640, 480)], w, 1, MAIN, MainText(), MainText())
+    u.hp = -39                                                          # `0x40cdaa`: only HP <= -40 takes the dead branch `FUN_0041ab96`
+    ui.key(" ")
+    assert ui.pack.open and ui.book.open
+    ui.key(" ")
+    u.hp = -50                                                          # the main hero's HP after its items dropped (combat 12.3)
+    ui.key(" ")
+    assert not ui.pack.open and not ui.book.open
+    ui.key(" ")
+    assert not ui.pack.open and not ui.book.open                          # swallowed: nothing opens, nothing closes
+    ui.book.open_book()
+    ui.key(" ")
+    assert ui.book.open
+
+
 def test_the_info_panel_pack_button_toggles_the_window():
     w, _ = hero_world()
     ui = GameUi(L[(640, 480)], w, 1, MAIN, MainText(), MainText())

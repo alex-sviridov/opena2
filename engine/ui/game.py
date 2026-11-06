@@ -218,7 +218,15 @@ class GameUi:
         self.pack.toggle()
         self.book.inventory_open = self.pack.open
 
+    DEAD_HERO_HP = -0x28                        # `0x40cdaa`: `cmp word [hero+0x104], -0x28; jg`
+
     def space(self):
+        """Space (`0x40cd6e`).  CONFIRMED: with the local main hero (`view+0x3f6c`) at HP <= -40 the key runs `FUN_0041ab96` instead of toggling the bars: it posts
+        server message `0x4b` (player id), whose handler (`0x4f73bf`) sets `player+0xa64` that only the multiplayer respawn pass (`FUN_004f856a`, needs
+        `game+0x74 != 0`) reads.  In single player that is nothing visible: the key is swallowed, the bars stay as they are."""
+        hero = self.world.units.get(self.world.players[self.player_id].main_hero)
+        if hero is not None and hero.hp <= self.DEAD_HERO_HP:
+            return
         if not self.pack.open and not self.book.open:
             self.pack.open_pack()
             self.book.open_book()
