@@ -132,7 +132,7 @@ Fields: `+8` mode, `+0x48` effect, `+0x4c` stamped, `+0x4d` radius `r` (param 9)
 (s16), centre = the target cell (a unit: its cell; size > 1: centre - 1 in 1/256, INFERRED rounding). Tick (CONFIRMED):
 
 - mode 2 (field: Blizzard, Acid Stream) -> `FUN_0051806c`, [spells §9b](../data/spells.md#9b-field-carriers-summons-raising-tooltip).
-- mode 0 (`+0x50 == 0`: **Fire Ball**) -> `FUN_00518833` once: for every cell of the square `|dx|, |dy| <= r` round the centre, `FUN_00518681` on
+- mode 0 (`+0x50 == 0`: **Fire Ball**) -> `FUN_00518833` once (first `FUN_005045a5(c, 1)`: the client explosion, [rendering](rendering.md#structure-pick-rects-and-dynamic-lights-confirmed-engine-drawlistpick_cell-lightspy)): for every cell of the square `|dx|, |dy| <= r` round the centre, `FUN_00518681` on
   the ground occupant (`rec+4`), the air occupant (`rec+8`) and the structure; a damage effect with spread > 0 also clears the cell
   effects (`FUN_005189b5`, §6.4) and scorches the ground (`FUN_00559c28`, server dirt bit; no reader); done. The *client* burnt-ground bit is another thing: tile bit `0x2000` set by the Wall of Fire cell flag ([rendering](rendering.md#unit-and-cell-effects)), built (`World.scorch`).
 - mode 1 (lifetime): first visit (`+0x4c == 0`) **stamps** the shape (`FUN_00518024`: `distribution == 4` wall `FUN_005182b6`, else

@@ -300,6 +300,16 @@ class SpellCast:
 
 
 @dataclass
+class Explosion:
+    """A client fire-explosion object (projectile 13, `FUN_0046c1d0` case 0xd): created by message 0x86 (the cell form, `FUN_005045a5` of a Fire Ball
+    area carrier's first visit) at the cell centre, `life` = 22 ticks (the message's lifetime byte), age -1 at creation.  Client only, not dumped."""
+    x: int
+    y: int
+    born: int
+    life: int = 22
+
+
+@dataclass
 class Carrier:
     """A spell carrier of the active list (`server+0x7c`, `FUN_0052c279`): kind "missile" (`FUN_00518d1e`, counts `ticks_left` down and then appends
     its point carrier) or "point" (`FUN_005178d4`, applies the effect on its first visit).  Docs: spells.md 9c.3."""
@@ -661,6 +671,8 @@ class World:
         self.cell_effects = {}      # (x, y) -> the record's 6-byte effect (spell, power, sx, sy, tx, ty): traps (sim/traps.py, which hooks `slots.on_enter`); dumped while non-empty
         self.transients = []        # the list server+0x2c: hidden casters (sim/traps.py), ticked in step 2; dumped while non-empty
         self.burn_start = {}        # (x, y) -> tick of the first Wall of Fire flag: the client's burning-cell list `view+0xa94` (client only, not dumped; lights.py)
+        self.explosions = []        # `Explosion`s of the client (projectile 13); client only, not dumped (sim/effects.py `explosion_system`)
+        self.burn_fx = {}           # (x, y) -> (tick, water): the fire explosion's burning-list entries (`SetAt` at age 4, view+0xa94); client only
         self.cell_fx = {}           # (x, y) -> [6 carrier uids or None]: the cell records' effect slots (effects.md 6.4); dumped while non-empty
         self._fx_saved = {}         # (x, y) -> the cost byte the record saved at creation
         self.costs = pas.DEFAULT_COSTS      # map.reg [Terrain] Cost<name> (from_map loads the install's)
@@ -732,15 +744,16 @@ class World:
                 self.light_vertices.pop(v, None)
         self.light_version += 1
 
-    def scorch(self, x, y):
+    def scorch(self, x, y, burn=True):
         """Burnt ground: the client sets tile bit `0x2000` of a cell the first time a Wall of Fire flag (message 0x87, spell 3) reaches it and
         never clears it (`FUN_0041c18c` `0x41c44f`; drawn as `dirt.bmp`, ignored on water by the terrain draw).  Client state only: the block layer
         reads `terrain`, not `cells`."""
         if 0 <= x < self.width and 0 <= y < self.height and not self.cells[y, x] & 0x2000:
             self.cells[y, x] |= 0x2000
             self.cells_version += 1
-            self.burn_start = {c: t for c, t in self.burn_start.items() if self.tick - t < 22}      # drop the finished entries (BURN_TICKS)
-            self.burn_start[(x, y)] = self.tick
+            if burn:                                    # the Wall of Fire flag also queues the list entry; the explosion's age-8 pass only sets the bit
+                self.burn_start = {c: t for c, t in self.burn_start.items() if self.tick - t < 22}      # drop the finished entries (BURN_TICKS)
+                self.burn_start[(x, y)] = self.tick
 
     def set_costs(self, costs):
         """Install a terrain cost table (index = terrain type, `passability.costs_from_reg`)."""

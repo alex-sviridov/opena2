@@ -614,6 +614,8 @@ def _square(c):
 def area_tick(world, c):
     """`FUN_00517cfe` for modes 0 and 1.  Returns True when the carrier is done."""
     if c.mode == 0:                                     # FUN_00518833: once over the square, both occupants (and the structure)
+        if c.spell == FIRE_BALL:
+            spawn_explosion(world, c.centre)            # FUN_005045a5(c, 1): message 0x86, projectile 13 at the centre cell, 22 ticks
         dmg = _damage_spread(world, c)
         for x, y in _square(c):
             for t in _occupants(world, x, y, True):
@@ -684,3 +686,52 @@ def brain_stone(u):
 def scan_range(u, base):
     """The scan byte `+0xa5` the sight flood reads (unsigned): the template value plus the scan changes of the effects, wrapped to a byte."""
     return (base + u.fx.scan + u.fx.scan_direct) & 0xFF
+
+
+# --- the client fire explosion (projectile 13, docs/mechanics/lighting.md 3, docs/formats/animation.md 4.4) -----------------------------
+
+EXPLOSION_LIFE = 22         # message byte `0x16` of `FUN_005045a5`; `obj+0xa8` counts it down, the tick returns "remove" when it is 0 on entry
+EXPLOSION_QUEUE_AGE, EXPLOSION_SCORCH_AGE = 4, 8        # `FUN_0046c1d0` case 0xd: `obj+0x9c` (age, -1 at creation, +1 per tick) == 4 / == 8
+
+
+def spawn_explosion(world, cell):
+    """`FUN_005045a5` for spell 2 -> client message 0x86 handler `0x414f00`-`0x4151c1`: projectile 13 at the cell centre (`cell * 256 + 128`), age -1,
+    `+0xa8` = 22.  CONFIRMED (the id `+0xe` of the carrier being 13 = `2n + 9` is INFERRED, spells.md 7)."""
+    from engine.world import Explosion
+    world.explosions.append(Explosion(cell[0], cell[1], world.tick, EXPLOSION_LIFE))
+
+
+def explosion_system(world, commands=()):
+    """The client tick of every explosion after the carriers of the same tick (age 0 on the creation tick, INFERRED order): at age 4 each of the
+    3 x 3 cells without tile bit `0x2000` is queued in the burning list when it holds a map object (the draw then needs its `DeadObject`, `lights.burns`)
+    or is water (tile `& 0x1fff >> 6` in 8..11); at age 8 bit `0x2000` is set on every cell that is not water or holds an object (`0x46c5bf`-`0x46c871`).
+    CONFIRMED `FUN_0046c1d0`."""
+    if not world.explosions:
+        return
+    keep = []
+    for e in world.explosions:
+        age = world.tick - e.born
+        if age == EXPLOSION_QUEUE_AGE:
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    x, y = e.x + dx, e.y + dy
+                    if not (0 <= x < world.width and 0 <= y < world.height) or world.cells[y, x] & 0x2000:
+                        continue
+                    water = 8 <= (int(world.cells[y, x]) & 0x1FFF) >> 6 < 12
+                    obj = any(world.objects[i].kind == "object" for i in world.objects_at(x, y))
+                    if obj or water:
+                        world.burn_fx = {c: v for c, v in world.burn_fx.items() if world.tick - v[0] < 22}
+                        world.burn_fx[(x, y)] = (world.tick, water)
+        elif age == EXPLOSION_SCORCH_AGE:
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    x, y = e.x + dx, e.y + dy
+                    if not (0 <= x < world.width and 0 <= y < world.height):
+                        continue
+                    water = 8 <= (int(world.cells[y, x]) & 0x1FFF) >> 6 < 12
+                    obj = any(world.objects[i].kind == "object" for i in world.objects_at(x, y))
+                    if not water or obj:
+                        world.scorch(x, y, burn=False)
+        if age <= e.life:                           # the view draws ages 0 .. life - 1; kept one tick longer so the last frame is still drawn
+            keep.append(e)
+    world.explosions = keep

@@ -171,7 +171,7 @@ data-driven light).
 are redrawn with `corner = min(terrain_light, light)` (terrain light from
 §2 where the light map is 0xFF).
 
-Built in the engine: structure and missile lights, burning cells from a Wall of Fire flag (`World.burn_start`, counter = ticks since the flag, INFERRED
+Built in the engine: structure, missile and fire explosion (projectile 13, `World.explosions`) lights, burning cells from a Wall of Fire flag (`World.burn_start`, counter = ticks since the flag, INFERRED
 one counter step per tick; stamped after the object lights), cell rows, lit terrain corners, and the Light / Darkness
 vertex writes (`engine/view/lights.py`, [rendering](../engine/rendering.md#structure-pick-rects-and-dynamic-lights-confirmed-engine-drawlistpick_cell-lightspy)).
 Implementation: `stamp_light`, `projectile_light`, `BURNING_LIGHT_PHASES`

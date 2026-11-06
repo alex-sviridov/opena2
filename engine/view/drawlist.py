@@ -632,12 +632,39 @@ def _carriers(ctx):
                 _projectile_item(ctx, ent, c, pset, tref, points[i], dep + (2 + i, 0), "alpha", "trail")
 
 
-def _projectile_item(ctx, ent, c, pset, ref, pos, depth, blend, source):
+class _Fx:
+    """The `ent` of a client effect object's draw items."""
+    id = -1
+
+
+def _explosions(ctx):
+    """P6: the fire explosions (projectile 13) at their cell centre, drawn by the generic projectile path of `FUN_0046cb7b`: frame `(age / 2) mod Phases`
+    (`RotationPhases == 1`, no direction), `.16a` alpha when `A16`, else opaque plus the `b.256` half overlay; `obj+0x10` (z) is 0 for message objects."""
+    from .lights import explosion_phases
+    w = ctx.world
+    for e, age, _ in explosion_phases(w, ctx.assets, ctx.tick):
+        if not in_window(ctx.win, e.x, e.y):
+            ctx.items.culled += 1
+            continue
+        pset = ctx.assets.projectile_set(13)
+        if pset is None:
+            ctx.items.missing += 1
+            continue
+        pos = (e.x * 256 + 128, e.y * 256 + 128)
+        ref = pset.frame_at("flight", 0, age, age0=-1)
+        a16 = bool(pset.rec["A16"])
+        dep = (PASS_PROJECTILE, e.y, -e.x, 0, (1 << 21) + e.born)
+        _projectile_item(ctx, _Fx, None, pset, ref, pos, dep + (0, 0), "alpha" if a16 else "opaque", "main", z0=0)
+        if not a16 and pset.rec["Palette"]:
+            _projectile_item(ctx, _Fx, None, pset, ref, pos, dep + (1, 0), "half", "main_b", z0=0)
+
+
+def _projectile_item(ctx, ent, c, pset, ref, pos, depth, blend, source, z0=None):
     wh = pset.size(source if source != "main_b" else "main_b", ref.index)
     if wh is None:
         ctx.items.missing += 1
         return
-    z = fobj.ground_height(ctx.world.heights, pos[0], pos[1], 1, 1) + MISSILE_Z
+    z = fobj.ground_height(ctx.world.heights, pos[0], pos[1], 1, 1) + (MISSILE_Z if z0 is None else z0)
     px, py = (pos[0] * CELL) >> 8, (pos[1] * CELL) >> 8
     sx, sy = px - ref.hotspot[0] - ctx.cx, py - ref.hotspot[1] - z - ctx.cy
     if ctx.visible(sx, sy, wh[0], wh[1]):
@@ -852,6 +879,7 @@ def build_draw_list(world, camera, tick, assets, options=None, debug=None, selec
             if id(u) not in lost:
                 _unit(ctx, u)
         _carriers(ctx)
+        _explosions(ctx)
         _cell_effects(ctx)
         _burning_sprites(ctx)
     ctx.items.sort(key=lambda i: i.depth)
