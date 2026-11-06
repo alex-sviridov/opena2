@@ -1,6 +1,7 @@
 """Window and the main loop: the original interface around the map, selection, cursors."""
 
 import dataclasses
+import gc
 
 import pygame
 
@@ -278,6 +279,8 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
                 return
         panel.center_camera(camera, *pos)
 
+    gc.collect()
+    gc.freeze()                         # the loaded world and art stay out of the collector's scans: a gen-2 pass over them paused a frame ~30 ms
     running = True
     state = CursorState.DEFAULT                 # the cursor of the previous frame (a pending mode without a cursor keeps it)
     while running:
@@ -487,5 +490,6 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
         frames += 1
         if max_frames is not None and frames >= max_frames:
             break
+    gc.unfreeze()
     pygame.quit()
     return sim
