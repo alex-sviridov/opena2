@@ -36,7 +36,7 @@ from both places when answered).
 ## Spells
 
 - [Effects](engine/effects.md#open-questions): the structure branch of the carriers (`vtable +0x34`, `FUN_00559b7f`); the human scan's recompute triggers besides the stat switch; the client effect messages (`FUN_005044ba`, `FUN_00504498`, `FUN_005045a5`).
-- Backpack window leftovers: item tooltip property lines (`FUN_0043901f`), weapon-swap lock (`+0x78` in {3, 7, 8}), "new" twinkle (`FUN_004a285a`), text flag 8, message `0x463` / `0x46e`, open sound, releases over the minimap / heads / window 8, gold cell and drop of the hero-screen lists (phase K). [ui-layout 11.13](engine/ui-layout.md#1113-backpack-window-bottom-bar-id-2-class-fun_004a2bba-vtable-0x5ce978-confirmed-unless-marked) (`FUN_004a2bba`, `FUN_004b028d`)
+- Backpack window leftovers: text flag 8, message `0x463` / `0x46e`, open sound, releases over the minimap / heads / window 8, the hero-screen lists' gold cell (phase K). [ui-layout 11.13](engine/ui-layout.md#1113-backpack-window-bottom-bar-id-2-class-fun_004a2bba-vtable-0x5ce978-confirmed-unless-marked) (`FUN_004a2bba`, `FUN_004b028d`)
 
 ## Triggers and scenario
 

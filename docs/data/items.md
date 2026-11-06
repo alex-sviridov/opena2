@@ -143,7 +143,7 @@ Astral), 29 scrolls (`castSpell=..:50`), 29 super scrolls (`:100`), 13 potions (
   entry (`0x2a`), and for every castSpell entry (`0x29`) of a special item (class 14), it appends `" %s %s%s"` with the
   interface texts `0x5a` / `0x5b` of `main.txt` (`of`, empty) and the `spell.txt` line (`FUN_00474733(spell - 1)`):
   `Scroll of Fire Arrow`, `Book of Haste`. castSpell on other classes is a separate line `#casts <spell>` (texts `0x5c`,
-  `0x5d`). `ItemTable.display_name(code, effects, spell_names, of, tail)`, `load_ui_texts(fs)`. The same builder prints
+  `0x5d`). `ItemTable.display_name(code, effects, spell_names, of, tail)`, `load_ui_texts(fs)`. The same builder prints (all tags and formats: [ui-layout 11.13](../engine/ui-layout.md#1113-backpack-window-bottom-bar-id-2-class-fun_004a2bba-vtable-0x5ce978-confirmed-unless-marked); engine `pack.item_tooltip`)
   `#<stat> +N` lines, `#<stat> min-max` for the damage kinds, `#Damage`, `Range`, `Speed` and the resistances.
 - Icon (`FUN_00438ba1`, CONFIRMED, all 491 files exist): class items `graphics/inventory/` + `%02d%02d%1d%02d` of
   (material, class, quality, index) + `.16a`; special items `%02d%02d%03d` of (material, 14, `code & 0xFF`). Class is the

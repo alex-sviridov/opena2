@@ -8,8 +8,11 @@ import sys
 
 import pytest
 
+from allods2.formats import itemdefs as idefs
 from allods2.formats import saves as S
 from engine.sim import CastScroll, MoveItem, gear
+from engine.sim import movement as mv
+from engine.sim import spells
 from engine.ui import GameUi, Layout, MainText, OrderInput, Rect
 from engine.ui import info, pack as pk
 from engine.ui.cursor import CursorState
@@ -378,6 +381,92 @@ def test_tooltip_texts_follow_the_pointer():
     ui.pack_mouse_move(cell_pos(ui, 0), True)
     assert t(cell_pos(ui, 1)) == ""                                      # nothing while an item is carried
     assert pk.button_text(False, MAIN) == "m0a" and pk.button_text(True, MAIN) == "m0b"       # the info panel's pack button: main.txt 0xa / 0xb
+
+
+# --- the item tooltip rows (`FUN_0043901f`), the weapon-swap lock (`+0x78` in {3, 7, 8}), the "new" twinkle (`FUN_004a285a`) ----------------------------------
+
+STATS = {13: "Damage", 15: "Defense", 38: "Range", 8: "Health Regeneration", 12: "Attack", 44: "Fire Damage"}
+
+
+def tip_world(payload, n, code=0x1102, name="Dagger", special=False):
+    """A synthetic world whose table holds one `itemname.pkt` descriptor (header `1, 0, flags, n`) and the stat names."""
+    w, u = hero_world(n_items=1)
+    t = w.item_table
+    t.packets = {code: idefs.Packet(code, bytes((1, 0, 2, n)), 0, (), bytes(payload))}
+    t.names[code] = name
+    t.stat_texts = [STATS.get(i, "") for i in range(60)]
+    return w, S.Item(code, 1)
+
+
+def test_tooltip_rows_follow_the_payload_tags():
+    price = bytes((1, 0x19, 0, 0, 0))
+    # damage pair (13, 3) (14, 1) = `#Damage 3-4` (two entries), a stat `%+d`, a range `%d`
+    w, it = tip_world(price + bytes((13, 3, 14, 1, 12, 10, 38, 2)), 5)
+    assert pk.item_name(w, it, MAIN) == "Dagger#Damage 3-4#Attack +10#Range 2"
+    w, it = tip_world(price + bytes((15, 5, 8, 100)), 3)
+    assert pk.item_name(w, it, MAIN) == "Dagger#Defense +5#Health Regeneration +100%"       # a `%` follows the tags 8 and 11
+    w, it = tip_world(price + bytes((0x33, 0)), 2)
+    assert pk.item_name(w, it, MAIN) == "Dagger#m" + "bd"                                      # a non-special item with the marker: the main.txt 0xbd row
+    w, it = tip_world(price, 1)
+    assert pk.item_name(w, it, MAIN) == "Dagger"
+
+
+def test_tooltip_rows_of_the_wire_modifiers():
+    w, it = tip_world(bytes((1, 0, 0, 0, 0, 13, 3, 14, 1)), 3)
+    it = S.Item(it.code, 1, 0, ((15, 2, 0), (44, 3, 4)))             # `FUN_004387b2`: template payload + `33 00` + (kind, value) entries, two for element damage
+    assert pk.item_name(w, it, MAIN) == "Dagger#Damage 3-4#mbd#Defense +2#Fire Damage 3-7"
+
+
+def test_a_book_and_a_scroll_name_their_spell():
+    w, _ = tip_world(bytes((1, 0, 0, 0, 0, 0x2A, 5)), 2, code=0xE01, name="Book")
+    w.item_table.spells = (("A", 0, 0),) * 4 + (("Haste", 0, 0),)
+    assert pk.item_name(w, S.Item(0xE01, 1), MAIN) == "Book m5a Haste" + "m5b"                # the 0x2a tag: " %s %s%s" with main.txt 0x5a / 0x5b
+
+
+def test_weapon_swap_lock_while_the_hero_swings():
+    w, u = hero_world()
+    ui = ui_for(w)
+    sword = cell_pos(ui, 0)
+    u.action, u.state = mv.ATTACK, mv.ATTACK_STATE
+    assert pk.swing_locked(u)
+    assert not ui.pack.pick(sword, w, 1)                                  # `FUN_004a235d`: item class < 2 while `+0x78` is 3 / 7 / 8
+    assert ui.pack.pick(cell_pos(ui, 3), w, 1)                           # a potion is free
+    ui.pack.cancel_carry()
+    assert not ui.pack.pick_equipped(w, 1, 0) and not ui.pack.pick_equipped(w, 1, 1)      # `FUN_004b012f`: slots 0 and 1
+    u.action, u.state = mv.IDLE, 0
+    assert not pk.swing_locked(u) and ui.pack.pick(sword, w, 1)
+    u.action, u.state = mv.ATTACK, spells.CAST_STATE                    # casting locks too
+    cmds = ui.pack.equip_carried(w, 1)                                    # `FUN_004b028d`: slot < 2 while locked -> the item goes back to the pack
+    assert cmds == () and ui.pack.carried is None                       # back to its own pack place: no move
+    u.action, u.state = mv.IDLE, 0
+    assert ui.pack.pick(sword, w, 1)
+    assert [c.dst_kind for c in ui.pack.equip_carried(w, 1)] == [gear.KIND_SLOT]
+
+
+def test_twinkle_trail_and_blob():
+    table = pk.twinkle_table()
+    assert len(table[0]) == len(table[1]) == 0x400 and all(8 <= v <= 8 + 0x7FFF // 0x1FF for v in table[0] + table[1])
+    px = pk.twinkle_pixels(0, table)
+    assert len(px) == 13 and max(a for _, _, a in px) == 0x3F and px[0][2] == 0x3F       # counter 0: the head only, alpha 0x3f, 13 blob points
+    full = pk.twinkle_pixels(2 * 6, table)
+    assert len(full) == 7 * 13 and [a for _, _, a in full[::13]] == [0x3F, 0x7F, 0xBF, 0xFF, 0xBF, 0x7F, 0x3F]
+    assert pk.twinkle_pixels(2 * 0x400, table)[0][:2] == pk.twinkle_pixels(0, table)[0][:2]      # the index wraps at 0x400
+
+
+@needs_data
+def test_real_tooltips_against_the_install():
+    from allods2.assets import AssetCache
+    from allods2.formats import itemdefs as ii
+    from allods2.common import game_fs
+    import types
+    fs = game_fs()
+    a = AssetCache(fs)
+    w = types.SimpleNamespace(item_table=a.items(), spell_table=a.spells())
+    lines = ii.decode_text(fs.read("main/text/main.txt")).split("\r\n")
+    main = types.SimpleNamespace(line=lambda i: lines[i])
+    assert pk.item_name(w, S.Item(0x1102, 1), main) == "Bronze Dagger#Damage 3-4#Attack +10"
+    assert pk.item_name(w, S.Item(0xE45, 1), main) == "Potion of Health Regeneration#Health Regeneration +100%"
+    assert pk.item_name(w, S.Item(0xE06, 1), main) == "Scroll of Fire Arrow#Damage: 13-26#Range: 8"
 
 
 # --- drawing against the install ---------------------------------------------------------------------------------------------------

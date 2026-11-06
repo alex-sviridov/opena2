@@ -200,6 +200,8 @@ class ItemTable:
         self.stats = tuple(stats)                  # StatDef, index = stat id (0 = empty)
         self.spells = tuple(spells)                # (name, scrollCost, bookCost), 1-based id = position + 1
         self.names = dict(names or {})             # item code -> display name (itemname.bin / .txt)
+        self.packets = {}                          # item code -> Packet (itemname.pkt: the tooltip descriptor); `attach_texts`
+        self.stat_texts = []                       # main/text/stats.txt lines (list 0x621440, index = payload tag)
         self._by = {(d.kind, d.index): d for d in self.defs}
 
     def __len__(self):
@@ -544,6 +546,24 @@ def load(fs=None):
     """The item table of an install (`fs`: game file system), display names included."""
     fs = as_fs(fs)
     return build(databin(fs), load_names(fs))
+
+
+def load_stat_texts(fs=None):
+    """The lines of `main/text/stats.txt` (list 0x621440, `FUN_00481186`; `FUN_00474733(tag)` = line `tag`), [] when missing."""
+    try:
+        return decode_text(as_fs(fs).read("main/text/stats.txt")).split("\r\n")
+    except (OSError, KeyError, FileNotFoundError):
+        return []
+
+
+def attach_texts(table, fs=None):
+    """Give `table` the tooltip inputs of `FUN_0043901f`: the `itemname.pkt` records by code and the stat names."""
+    try:
+        table.packets = {p.code: p for p in load_packets(fs)}
+    except (OSError, KeyError, FileNotFoundError):
+        table.packets = {}
+    table.stat_texts = load_stat_texts(fs)
+    return table
 
 
 def load_packets(fs=None):

@@ -58,7 +58,7 @@ class AssetCache:
         if self._items is None:
             from .formats import itemdefs
             from .common import as_fs
-            self._items = itemdefs.build(self.databin(), itemdefs.load_names(self.fs))
+            self._items = itemdefs.attach_texts(itemdefs.build(self.databin(), itemdefs.load_names(self.fs)), self.fs)
         return self._items
 
     def spells(self):

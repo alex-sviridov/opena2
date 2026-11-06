@@ -11,6 +11,7 @@ from typing import NamedTuple
 from allods2.formats import itemdefs as idefs
 
 from engine.sim import gear
+from engine.sim import movement as mv
 from engine.sim import spells as spells_mod
 from engine.sim.commands import CastScroll, MoveItem
 
@@ -69,13 +70,59 @@ class CellView(NamedTuple):
     rect: Rect                  # the 80x80 cell
     item: object                # saves.Item with the displayed count
     key: int                    # the F-key (4..12) bound to the item, 0 for none
-    new: bool                   # item flag `0x20`: the "new" twinkle (not drawn)
+    new: bool                   # item flag `0x20`: the "new" twinkle (`twinkle_pixels`)
 
 
 class PackView(NamedTuple):
     cells: tuple
     left: object                # None or (rect, under the pointer)
     right: object
+
+
+def swing_locked(u):
+    """The weapon-swap lock (`FUN_004a235d`, `FUN_004b012f`, `FUN_004b028d`; CONFIRMED): the hero's client draw state `+0x78` is 3 (attack), 7 (shoot) or 8
+    (cast).  The engine has one logical action for all three ("attack", the shared block), so the test is that action together with a server attack / cast state
+    (INFERRED mapping: the exe's draw state ends with the action's tick counter, the engine's unit state with the swing)."""
+    return u.action == mv.ATTACK and u.state in (mv.ATTACK_STATE, spells_mod.CAST_STATE, spells_mod.CELL_STATE)
+
+
+TWINKLE_COLOUR = (0xFF, 0, 0xFF)
+TWINKLE_TRAIL = (0x3F, 0x7F, 0xBF, 0xFF, 0xBF, 0x7F, 0x3F)     # alpha of the head (counter >> 1) and of the six positions behind it
+TWINKLE_SIZE = 0x400
+
+
+def twinkle_table(seed=1):
+    """The two random tables of `FUN_004a147b` (`+0x94` x, `+0x1094` y): 0x400 entries each, `rand() / 0x1ff + 8` (the MSVC LCG `x * 214013 + 2531011`,
+    result `(x >> 16) & 0x7fff`, `FUN_00583290`), so a point inside the 80x80 cell.  The exe's seed is the CRT's (time); cosmetic, so `seed` is fixed."""
+    state, xs, ys = seed, [], []
+    for _ in range(TWINKLE_SIZE):
+        pair = []
+        for _ in range(2):
+            state = (state * 214013 + 2531011) & 0xFFFFFFFF
+            pair.append(((state >> 16) & 0x7FFF) // 0x1FF + 8)
+        xs.append(pair[0])
+        ys.append(pair[1])
+    return xs, ys
+
+
+_BLOB = ((0, 0, 4, 4), (1, 0, 3, 4), (0, 1, 3, 4), (-1, 0, 3, 4), (0, -1, 3, 4), (2, 0, 1, 2), (0, 2, 1, 2), (-2, 0, 1, 2), (0, -2, 1, 2),
+         (1, 1, 1, 4), (-1, 1, 1, 4), (1, -1, 1, 4), (-1, -1, 1, 4))      # (dx, dy, num, den): `FUN_0045724a` plots 13 points at alpha * num / den
+
+
+def twinkle_pixels(counter, table):
+    """`FUN_004a285a` for a cell whose frame counter is `counter`: the (dx, dy, alpha) of every blended point relative to the cell origin (`FUN_0045724a`: a plus
+    shaped blob, centre alpha, axis neighbours 3/4, distance 2 on the axes 1/2, diagonals 1/4; `FUN_0045705c` blends `TWINKLE_COLOUR` with
+    `(255 - a) * dst / 255 + col * a / 255`).  The head is table entry `(counter >> 1) & 0x3ff`, followed by the six entries before it (not below index 0)."""
+    xs, ys = table
+    h = counter >> 1
+    out = []
+    for back, a in enumerate(TWINKLE_TRAIL):
+        if h - back < 0:
+            break
+        i = (h - back) & (TWINKLE_SIZE - 1)
+        for dx, dy, num, den in _BLOB:
+            out.append((xs[i] + dx, ys[i] + dy, a * num // den))
+    return out
 
 
 def item_class(item):
@@ -274,7 +321,7 @@ class PackWindow:
     # -- tooltip (FUN_004a3f0b) --------------------------------------------------------------------------------------------------------
     def tooltip_text(self, pos, world, main, mode_ok=True, frozen=False):
         """Text under the pointer: nothing while an item is carried or outside the mission mode; main.txt 0x36 over the left arrow strip, 0x37 over the right
-        one, 0x3a over an empty cell or without a hero, else the item's tooltip (name; the property lines of `FUN_0043901f` are not built)."""
+        one, 0x3a over an empty cell or without a hero, else the item's tooltip (`item_tooltip`, `FUN_0043901f`)."""
         if frozen or not mode_ok or self.carried is not None or not self.contains(pos):
             return ""
         p, n = pad(self.layout), self.cols
@@ -341,6 +388,8 @@ class PackWindow:
         if u is None or i < 0 or not pack[i].code or u.owner != player_id:
             return False
         it = pack[i]
+        if item_class(it) < 2 and swing_locked(u):
+            return False                            # `FUN_004a235d`: no weapon out of the pack while the hero attacks / shoots / casts
         n = it.count if shift else 1
         n = max(1, min(n if count is None else count, it.count))
         self.carried = Carried(u.id, KIND_PACK, i, n, replace(it, count=n))
@@ -368,6 +417,8 @@ class PackWindow:
         flags = item_flags(table, c.item)
         mage = gear.is_mage(u)
         bad = not usable_by(flags, mage) or (flags & 6) == 0
+        if 0 <= item_class(c.item) - 1 < 2 and swing_locked(u):
+            bad = True                              # `FUN_004b028d`: slot (class - 1) < 2 while the hero attacks / shoots / casts
         t = teach_spell(c.item)
         if t and (not mage or (spells_mod.known_mask(u) >> t) & 1):
             bad = True
@@ -437,6 +488,8 @@ class PackWindow:
         u = self.unit_obj(world)
         if u is None or self.carried is not None or u.owner != player_id or not 0 <= slot < gear.SLOT_COUNT:
             return False
+        if slot < 2 and swing_locked(u):
+            return False                            # `FUN_004b012f`: weapon and shield stay while the hero attacks / shoots / casts
         item = (gear.slots_of(u) if u.equipment else {}).get(slot + 1)
         if item is None and not u.equipment:
             r = _template_item(world, u, slot + 1)
@@ -470,13 +523,128 @@ def _template_item(world, u, slot):
 
 
 def item_name(world, item, main):
-    """The tooltip of an item (`FUN_0043901f`, `ItemTable.display_name`): the `itemname.txt` name, then for a teachSpell / castSpell effect `" of <spell>"`
-    (main.txt 0x5a / 0x5b)."""
+    """The tooltip of an item (`FUN_0043901f`): `item_tooltip` when the table has the `itemname.pkt` record of the code, else the bare `ItemTable.display_name`
+    (the `itemname.txt` name, then for a teachSpell / castSpell effect `" of <spell>"`, main.txt 0x5a / 0x5b)."""
     table = world.item_table
     if table is None:
         return ""
+    pk = table.packets.get(item.code & 0xFFFF)
+    if pk is not None and table.names.get(item.code & 0xFFFF) is not None:
+        return item_tooltip(world, item.code, pk, main, item.mods)
     name = table.display_name(item.code, gear.effects_of(item.mods), None, main.line(T_OF), main.line(T_TAIL))
     return name or ""
+
+
+T_CASTS, T_CASTS_TAIL, T_WEIGHT = 0x5C, 0x5D, 0xBD
+T_DAMAGE, T_RANGE, T_DURATION = 0x76, 0x7B, 0x7C
+TAG_PRICE, TAG_RANGE, TAG_CAST, TAG_TEACH, TAG_SCROLL, TAG_SPECIAL = 1, 0x26, 0x29, 0x2A, 0x32, 0x33
+TAG_DAMAGE = (0x0D, 0x2C, 0x2D, 0x2E, 0x2F, 0x30)       # a (stat, min) pair followed by the (spread) pair: `#name min-max`
+TAG_PERCENT = (0x0B, 0x08)                                # a "%" follows the `%+d` value
+STONE_CURSE = 0x12
+
+
+def item_tooltip(world, code, pk, main, mods=()):
+    """`FUN_0043901f` over the `itemname.pkt` descriptor `pk` (CONFIRMED): the `itemname.txt` name, then one entry per payload tag (`#` = the tooltip's line
+    break, `stats.txt` line `tag` = the stat name): price `01` skipped (5 bytes); `#Name +v` (`%+d`, a `%` after for tags 8 and 11); damage tags (13, 44-48)
+    `#Name min-max` (the next pair's value is added, two entries); range 38 `#Name v`; 41 castSpell: class 14 `" of Spell"` else `#casts Spell`; 42 teachSpell
+    `" of Spell"`; 50 (scrolls) the spell rows at that power; 51 `#Weight`-line text for a non-special item.  The spell rows use the same scaling as the
+    spell book tooltip (`spellbook._helper`, `Scaled`)."""
+    from . import spellbook
+    table = world.item_table
+    stats = table.stat_texts
+    special = (code >> 8) & 15 == 14
+    out = [table.names.get(code & 0xFFFF) or ""]
+    pl, p, i, n = pk.payload, 0, 0, pk.header[3]
+    if mods:
+        extra = [b"\x33\x00"]
+        for m in mods:
+            extra.append(bytes((m[0] & 0xFF, m[1] & 0xFF)))
+            if 44 <= m[0] <= 48:
+                extra.append(bytes((m[0] & 0xFF, m[2] & 0xFF)))
+        pl = pl + b"".join(extra)
+        n += 1 + sum(2 if 44 <= m[0] <= 48 else 1 for m in mods)
+    spell = 0
+
+    def stat(tag):
+        return stats[tag] if 0 <= tag < len(stats) else ""
+
+    def spell_name(number):
+        sp = world.spell_table.get(number) if world.spell_table is not None else None
+        if sp is not None and sp.display_name:
+            return sp.display_name
+        return table.spells[number - 1][0] if 0 < number <= len(table.spells) else ""
+
+    while i < n and p < len(pl):
+        tag = pl[p]
+        p += 1
+        v = pl[p] if p < len(pl) else 0
+        if tag == TAG_PRICE:
+            p += 4
+        elif tag in TAG_DAMAGE:
+            name = stat(tag)
+            p += 2
+            if name:
+                out.append("#%s %d" % (name, v))
+            v += pl[p] if p < len(pl) else 0
+            p += 1
+            out.append("-%d" % v)
+            i += 1
+        elif tag == TAG_RANGE:
+            p += 1
+            if stat(tag):
+                out.append("#%s %d" % (stat(tag), v))
+        elif tag == TAG_CAST:
+            p += 1
+            spell = v
+            if special:
+                out.append(" %s %s%s" % (main.line(T_OF), spell_name(v), main.line(T_TAIL)))
+            else:
+                out.append("#%s %s%s" % (main.line(T_CASTS), spell_name(v), main.line(T_CASTS_TAIL)))
+        elif tag == TAG_TEACH:
+            p += 1
+            out.append(" %s %s%s" % (main.line(T_OF), spell_name(v), main.line(T_TAIL)))
+        elif tag == TAG_SCROLL:
+            p += 1
+            out.extend(_spell_rows(world, spell, v, special, main, spellbook))
+        elif tag == TAG_SPECIAL:
+            p += 1
+            if not special:
+                out.append("#" + main.line(T_WEIGHT))
+        else:
+            p += 1
+            if stat(tag):
+                out.append("#%s %+d" % (stat(tag), v))
+            if tag in TAG_PERCENT:
+                out.append("%")
+        i += 1
+    return "".join(out)
+
+
+def _spell_rows(world, number, level, special, main, sb):
+    """The rows of tag 50 (`0x4393xx`-`0x4397xx`): the spell `number` of the preceding castSpell tag scaled at `level` (`FUN_0051906d` / `FUN_005195b1`):
+    damage (only with a spread; `lo-hi`), range (class 14 only), duration (`%5.1f` ticks / 16; spell 0x12 halves it and prints `0.0 -x`), then the one helper row."""
+    sp = world.spell_table.get(number) if world.spell_table is not None else None
+    if sp is None:
+        return []
+    sc = sp.scaled(level)
+    out = []
+    lo, spread = sc.damage_min & 0xFF, sc.damage_spread & 0xFF
+    if spread:
+        out.append("#%s: %d-%d" % (main.line(T_DAMAGE), lo, lo + spread))
+    if special and sc.max_range & 0xFF:
+        out.append("#%s: %d" % (main.line(T_RANGE), sc.max_range & 0xFF))
+    dur = sc.duration & 0xFFFF
+    if number == STONE_CURSE:
+        dur >>= 1
+    if dur:
+        out.append(("#%s: 0.0 -%5.1f" if number == STONE_CURSE else "#%s: %5.1f") % (main.line(T_DURATION), dur / 16.0))
+    h = sb._helper(number, level)
+    if h is not None:
+        label, val = h
+        fmt = {sb.L_SPEED: "%d", sb.L_SIGHT: "%d", sb.L_RAYS: "%d", sb.L_RESISTANCE: "+%d", sb.L_MAX_PROB: "+%d%%", sb.L_MIN_PROB: "+%d%%"}.get(label)
+        if fmt is not None and val != 0:           # the absorption helper has no row in the item tooltip
+            out.append("#%s: %s" % (main.line(label), fmt % val))
+    return out
 
 
 def button_text(open_, main):

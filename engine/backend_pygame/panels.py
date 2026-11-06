@@ -38,6 +38,7 @@ class Panels:
     def __init__(self, fs, layout):
         self.fs, self.layout = fs, layout
         self._keyed, self._opaque, self._portraits, self._frames, self._items, self._masks = {}, {}, {}, {}, {}, {}
+        self._twinkle = None
 
     # -- art -----------------------------------------------------------------------------------------------------------------------
     def keyed(self, name):
@@ -223,10 +224,25 @@ class Panels:
             pic = self.item_surface(c.item.code)
             if pic is not None:
                 window.blit(pic, (c.rect.x, c.rect.y))
+            if c.new:
+                self.draw_twinkle(window, c.rect, ui.world.tick)
             if c.item.count > 1:
                 draw_text_exact(window, "%d" % c.item.count, c.rect.x + pack_mod.COUNT_DX, r.bottom + pack_mod.COUNT_DY, "label", 0, 2)
             if c.key:
                 draw_text_exact(window, "F%d" % c.key, c.rect.x + pack_mod.KEY_DX, r.y + pack_mod.KEY_DY, "highlight", 0, 3)
+
+    def draw_twinkle(self, window, rect, counter):
+        """`FUN_004a285a`: the "new" flag's magenta sparkle (`pack_mod.twinkle_pixels`; the counter is the tick count, the exe's per-cell counter advances once per
+        server step while the item is new, INFERRED equal)."""
+        if self._twinkle is None:
+            self._twinkle = pack_mod.twinkle_table()
+        w, h = window.get_size()
+        r, g, b = pack_mod.TWINKLE_COLOUR
+        for dx, dy, a in pack_mod.twinkle_pixels(counter, self._twinkle):
+            x, y = rect.x + dx, rect.y + dy
+            if 0 <= x < w and 0 <= y < h:
+                d = window.get_at((x, y))
+                window.set_at((x, y), ((255 - a) * d[0] // 255 + r * a // 255, (255 - a) * d[1] // 255 + g * a // 255, (255 - a) * d[2] // 255 + b * a // 255))
 
     def draw_carried(self, window, item, mouse):
         """The carried item replaces the pointer (`FUN_0048ad7b`: the inventory picture, hot spot (40, 40))."""
