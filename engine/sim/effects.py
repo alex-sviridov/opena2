@@ -735,3 +735,22 @@ def explosion_system(world, commands=()):
         if age <= e.life:                           # the view draws ages 0 .. life - 1; kept one tick longer so the last frame is still drawn
             keep.append(e)
     world.explosions = keep
+
+
+# --- the client bolts (projectiles 28 Lightning / 30 Prismatic Spray, docs/engine/effects.md 11) ---------------------------------------
+
+BOLT_LIFE = 13              # `FUN_0046707e` switch: `obj+0xa8 = 0xd` for ids 0x1c / 0x1e; the tick returns "remove" when it is 0 on entry
+
+
+def spawn_bolt(world, caster, pid, targets):
+    """The cast action `FUN_0046707e` (client action 8, the caster's shoot frame): projectile `pid` (28 / 30) from the caster, `targets` = the view's
+    `+0x8e` target (Lightning) or the `+0xb0` list of message 0x8a (Spray).  The spawn tick is the release tick (INFERRED: the exe spawns at the
+    unit type's `ShootDelay` frame of action 8, which the engine does not model; its missiles are drawn from the release too)."""
+    from engine.world import Bolt
+    world.bolts.append(Bolt(pid, caster.id, tuple(targets), (caster.x * 256 + caster.sub_x, caster.y * 256 + caster.sub_y), world.tick))
+
+
+def bolt_system(world, commands=()):
+    """Drops the bolts whose 13 ticks are over (the view draws ages 1 .. 13 on the ticks `born .. born + 12`)."""
+    if world.bolts:
+        world.bolts = [b for b in world.bolts if world.tick - b.born < b.life]

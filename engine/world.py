@@ -297,6 +297,20 @@ class SpellCast:
     target: int = None              # unit id (state 0xd); None for a cell cast
     cell: tuple = None              # state 0xe
     item_count: int = None
+    chain: tuple = None             # Prismatic Spray: the unit ids of the chain list sent in message 0x8a (target first), set at the cast start
+
+
+@dataclass
+class Bolt:
+    """A client Lightning / Prismatic Spray projectile (projectile id 28 / 30, `FUN_0046707e`; docs/engine/effects.md 11): spawned by the caster's cast
+    action, 13 ticks of life, phase by the ping-pong table.  `targets`: Lightning the one target (view `+0x8e`), the Spray the list of message 0x8a
+    (view `+0xb0`).  `origin` is the caster's position in 1/256 cell at the spawn.  Client only, not dumped."""
+    pid: int
+    caster: int
+    targets: tuple
+    origin: tuple
+    born: int
+    life: int = 13
 
 
 @dataclass
@@ -671,6 +685,7 @@ class World:
         self.cell_effects = {}      # (x, y) -> the record's 6-byte effect (spell, power, sx, sy, tx, ty): traps (sim/traps.py, which hooks `slots.on_enter`); dumped while non-empty
         self.transients = []        # the list server+0x2c: hidden casters (sim/traps.py), ticked in step 2; dumped while non-empty
         self.burn_start = {}        # (x, y) -> tick of the first Wall of Fire flag: the client's burning-cell list `view+0xa94` (client only, not dumped; lights.py)
+        self.bolts = []             # `Bolt`s of the client (projectiles 28 / 30); client only, not dumped (sim/effects.py `bolt_system`)
         self.explosions = []        # `Explosion`s of the client (projectile 13); client only, not dumped (sim/effects.py `explosion_system`)
         self.burn_fx = {}           # (x, y) -> (tick, water): the fire explosion's burning-list entries (`SetAt` at age 4, view+0xa94); client only
         self.cell_fx = {}           # (x, y) -> [6 carrier uids or None]: the cell records' effect slots (effects.md 6.4); dumped while non-empty

@@ -35,7 +35,7 @@ from both places when answered).
 
 ## Spells
 
-- [Effects](engine/effects.md#open-questions): the Prismatic Spray chain (`FUN_00519c04` -> `FUN_00579ddf`: the hit reaction first, the caster group's pool `FUN_00571c4d`, distance `FUN_00579d62`, the `min(7, L/20 + 2)` nearest within the range, dying units scored `<< 8`; spell 11 stays a counted no-op); the structure branch of the carriers (`vtable +0x34`, `FUN_00559b7f`); the human scan's recompute triggers besides the stat switch; the client effect messages (`FUN_005044ba`, `FUN_00504498`, `FUN_005045a5`).
+- [Effects](engine/effects.md#open-questions): the exact Lightning / Prismatic Spray bolt polyline (`FUN_004c8863` -> `FUN_004c819d` / `FUN_004c8069`; the chain and the messages are built) and its ShootDelay spawn tick; the structure branch of the carriers (`vtable +0x34`, `FUN_00559b7f`); the human scan's recompute triggers besides the stat switch; the client effect messages (`FUN_005044ba`, `FUN_00504498`, `FUN_005045a5`).
 - Backpack window leftovers: item tooltip property lines (`FUN_0043901f`), weapon-swap lock (`+0x78` in {3, 7, 8}), "new" twinkle (`FUN_004a285a`), text flag 8, message `0x463` / `0x46e`, open sound, releases over the minimap / heads / window 8, gold cell and drop of the hero-screen lists (phase K). [ui-layout 11.13](engine/ui-layout.md#1113-backpack-window-bottom-bar-id-2-class-fun_004a2bba-vtable-0x5ce978-confirmed-unless-marked) (`FUN_004a2bba`, `FUN_004b028d`)
 
 ## Triggers and scenario
@@ -62,7 +62,7 @@ from both places when answered).
 
 ## Rendering and engine
 
-- [Engine drawing](engine/rendering.md#open-questions): lightning / prismatic spray segment lights (28 / 30) need the 0x8a / 0x8c target list from the Prismatic Spray chain `FUN_00519c04` -> `FUN_00504391` (not built; Lightning's 0x86 carries no point list, INFERRED invisible); `bolt_vertices` is the formula.  Fire explosion (projectile 13), its lights, steam and burnt ground are built (CONFIRMED `FUN_0046c1d0`, `FUN_005045a5`).  (Burning trees: resolved, [rendering](engine/rendering.md#open-questions).)
+- [Engine drawing](engine/rendering.md#open-questions): the Lightning / Prismatic Spray bolts (28 / 30) are built ([effects §11](engine/effects.md)); only the exact random polyline shape is INFERRED.  Fire explosion (projectile 13), its lights, steam and burnt ground are built (CONFIRMED `FUN_0046c1d0`, `FUN_005045a5`).  (Burning trees: resolved, [rendering](engine/rendering.md#open-questions).)
 - (answered) Unit flag `+0x1b8 & 0x80` at the mission start: `FUN_0052be01` sends nothing, see [rendering](engine/rendering.md#open-questions).
 - Renderer speed: the densest 1024x768 view is now ~19.5 ms mean (terrain layer cache and per-object item memo; was 26.5), still 11 ms, scrolling ~26 ms; shadow batching was measured and gives nothing (cost is per covered pixel, overlapping pairs). A static-scene cache is left. [architecture](engine/architecture.md#open-questions)
 - Unregistering a structure (`FUN_0055995a`) clears cells held by another structure; the engine releases only its own cells. [architecture](engine/architecture.md#open-questions)

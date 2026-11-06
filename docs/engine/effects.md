@@ -288,8 +288,50 @@ mark, no XP, no AI reaction), as for a removed caster; `FUN_00511959` in its con
 Tests: `tests/test_engine_traps.py` (synthetic: refusal, layout, teleport timeline, failed teleport, repeat, flyer, spell trap timeline and level,
 dropped target, footprint, instant 21; install: maps 93 (section 9 teleport, a walker through `(21, 20)`), 76 (a Fire Arrow trap), 53 (instant 25)).
 
+## 11. Prismatic Spray chain and the Lightning / Spray bolts (CONFIRMED unless tagged; engine `spells.spray_chain`, `ai.spray_targets`, `effects.spawn_bolt`, `lights.bolt_*`)
+
+**Cast (server).** `FUN_00519998` phase 0, spell 11 (`0x519b8e`, no target test): `FUN_00519483(caster)` recomputes the wrapper (`FUN_005195b1`) from the caster's
+own level (`skill[sphere] - 30 + Mind`; wrapper `+9` = range, + `L/30`), then `FUN_00519c04(caster, target)`: `L` = the item's `castSpell` count (`unit+0x68 != 0`,
+`')'` effect word `+0x42`) else `FUN_00511913(sphere)`; `count = min(7, L/20 + 2)` (so 2..7); `FUN_00579ddf(caster, target, list, count, wrapper+9)` fills the
+list; `FUN_00504391` sends the client message (below); then `FUN_00519db8(caster, unit, 0, 0)` runs **at once on every list entry** (cast XP per call
+for a mage, Lightning-style missile carrier with the 10-tick server flight, `0x51be87`). Mana is spent once (`0x5199d6`). The release `FUN_00519d7f` skips spell 11.
+Engine: `spells.cast_start` -> `spray_chain` (`SpellCast.chain`), `release_on` (the former body of `cast_release`).
+
+**The list `FUN_00579ddf` (this = order manager `0x66832c`, `+0xa50` = pathing).** (1) list cleared; (2) `FUN_0056e6b8(caster, target, 0)` first
+([ai §8](ai.md#8-hit-reaction-fun_0056e6b8attacker-victim-0-confirmed), with the AI on); (3) `FUN_00571c4d(caster+0x70)` builds the group's pool ([ai §4](ai.md): at-war
+units on the cells the group sees, creation order, hidden ones need a detector; the dying only when no living one is there); empty pool: the list is just the target;
+(4) score `FUN_00579d62(caster, u)` = `(FUN_00556dcd(caster, u) & 0xff) << 8` + `FUN_0055aa21(caster facing, FUN_005568e4(caster, u))` as a word (the gap level of
+[ai §4](ai.md) and the turn of the score `FUN_005711ea`); keep when `score <= wrapper+9 << 8` (gap level below the range, or equal with no turn); a second pool `+0xa88`
+(dead list) is scored `dist << 8` but is always empty here ([ai §4](ai.md) step 6); (5) `count` rounds: best = `0xfffa`, each unit with a score strictly below the best
+becomes the best (ties keep the earlier unit; best is stored as a word), then the picked unit's score is set to `0xffdc`; (6) list = target, then each pick that is
+not the target and has index and word below `0xfde8`; (7) cut to `count` entries from the tail (`FUN_0057b080` = remove tail). So the target always leads and
+takes a round when it is in the pool. Engine `ai.spray_targets` / `spray_distance`.
+
+**Client messages.** `FUN_00504391` writes `0x8a` (`msg+0xa` u32 = list length + 1, `+0xe` u16 = caster id, `+0x10..` the target ids, `unit+4` of each); a caster
+whose unit `+0xe` (type word) is 0, i.e. the hidden caster of a script ([§10](#10-cell-record-effects-traps-and-the-hidden-caster-confirmed-engine-enginesimtrapspy)), sends `0x8c` with the caster's cell instead
+(`x | y << 8`). Handler `0x8a` (`0x4156cf`): the caster's view gets action 8, `+0xa8` = its type's `+0x68`, `+0x9c = 0`, list `+0xb0` = the ids, `+0x8e` = the first id,
+`+0xac = 0x1e`, unless it is already busy (`+0xa8 != 0`). Handler `0x8c` (`0x415812`) instead creates projectile 30 at that cell at once (lifetime 0xd, age -1). Lightning
+sends the plain `0x86` ([spells §9c](../data/spells.md); handler `0x4151c1`): view `+0xac` = 28, `+0x8e` = the target id, **no list** (`+0xb0` is not touched).
+
+**The bolt object (`FUN_0046707e`, cast action 8 at the unit type's ShootDelay frame).** Creates projectile `view+0xac` (28 / 30) at the caster's shoot offset, copies the
+target id `+0x8e` and the id list `+0xb0` (`FUN_0046dbc0` = word-vector assign, the caster's list is **not** cleared), lifetime `+0xa8 = 0xd` for 0x1c / 0x1e (the age
+starts at 0, so the first drawn age is 1; ages 1..13, removed when `+0xa8` is 0 on entry), phase `+0x74` by age 4 3 2 1 0 1 2 1 0 1 2 3 4 (`FUN_0046c1d0`); no flight, no move.
+Each tick `FUN_0046d46a` (vtable `+0x50`) rebuilds the point list `+0x11c` (8-byte records, x, y, ..., variant byte at `+6`): Lightning one polyline from the projectile's
+screen position to the target view's (`+0x64`, `+0x68 - +0x6c - +0x10`; skipped when the view lookup fails), the Spray one polyline per list entry with `index % 7` as the
+variant. The polyline is a random jagged line (`FUN_004c8863` -> `FUN_004c819d`, `rand`, spline `FUN_004c8069`), re-rolled every tick. Draw (`FUN_0046cb7b` cases 0x1c / 0x1e):
+one sprite at every point, `(x - 8, y - 8)`, frame `phase` (28) or `phase + 5 * variant` (30). Light (`FUN_0046d0ef`): `phase * 10` into the 2 x 2 vertices of each point's cell
+`(x >> 5, FUN_00417f31(x, y))` ([lighting §3](../mechanics/lighting.md)). **The old reading "Lightning has no points, no light and no body" was wrong**: its single
+segment is built from the target id alone. The stale `+0xb0` list of an earlier Spray never reaches Lightning (case 0x1c does not read it).
+
+**Engine.** `World.bolts` (`Bolt`, client only, not dumped), `effects.spawn_bolt` (called by `spells.cast_release` for Lightning with its target and for the Spray with the
+chain), `effects.bolt_system` (drops a bolt after 13 ticks), `lights.bolt_phase` / `bolt_segments` / `bolt_polyline` / `bolt_cells` / `pick_row` (the row finder, CONFIRMED asm),
+`lights.light_map` (the bolt light), `drawlist._bolts`; the carriers of spells 10 / 11 no longer draw a flying missile. INFERRED (DECISIONS): the bolt starts at the release tick
+(the exe at the ShootDelay frame, not modelled; the missiles are also drawn from the release), the origin is the caster's position (no ShootOffset, as for the missiles), the
+height of the points is the ground plus the missile chest height (`MISSILE_Z`), the polyline's control-point scaling, spacing and smoothing (the constants `0.7`, `0.15`,
+`rand % 50`, `rand % 7`, `0.03`, clamp 3 are the exe's), the random line uses its own generator (never `world.rng`). Tests: `tests/test_engine_bolts.py`.
+
 ## Open questions
 
-- The Prismatic Spray chain `FUN_00519c04` (targets from `FUN_00579ddf(caster, target, list, min(7, L/20 + 2), range)`): not decoded; spell 11 stays a counted no-op.
+- The exact bolt polyline of Lightning / Prismatic Spray (spline `FUN_004c8069`, control points `FUN_004c819d`, point records `FUN_004c9ba0`; [§11](#11-prismatic-spray-chain-and-the-lightning--spray-bolts-confirmed-unless-tagged-engine-spellsspray_chain-aispray_targets-effectsspawn_bolt-lightsbolt_)) and the ShootDelay spawn tick / ShootOffset origin of the cast action.
 - The structure branch of the carriers (`vtable +0x34`, area cells' structure `FUN_00559b7f`): structures as targets are not modelled.
 - Human scan: Darkness adds to `+0xa4` directly *and* to the bonus `+0xe4`, so until the next recompute the human loses twice the value (engine: the direct part is kept until the next stat-switch recompute; other recompute triggers such as level-ups are INFERRED to reset it too and are not hooked).

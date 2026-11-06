@@ -1151,6 +1151,50 @@ def on_hit(world, attacker, victim, area=False):
     b.hit_cell = ((y << 8) + x) & 0xFFFF
 
 
+# --- the Prismatic Spray target list (FUN_00579ddf, docs/engine/effects.md 11) ----------------------------------------------------------
+
+def spray_distance(caster, u):
+    """`FUN_00579d62(caster, u)`: `(gap level << 8) + facing difference` as a word: `FUN_00556dcd` (`reach_gap`, low byte) and `FUN_0055aa21(caster
+    facing, octant(caster, u))` (the same terms as the score of `FUN_005711ea`)."""
+    ang = mv._fold(caster.facing, cb.octant(foot(caster), foot(u)) & 0xFF)
+    return (((reach_gap(caster, u) & 0xFF) << 8) + ang) & 0xFFFF
+
+
+def spray_targets(world, caster, target, count, reach):
+    """`FUN_00579ddf(caster, target, out, count, reach)`: the hit reaction on the target first (`FUN_0056e6b8`, with the AI on), then the caster's
+    group pool (`FUN_00571c4d`: the living at-war units on the cells the group sees, creation order; the dying ones only when no living one is
+    there) is scored by `spray_distance` and filtered by `score <= reach << 8` (so the gap level is below `reach`, or equal with no turn); `count`
+    selection rounds each take the lowest score strictly below the best so far (ties keep the earlier unit; a picked unit is marked 0xffdc and
+    its word is what the later test reads).  The list is the target, then the picked units that are not the target, cut from the tail to
+    `count` entries.  An empty pool gives just the target.  CONFIRMED (`0x579ddf`-`0x57a235`, `FUN_0057b080` = remove tail); the second pool
+    `+0xa88` is always empty here (`FUN_00571c4d` merges the dead list back into an empty pool, ai.md 4 step 6)."""
+    if world.ai_on:
+        on_hit(world, caster, target)
+    mem = _members_of(world, caster)
+    pool = _hostiles_on(world, mem[0].owner, _visible(world, mem), mem)
+    out = [target]
+    if not pool:
+        return out
+    limit = (reach & 0xFF) << 8
+    cand, scores = [], []
+    for u in pool:
+        d = spray_distance(caster, u)
+        if d <= limit:
+            cand.append(u)
+            scores.append(d)
+    best_s, best_i = [0xFFFA] * count, [0xFFFA] * count
+    for i in range(count):
+        for j, d in enumerate(scores):
+            if d < best_s[i]:
+                best_s[i], best_i[i] = d & 0xFFFF, j
+        if best_i[i] < 60000:
+            scores[best_i[i]] = 0xFFDC
+    for i in range(count):
+        if best_i[i] < 0xFDE8 and best_s[i] < 0xFDE8 and cand[best_i[i]] is not target:
+            out.append(cand[best_i[i]])
+    return out[:count] if count > 0 else out
+
+
 # --- flee step (FUN_00573713) --------------------------------------------------------------------------------------------------
 
 def _enemies(world, u, r):

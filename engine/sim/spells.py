@@ -425,8 +425,11 @@ def cast_start(world, u, c, st):
     else:
         bx, by = t.x * 256 + t.sub_x, t.y * 256 + t.sub_y
     from .combat import log
-    if spell.number == PRISMATIC_SPRAY and t is not None:
-        stub_release(world, u, spell.number)        # FUN_00519998: the chain FUN_00519c04 (up to min(7, L/20 + 2) targets) runs here: not built
+    if spell.number == PRISMATIC_SPRAY:
+        if t is None:
+            stub_release(world, u, spell.number)    # a cell-form Spray (FUN_00579ddf with no target) is not reachable from the orders (INFERRED)
+        else:
+            c.chain = spray_chain(world, u, c, st, spell, t)
     log(world, CastStarted(world.tick, u.id, t.id if t is not None else None, c.spell, client_flight_ticks(spell, bx - ax, by - ay)))
     u.step_end = world.tick         # the client message `FUN_005041d6` stores the server tick in unit +0x138
     u.action, u.action_start_tick = mv.ATTACK, world.tick      # client action 8 plays the shared attack block (animation.md 2.4)
@@ -639,15 +642,41 @@ def cast_release_cell(world, u, c, st):
             stub_release(world, u, spell.number, cell=c.cell)
 
 
+def spray_chain(world, u, c, st, spell, t):
+    """`FUN_00519483` + `FUN_00519c04` (at the cast start, phase 0): the wrapper range is recomputed from the caster's own level (`FUN_005195b1`),
+    `L / 20 + 2` (capped at 7) targets come from `ai.spray_targets`, and `FUN_00519db8` runs on each of them at once (cast XP, the damage carrier
+    with its 10-tick flight).  Returns the unit ids of the list (the client message 0x8a).  CONFIRMED (docs/engine/effects.md 11)."""
+    from . import ai
+    level = cast_level(u, spell, c.item_count)
+    count = min(7, level // 20 + 2)
+    reach = spell.scaled(unit_level(u, spell)).max_range & 0xFF
+    chain = ai.spray_targets(world, u, t, count, reach)
+    for x in chain:
+        release_on(world, u, c, st, spell, x)
+    return tuple(x.id for x in chain)
+
+
 def cast_release(world, u, c, st):
     """`FUN_00519d7f` -> `FUN_00519db8` for a unit target: cast XP, level, off-map test, then Heal (24) and Drain Life (26), or the damage branch: the missile
-    carrier (`delivery == 2`, flight time from the distance NOW) or the point carrier at once (`delivery == 1`).  Every other handler is `stub_release`."""
-    from . import xp
-    from .combat import log
+    carrier (`delivery == 2`, flight time from the distance NOW) or the point carrier at once (`delivery == 1`).  Every other handler is `stub_release`.
+    Spell 11 does nothing here (`FUN_00519d7f` skips it: its targets were released at the cast start); the client's bolt starts."""
     spell = world.spell_table.get(c.spell)
-    if spell.number == PRISMATIC_SPRAY:             # FUN_00519d7f skips spell 11 (it has no unit-target release)
+    if spell.number == PRISMATIC_SPRAY:
+        if c.chain:
+            from . import effects
+            effects.spawn_bolt(world, u, 30, c.chain)
         return
     t = world.find_unit(c.target)
+    release_on(world, u, c, st, spell, t)
+    if spell.number == LIGHTNING and t is not None:
+        from . import effects
+        effects.spawn_bolt(world, u, 28, (t.id,))
+
+
+def release_on(world, u, c, st, spell, t):
+    """`FUN_00519db8(caster, target, 0, 0)` for a unit target (the body of `cast_release`, also run by the Spray chain on each of its targets)."""
+    from . import xp
+    from .combat import log
     level = cast_level(u, spell, c.item_count)
     if st.mage and c.item_count is None:
         xp.award(world, u, int(0.5 * spell.mana_cost + 0.5), spell.sphere)      # vtable +0x70 = FUN_005131ef: AddExp(ftol(0.5 * mana + 0.5), 0, sphere)

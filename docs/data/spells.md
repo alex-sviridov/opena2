@@ -88,7 +88,7 @@ cast at a unit, `0xe` cast at a cell; phase `+0x58`, countdown `+0x6c`):
    cost** (the only mana deduction); then target/cell setup (`FUN_0054f955`..), flight ticks (`delivery == 2`:
    `FUN_00516aae(...)/speed`, 5 for Lightning/Prismatic Spray), and the client messages `0x86` (target object) / `0x8b`
    (cell) with projectile id `2n+8` ([animation §3.4](../formats/animation.md)): `FUN_005041d6` / `FUN_005042ba`. Spell 11
-   (Prismatic Spray) takes `FUN_00519483` + `FUN_00519c04` (a chain of up to `min(7, L/20 + 2)` targets, `L` from the caster or item count, `FUN_00519db8` on each, no `0x86`). A non-mage unit casting its weapon's spell (`unit+0x74 == unit+0x68`: catapult `Fire_Ball`) returns success at once without the message (INFERRED: the weapon attack path sends the projectile). Cast time:
+   (Prismatic Spray) takes `FUN_00519483` + `FUN_00519c04` (a chain of up to `min(7, L/20 + 2)` targets, `L` from the caster or item count, `FUN_00519db8` on each, message `0x8a` instead of `0x86`, [effects §11](../engine/effects.md)). A non-mage unit casting its weapon's spell (`unit+0x74 == unit+0x68`: catapult `Fire_Ball`) returns success at once without the message (INFERRED: the weapon attack path sends the projectile). Cast time:
    countdown `unit+0x134` (windup from the weapon's `windup` param or the monster/human param), phase 5.
 4. **Effect (phase 5 reaches 0).** `FUN_00519d7f` (unit target; skips #11) or `FUN_00519db8` (cell) run the effect routine (§4).
 5. **Recovery (phase 7).** countdown `unit+0x135 + rand(0..3) + hero_delay + spell.param[0]` (`0x50f7e8`), then ready again
@@ -112,7 +112,7 @@ in `FUN_004f3d68`, unit creation from `known_spells` bit n, `FUN_00511959`).
 Level `L` = §6. "Carrier" = server object created, then applied to units as an *effect* (`FUN_0051ce12` merges effects of
 the same spell id by max value / max time; a Bless on a cursed unit only removes the Curse and vice versa). The effect object model, the merge,
 the per-tick pass, the stat switch and the area / cell rules: [effects](../engine/effects.md) (CONFIRMED). **Engine status** (`engine/sim/effects.py`):
-every row below is built except Prismatic Spray's chain (11, a counted no-op) and the structure targets of the carriers.
+every row below is built (Prismatic Spray's chain: [effects §11](../engine/effects.md#11-prismatic-spray-chain-and-the-lightning--spray-bolts-confirmed-unless-tagged-engine-spellsspray_chain-aispray_targets-effectsspawn_bolt-lightsbolt_)) except the structure targets of the carriers.
 
 | Handler | Spell numbers | Address / case | What it does |
 |---|---|---|---|
@@ -231,7 +231,7 @@ Ice Missile 91, Lightning 58.
 
 - Same parameter row as Ice Missile and Diamond Dust (mana 3, range 7, speed 200, damage 5-10), so the generic
   missile + damage path built for it also serves #5 and #16 by changing sphere only (protection index, sprite, sound).
-  Lightning needs the special chain draw (ids 0x1c, fixed 5 ticks, 13-tick effect), a later step.
+  Lightning needs the special bolt draw (ids 0x1c, fixed 5 ticks, 13-tick effect): built, [effects §11](../engine/effects.md#11-prismatic-spray-chain-and-the-lightning--spray-bolts-confirmed-unless-tagged-engine-spellsspray_chain-aispray_targets-effectsspawn_bolt-lightsbolt_).
 - It is the first spell a player casts: both start heroes (`Start_MM`, `Start_FM`) wield `Wood Staff {castSpell=Fire_Arrow:1}`
   (item cast: level 1, no mana), `Mage_Hero` knows it, `Orc_Shaman.1-5` and 34 staff strings use it; it appears in 16 campaign maps
   from 21.alm.
@@ -331,8 +331,8 @@ Engine (`engine/sim/spells.py`; since phase K2 also `engine/sim/effects.py`, [ef
 cap HP + 10, damage XP credit, hit reaction, last attacker, the caster heals the amount) are built; `FUN_0051fa4e(n)` = `rand(n - 1) + 1`. Phase K2 built the effect
 system and the other handlers ([effects](../engine/effects.md)): protections, Bless / Curse, Haste / Slow, Shield, Invisibility, Stone Curse (point carriers), Poison Cloud,
 Darkness, Light, Wall of Fire, Wall of Earth (area carriers with the cell slots), Fire Ball (missile + apply-once square), Blizzard and Acid Stream (field carriers),
-Teleport. Still a **documented no-op** counted in `World.unbuilt_casts` (`stub_release`): the Prismatic Spray chain (11, at cast start) and a unit-target Control
-Spirit. The spell-damage XP credit now passes the spell number (`FUN_00513128(victim, dmg, spell)`: a mage earns into the sphere, a non-mage nothing; before, the
+Teleport. Still a **documented no-op** counted in `World.unbuilt_casts` (`stub_release`): a cell-form Prismatic Spray and a unit-target Control
+Spirit. The Prismatic Spray chain (11) is built at the cast start ([effects §11](../engine/effects.md#11-prismatic-spray-chain-and-the-lightning--spray-bolts-confirmed-unless-tagged-engine-spellsspray_chain-aispray_targets-effectsspawn_bolt-lightsbolt_)). The spell-damage XP credit now passes the spell number (`FUN_00513128(victim, dmg, spell)`: a mage earns into the sphere, a non-mage nothing; before, the
 engine paid the weapon school). **Summon 25 and Control Spirit 22 are built** (they create units, no effect object: `summon_release`, `raise_release`, [§9b](#9b-field-carriers-summons-raising-tooltip)) when the world carries its asset tables (`World.assets`, set by `from_map`).
 
 ## 9b. Field carriers, summons, raising, tooltip

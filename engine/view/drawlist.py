@@ -600,7 +600,7 @@ def _carriers(ctx):
     the trail file, oldest first and drawn after the missile body (CONFIRMED order of the draw routine), the missile frame by facing and age (`ProjectileSet.frame_at`, age0 -1)."""
     w = ctx.world
     for c in w.carriers:
-        if c.kind != "missile":
+        if c.kind != "missile" or c.spell in (10, 11):      # Lightning / Prismatic Spray: no flying missile, the client draws the bolt (`_bolts`)
             continue
         pset = ctx.assets.projectile_set(c.spell * 2 + 8)
         if pset is None:
@@ -657,6 +657,31 @@ def _explosions(ctx):
         _projectile_item(ctx, _Fx, None, pset, ref, pos, dep + (0, 0), "alpha" if a16 else "opaque", "main", z0=0)
         if not a16 and pset.rec["Palette"]:
             _projectile_item(ctx, _Fx, None, pset, ref, pos, dep + (1, 0), "half", "main_b", z0=0)
+
+
+def _bolts(ctx):
+    """P6: the Lightning / Prismatic Spray bolts (projectile 28 / 30, `FUN_0046cb7b` cases 0x1c / 0x1e): one sprite on every point of every segment,
+    frame `phase` (Lightning) or `phase + 5 * variant` (Spray, variant = list index % 7), phase from the ping-pong table by age, `.16a` alpha."""
+    from .lights import bolt_phase, bolt_segments
+    w = ctx.world
+    for b in w.bolts:
+        age = ctx.tick - b.born + 1
+        if not 1 <= age <= b.life:
+            continue
+        pset = ctx.assets.projectile_set(b.pid)
+        if pset is None:
+            ctx.items.missing += 1
+            continue
+        a16 = bool(pset.rec["A16"])
+        n = 0
+        for var, pts in bolt_segments(w, b, ctx.tick):
+            ref = pset.frame_at("effect", 0, ctx.tick - b.born, age0=0, colour=var)
+            for x, y in pts:
+                pos = (int(x) << 3, int(y) << 3)
+                dep = (PASS_PROJECTILE, int(y) >> 5, -(int(x) >> 5), 0, (1 << 22) + b.born, n)
+                _projectile_item(ctx, _Fx, None, pset, ref, pos, dep, "alpha" if a16 else "opaque", "main", z0=-fobj.ground_height(
+                    w.heights, pos[0], pos[1], 1, 1))
+                n += 1
 
 
 def _projectile_item(ctx, ent, c, pset, ref, pos, depth, blend, source, z0=None):
@@ -880,6 +905,7 @@ def build_draw_list(world, camera, tick, assets, options=None, debug=None, selec
                 _unit(ctx, u)
         _carriers(ctx)
         _explosions(ctx)
+        _bolts(ctx)
         _cell_effects(ctx)
         _burning_sprites(ctx)
     ctx.items.sort(key=lambda i: i.depth)
