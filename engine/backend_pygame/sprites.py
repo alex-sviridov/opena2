@@ -12,6 +12,7 @@ import numpy as np
 import pygame
 
 from allods2.graphics.palette import BRIGHT2, GRAY, grayscale_palette, shade_table
+from engine import native
 
 LIGHT_LEVELS = 16
 
@@ -133,6 +134,7 @@ class Frame:
         self.flat = self.arr.reshape(-1)
         self.bytes = self.arr.view(np.uint8).reshape(h, w, 4)       # [..., :3] = R, G, B
         self.surf = pygame.image.frombuffer(self.arr, (w, h), "RGBX")
+        self.ptr = self.arr.ctypes.data                             # for the native blends
         self.flat8 = self.arr.view(np.uint8).reshape(-1)            # every byte: R, G, B, X of word 0, then word 1, ...
 
     @classmethod
@@ -164,7 +166,7 @@ class SparseMask:
     left of the sprite, with their packed source words `vals` (half) or None (shadow).  Most of the box is empty, so the
     blends gather / scatter only these; the flat framebuffer indices are cached per frame width."""
 
-    __slots__ = ("ys", "xs", "vals", "dx", "w", "h", "fw", "base", "memo", "memo3")
+    __slots__ = ("ys", "xs", "vals", "dx", "w", "h", "fw", "base", "memo", "memo3", "xs32", "ys32", "ptrs")
 
     def __init__(self, mask, dx=0, vals=None):
         self.ys, self.xs = np.nonzero(mask)
@@ -172,6 +174,8 @@ class SparseMask:
         self.dx, (self.h, self.w), self.fw, self.base = dx, mask.shape, -1, None
         self.memo = {}
         self.memo3 = {}
+        self.xs32, self.ys32 = self.xs.astype(np.int32), self.ys.astype(np.int32)      # what the native blends read
+        self.ptrs = (self.xs32.ctypes.data, self.ys32.ctypes.data, 0 if self.vals is None else self.vals.ctypes.data)
 
     def clipped(self, frame, x, y, clip):
         """`indices` limited to the box `clip` = (x0, y0, x1, y1) (inside the frame); None when nothing is left."""
@@ -221,9 +225,17 @@ class SparseMask:
         return i3
 
 
+_BLEND = native.blend()         # the C blends, or None (ALLODS2_NATIVE=0, no compiler): the numpy code below is the reference
+
+
 def frame_half(frame, x, y, entry, clip=None):
     """50 % smoothing overlay: (src >> 1) + (dst >> 1) per channel; src is already halved (<= 0x7F), so the fields add
     without carries.  `clip` = (x0, y0, x1, y1): write only inside it."""
+    if _BLEND is not None:
+        c = clip or (0, 0, frame.w, frame.h)
+        px, py, pv = entry.ptrs
+        _BLEND.a2_half(frame.ptr, frame.w, frame.h, px, py, pv, len(entry.xs), x + entry.dx, y, c[0], c[1], c[2], c[3])
+        return
     r = entry.indices(frame, x, y) if clip is None else entry.clipped(frame, x, y, clip)
     if r is None:
         return
@@ -235,6 +247,7 @@ def frame_half(frame, x, y, entry, clip=None):
 _SHADOW_LUT = np.array([[(v * (16 - k)) >> 4 for v in range(256)] for k in range(17)], np.uint8)
 
 
+_LUT_PTR = [_SHADOW_LUT[k].ctypes.data for k in range(17)]
 _RGB = np.arange(3, dtype=np.intp)
 
 
@@ -245,6 +258,11 @@ def _rgb_bytes(idx):
 
 def frame_shadow(frame, x, y, entry, level, clip=None):
     """Shadow: dst * (16 - level) / 16 per channel on the covered pixels, one byte table over the R, G, B bytes (the X byte is left alone, it is 0)."""
+    if _BLEND is not None:
+        c = clip or (0, 0, frame.w, frame.h)
+        px, py, _ = entry.ptrs
+        _BLEND.a2_shadow(frame.ptr, frame.w, frame.h, px, py, len(entry.xs), x + entry.dx, y, _LUT_PTR[level], c[0], c[1], c[2], c[3])
+        return
     if clip is None:
         i3 = entry.indices3(frame, x, y)
     else:

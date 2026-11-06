@@ -316,5 +316,13 @@ Open: see [open-questions](../open-questions.md#rendering-and-engine).
   12.0 -> 9.8, live 13.2 -> 11.5; still rows unchanged (the plan was already reused). Re-fogging only the dirty rectangles was **not** done:
   the fog quads sit at `x = 32 c` on the screen (`fog_runs`, no `ix`), so the fogged output of a horizontal scroll is not the shifted previous
   output and only a pure vertical scroll could reuse it; the apply (quantise 1.9 ms + layers ~1.3 ms at 1024x768) stays whole-frame.
+  Round 5, the real play loop and the C blends (`engine/native/blend.c`, loaded like the planner, `ALLODS2_NATIVE=0` forces numpy; parity
+  `tests/test_blend_native.py`): the benchmarks above time `draw_frame` only; `window.run` headless (map 32, 1024x768, hero start, clock
+  unthrottled) showed a still camera paying a **full redraw on every tick frame that moves most animated objects** (about 30 % of the frames):
+  on those frames 1000+ of ~1250 items change their animation frame, the unmerged dirty boxes cover ~98 % of the screen (~75 % even when
+  cut to the pixels that differ between the old and new frame of each item), so no dirty-rectangle logic can win and the full redraw itself
+  has to be cheap. Shadow bytes through a memoised byte-index array + `take` (18 -> 12 us per shadow), then the shadow and half-overlay
+  blends in C (4-5 us per call, nearly all ctypes argument overhead; the clipped patch path gains most). Real loop, ms per frame
+  (mean / frames over 33 ms): scrolling 29.7 / 264 of 539 -> 18.3 / 37; still 15.1 / 92 -> 9.7 / 4.
 - Removing a structure: the exe clears every present cell, also those held by another structure
   (`FUN_0055995a`); the engine releases only the cells the structure holds.

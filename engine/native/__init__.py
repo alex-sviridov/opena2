@@ -18,6 +18,8 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 PLANNER_SRC = os.path.join(HERE, "planner.c")
 PLANNER_VERSION = 1             # A2_PLANNER_VERSION in planner.c
+BLEND_SRC = os.path.join(HERE, "blend.c")
+BLEND_VERSION = 1               # A2_BLEND_VERSION in blend.c
 _SUFFIX = ".dll" if os.name == "nt" else (".dylib" if sys.platform == "darwin" else ".so")
 
 _cache = {}
@@ -115,6 +117,44 @@ def planner():
     lib = load_planner()
     if lib is None and m == "1":
         raise RuntimeError("ALLODS2_NATIVE=1 but the native planner is unavailable: %s" % _errors.get("planner"))
+    return lib
+
+
+def _load_blend():
+    lib = ctypes.CDLL(build(BLEND_SRC, "_blend"))
+    if lib.a2_blend_version() != BLEND_VERSION:
+        lib = ctypes.CDLL(build(BLEND_SRC, "_blend", force=True))
+        if lib.a2_blend_version() != BLEND_VERSION:
+            raise RuntimeError("native blend version mismatch")
+    p, i = ctypes.c_void_p, ctypes.c_int
+    lib.a2_shadow.argtypes = [p, i, i, p, p, i, i, i, p, i, i, i, i]
+    lib.a2_shadow.restype = None
+    lib.a2_half.argtypes = [p, i, i, p, p, p, i, i, i, i, i, i, i]
+    lib.a2_half.restype = None
+    return lib
+
+
+def load_blend():
+    """The ctypes blend library (shadow / half overlay of the renderer) whatever ALLODS2_NATIVE says, or None when it
+    cannot be built or loaded (the reason: `error("blend")`).  The first attempt is cached for the process."""
+    if "blend" not in _cache:
+        try:
+            _cache["blend"] = _load_blend()
+        except Exception as e:                       # noqa: BLE001 - any failure means "use numpy"
+            _cache["blend"] = None
+            _errors["blend"] = "%s: %s" % (type(e).__name__, e)
+    return _cache["blend"]
+
+
+def blend():
+    """The blend library the renderer should use: None with ALLODS2_NATIVE=0 or when unavailable in auto mode;
+    RuntimeError when ALLODS2_NATIVE=1 and it is unavailable."""
+    m = mode()
+    if m == "0":
+        return None
+    lib = load_blend()
+    if lib is None and m == "1":
+        raise RuntimeError("ALLODS2_NATIVE=1 but the native blend library is unavailable: %s" % _errors.get("blend"))
     return lib
 
 
