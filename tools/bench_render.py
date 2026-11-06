@@ -21,6 +21,7 @@ from engine.backend_pygame.render import Caches, draw_frame  # noqa: E402
 from engine.backend_pygame.sprites import SpriteCache  # noqa: E402
 from engine.backend_pygame.surfaces import SurfaceCache  # noqa: E402
 from engine.session import build_game  # noqa: E402
+from engine.sim import MoveUnits, Simulation  # noqa: E402
 from engine.view import Camera, DrawOptions, TerrainView, build_draw_list  # noqa: E402
 from engine.view.drawlist import build_terrain_items  # noqa: E402
 
@@ -51,6 +52,7 @@ def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("--map", default="32")
     ap.add_argument("--frames", type=int, default=60)
+    ap.add_argument("--no-scene", action="store_true", help="redraw every frame in full (the reference path, scene.py off)")
     args = ap.parse_args(argv)
     w, a = build_game(args.map, seed=1, vision=True)
     pygame.display.init()
@@ -59,7 +61,7 @@ def main(argv):
     hero = w.units[w.players[1].main_hero]
     for W, H in ((640, 480), (1024, 768)):
         tv = TerrainView(w, a.tileset())
-        caches = Caches(SurfaceCache(tv), SpriteCache(a))
+        caches = Caches(SurfaceCache(tv), SpriteCache(a), scene=False if args.no_scene else None)
         cam = Camera(W, H, w.width, w.height, hero.x * 32 - W // 2, hero.y * 32 - H // 2)
         timed(w, tv, caches, a, cam, opts)
         still = [timed(w, tv, caches, a, cam, opts) for _ in range(args.frames)]
@@ -78,10 +80,25 @@ def main(argv):
         for _ in range(args.frames * 4):
             cam.move_by(3, -2)
             scroll.append(timed(w, tv, caches, a, cam, opts))
+        # the world running: one tick per 2 frames (units walk, objects and water animate), the hero walking away from the start
+        sim = Simulation(w, ai=True, vision=True)
+        cam.move_to(hero.x * 32 - W // 2, hero.y * 32 - H // 2)
+        live_still, live_scroll = [], []
+        for name, rows, move in (("still", live_still, (0, 0)), ("scroll", live_scroll, (3, -2))):
+            for i in range(args.frames * 2):
+                if i % 2 == 0:
+                    sim.step([MoveUnits(1, (hero.id,), (max(1, min(w.width - 2, hero.x + (i // 20 % 2 * 2 - 1) * 6)), hero.y))] if i % 20 == 0 else ())
+                cam.move_by(*move)
+                rows.append(timed(w, tv, caches, a, cam, opts))
         print("%dx%d" % (W, H))
         print("  still        %s" % stats(still))
         print("  dense (%2d u) %s" % (best, stats(dense)))
         print("  scrolling    %s" % stats(scroll))
+        print("  still, live  %s" % stats(live_still))
+        print("  scroll, live %s" % stats(live_scroll))
+        sc = caches.scene
+        if sc:
+            print("  scene memo: %d full, %d incremental (%d with nothing dirty)" % (sc.full, sc.incremental, sc.reused))
         print("  cache misses %d" % caches.terrain.misses)
 
 

@@ -14,6 +14,7 @@ from engine.view import build_draw_list, build_terrain_items
 from engine.view import fog as fog_view
 
 from .sprites import Frame, blend_half, blend_shadow, frame_alpha, frame_half, frame_shadow  # noqa: F401 (the surface variants are the tests' API)
+from .scene import SceneMemo, full_scene
 from .text import draw_text, render_text
 
 PASSABILITY_TINT = (255, 40, 40, 90)
@@ -27,6 +28,7 @@ class Caches:
     terrain: object             # SurfaceCache
     sprites: object = None      # SpriteCache (None = terrain only)
     ball: object = None         # Ball.bmp 4x4 bar cap (surface) or None
+    scene: object = None        # SceneMemo (scene.py): the last composite, made on first use; False = always redraw in full
 
 
 # FUN_00460db1 (ui-layout.md section 9): empty track rows, then fill rows (dark, bright, mid, dark)
@@ -87,49 +89,42 @@ def draw_frame(surface, caches, terrain_items, items, camera, world=None):
     frame = Frame.get(*surface.get_size())
     target = surface
     surface = frame.surf
-    surface.fill((0, 0, 0))
-    cy = camera.iy
-    blit = surface.blit
-    terrain = caches.terrain
-    layer = getattr(terrain, "layer", None)
-    if layer is not None:                           # the whole terrain layer from the cache (surfaces.py `layer`)
-        blit(layer(terrain_items, cy, surface), (0, 0))
+    if caches.scene is None:
+        caches.scene = SceneMemo()
+    memo = caches.scene
+    if memo is False:                                # the reference path: everything drawn, every frame
+        full_scene(frame, caches, terrain_items, items, camera.iy)
+        clean = False
     else:
-        for item in terrain_items:
-            val = terrain.get(item)
-            if val is not None:
-                blit(val[0], (item.sx, val[1] - cy))
-    sprites = caches.sprites
-    for it in items:
-        kind = it.kind
-        if kind == "sprite" or kind == "shadow":
-            val = sprites.get(it)
-            if val is None:
-                continue
-            if kind == "shadow":
-                frame_shadow(frame, it.sx, it.sy, val, it.shadow_level)
-            elif it.blend == "half":
-                frame_half(frame, it.sx, it.sy, val)
-            elif it.blend == "alpha":
-                frame_alpha(frame, it.sx, it.sy, val)
-            else:
-                blit(val, (it.sx, it.sy))
-        elif kind == "bar":
-            draw_bar(surface, it, caches.ball)
-        else:
-            _overlay(surface, caches, it)
+        clean = memo.compose(frame, caches, terrain_items, items, camera)
+    fog = None
     if world is not None and world.fog is not None:
-        draw_fog_pass(frame, fog_view.overlay(world, camera, caches.terrain.tv.proj.vy))
+        fog = fog_view.overlay(world, camera, caches.terrain.tv.proj.vy)
+    fkey = fog_key(frame, fog) if fog is not None else None
+    if clean and memo.final is not None and memo.final_key == fkey:     # the very same frame again: its fogged output is still in hand
+        target.blit(memo.final.surf, (0, 0))
+        return
+    if clean:
+        memo.restore(frame)
+    if fog is not None:
+        draw_fog_pass(frame, fog, fkey)
+    if memo is not False:
+        memo.keep_final(frame, fkey, camera)
     target.blit(surface, (0, 0))
 
 
-def draw_fog_pass(frame, ov):
+def fog_key(frame, ov):
+    levels, vy, cols, rows = ov
+    return (np.asarray(levels).tobytes(), np.asarray(vy).tobytes(), cols, rows, frame.arr.shape)
+
+
+def draw_fog_pass(frame, ov, key=None):
     """The exe's fog pass (`0x40a06a`-`0x40a5bc`, lighting.md 3) on the 16-bit (565) image of the frame."""
     levels, vy, cols, rows = ov
     if not (levels != lt.FOG_SEEN).any():
         return
     shape = frame.arr.shape
-    key = (np.asarray(levels).tobytes(), np.asarray(vy).tobytes(), cols, rows, shape)
+    key = key or fog_key(frame, ov)
     if _fog_cache[0] != key:                        # the pass only changes with the fog bits or the camera cell / offset
         _fog_cache[:] = [key, lt.fog_plan(levels, vy, cols, rows, shape)]
     lt.apply_fog_plan_rgb(frame.flat, _fog_cache[1], shape)

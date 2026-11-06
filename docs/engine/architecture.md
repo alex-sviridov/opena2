@@ -274,7 +274,36 @@ Open: see [open-questions](../open-questions.md#rendering-and-engine).
   has to be split or merged into a combined mask with a per-pixel table (`pair mask`, built and measured); the blends cost ~10 us for the
   mean 570 covered pixels, i.e. per pixel not per call, and the merged form was 3-6 ms slower per dense frame (2-D table gather).
   A word-arithmetic shade (`(v & 0xFF00FF) * m >> 4`) is equal but slower below ~1000 pixels than the byte table. Remaining dense
-  frame: ~500 shadow blends (~7 ms), ~250 sprite blits, ~250 half overlays, fog pass. Next, if needed: a static-scene cache (objects
-  over terrain composited once per camera, only animated things redrawn), which needs an overlap analysis to stay exact.
+  frame: ~500 shadow blends (~7 ms), ~250 sprite blits, ~250 half overlays, fog pass.
+  Round 4, the static-scene cache (`engine/backend_pygame/scene.py`, `SceneMemo` on `Caches`; pixel-identical, `tests/test_engine_scene.py`):
+  the pre-fog image of a frame (terrain, then the draw list in order) is kept after each frame. The next frame is that image shifted by the camera
+  step, with only the **dirty rectangles** redrawn: the strips that scrolled in plus the box (old place and new place) of every terrain cell and
+  draw item that is not in both frames. Items are identified by their content with the position in world pixels (`ix + sx`) and `depth`, so a
+  moved camera still matches; terrain cells by (col, row, phase, lit). A dirty rectangle is rebuilt from black: every cell and item whose box
+  touches it is drawn in list order, output clipped (blits through the surface clip, shadow / half / alpha through a clip mask). Why that is
+  exact: outside the rectangles the same items cover each pixel in the same order (the sort key `depth` is part of the identity, so matched items
+  keep their relative order) over the same terrain, and an item that is animated, lit by a changed light (`light_row`, terrain `lit`), moved,
+  new or gone is by definition unmatched, so its old and new boxes (shadows: the sheared box, `shadow_offsets`) are redrawn along with everything
+  overlapping them; a dynamic sprite over a static one is therefore redrawn on top in the right order. Full redraw instead (and the memo is rebuilt)
+  when: debug overlays are in the list, the terrain version / frame size / sprite cache / bar cap changed, the camera moved by a frame or more,
+  more than 48 rectangles or 45 % of the frame are dirty. A frame identical to the last (same camera pixel, nothing dirty, same fog bits) reuses
+  the fogged output copy and costs one blit. Everything is skipped with `Caches(scene=False)` (the reference the tests compare against).
+  The fog pass (`fog_plan` + apply) still runs on every scrolled or changed frame: ~6.7 ms plan per camera pixel row at 1024x768 (the plan
+  depends on the vertical offset; a transposed running sum was measured slower and dropped). `tools/bench_render.py` gained the "live" rows
+  (world running: units walk, objects and water animate, the hero walking) and `--no-scene`. Measured, same machine, ms (list + draw, mean;
+  before = `--no-scene`):
+
+  | case | 640x480 before | after | 1024x768 before | after |
+  |---|---|---|---|---|
+  | still | 5.5 | 2.0 | 12.3 | 4.0 |
+  | densest view | 6.1 | 2.2 | 20.7 | 5.8 |
+  | scrolling | 13.8 | 10.6 | 27.2 | 21-22 |
+  | still, world running | 6.4 | 6.1 | 11.9 | 11.5 |
+  | scrolling, world running | 16.1 | 14.8 | 29.8 | 27.5 |
+
+  The live rows gain little because a large animated structure sprite (about 200x130 px) near the hero is dirty on most ticks and its
+  rectangle merges with the neighbours; scrolling is now bounded by the fog plan (6.7 ms) and the draw list (3.4 ms). A camera-independent
+  object memo was not done (it needs the items shifted per frame, as slow as building them). Next, if needed: a fog plan reusable across
+  vertical offsets (needs the exe's per-quad cull test proved invariant) or re-fogging only the dirty rectangles.
 - Removing a structure: the exe clears every present cell, also those held by another structure
   (`FUN_0055995a`); the engine releases only the cells the structure holds.

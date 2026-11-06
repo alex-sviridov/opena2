@@ -171,6 +171,15 @@ class SparseMask:
         self.dx, (self.h, self.w), self.fw, self.base = dx, mask.shape, -1, None
         self.memo = {}
 
+    def clipped(self, frame, x, y, clip):
+        """`indices` limited to the box `clip` = (x0, y0, x1, y1) (inside the frame); None when nothing is left."""
+        x0 = x + self.dx
+        if x0 >= clip[0] and y >= clip[1] and x0 + self.w <= clip[2] and y + self.h <= clip[3]:
+            return self.indices(frame, x, y)             # the whole box is inside: the memoised path
+        X, Y = self.xs + (x + self.dx), self.ys + y
+        keep = (X >= clip[0]) & (X < clip[2]) & (Y >= clip[1]) & (Y < clip[3])
+        return (Y[keep] * frame.w + X[keep], keep) if keep.any() else None
+
     def indices(self, frame, x, y):
         """(flat indices, keep or None) of the covered pixels inside the frame for the sprite at (x, y), or None."""
         x += self.dx
@@ -196,10 +205,10 @@ class SparseMask:
         return r
 
 
-def frame_half(frame, x, y, entry):
+def frame_half(frame, x, y, entry, clip=None):
     """50 % smoothing overlay: (src >> 1) + (dst >> 1) per channel; src is already halved (<= 0x7F), so the fields add
-    without carries."""
-    r = entry.indices(frame, x, y)
+    without carries.  `clip` = (x0, y0, x1, y1): write only inside it."""
+    r = entry.indices(frame, x, y) if clip is None else entry.clipped(frame, x, y, clip)
     if r is None:
         return
     idx, keep = r
@@ -211,9 +220,9 @@ _SHADOW_LUT = np.array([[(v * (16 - k)) >> 4 for v in range(256)] for k in range
 RGB_WORD = np.uint32(0x00FFFFFF)
 
 
-def frame_shadow(frame, x, y, entry, level):
+def frame_shadow(frame, x, y, entry, level, clip=None):
     """Shadow: dst * (16 - level) / 16 per channel on the covered pixels, one byte table for the three channels (the X byte comes out 0)."""
-    r = entry.indices(frame, x, y)
+    r = entry.indices(frame, x, y) if clip is None else entry.clipped(frame, x, y, clip)
     if r is None:
         return
     idx = r[0]
@@ -227,11 +236,13 @@ def alpha_mix(src, dst, a):
     return np.minimum(((src * (a + 1)) >> 4) + ((dst * (15 - a)) >> 4), 255)
 
 
-def frame_alpha(frame, x, y, entry):
+def frame_alpha(frame, x, y, entry, clip=None):
     """Alpha sprite: `entry` = (mask_t, src_t (w, h, 3), alpha_t (w, h)) of `SpriteCache.get` (x first)."""
     mask_t, src_t, alpha_t = entry
     w, h = mask_t.shape
     x0, y0, x1, y1 = max(x, 0), max(y, 0), min(x + w, frame.w), min(y + h, frame.h)
+    if clip is not None:
+        x0, y0, x1, y1 = max(x0, clip[0]), max(y0, clip[1]), min(x1, clip[2]), min(y1, clip[3])
     if x0 >= x1 or y0 >= y1:
         return
     sl = (slice(x0 - x, x1 - x), slice(y0 - y, y1 - y))

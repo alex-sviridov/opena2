@@ -478,6 +478,7 @@ def test_cached_frame_equals_uncached(tmp_path):
     ensure_display(160, 160)
     sprites = SpriteCache(a)
     warm = Caches(SurfaceCache(tv), sprites)
+    layered = Caches(SurfaceCache(tv), SpriteCache(a), scene=False)       # the terrain layer cache without the scene memo
 
     def frame(caches, x, y, tick, opts=DrawOptions()):
         c = Camera(160, 160, W, H, x, y)
@@ -491,8 +492,10 @@ def test_cached_frame_equals_uncached(tmp_path):
             ref = frame(Caches(NoLayer(tv), SpriteCache(a)), x, y, tick, opts)
             w.__dict__.pop("_object_items", None)
             assert frame(warm, x, y, tick, opts) == ref
-            assert frame(warm, x, y, tick, opts) == ref            # second time: layer and item memo hit
-    assert warm.terrain.layer_hits > 0 and warm.terrain.layer_misses > 0
+            assert frame(warm, x, y, tick, opts) == ref            # second time: scene and item memo hit
+            assert frame(layered, x, y, tick, opts) == ref
+            assert frame(layered, x, y, tick, opts) == ref         # layer hit
+    assert layered.terrain.layer_hits > 0 and layered.terrain.layer_misses > 0 and warm.scene.incremental > 0
     w.cells_version = getattr(w, "cells_version", 0) + 1         # burnt ground: every cached cell and layer is stale
     frame(warm, 0, 0, 0)
     assert warm.terrain._version == tv.version and len(warm.terrain._layers) == 1
