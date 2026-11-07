@@ -146,15 +146,14 @@ def ai_system(world, commands):
     wake(world)
     if world.script is not None:                        # FUN_0057485b: the scenario triggers, after the awake map, before the handlers
         triggers.run_pass(world)
-    for owner in sorted({g.key[0] for g in world.ai_groups.values()}):
-        for g in [g for g in world.ai_groups.values() if g.key[0] == owner]:
-            g.members = [i for i in g.members if i in world.units]
-            if not g.members:
-                g.order = G_EMPTY
-                continue
-            if not g.awake:                             # FUN_00570087: a sleeping squad's pass is skipped (handler and post step)
-                continue
-            run_group(world, g)
+    for g in sorted(world.ai_groups.values(), key=lambda g: g.owner):      # stable: creation order inside an owner
+        g.members = [i for i in g.members if i in world.units]
+        if not g.members:
+            g.order = G_EMPTY
+            continue
+        if not g.awake:                                 # FUN_00570087: a sleeping squad's pass is skipped (handler and post step)
+            continue
+        run_group(world, g)
 
 
 def run_group(world, g):
