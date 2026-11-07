@@ -195,7 +195,7 @@ Returning: `go(m, anchor)` every pass until `cell == anchor` at a centre; then `
 mover+1` (target facing): if `cur == tgt`: when `brain+0x54 == 0` and `rand15() > 0xcc` (99.4 % of the ticks) the state is 0 and nothing else happens;
 otherwise `tgt := cur + 0x21 + rand15 * 0xbe / 0x8000` (byte), `brain+0x54 := 0`, start the turn (`FUN_00556454`), state 1. If `cur != tgt` the turn continues,
 state 1. So an idle monster turns on the spot about every 165 ticks by 33..222 units of 256, and **at once** after a hit (`brain+0x54 := 1`, §8). This is
-the only per-tick RNG use of the AI: one `rand15` per settled idle monster per tick, in creature order (the divisor `0x8000` is CONFIRMED: the order manager's embedded RNG helper is constructed by `0x57af80` (called from the manager ctor at `0x568143`), which stores `0x8000` at offset 0 and seeds `srand(time)`; `FUN_0057afd0(n) = rand15 * n / [this]`, `rand15` = MSVC LCG `0x343fd`/`0x269ec3`, `>> 16 & 0x7fff`; nothing else writes it; `engine/sim/ai.py` already uses `rand15 * 0xbe >> 15`).
+the only per-tick RNG use of the AI: one `rand15` per settled idle monster per tick, in creature order (the divisor `0x8000` is CONFIRMED: the order manager's embedded RNG helper is constructed by `0x57af80` (called from the manager ctor at `0x568143`), which stores `0x8000` at offset 0 and seeds `srand(time)`; `FUN_0057afd0(n) = rand15 * n / [this]`, `rand15` = MSVC LCG `0x343fd`/`0x269ec3`, `>> 16 & 0x7fff`; nothing else writes it; `engine/sim/ai/` already uses `rand15 * 0xbe >> 15`).
 
 ### 6.2 Mover event and auto scan (`0x56e1b0`, `FUN_0056ed4e`, CONFIRMED)
 
@@ -243,7 +243,7 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
 
 ## 10. Engine mapping (DECISIONS)
 
-* `engine/sim/ai.py`: `AiGroup` (per `(owner, squad)`, `World.ai_groups`), per-unit `AiState` (`Unit.ai`, `Unit.mode_look`), dumped only when the AI is
+* `engine/sim/ai/`: `AiGroup` (per `(owner, squad)`, `World.ai_groups`), per-unit `AiState` (`Unit.ai`, `Unit.mode_look`), dumped only when the AI is
   enabled so old goldens and hashes hold. `Simulation(ai=True)` adds `ai_system`; it runs at `tick & 15 == 6` **before** the command drain, like the exe's group pass.
 * **Commands.** The AI issues `MoveUnits(ai=True)` for `FUN_0056c8af`, `AttackUnit(ai=True)` for the mode-5 attack and `Stop(ai=True)` for `FUN_0056afd9` (mode `0xb`). The `ai` flag selects the **brain-level** executor (`orders.apply_ai`): no command group, no cancel of the unit's order, the
   AI group membership is kept - exactly what the exe's direct brain writes do. Plain (player) commands are unchanged. Every AI command goes through
@@ -269,7 +269,7 @@ the cell again (`brain+0xa`), so while the HP test holds the unit flees every 16
 
 ## 11. Tests and code
 
-`engine/sim/ai.py` (+ hooks: `orders.orders_system`, `movement._tick_inner/_tick_unit/follow_drive`, `combat.resolve_attack/attack_mode`, `Simulation`),
+`engine/sim/ai/` (+ hooks: `orders.orders_system`, `movement._tick_inner/_tick_unit/follow_drive`, `combat.resolve_attack/attack_mode`, `Simulation`),
 `tests/test_engine_ai.py` (sight, score, notice / ignore, chase and return, squad alert, pool radius, 16-tick rate, hit reaction, hit-mark reveal, flee, look-around, 10-monster replay hash, log, overlay).
 Casting (§12): `tests/test_engine_ai_casting.py` (slot rolls and their draws, Teleport distance, target kinds, mage pick / mana / defensive filter / the
 30 % rethink, idle heal / Shield / friend buff and the Curse quirk, mode 8 repeat, mode 9 and command `0x1f`, Heal, revive, Drain Life, stubs,
@@ -410,7 +410,7 @@ check fails silently and retries every 3 ticks. Only the cancel `FUN_0056d969` c
 and `Chebyshev(cell u, cell) <= B+0x14` (`FUN_0055539a`); else `FUN_0056e4ac(u, cell, range)` = the move driver `FUN_00555411(u, cell, range)` towards the cell, which at
 a cell centre within `range` only turns to the cell (`FUN_00556da2`), and state 1.
 
-**Engine (`engine/sim/ai.py`, `spells.py`)**: `engage` = 12.2 (the human branch is `human_attack`, 12.8), `special_attack` = 12.3, `caster_attack` = 12.4, `mage_idle` / `friend_cast` = 12.5 (called by `idle`), the
+**Engine (`engine/sim/ai/`, `spells.py`)**: `engage` = 12.2 (the human branch is `human_attack`, 12.8), `special_attack` = 12.3, `caster_attack` = 12.4, `mage_idle` / `friend_cast` = 12.5 (called by `idle`), the
 casts are `CastSpell(..., ai=True)` commands (unit or cell) applied by `ai.apply` (mode 8 / 9 with `Unit.ai_cast`), the Brain mode 9 and state `0xe` are
 `spells.cell_mode` / `cast_tick`. Effects: `+0x144` is the effect mask of `sim/effects.py` ([effects](effects.md)), so "already active" is real: an active Shield (bit 27) ends the idle recast of 12.5 (the AI cast repeats only until the next pass, 12.7, and the merge then just refreshes the time), a blessed / hasted / protected friend is not buffed again, and a stoned target scores `+0x7f` (`0x5713c7`, effects §7).
 The Teleport flee (12.6) is not built (no shipped template can reach it).

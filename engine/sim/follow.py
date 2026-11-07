@@ -137,7 +137,7 @@ def defend_scan(world, u, leader):
     `FUN_00556dcd` gap to `u` (first on a tie); else the smallest gap overall (starts at 0xff, strict `<`); the pick is attacked (`FUN_0056acc8`).
     No candidate at all: the guard scan."""
     lst = ai.enemies_around(world, leader, leader.x, leader.y, DEFEND_RADIUS)
-    if lst and ai.attack_range(world, leader) < 2:
+    if lst and cb.attack_range(world, leader) < 2:
         lst = [c for c in lst if cb.move_class(c) != 3]
     if not lst:
         ai.guard_scan(world, u)

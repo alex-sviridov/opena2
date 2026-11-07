@@ -519,7 +519,7 @@ class Unit:
     mana_acc: int = 0               # +0xa3 likewise for mana
     carried: tuple = ()             # item codes of the section 8 group the unit carries (dropped at death)
     kill_list: list = field(default_factory=list)       # +0x1a8 repeat-kill list of a hero: up to 5 [server_id, count]
-    ai: AiState = field(default_factory=AiState)        # Brain AI fields (sim/ai.py, docs/engine/ai.md)
+    ai: AiState = field(default_factory=AiState)        # Brain AI fields (sim/ai/, docs/engine/ai.md)
     mode_look: bool = False         # Brain mode 0xb: the idle look-around (`FUN_0056e5bc`) of a computer-owned unit
     wimpy_hp: int = None            # brain+0x44 / +0x40 set by the retreat mode message (`SetRetreatMode`); None = the template values (data.bin p35 / p34)
     withdraw_hp: int = None
@@ -560,6 +560,21 @@ class Unit:
     effects: list = field(default_factory=list)     # +0x20 the effect list (Effect), list order
     effect_mask: int = 0            # +0x144 bit 1 << id of every active effect
     fx: EffectStats = field(default_factory=EffectStats)    # the stat changes of the effects
+
+    def set_mode(self, go=False, attack=False, look=False, cast=False, cell=False, follow=False):
+        """Assign all six Brain-mode flags at once (an omitted flag is cleared)."""
+        self.mode_go, self.mode_attack, self.mode_look = go, attack, look
+        self.mode_cast, self.mode_cell, self.mode_follow = cast, cell, follow
+
+    @property
+    def has_mode(self):
+        """Any of go / attack / look / cast / cell is set (mode_follow is not counted)."""
+        return self.mode_look or self.mode_go or self.mode_attack or self.mode_cast or self.mode_cell
+
+    @property
+    def idle_mode(self):
+        """Only the idle look-around mode is set (go / attack / cast / cell clear; mode_follow is not tested)."""
+        return self.mode_look and not (self.mode_go or self.mode_attack or self.mode_cast or self.mode_cell)
 
     @property
     def oid(self):
@@ -662,8 +677,8 @@ class World:
         self.carriers = []          # Carrier, in creation order (sim/spells.py); part of dump() only while non-empty
         self._next_carrier = 1
         self._next_group = 1
-        self.ai_sleep = True        # server+0xbbe8 == 0: squads far from every human unit sleep (sim/ai.py `wake`, ai.md 15)
-        self.ai_on = False          # sim/ai.py `enable`: the squads are in `ai_groups` and the state is part of dump()
+        self.ai_sleep = True        # server+0xbbe8 == 0: squads far from every human unit sleep (sim/ai/ `wake`, ai.md 15)
+        self.ai_on = False          # sim/ai/ `enable`: the squads are in `ai_groups` and the state is part of dump()
         self.ai_groups = {}         # (owner, squad) -> AiGroup, in creation order
         self.ai_emitted = []        # AI commands since the last drain by `Simulation.step` (the log), not part of dump()
         self.unbuilt_casts = {}     # spell number -> releases whose effect handler is not built (sim/spells.py `stub_release`), not part of dump()
