@@ -228,3 +228,24 @@ def test_every_campaign_map_with_usable_structures():
         rows = use_on_map(n)
         bad += [(n,) + r for r in rows if r[3] is False]
     assert not bad, bad
+
+
+def test_the_info_panel_of_a_hovered_well_shows_the_falling_charges():
+    from engine.ui import info
+    w, u = hero_world()
+    well = structure(w, 1, 26, 20, 15, 3)
+    rows = lambda: info.structure_rows(well, type("T", (), {"line": lambda self, i: "Health"})(), ["", "Well"] * 20)[-1].text
+    assert rows() == "3/3"
+    use(w, u, well)
+    assert rows() == "2/3"                                           # the panel reads the structure's HP (obj+0x104, written by message 0x82)
+
+
+@pytest.mark.skipif(not have_install(), reason="needs the game install")
+def test_map_53_well_uid_41_starts_empty_and_every_other_campaign_well_has_3_charges():
+    """`intact == 0` -> `+0x42 = 0` (FUN_00561422, the plain structure branch): that well gives nothing; the 25 others hold 3 (structures.md 7.1 f)."""
+    from engine.session import build_game
+    charges = {}
+    for n in (30, 40, 52, 53, 60, 62, 63, 73, 74, 75, 77, 83, 86, 87, 100):
+        w, _ = build_game(str(n), seed=1)
+        charges.update({(n, o.uid): o.hp for o in w.objects.values() if o.kind == "structure" and o.type_id in (15, 16)})
+    assert [k for k, v in charges.items() if v != 3] == [(53, 41)] and charges[(53, 41)] == 0 and len(charges) == 26

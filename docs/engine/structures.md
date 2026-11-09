@@ -283,7 +283,7 @@ Answers to Q5:
 * (c) Use returns null in the normal case (living unit): that is success, not failure. The "non-null -> add to the pack" branch is dead code for wells (needs a dead carrier). A not-found item name or a failed allocation is not a game case (both well names exist in data.bin, items §).
 * (d) No load / encumbrance update: nothing is inserted, so `FUN_0050f065` / `+0x90` are untouched; the effect stat switch runs the normal recompute (vtable `+0x58`; HP / mana only clamped to the maximum, never raised past it).
 * (e) Client messages: only `0x82` (charge word) from step 1; no pickup text and no sound (the "new item" flag `+8` is set only by the ground pickup `FUN_00529e5b`). The HP / mana change reaches the client through the normal unit-data refresh (`FUN_00502019`, INFERRED: not traced past the stat switch).
-* (f) Charges: `+0x42` starts at healthMax 3 (map file may override through the structure's HP; the 40 / 63 / 73 placements have not been checked for non-default values), counted down by every unit, never refilled, no timer; at 0 the branch is skipped silently. Per type: `0xf` -> "Potion Big Healing" health `+100`; `0x10` -> "Potion Big Mana" mana `+100`; no other kinds. No gate on level, class, HP / mana fullness (a full unit still burns a charge), items, owner or relation (also valid for enemy / neutral units that reach state `0xf`; heroes only through the client cursor rule).
+* (f) Charges: `+0x42` starts at healthMax 3 (CONFIRMED on the data: of the 26 well placements on the campaign maps 25 start with 3, and **map 53 uid 41 (a Well 3) has `intact = 0`, so it starts empty**: `FUN_00561422` stores HP 0 for a plain structure whose entry says 0; test `test_map_53_well_uid_41...`), counted down by every unit, never refilled, no timer; at 0 the branch is skipped silently. Per type: `0xf` -> "Potion Big Healing" health `+100`; `0x10` -> "Potion Big Mana" mana `+100`; no other kinds. No gate on level, class, HP / mana fullness (a full unit still burns a charge), items, owner or relation (also valid for enemy / neutral units that reach state `0xf`; heroes only through the client cursor rule).
 
 ## 8. Engine design notes (what to implement now)
 
@@ -306,8 +306,7 @@ Answers to Q5:
   `mana=+100`) are read from the item table; a table without them keeps the charge change and does nothing else (the exe would log "no such ID": not a game case).
 * Nothing random: no `rand` is called in a use (tested), so the world RNG is untouched and a replay gives the same hash.
 * Not stored per hero: charges are the structure's `+0x42`, shown by the info panel as `Health hp/max` for the selected well (existing reader).
-* VERIFY IN GAME: that a well's info panel shows the falling charge count (`0x82` posts the refresh; INFERRED from the handler); the well sound heard
-  in the original, if any, is not from the server (no sound request exists in the path read here).
+* The info panel of a hovered well shows `hp/max` of `obj+0x104` (`structure_rows`, ui-layout 10), so it follows the charges as the `0x82` handler writes them (engine tested: `3/3` -> `2/3`). VERIFY IN GAME only that the panel redraws while hovering without a new hover event (INFERRED); the well sound heard in the original, if any, is not from the server (no sound request exists in the path read here).
 
 ## Open questions
 
