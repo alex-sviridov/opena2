@@ -24,6 +24,7 @@ class AssetCache:
         self._structures_reg = None
         self._object_sets, self._structure_sets = {}, {}
         self._unit_sets, self._unit_types = {}, None
+        self._hero_look = None
         self._projectile_sets, self._projectile_recs = {}, None
 
     def tileset(self):
@@ -138,12 +139,36 @@ class AssetCache:
             self._unit_types = units.by_id(units.unit_types(self.fs))
         return self._unit_types
 
-    def unit_set(self, type_id):
-        """The `UnitSet` of units.reg ID `type_id`, loaded once; None when the ID is unknown
-        or names no sprite file."""
-        if type_id not in self._unit_sets:
+    def unit_set(self, key):
+        """The `UnitSet` of units.reg ID `key`, or of a hero folder given as a string (`"heroes_l/swordsman"`, see `engine/herolook.py`),
+        loaded once; None when the ID is unknown or names no sprite file, or the folder does not exist."""
+        if key not in self._unit_sets:
             from .anim.units import load_unit_set
-            t = self.unit_types().get(type_id)
-            self._unit_sets[type_id] = None if t is None or not t.file else \
-                load_unit_set(type_id, self.fs, list(self.unit_types().values()))
-        return self._unit_sets[type_id]
+            if isinstance(key, str):
+                try:
+                    self._unit_sets[key] = load_unit_set(key, self.fs, list(self.unit_types().values()))
+                except (KeyError, FileNotFoundError):
+                    self._unit_sets[key] = None
+            else:
+                t = self.unit_types().get(key)
+                self._unit_sets[key] = None if t is None or not t.file else \
+                    load_unit_set(key, self.fs, list(self.unit_types().values()))
+        return self._unit_sets[key]
+
+    def hero_look(self):
+        """`(names, materials)` of the hero sprite folder choice (`FUN_0046a215`, animation.md 1.3): `names` = the lines of `main/text/heropicture.txt`
+        (line `n` = the folder name of the weapon whose item index is `n + 1`, line 0 = unarmed); `materials` = `{material number: "heroes" | "heroes_l"}`
+        from `graphics/units/material.reg` (`Material<n>/Path`)."""
+        if self._hero_look is None:
+            from .common import read
+            from .reg import load_reg
+            from .text import decode_text
+            names = tuple(decode_text(read("main/text/heropicture.txt", self.fs)).replace("\r", "").split("\n"))
+            reg = load_reg("graphics/units/material.reg", self.fs)
+            mats = {}
+            for n in range(16):
+                sec = reg.get("Material%d" % n)
+                if sec is not None and sec.get("Path"):
+                    mats[n] = str(sec.get("Path"))
+            self._hero_look = (names, mats)
+        return self._hero_look

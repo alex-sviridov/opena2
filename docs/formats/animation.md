@@ -103,16 +103,25 @@ directions); `Width`, `Height` +0x1c/+0x20 (64); `SFX` +0x24, `Palette`
 | Object | inline in view draw `FUN_00406f43` (`0x408a7d`–`0x408c8c`) | record (map cell byte − 1), cell X/Y, view clock, tile flags | §4.3 |
 | Projectile | `FUN_0046cb7b` (vtable `0x5cd6f0` `+0x28`) | record (`obj+0x24` = ID), facing `obj+0x70`, phase `obj+0x74` | §4.4 |
 
-**Hero sprite → unit type** (CONFIRMED `FUN_0046a215`): folder =
-`graphics\units\` + (`heroes` if `obj+0x1b8 & 2`, else `heroes_l`, or the
-armour material's path from `material.reg` when `obj+0x1a4 ≠ 0`) + `\` +
-weapon name (`FUN_00474733`) + `_` with a shield; dying heroes (state 6)
-use `unarmed`, which with flag 2 becomes `mage_st`/`mage`. The name sets
-`obj+0x24` to a `units.reg` ID: `unarmed` 1, `unarmed_` 2, `swordsman` 3,
+**Hero sprite → unit type** (CONFIRMED `FUN_0046a215`, called by the type setter `FUN_0046a0cd` and every tick): only a view with
+`obj+0x1b8 & 1` does it. The setter derives the flags from the type word the server sent (`obj+0x24`, the server creature's `+0x0e`): `0x20..0x3f`
+= a hero built by name (`FUN_005145d1` with its hero argument = 1, from the party / hero creation `0x4ea8xx`, `0x490xxx`): `(t - 0x21)` bit 0 =
+female (`& 4`), bit 1 = mage (`& 2`; the server writes `0x21 + female` for a template without mana, `0x23 + female` with it, `FUN_0053a5a0` = creature
+flag `+0x4c & 4`); `< 0x1a` = a plain human (`& 0x10`, type kept, **no** folder logic: the map's NPCs and monsters-with-a-human-set keep their units.reg
+file); `0x17..0x18` get `& 2` too.
+Folder = `graphics\units\` + F + `\` + name:
+* F = `heroes` with `& 2` (mages), else `heroes_l` when the armour slot 8 (`obj+0x1a4`: cuirass / cloak / cape) is empty, else the `Path` of
+  `graphics\units\material.reg` `Material<n>` with `n = item word >> 12` (`FUN_00439e50`; `Material0-7, 14` -> `heroes`, `8-13, 15` -> `heroes_l`).
+* name = `unarmed` while dying (`obj+0x8c == 6`; a mage `mage_st`), else line `(item word & 0x1f) - 1` of `main\text\heropicture.txt`
+  (`FUN_00474733(i)` on the list object `0x621430`; the weapon's index in data.bin group 3, 0 = no weapon = `unarmed`) with `_` appended when a
+  shield is equipped (`obj+0x18c`), and a mage's plain `unarmed` -> `mage`.
+`obj+0x24` becomes the units.reg ID of the name: `unarmed` 1, `unarmed_` 2, `swordsman` 3,
 `swordsman_` 4, `swordsman2h` 5, `axeman` 7, `axeman_` 8, `axeman2h` 9,
 `clubman` 10, `clubman_` 11, `pikeman` 12, `pikeman_` 13,
 `archer`/`bowman` 14, `xbowman` 15, `mage` 23, `mage_st` 24. Hero layout
-and timing come from those types.
+and timing come from those types. Both `heroes` and `heroes_l` carry the orange cloak. Engine: `engine/herolook.py`
+(`look_key`), `AssetCache.unit_set("heroes_l/swordsman")`, `AssetCache.hero_look()`; the draw list uses it for `xp.is_hero` units (the party heroes);
+`tests/test_engine_herolook.py`. Not modelled: the female flag (only the paper doll and the heroback read it).
 
 ### 1.4 Timing
 

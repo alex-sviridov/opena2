@@ -70,6 +70,9 @@ damage feel, AI, UI): the consolidated VERIFY IN GAME items of [simulation §9](
 [combat](engine/combat.md), [ai §13](engine/ai.md), [vision](engine/vision.md), the walk speed and swing timing, the
 height of the damage numbers, the hit-reaction flee, the story window layout.
 
+Same as the original, not bugs: two enemies (or any two units) can share one cell and are drawn as one unit ([simulation §11.4b](engine/simulation.md)); a hero
+is drawn from its equipment (orange cloak, [animation §1.3](formats/animation.md)).
+
 ## Known differences and gaps
 
 - No start menu or new-game screen: the shell exits after the end dialog ([triggers §12](engine/triggers.md#12-j3-win-and-lose-on-map-32)).

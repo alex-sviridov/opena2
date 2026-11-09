@@ -32,6 +32,15 @@ Put the GOG install at `samples/allods2_en_gog/` or point `ALLODS2_INSTALL` at i
 `~/.allods2/sessions/`; `replay` runs it again without a window and checks that the world ends in the same state.
 Controls and what is built: [docs/prototype.md](docs/prototype.md).
 
+## Quirks kept from the original
+
+The engine reproduces the original's behaviour, including what looks like a bug:
+
+- **Two units can stand on one cell, and then look like one.** The original only checks for a blocker when a unit plans its path, not when it steps, so two enemies
+  (for example wolves of one pack walking to the same spot) can end up on the same cell. The view keeps one sprite slot per cell, so the pair is drawn, and can be
+  clicked, as a single unit. Checked against `allods2.exe` ([simulation §11.4b](docs/engine/simulation.md), [rendering §2](docs/engine/rendering.md)).
+- **Heroes are drawn from their equipment** (the orange cloak, weapon and shield look), not from a fixed sprite ([animation §1.3](docs/formats/animation.md)).
+
 ## Layout
 
 ```

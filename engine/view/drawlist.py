@@ -21,6 +21,7 @@ from allods2.graphics import lighting as lt
 from allods2.graphics.terrain import TILE
 
 from . import fog
+from .. import herolook
 from .objmap import walk_order
 from .lights import burning_entries, cell_row, corner_lights, light_map
 from .pick import PickRect
@@ -430,7 +431,8 @@ def _unit(ctx, u):
     opts = ctx.opts
     if not fog.unit_visible(ctx.world, u):              # S != 0: neither the sprite, the shadow nor the pick rect (vision.md 2)
         return
-    aset = ctx.assets.unit_set(u.type_id)
+    skey = herolook.look_key(ctx.world, ctx.assets, u) or u.type_id     # a hero is drawn from its equipment's folder (herolook.py)
+    aset = ctx.assets.unit_set(skey)
     if aset is None:
         ctx.items.missing += 1
         return
@@ -453,7 +455,7 @@ def _unit(ctx, u):
     z = fobj.ground_height(ctx.world.heights, (u.x << 8) | u.sub_x, (u.y << 8) | u.sub_y,
                            aset.t.TileSize, aset.t.TileSize)
     px, py = (X * CELL) >> 8, (Y * CELL) >> 8
-    key = ("unit", u.type_id)
+    key = ("unit", skey)
     flyer = bool(aset.t.Z)                      # units.reg Z != 0: the 0x5cd660 view class, layers P4 / P7
     alt = FLYER_ALTITUDE if flyer else 0        # U+0x10: raises the sprite, never the shadow
     dep = (PASS_FLYER if flyer else PASS_CELL, cy, -cx, SLOT_UNIT, u.seq)
