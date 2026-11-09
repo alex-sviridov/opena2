@@ -100,7 +100,7 @@ dying countdown, [combat §12.3](combat.md)). All CONFIRMED at the routine; name
 | 3 | Is unit in a circle | `5770d1` | `d(u, (n0, n1)) <= n2` -> 1, else 0 (a Chebyshev square) |
 | 4 | Get unit parameter | `5771a8` | `n0 == 6`: HP (`+0x94`, s16); any other parameter: the slot keeps its value |
 | 5 | Is unit alive? | `576fef` | 0 if state `0x10`, else 1 (a dying unit, HP <= 0, is alive) |
-| 6 | Distance between units | `577268` | `d(u, u2)`, `0xff` if either is in state `0x10` |
+| 6 | Distance between units | `577268` | `d(u, u2)`, `0xff` if either is in state `0x10`; a **phased-out unit** (instant 16, `FUN_005102a3`: lifted from its cell, flag `+0x4c |= 8`, position untouched) is measured at its retained cell (CONFIRMED). Maps 93-95 phase their quest unit (27 / 51 / 50) out at the start and never in again, so the player walks to that cell ([effects §6.5](effects.md#65-script-access-check-25-instants-29-and-30-confirmed-engine-enginesimeffectspy); the tests walk the whole route to the win) |
 | 7 | Distance from point to unit | `57714d` | `d(u, (n0, n1))` |
 | 8 | How many units this player have | `5771e4` | members of all groups of the player (`+0x28`) |
 | 9 | Is unit make attack | `577300` | Brain mode (`brain+8`) 5: the target's uid (`(brain+0xc)+8`), else 0 |

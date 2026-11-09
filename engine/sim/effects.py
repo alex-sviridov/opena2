@@ -525,11 +525,24 @@ def _record(world, x, y):
 
 
 def tile_layer(world, x, y, layer):
-    """Trigger check 25 (`FUN_005777d3`, CONFIRMED): the cell record `FUN_0055a82c(x + y * 256)` (16-bit index; none = no slot used) holds a
-    carrier in slot `layer`.  A live state read: no spell filter, no caster test, true exactly while the carrier occupies the slot.  The exe reads
-    `record + layer * 4` unchecked; a layer outside 0-5 answers 0 here (DECISION: no map uses one)."""
-    v = _record(world, x, y)
-    return int(v is not None and 0 <= layer < 6 and v[layer] is not None)
+    """Trigger check 25 (`FUN_005777d3`, CONFIRMED): the cell record `FUN_0055a82c(x + y * 256)` (16-bit index; a hash-map lookup that copies the
+    record into the working buffer `world+0x5402c`; none = no slot used and no trap) is read as dwords at `rec + 0x14 + layer * 4`, non-zero = 1.
+    Layers 0-5 are the carrier slots (a live state read: no spell filter, no caster test, true exactly while the carrier occupies the slot);
+    the unchecked index goes on into the 0x3c-byte record: 6 / 7 = `+0x2c` / `+0x30` (nothing writes them: 0), 8 = `+0x34` (the trap's spell,
+    power, source x, y), 9 = `+0x38` (target x, y and the cell's own index word at `+0x3a`: 1 for any record).  Beyond the record (layer >= 10)
+    the exe reads the neighbouring scratch fields, not traced: 0 here (DECISION; no map uses a layer above 3)."""
+    i = (x + y * 256) & 0xFFFF
+    cell = (i & 0xFF, i >> 8)
+    slots, trap = world.cell_fx.get(cell), world.cell_effects.get(cell)
+    if slots is None and trap is None:
+        return 0
+    if 0 <= layer < 6:
+        return int(slots is not None and slots[layer] is not None)
+    if layer == 8:
+        return int(trap is not None and any(trap[:4]))
+    if layer == 9:
+        return int(bool(i) or (trap is not None and any(trap[4:6])))
+    return 0
 
 
 def set_tile_duration(world, x, y, spell, life):

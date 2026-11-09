@@ -441,7 +441,7 @@ def test_check_25_reads_the_slot_layer_of_the_cell_only():
     effects.release(w, m, sp(w, 17), 30, cell=(20, 20))
     carriers_pass(w)
     assert (_check25(w, 19, 20, 3), _check25(w, 19, 20, 0), _check25(w, 19, 20, 2)) == (1, 0, 0)     # Wall of Earth = layer 3
-    assert _check25(w, 20, 22, 3) == 0 and _check25(w, 40, 40, 3) == 0 and _check25(w, 19, 20, 9) == 0
+    assert _check25(w, 20, 22, 3) == 0 and _check25(w, 40, 40, 3) == 0 and _check25(w, 19, 20, 12) == 0
     carriers_pass(w, 600)
     assert _check25(w, 19, 20, 3) == 0                                                              # true exactly while the carrier is there
 
@@ -467,3 +467,15 @@ def test_instant_30_sets_the_ticks_of_the_unit_effects_of_that_spell():
     m.effects = [Effect(12, ticks=100), Effect(20, ticks=100)]
     effects.set_unit_duration(m, 12, 0x8000)
     assert [e.ticks for e in m.effects] == [0x8000, 100]
+
+
+def test_check_25_layers_past_the_slots_read_the_rest_of_the_record():
+    from engine.sim import traps
+    w = world()
+    assert [_check25(w, 30, 30, k) for k in range(10)] == [0] * 10                                   # no record: nothing
+    assert traps.set_record(w, 30, 30, (23, 100, 30, 30, 40, 40))                                    # a trap-only cell has a record
+    assert [_check25(w, 30, 30, k) for k in range(11)] == [0] * 6 + [0, 0, 1, 1, 0] and _check25(w, 30, 30, 0) == 0
+    m = monster(w, 1, 20, 10)
+    effects.release(w, m, sp(w, 17), 30, cell=(20, 20))
+    carriers_pass(w)
+    assert [_check25(w, 19, 20, k) for k in (3, 8, 9)] == [1, 0, 1]                                  # a wall cell: slot 3, no trap, index word

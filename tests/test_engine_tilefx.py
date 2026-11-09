@@ -54,18 +54,36 @@ def _gate(w, sim, hero):
     assert (hero.x, hero.y) == (74, 72)
 
 
-def _finish(w, sim, hero, near, dead):
-    """The last steps of the three maps, with the fights replaced by debug shortcuts: a unit of the quest dies, the hero is next to the named one
-    (a script variable counts it), then at the exit corner (10, 135) the mission completes."""
+def _walk(w, sim, hero, dest, limit=6000, near=1):
+    """A real `MoveUnits` walk (the hero is kept alive: the hp is not a command); returns when the hero stands within `near` of `dest` or was
+    teleported (a trap on the way)."""
+    start = (hero.x, hero.y)
+    sim.step([MoveUnits(1, (hero.id,), dest)])
+    for _ in range(limit):
+        _run(w, sim, hero, 1)
+        if max(abs(hero.x - dest[0]), abs(hero.y - dest[1])) <= near and hero.order == 0xC:
+            return
+        if max(abs(hero.x - start[0]), abs(hero.y - start[1])) > 30 and (hero.x, hero.y) != dest and hero.order == 0xC:
+            return                                          # stood after a teleport
+    raise AssertionError("the walk %s -> %s never ended (at %s)" % (start, dest, (hero.x, hero.y)))
+
+
+def _finish(w, sim, hero, near, dead, exit_tp):
+    """The last steps of the three maps by real walks; only the fight is a debug shortcut (the quest unit dies by setting its HP).  The unit named
+    by check 6 is phased out at the start and stays so: check 6 measures its retained cell (`script.phased`), so the hero walks to that cell,
+    then onto the exit teleporter of the section 9 records, then to the corner (10, 135) where the mission is won."""
     def find(uid):
         return next(u for u in list(w.units.values()) + list(w.script.phased.values()) if u.uid == uid)
 
     find(dead).hp = -1000
     _run(w, sim, hero, 60)
-    other = find(near)                                      # a phased-out unit keeps its cell, which check 6 measures
-    assert T.teleport(w, hero, other.x + 1, other.y) or T.teleport(w, hero, other.x - 1, other.y)
+    other = find(near)
+    _walk(w, sim, hero, (other.x - 1, other.y), near=2)
     _run(w, sim, hero, 40)
-    assert T.teleport(w, hero, 10, 135)
+    assert T.result(w) is None                              # not yet: the exit corner is still far
+    _walk(w, sim, hero, exit_tp)
+    assert (hero.x, hero.y) == (26, 118)                    # the section 9 teleporter next to the landing cell
+    _walk(w, sim, hero, (10, 135), limit=3000, near=3)
     _run(w, sim, hero, 40)
     assert T.result(w) == "won"
 
@@ -78,7 +96,9 @@ def test_map_93_two_fire_walls_open_the_teleporter_and_the_mission_can_be_won():
     _cast(w, sim, hero, FIRE_WALL, (123, 75), (123, 72), 0)
     _run(w, sim, hero, 40)
     assert w.cell_effects[(115, 72)] == (23, 255, 115, 72, 100, 104)        # trigger 9: both rows burn at once -> instant 25
-    _finish(w, sim, hero, near=27, dead=32)
+    _walk(w, sim, hero, (115, 72))                          # into the fire teleporter
+    assert (hero.x, hero.y) == (100, 104)
+    _finish(w, sim, hero, near=27, dead=32, exit_tp=(99, 104))
 
 
 def test_map_93_a_single_wall_is_not_enough():
@@ -99,7 +119,9 @@ def test_map_94_the_stonewall_needs_straight_walls_and_a_diagonal_one():
     assert [effects.tile_layer(w, x, 115, 3) for x in (63, 65, 66)] == [0, 1, 0]
     _run(w, sim, hero, 60)
     assert w.cell_effects[(66, 107)] == (23, 100, 66, 107, 122, 124)
-    _finish(w, sim, hero, near=51, dead=33)
+    _walk(w, sim, hero, (66, 107))                          # into the earth teleporter
+    assert (hero.x, hero.y) == (122, 124)
+    _finish(w, sim, hero, near=51, dead=33, exit_tp=(121, 124))
 
 
 def test_map_94_a_straight_middle_wall_does_not_solve_it():
@@ -124,7 +146,9 @@ def test_map_95_the_clouds_stay_until_fire_burns_them_and_instant_29_made_them_l
         assert effects.tile_layer(w, 67, y, 2) == 0
     _run(w, sim, hero, 80)
     assert w.cell_effects[(68, 37)] == (23, 100, 68, 37, 20, 19)
-    _finish(w, sim, hero, near=50, dead=35)
+    _walk(w, sim, hero, (68, 37))                           # into the water teleporter
+    assert (hero.x, hero.y) == (20, 19)
+    _finish(w, sim, hero, near=50, dead=35, exit_tp=(21, 20))
 
 
 def test_map_94_cast_replays_to_the_same_hash():
