@@ -75,7 +75,7 @@ def test_steam_needs_the_lighting_option_fire_needs_a_map_object():
     w2.burn_start.clear()
     w2.burn_fx[(11, 10)] = (100, True)             # a water cell without an object: steam only
     w2.cells[10, 11] |= 8 << 6
-    assert fx(w2, a2, 104)[0] == [(8, 2, 2)]
+    assert fx(w2, a2, 104)[0] == [(8, 1, 2)]                  # made by an explosion at step 100: counter 104 - 100 - 1 = 3 -> frame 1
 
 
 def test_effect_sprites_ignore_the_fog():

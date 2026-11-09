@@ -60,14 +60,17 @@ def explosion_phases(world, assets, tick):
 
 def burning_entries(world, assets, tick):
     """The live burning-list entries `(x, y, counter)` (`view+0xa94`; counter = ticks since the flag, `< 22`) of the cells that qualify (`burns`).
-    Fire explosion entries (`world.burn_fx`, queued at age 4: map object or water) join the Wall of Fire ones; the later `SetAt` of a cell wins."""
+    Fire explosion entries (`world.burn_fx`, queued at age 4: map object or water) join the Wall of Fire ones; the later `SetAt` of a cell wins.
+    Counters (CONFIRMED `FUN_0040bcd8`: the list tick `FUN_0040c0b0` at `0x40bee5` runs before the projectile list; +1 per step, removed at 22): a flag-made entry (message loop,
+    before the view tick) is first drawn at counter 1 (`tick - born`), an explosion-made one (made inside the projectile list) at counter 0 (`tick - born - 1`)."""
     out = {}
     for (x, y), born in world.burn_start.items():
         if 0 <= tick - born < lt.BURN_TICKS and burns(world, assets, x, y):
             out[(x, y)] = tick - born
     for (x, y), (born, water) in getattr(world, "burn_fx", {}).items():
-        if 0 <= tick - born < lt.BURN_TICKS and (water or burns(world, assets, x, y)):
-            out[(x, y)] = min(out.get((x, y), 99), tick - born)
+        counter = tick - born - 1                           # made by the explosion's tick (projectile list), after the list's own tick in step `born`: counter 0 when first drawn
+        if 0 <= counter < lt.BURN_TICKS and (water or burns(world, assets, x, y)):
+            out[(x, y)] = min(out.get((x, y), 99), counter)
     return [(x, y, c) for (x, y), c in out.items()]
 
 

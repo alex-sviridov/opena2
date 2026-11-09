@@ -97,10 +97,10 @@ def test_explosion_sprite_and_steam_are_drawn():
     effects.spawn_explosion(w, (20, 20))
     w.tick = 4
     effects.explosion_system(w, [])
-    w.tick = 6                                                       # drawn at tick 6: exe age 5: frame 2; steam counter 2: frame 1
+    w.tick = 6                                                       # drawn at tick 6: exe age 5: frame 2; the entry made at step 4 by the projectile list: counter 1: frame 0
 
     def pics(tick):
         return sorted((i.sprite[1], i.frame) for i in build_draw_list(w, cam(20, 20), tick, a, PLAIN)
                       if i.kind == "sprite" and i.sprite[0] == "projectile")
-    assert pics(6) == [(8, 1), (13, 2)]                              # bare water: steam only, the fire needs a map object (`0x408981` gate)
-    assert [p for p in pics(22) if p[0] == 13] != [] and [p for p in pics(23) if p[0] == 13] == [] and pics(26) == []     # the last frame (age 21) is drawn at tick 22; the list entry ends at 4 + 22
+    assert pics(6) == [(8, 0), (13, 2)]                              # bare water: steam only, the fire needs a map object (`0x408981` gate)
+    assert pics(22) == [(8, 8), (13, 10)] and pics(23) == []         # the last frames: explosion age 21, steam counter 17 (`< 18`); both end at tick 23
