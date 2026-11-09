@@ -40,7 +40,8 @@ signpost record** (map.md part 6) but do toggle (§3).
 |---|---|---|
 | hover | structure not (Usable and Indestructible)-skipped; flags `0x20` (+ `0x800` when Usable); cursor `town` needs one selected hero-type unit; click sends the command | `FUN_004180c6`, chooser `FUN_0040b2b8` (CONFIRMED, ui-layout) |
 | client send | `FUN_0041a0b5(structure id)`: command byte `0x24`, `+0xe` = the hovered structure's runtime id (`0x6000 + uid`), then the selected unit ids; then the squad voice | `0x41a0b5` (CONFIRMED) |
-| server intake | `FUN_004f515d` case `0x24` (`0x4f563f`): structure by id (`FUN_0052bfa3` over the building list `[0x6044c4+0x7c]`); unknown id logs and drops; else `FUN_0056d22b(unit, structure)` with the **unit of the last id** resolved in the list (the client sends one id for the `town` cursor; INFERRED effect of several ids). **No test of class, owner, hero, level, distance, items or money** | CONFIRMED |
+| server intake | `FUN_004f515d` (head `0x4f51a2`-`0x4f5292`, case `0x24` at `0x4f563f`), shared by all unit commands: the first id must resolve (`FUN_004f3a19` = player `FUN_004f3ba9` + unit `FUN_004f3a52`: the unit id must be in that player's table and **its state `+0x54` must not be `0x10`**, i.e. removed; dying units with state != `0x10`, non-heroes and summons resolve); an unresolved first id drops the whole command. A new group (`FUN_0052b06f`) takes the first unit and every later id that resolves (`FUN_0052af8c`; unresolved ids are skipped silently, no log), each joined unit gets `FUN_00510745` (cancels a pending spell). **The unit local is overwritten by every lookup, a null result included**, so case `0x24` passes the unit of the LAST id: structure by id (`FUN_0052bfa3` over the building list `[0x6044c4+0x7c]`; unknown id logs and drops); else `FUN_0056d22b(last unit, structure)`. Earlier units only join the (order-less) group and are not otherwise touched (no order, no cancel beyond the spell). If the last id does not resolve, `FUN_0056d22b(NULL)` dereferences `+0x1c4` of null (INFERRED crash; the client cannot send it). **No test of class, owner, hero, level, distance, items or money** | CONFIRMED |
+| client: several units | The sender `FUN_0041a0b5` (called by the left-release dispatcher `FUN_004175c7` on the `town` cursor) puts **every selected unit id** (selection list `FUN_00420140` iteration, per-object selected flag `+0x80`) after the structure id; but the chooser tests (`0x40b6a4`-`0x40b739`: view `+0x140 == 1` selected unit and that unit's `+0x1b8 & 1` hero flag, hover `0x800`) give the `town` cursor only for **one selected hero**, so the message carries one id. With 2+ units selected the cursor is not `town`, no `0x24` is sent (the click selects / attacks instead). The last-id rule is therefore unreachable from the GOG UI; the engine's `sel[-1:]` and `intake` (last member) match | `0x41a0b5`, `0x4175c7`, `0x40b2b8` (CONFIRMED) |
 | order | `FUN_0056d22b`: `FUN_0056dbfb` (cancel: state 0, facing), **unit order `+0x50 = 0xf`**, brain `+0x68 = structure`, brain mode `+8 = 0`, destination `brain+0xa` = the structure's `+0x10` cell word, then by the footprint width `W = structure+0x60`: W 1-2: dist 1, dest unchanged; W 3-4: dist 2, dest `+(1,1)`; W >= 5: dist 3, dest `+(2,2)` (`brain+0x14` = dist). Only caller: `0x4f5663` (player command). The AI never uses structures | `0x56d22b` (CONFIRMED) |
 | group pass | order `0xf` is re-armed by the group executor (`FUN_00569321` case -> `FUN_0056af23`: brain mode `0xf`, `+0x68`) | `0x56af23` (CONFIRMED) |
 | executor | brain mode 15 = `FUN_0056ecbc`, run every tick while brain order `+9 == 0` (jump table `0x56e470`): `FUN_0055539a(unit, brain+0xa, brain+0x14)` = **facing equals the facing to the destination cell** (`FUN_00556b2c`) **and Chebyshev(unit cell, dest) <= dist** (`FUN_00558fe9`). True: state `+0x54 = 0xf` (first tick) or, when the state already is `0xf`, `FUN_0056dbc6` (stop). False: walk / turn with `FUN_0056e4ac` (`FUN_00555411(unit, dest, dist)`, state 1) | `0x56ecbc` (CONFIRMED) |
@@ -51,6 +52,30 @@ So: no distance beyond "within dist of the destination cell and turned towards i
 order `0xc` (stand at the own cell, `FUN_0056d52b`), mode 0. The effect therefore happens **once per command**; there is no use
 animation time, no cooldown, no one-shot flag, no "already used" test. A new command in the tick between cancels nothing that matters
 (any order issuer resets the state).
+
+### 2.1 The real stop cell of a use walk (Q3; CONFIRMED code, effect on map 103 measured in the engine)
+
+* **Walk target (CONFIRMED `0x56ecbc` -> `0x56e4ac` -> `FUN_00555411`)**: the planner is called with the destination cell of 2 (`brain+0xa`: for a switch the
+  structure's own, **blocked** cell) and the range `dist` as the stop distance. There is no search for a free cell next to the structure and no per-structure
+  approach cell; the range is not given to the planner, only to the driver.
+* **Planner (CONFIRMED `FUN_0054d76e`, mode static, [simulation 7.1](simulation.md))**: a blocked target is never labelled. The wave is **bounded**
+  (`dist + min(5, dist/4)` levels; the unbounded 1000 is only for a human unit and a passable target, `0x54d9..`), so it ends at the limit, then
+  `FUN_005585f4` returns the labelled cell with the **smallest field value (cheapest from the hero) of ring 1 around the target** (scan order `(+o,+r) (+o,-r)
+  (+r,+o) (-r,+o)`, first wins ties). The hero walks to that cell and, with several equal ones, the 8-neighbour tie rules of the backward walk decide.
+  Static re-plans every 17 hops start from the new cell and re-pick the ring cell.
+* **Arrival (CONFIRMED `FUN_0055539a`, `FUN_00555411` steps 2 and 6)**: at every cell centre the driver compares Chebyshev(unit cell, dest) with `dist`; `dist >= `
+  distance ends the walk (`FUN_00556da2`, stop and turn). So the hero stops on **the first cell of its path within range 1 of the structure's cell**, which is the
+  ring-1 fallback cell of the planner (the path ends there; no other ring cell is passed on the way). `FUN_0055539a` then wants facing == the facing to dest; the
+  unit turns on the spot (no step), then state `0xf`. A hero already within range at the command stays on his own cell (this is how a player picks the cell:
+  move next to the switch on the wanted side, then click it).
+* **Consequences**: (1) the stop cell is the neighbour of the target **on the side the hero comes from** (open ground: the nearest; ties by the field costs, diagonal
+  neighbours cost 3 against 2); (2) a far `UseStructure` can **fail**: when the shortest route is more than about `5` levels longer than the Chebyshev distance
+  the wave never touches ring 1, the fallback finds nothing, the plan is empty ("No way", message `0x92`) and the order ends without a step. Map 103: from the
+  hero's start (72, 12) to switch 1 the route is 94 cells for Chebyshev 60, so the use fails until a normal move has brought the hero within ~15 cells.
+* **Engine (fixed)**: `structures.set_use` used to pick "the free cell within range nearest to the unit" (`walk_goal`, a DECISION, which also made far walks succeed);
+  it now plans to the destination cell itself and the range test of `use_mode` ends the walk. Tests `test_the_walk_targets_the_blocked_cell...`,
+  `test_map_103_the_approach_side_decides...`, `test_map_103_a_far_use_walk...`.
+* Not checked in game: the exact ring-1 cell for equal costs on real terrain (the engine port of `FUN_005585f4` / the backward walk is bit-exact to the decompile, simulation 7.1); no cost-tie case matters for the puzzle.
 
 ## 3. State `0xf` by class (`FUN_0050f12c` case `0xf`, `0x50f896`-`0x50fc09`, CONFIRMED)
 
@@ -78,7 +103,7 @@ Then lookup B on the unit's own cell, **only the first object within 2 is looked
 
 | Type byte `+0x40` | Class | Effect |
 |---|---|---|
-| `0xf` (Well 2) | healing well | if HP (`+0x42`, charges) `> 0`: HP -= 1, `FUN_00503672` (message `0x82`), create item "Potion Big Healing" (`FUN_00522fab`), `unit->vtable[0x44](item)`: use the potion on the unit and hand over the rest (`FUN_00510883`: item `vtable+0x38` = use, [items §use](../data/items.md), then the inventory add and the client refresh): **health +100** (capped at max HP; data.bin item `Potion Big Healing`, effect `health=+100`) |
+| `0xf` (Well 2) | healing well | if HP (`+0x42`, charges) `> 0`: HP -= 1, `FUN_00503672` (message `0x82`), create item "Potion Big Healing" (`FUN_00522fab`), `unit->vtable[0x44](item)`: use the potion on the unit; the item is destroyed and the pack never gets it (§7.1): **health +100** (capped at max HP; data.bin item `Potion Big Healing`, effect `health=+100`) |
 | `0x10` (Well 3) | mana well | same with "Potion Big Mana": **mana +100** |
 | other | - | nothing |
 
@@ -87,7 +112,28 @@ Then lookup B on the unit's own cell, **only the first object within 2 is looked
 * **Graves (King's Grave 1 / 2): no server effect** (CONFIRMED: no code tests types `0x27`/`0x28`; the only `+0xe` readers of this family are the four
   switch / altar ids at `0x50f9d4`-`0x50f9fe`, and graves are not wells). The walk, the stop and the turn are all that happens. Sounds / messages on use: none in case `0xf`.
 * Altars: identical to the switches (HP 0 <-> 1, art intact <-> destroyed); no script in the install reads them.
-* Facing, voices and animation of the unit while in state `0xf` are the client's (no message is sent by the case itself): open question.
+* Facing, voices and animation of the unit while in state `0xf`: see 3.1 (nothing of its own).
+
+### 3.1 Client side of state `0xf` (CONFIRMED: no client side)
+
+State `+0x54 = 0xf` is **never seen by the client**; the hero has no use animation, sound or voice. The chain:
+
+* The client draws a unit from its own action byte `obj+0x8c` (0 idle, 1 move, 3 attack, 5 turn, 6 dying, 7 shoot, 8 cast), set only by the server messages
+  `0x6b / 0x6d / 0x71 / 0x72 / 0x86 / 0x8a / 0x6c / 0x6e-0x70` in `FUN_0040d9b2` and ticked by `FUN_0046617c` ([animation 1.4-1.5](../formats/animation.md)); there is no
+  state-to-action map and no action for "use".
+* Server side, `FUN_0050f12c` (`0x50f12c`) per tick: the only client traffic it can emit in the state switch is `FUN_00502019` (unit data flags; its payload carries
+  position, type word, HP, mana ... and **not** the state `+0x54`) and the per-class messages of 3 (`0x82` via `FUN_00503672`, `0x83`, `0x84`); case `0xf` itself sends
+  none for graves, switches, altars, wells or signposts. Message `0x7a` is the loot-pile message ([combat 12](combat.md)), unrelated.
+* Hence while the server is in state `0xf` (one tick) the client keeps the action of the last step / turn message (idle once its duration ran out, idle phases of the
+  type continue) and the facing the turn messages left: the server only reaches state `0xf` when its facing already equals the facing to the destination cell (2, executor).
+  The next tick `FUN_0056dbc6` returns to state 0 with no message.
+* Sounds: none from the state. The only voice is the squad voice sent with the command by `FUN_0041a0b5` (client send, 2). Item pickup / potion sounds of the wells
+  are a different path (the item use of 3, not traced); the switch / altar change is silent (message `0x82` only changes the picture, 4).
+* **Engine:** draw nothing special: state `0xf` has no action (`unit.action` stays `idle` / `move` / `turn` as the movement code leaves it); facing = facing to the
+  destination, which `use_mode` already ensures before setting the state. No change needed (guard: `tests/test_engine_structures.py`
+  `test_state_f_has_no_action_of_its_own_and_the_hero_faces_the_structure`).
+* INFERRED: absence of any other client reader of the server state (checked: the unit-data message `FUN_00502019` and every writer of `obj+0x8c`; no full search of
+  all sends of `unit+0x54` was made).
 
 **Lookup quirk and its consequences (code CONFIRMED, effect on data INFERRED).** Because A searches near `(x-1, y-1)` of the hero's cell, the first
 structure of the list within 2 cells wins, not the one the player clicked. A hero standing on a neighbour cell of a 1x1 switch always finds
@@ -100,10 +146,23 @@ engine should apply the same rule (spec "match the game exactly"), with a debug 
 | Item | Fact |
 |---|---|
 | State field | **HP `+0x42`** (s16), the field check 21 reads and instant 26 writes (CONFIRMED `0x5776d7`, `0x57855f`). Values: **1 = start / "intact"** (map entry `intact != 0`: HP = healthMax = 1), **0 = destroyed** (`intact == 0`, or one use). Use: `0 -> 1`, any other value `-> 0` (instant 26 may store any value; then the next use gives 0). Max HP `+0x44` = 1 |
-| Client message | `FUN_00503672(structure, 0, 0)`: for every human player (or the owner) sends message type `0x82` (`+7` player, `+0xa` structure id, `+0xc` HP) through the hub `0x50164f`; it sends **nothing when max HP `+0x44` is 0** (indestructible). The client stores `msg+0xc` in the object's HP `obj+0x104` (`0x410b13` / `0x412ade`, one of the two is the `0x82` case: INFERRED) and posts window message `0x408` when the structure is the selected object |
+| Client message | `FUN_00503672(structure, 0, 0)`: for every human player (or the owner) sends message type `0x82` (`+7` player, `+0xa` structure id, `+0xc` HP) through the hub `0x50164f`; it sends **nothing when max HP `+0x44` is 0** (indestructible). Client handler (CONFIRMED, §4.1): the `0x82` case stores `msg+0xc` in the object's HP `obj+0x104` (`0x410b13`) and posts window message `0x408` when the structure is the selected object |
 | Graphics | no animation, no frame field: the draw (`FUN_00461649`, [animation §4.2](../formats/animation.md)) picks the **destroyed block** (the last `W·FH` frames) when `obj+0x104 < 1` and the record is not Indestructible; else the intact block. Switch 1 / 2 art = 4 frames (1 x 2 pieces, `FullHeight` 2): intact 2, destroyed 2 (lever up / down; which is which is a data matter). The info panel (text mode) shows `Health  hp/max` (ui-layout) |
 | Passability | **unchanged**. The stamp of `Passability` / `BuildingPresent` is made once in the constructor (`FUN_005599df` at `0x5200ab`); the use code only writes `+0x42` and calls `FUN_00503672`; `FUN_00550a96` / `FUN_00559890` are not reached ([combat §5.4](combat.md): a destroyed structure keeps its stamps). The switch's single cell stays blocked (params 1, 1); there are no gates or doors in the usable set |
 | Links | none. A switch does not flip another structure; the only reader is the script (check 21 by uid). The map record has no link list |
+
+### 4.1 Client message handlers (CONFIRMED)
+
+The client message switch is `FUN_0040d9b2` (`0x40d9b2`): message type byte `msg+9`, `type - 3` indexes the byte table `0x41607f`, then the jump table `0x415fa7`.
+
+| Type | Case | HP write | What else |
+|---|---|---|---|
+| `0x82` (structure state, sent by `FUN_00503672`) | `0x410ab5` | `0x410b13`: `obj+0x104 = s16(msg+0xc)` | object by id `msg+0xa` via `FUN_0041ff90` on the object table `client+0x9d0` (unknown id: drop). If the object is the selected one (`client+0x138`), posts window message `0x408` (twice: window objects `+0xe0` and `+0xe4`, vtable `+0x48`) to refresh the info panel. **Nothing else**: no sound, no frame field, no art switch call, no minimap or fog write, no flag |
+| `0x73` (combat HP change) | `0x412826` | `0x412ade`: `obj+0x104 = s16(msg+0xc)` | unknown id: debug log. Before the write: with the "Flying damage" option (`client+0xabc`) and `old HP > new HP` it creates the floating number (difference, tint by the new HP against max `+0x108` / 2 and / 4); a call through the object's vtable `+0x74` with `0` (HP equals the new value), `2` / `1` (new HP in -9..max/2 or above) while the old HP > -10 (hit / death feedback; not traced); then the same `0x408` post for the selected object and `obj+0x114 = 1` |
+
+So `0x410b13` is the `0x82` writer and `0x412ade` the `0x73` writer. Both only change the HP field; the picture is decided at draw time.
+
+**Which graphic is drawn.** The draw routine `FUN_00461649` (per structure, per column of the footprint) chooses the destroyed block when `s16(obj+0x104) < 1` and the record's Indestructible byte (`+0x64`) is 0, else the intact block (with the phase counter of animated art): HP 0 -> destroyed (lever "down"), HP 1 -> intact. There is no separate state, no transition animation and no other reader; a switch's picture follows the last `0x82` HP exactly. The server's `0x82` is sent only when max HP `+0x44` is not 0, so the HP is the whole protocol. **Engine agrees** (CONFIRMED by comparison): `engine/sim/structures.py` toggles `obj.hp` and the FLAG_DESTROYED mirror, `engine/view/drawlist.py::_destroyed` draws the destroyed block for `hp <= 0` of a non-Indestructible set with a destroyed action. No code change. (Not checked in the exe: which of the two frames of switch art is the "up" lever; data, same as before.)
 
 ## 5. Script side
 
@@ -146,21 +205,33 @@ of times)**. Group A's checks (triggers 20-27): `HP > 0` for 1, 8, 2 / 3, 10, 11
 trigger 26 needs `v70, v71, v72` (the off groups), trigger 27 needs `v73` and `v76`. The dropped items are the quest items the orc wants (items 62 and 63: head and stone); the stone is also picked at the house (41, 50) by triggers 9-11. Then the orc must meet the hero with both
 items (triggers 12-14), walk to the waypoints and to the Oracle at (128, 72) (trigger 15, `v83`) and trigger 31 completes the mission. Other triggers: messages, and failure when the shaman (unit 30) dies or is attacked.
 
-**Lookup effect in 103 (INFERRED data, CONFIRMED rule, hero standing on one of the 8 neighbour cells of the target, list = file order = uid order):** the rule of §3 returns the
-structure the player clicked only in these cases; otherwise the uid shown toggles instead.
+**Lookup effect in 103 (rule CONFIRMED, stop cells from 2.1 measured with the engine on the install's map; list = file order = uid order).** The hero ends
+on the neighbour of the clicked switch on the side he comes from, and the lookup of 3 then toggles the first switch within 2 of `(x-1, y-1)` of that cell:
 
-| Target | Hit when the hero stands | Else toggles |
+| Clicked | Stop cell (offset) / side of approach | Toggled |
 |---|---|---|
-| 1, 2, 3, 4, 5, 6, 12, 13-16 | on any neighbour | - |
-| 7 (25,73) | east side (x = 26) | 6 |
-| 8 (28,75) | **never** | 1 |
-| 9 (28,81) | only SE (29,82) | 2 (N, W, NW, NE...) or 3 (SW, S) |
-| 10 (22,81) | east side (x = 23) | 4 |
-| 11 (19,78) | **never** | 5 |
+| 1, 2, 3, 4, 5, 6, 12, 13-16 | any neighbour | itself |
+| 7 (25,73) | NE / E / SE (offsets (1,-1), (1,0)) | 7 |
+| 7 | N, NW, W, SW (offset (-1,-1), (0,-1), (-1,0)) | **6** |
+| 8 (28,75) | any | **1** (never itself) |
+| 9 (28,81) | SE and part of E / S (offset (1,1) = (29,82)) | 9 |
+| 9 | N, NE, NW, E (offset (1,-1), (1,0), (1,-1)) | **2** |
+| 9 | W, SW, S-west (offset (-1,1)) | **3** |
+| 10 (22,81) | NE / E / SE (east side, x = 23) | 10 |
+| 10 | N, NW, W, SW, S (x <= 22) | **4** |
+| 11 (19,78) | any | **5** (never itself) |
 
-The set of required toggles stays reachable (4 and 6 from anywhere, 7 from the east, 9 from the SE neighbour; 8 and 11 must stay off and cannot even be reached),
-which fits the solution; whether the designers meant this is unknown. In maps 93-96 and 75 the pair/the two switches are alone (75: the switches are not read by any script;
-uid 10 (81,106) is hit from W and N sides, uid 11 (94,101) from the east neighbour only partly because other structures lie within 2).
+Measured approach table, hero starting 8 cells away (Chebyshev) on each side of the target; the stop cell is chosen by the planner, so for a hero coming
+from a side only some neighbours are ever used. `7`: from NE and SE the east side -> **7**; from N, NW, W, SW the north-west cell -> **6** (29 of 54 starts).
+`9`: from SE the cell (29,82) -> **9** (16 of 63 starts; SW starts split 11 : 4 between 3 and 9), from NE / N / NW -> **2**, from W / S-west -> **3**. `4` and `6`
+are hit from every side, `14` and `16` (corner pairs, no other switch near) from every side.
+
+**Solvable by normal play.** The solution switches 4, 6, 14, 16 are hit from any side. 7 is hit when the hero comes from the east half (from the hero's start, the
+north-east, a walk down the east side is natural); 9 only from the SE / east-south side. As the walk of 2.1 ends at once for a hero already in range, the player can
+always choose the cell: walk to a free neighbour of the wanted switch (e.g. (26,72) or (26,73) for 7, (29,82) for 9) with a normal move, then click the switch. The
+decoys 8 and 11 can never be thrown, and 1, 2, 3, 5, 10 are thrown only by a click on a wrong neighbour; they must end off, which the trigger needs (a wrongly thrown
+one can be thrown back by a second use from the same side). So the puzzle stays solvable; whether the designers intended the sides is unknown. Far use clicks
+fail (2.1): first walk near. In maps 93-96 and 75 the pair / the two switches are alone (75: not read by any script; uid 10 (81,106) is hit from W and N sides, uid 11 (94,101) from the east neighbour only partly because other structures lie within 2).
 
 ## 7. Other classes (for K8)
 
@@ -172,6 +243,24 @@ uid 10 (81,106) is hit from W and N sides, uid 11 (94,101) from the east neighbo
 | Altars (76, 77) | toggle HP 0 / 1 and the picture | cosmetic; no script reads them |
 | King's Graves (39, 40) | no effect | 18 + 37 placements; hover cursor, walk, stop |
 | Shops / inns / church | multiplayer; not reached in the campaign | messages `0x83`, `0x84` |
+
+### 7.1 The well potion path in detail (CONFIRMED, REA: `FUN_0050f12c` case `0xf`, `FUN_00522fab`, `FUN_00523613`, `FUN_00510883`, `FUN_00512638`)
+
+Sequence per use (case `0xf`, lookup B `FUN_0052bfe7`, type byte `+0x40` = `0xf` / `0x10`, charges `+0x42` > 0):
+
+1. `+0x42 -= 1`, then `FUN_00503672(well, 0, 0)` = message `0x82` (picture / charge word `+0x42` to the client). The charge is consumed **before** and independently of the potion: nothing later can refund it.
+2. `FUN_00401880(0x54)` allocates the 0x54-byte item (a failed allocation would pass a null item on; not reachable in practice). `FUN_00522fab(name)` is the item constructor by data.bin name ("Potion Big Healing" `0x5fe2dc` / "Potion Big Mana" `0x5fe2f0`): vtable `0x5d1388`, count `+0x42 = 1`, weight `+0x4a = 1`, searches the data.bin item table (`FUN_0053e1c0` count, name compare `FUN_00402a00`) for the id (`+0xc`; a miss logs "Invalind Item ... no such ID" and leaves id 0), then `FUN_00523148(0xe)` fills class 14 data (type byte `+0x44` = 3 for a potion). It returns the object.
+3. `unit->vtable[0x44](item)`. Human vtable `0x5d0fb8` slot `0x44` = `FUN_00512638`: item `+0x40` put (`FUN_00512573`; a potion is not weapon / shield / armour, so no class test) -> item vtable `+0x38` = `FUN_00523613` (class vtable `0x5d1388`, slot `+0x38`); a **non-null** return would be filed with `FUN_00529ac2`. Monster vtable (`0x5d0ef4` = slot `0x44` of the table at `0x5d0eb0`) = `FUN_00510883(item)` (no direct callers): `item->vtable[0x38](unit)`; non-null -> `FUN_00529ac2(unit+0x7c)` then `unit->vtable[0x5c]()` (`FUN_0051754d`, a field refresh; INFERRED that it is the weight / level refresh). Both do the same thing for a living unit.
+4. `FUN_00523613(unit)` (item `+0x38`): `if (unit HP +0x94 > 0)`: every effect with flags 0 gets `|= 8`, each effect `vtable+0x3c(unit)` (the stat switch: health / mana `+100`, capped at max), unit `vtable+0x5c`, the attribute-name check (`FUN_004e9e97`, not for these two), then **the item is deleted** (`vtable+4(1)`) and **null is returned**. Only a unit with HP <= 0 gets the item back (non-null) and thus into the pack.
+
+Answers to Q5:
+
+* (a) `FUN_00522fab` = item constructor by name, returns the new object. Item `+0x38` for these potions = `FUN_00523613` (use; class vtable `0x5d1388`, the generic item class). `FUN_00510883` = the monster-side "use then file" method (`+0x44`); the human twin is `FUN_00512638`. Both return nothing.
+* (b) **Full pack is irrelevant**: for a living unit (the only unit that can be in state `0xf`: the tick runs the state switch only when HP >= 1) the potion is applied and destroyed and never reaches the pack. Even the insert `FUN_00529ae2` has no capacity test (the 0x400 entries limit lives only in the ground pickup `FUN_00529e5b`). No drop on the ground, no refusal message; the charge is consumed.
+* (c) Use returns null in the normal case (living unit): that is success, not failure. The "non-null -> add to the pack" branch is dead code for wells (needs a dead carrier). A not-found item name or a failed allocation is not a game case (both well names exist in data.bin, items §).
+* (d) No load / encumbrance update: nothing is inserted, so `FUN_0050f065` / `+0x90` are untouched; the effect stat switch runs the normal recompute (vtable `+0x58`; HP / mana only clamped to the maximum, never raised past it).
+* (e) Client messages: only `0x82` (charge word) from step 1; no pickup text and no sound (the "new item" flag `+8` is set only by the ground pickup `FUN_00529e5b`). The HP / mana change reaches the client through the normal unit-data refresh (`FUN_00502019`, INFERRED: not traced past the stat switch).
+* (f) Charges: `+0x42` starts at healthMax 3 (map file may override through the structure's HP; the 40 / 63 / 73 placements have not been checked for non-default values), counted down by every unit, never refilled, no timer; at 0 the branch is skipped silently. Per type: `0xf` -> "Potion Big Healing" health `+100`; `0x10` -> "Potion Big Mana" mana `+100`; no other kinds. No gate on level, class, HP / mana fullness (a full unit still burns a charge), items, owner or relation (also valid for enemy / neutral units that reach state `0xf`; heroes only through the client cursor rule).
 
 ## 8. Engine design notes (what to implement now)
 
@@ -187,9 +276,5 @@ uid 10 (81,106) is hit from W and N sides, uid 11 (94,101) from the east neighbo
 
 ## Open questions
 
-* The client side of state `0xf` (the use animation / sound / facing of the hero): not seen in `FUN_0050f12c`; check the unit draw and message `0x7a` for state `0xf`.
-* Which of the two client writers `0x410b13`, `0x412ade` is the `0x82` handler (and whether the other is the combat HP message `0x73`).
 * The meaning of `FUN_0044fff0(0x68f628) == 4` for the "Saving Place" branch (probably a game-type value) and the `FUN_0050155f` chain (save UI); no campaign map has the type.
-* `FUN_00522fab` / item `vtable+0x38` and `FUN_00510883` in detail: what happens when the inventory is full or the potion's use returns null (the code adds the item to the inventory only when the use returns non-null: INFERRED).
-* Real hero stop cells (pathfinder end of a move with range 1 to a blocked cell) decide which switch the lookup of §3 hits in map 103; check against the engine's own planner and, if possible, in game.
-* Several selected units with command `0x24` (the order goes to the last id resolved in the loop; the client sends one hero).
+* VERIFY IN GAME: the 2.1 stop cells on map 103 (which side hits 7 and 9), and that a far use click answers "No way".

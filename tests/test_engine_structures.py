@@ -173,6 +173,8 @@ def test_map_103_a_wrong_switch_keeps_the_reward_away():
 def test_map_103_session_replays_to_the_same_hash():
     w, sim, hero = _build(103)
     sw = next(o for o in w.objects.values() if o.kind == "structure" and o.uid == 6)
+    from engine.sim import triggers as T
+    assert T.teleport(w, hero, 22, 65)                      # a use walk to a blocked cell is bounded (structures.md 2.1): start near
     sim.step([UseStructure(1, (hero.id,), sw.id)])
     for _ in range(6000):
         hero.hp = 300
@@ -180,6 +182,7 @@ def test_map_103_session_replays_to_the_same_hash():
     assert _thrown(w) == [6]
     w2, sim2, _ = _build(103)
     h2 = next(u for u in w2.units.values() if u.owner == 1 and u.human)
+    assert T.teleport(w2, h2, 22, 65)
     by_tick = {}
     for tick, cmd in sim.log:
         if w2.ai_on and getattr(cmd, "ai", False):
@@ -190,3 +193,94 @@ def test_map_103_session_replays_to_the_same_hash():
             h2.hp = 300
         sim2.step(by_tick.get(w2.tick, ()))
     assert w2.dump_hash() == w.dump_hash()
+
+
+def test_state_f_has_no_action_of_its_own_and_the_hero_faces_the_structure():
+    """structures.md 3.1: the exe sends no message for state 0xf; the draw keeps the action of the last step / turn (idle once the unit stops) and the
+    facing is the facing to the destination cell."""
+    from engine.sim import combat, movement as mv
+    w, u = world_with_hero()
+    s = switch(w, 1, 26, 20)
+    sim = Simulation(w)
+    sim.step([UseStructure(1, (u.id,), s.id)])
+    for _ in range(300):
+        sim.step()
+        if u.state == st.USE_STATE:
+            break
+    assert u.state == st.USE_STATE
+    assert u.facing == combat.octant(st.foot(u), st.Foot(*u.use_dest))
+    sim.step()
+    assert u.state == mv.IDLE_STATE and u.action == mv.IDLE
+
+
+# --- the real stop cell of a use walk (structures.md 2.1, simulation.md 7.1) -----------------------------------------------------------
+
+def _stop(w, sim, hero, cell, uid, ticks=3000):
+    from engine.sim import triggers as T
+    assert T.teleport(w, hero, *cell) and (hero.x, hero.y) == cell
+    sw = next(o for o in w.objects.values() if o.kind == "structure" and o.uid == uid)
+    sim.step([UseStructure(1, (hero.id,), sw.id)])
+    for _ in range(ticks):
+        hero.hp = 300
+        sim.step()
+        if hero.order == 0xC:
+            break
+    return (hero.x - sw.x, hero.y - sw.y), _thrown(w)
+
+
+def test_the_walk_targets_the_blocked_cell_and_stops_on_the_first_ring_cell_it_reaches():
+    """FUN_00555411(unit, dest, 1): the planner target is the structure's own (blocked) cell; the fallback is the cheapest labelled cell of its first
+    ring, so the hero stops on the side it comes from (no 'nearest free cell' search)."""
+    for start, stop in (((14, 20), (-1, 0)), ((34, 20), (1, 0)), ((26, 12), (0, -1)), ((20, 14), (-1, -1)), ((32, 28), (1, 1)), ((20, 26), (-1, 1))):
+        w, u = world_with_hero()
+        s = switch(w, 1, 26, 20)
+        sim = Simulation(w)
+        from engine.sim import triggers as T
+        assert T.teleport(w, u, *start) and (u.x, u.y) == start
+        sim.step([UseStructure(1, (u.id,), s.id)])
+        assert u.use_goal == (26, 20)
+        run(sim, 400)
+        assert u.order == 0xC and s.hp == 0
+        assert max(abs(u.x - 26), abs(u.y - 20)) == 1 and (u.x - 26, u.y - 20) == stop
+
+
+@pytest.mark.skipif(not have_install(), reason="needs the game install")
+def test_map_103_the_approach_side_decides_which_switch_is_thrown():
+    """structures.md 6: the hero stops on the first ring cell of its own side and the exe's lookup (x-1, y-1) then picks the first switch within 2."""
+    w, sim, hero = _build(103)
+    # (start cell, switch uid) -> (stop offset, the one switch thrown)
+    for start, uid, stop, thrown in (((33, 65), 7, (1, -1), [7]),         # from the NE: the east side of 7
+                                     ((17, 65), 7, (-1, -1), [6]),        # from the NW: the west side of 7 is captured by 6
+                                     ((36, 89), 9, (1, 1), [9]),          # from the SE: the SE cell of 9
+                                     ((36, 73), 9, None, [2]),             # from the NE: the NE cell of 9 is captured by 2
+                                     ((20, 89), 9, (-1, 1), [3])):        # from the SW: the SW cell of 9 is captured by 3
+        for o in w.objects.values():
+            if o.kind == "structure" and o.type_id in (28, 29):
+                o.hp, o.flags = 1, o.flags & ~FLAG_DESTROYED
+        sw = next(o for o in w.objects.values() if o.kind == "structure" and o.uid == uid)
+        from engine.sim import triggers as T
+        if not T.teleport(w, hero, *start) or (hero.x, hero.y) != start:
+            pytest.skip("start cell %s not free" % (start,))
+        sim.step([UseStructure(1, (hero.id,), sw.id)])
+        for _ in range(3000):
+            hero.hp = 300
+            sim.step()
+            if hero.order == 0xC:
+                break
+        assert _thrown(w) == thrown, (start, uid)
+        if stop is not None:
+            assert (hero.x - sw.x, hero.y - sw.y) == stop
+
+
+@pytest.mark.skipif(not have_install(), reason="needs the game install")
+def test_map_103_a_far_use_walk_to_the_blocked_switch_fails_like_the_exe():
+    """The static search to a blocked target is bounded (dist + min(5, dist/4) levels; unbounded only to a free cell, FUN_0054d76e): from the hero's start
+    the detour is too long, so the use order ends without a step; a normal move first brings the hero near."""
+    w, sim, hero = _build(103)
+    start = (hero.x, hero.y)
+    sw = next(o for o in w.objects.values() if o.kind == "structure" and o.uid == 1)
+    sim.step([UseStructure(1, (hero.id,), sw.id)])
+    for _ in range(600):
+        hero.hp = 300
+        sim.step()
+    assert (hero.x, hero.y) == start and _thrown(w) == []

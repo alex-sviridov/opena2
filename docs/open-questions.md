@@ -83,4 +83,4 @@ from both places when answered).
 
 ## Structures
 
-- Using a structure ([structures](engine/structures.md#open-questions)): the client side of state `0xf` (animation / sound), the `0x82` handler, the real stop cell of a use walk (decides the map 103 lookup), the far walk to a blocked structure cell (engine: nearest free cell in range, DECISION), wells' full-pack case. `FUN_0050f12c` case `0xf`.
+- Using a structure ([structures](engine/structures.md#open-questions)): verify in game the use-walk stop cells and a far use click failing (structures 2.1, answered in the exe); the "Saving Place" branch (`FUN_0044fff0(0x68f628) == 4`, `FUN_0050155f`). `FUN_0050f12c` case `0xf`.

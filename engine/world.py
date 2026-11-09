@@ -556,7 +556,7 @@ class Unit:
     mode_use: bool = False          # Brain mode 15 (`FUN_0056ecbc`): walk to the structure's approach cell, then state 0xf (sim/structures.py)
     use_obj: int = None             # brain +0x68 of the use order 0xf: the structure's object id
     use_dest: tuple = None          # brain +0xa: the approach cell
-    use_goal: tuple = None          # the cell the walk plans to (sim/structures.py `walk_goal`)
+    use_goal: tuple = None          # the cell the walk plans to = the destination (sim/structures.py)
     use_dist: int = 1               # brain +0x14: the range (1 .. 3)
     gear_speed: int = None          # the speed stat +0x8c of a human with an explicit loadout (load penalty, equipment bonus); None: the Reaction rule
     skill_bonus: tuple = ()         # bonus words +0xe8 + 2k of the equipment, added to the school skills (sim/gear.py); () = none

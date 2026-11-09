@@ -33,28 +33,11 @@ def set_use(world, u, obj):
     u.order = USE_ORDER
     u.use_obj = obj.id
     u.use_dest, u.use_dist = approach(obj)
-    u.use_goal = walk_goal(world, u)
+    u.use_goal = u.use_dest                           # the planner target is the destination cell itself (FUN_00555411 gets dest + range; structures.md 2.1)
     u.mode_go = u.mode_attack = u.mode_cast = u.mode_cell = u.mode_follow = u.mode_look = u.mode_use = False
     u.anchor = None
     u.mover.waiting = u.mover.parked = False
     u.mover.arrived = False
-
-
-def walk_goal(world, u):
-    """The cell the walk plans to.  The exe's planner call takes the range (`FUN_00555411(unit, dest, dist)`); ours plans to a cell, and the static search
-    to a blocked target is bounded (pathfinding.md: unbounded only to a free cell), so a far unit would find "unreachable" at the structure's own cell.
-    DECISION: the free cell (static layer and no unit on it) within the range of the destination that is nearest to the unit (Chebyshev, then Euclid, then row-major); the destination itself
-    when the unit is already in range or no cell is free."""
-    from .movement import live_cells, path_grid
-    d = u.use_dest
-    if chebyshev((u.x, u.y), d) <= u.use_dist:
-        return (u.x, u.y)
-    grid, live = path_grid(world, u.move_type), live_cells(world, u)
-    cells = [(x, y) for y in range(d[1] - u.use_dist, d[1] + u.use_dist + 1) for x in range(d[0] - u.use_dist, d[0] + u.use_dist + 1)
-             if 0 <= x < world.width and 0 <= y < world.height and not grid.is_blocked(x, y) and (x, y) not in live]
-    if not cells:
-        return d
-    return min(cells, key=lambda c: (chebyshev((u.x, u.y), c), (c[0] - u.x) ** 2 + (c[1] - u.y) ** 2, c[1], c[0]))
 
 
 def command_use(world, u, object_id):
@@ -74,7 +57,7 @@ def refresh_use(world, u):
     from .movement import live_cells
     u.mode_use = True
     if u.use_goal in live_cells(world, u):              # another unit stands on the walk's goal: pick again (DECISION, `walk_goal`)
-        u.use_goal = walk_goal(world, u)
+        u.use_goal = u.use_dest                           # the planner target is the destination cell itself (FUN_00555411 gets dest + range; structures.md 2.1)
     m = u.mover
     if m.goal != u.use_goal:
         m.goal = u.use_goal
