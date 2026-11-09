@@ -358,6 +358,18 @@
   "parity-52-village": "3b884424246738e7f3d8501be77e4ed55276e1c136649f26511a92eff1606e61",
   "parity-63-piles": "6cb7117a7aa1d49f35715f3ea8d816e0bee7e19883cf88972b9149d95ad5623f"
  },
+ "sound": {
+  "music/menu.wav": "0a62f921d39e738247c2d330e34d8674cb98b7216c08b84af1fd876b183afbb7",
+  "sfx/characters/dina/attack/1.wav": "157dad64d20f16c6925d471f0ac2a59880a9f6457d4d18af56978f2cb38b3cfa",
+  "sfx/characters/galinel/select/2.wav": "9168410eeada963f9f567af2ee3e63e29ba856b59fbc1241a93fc6ebe674cf4a",
+  "sfx/click00.wav": "8faf36d1b48005038bf51e79fb265bb9439e44ab4bc0f34f468adda6b59e010b",
+  "sfx/town/shop/nofit.wav": "0614a798daad2f40da77f691678bbd86511e2c88732886cea07b550fb5d717c9",
+  "sfx/units/sword.wav": "29b0c5f3d937ea8eecac4ab03afd162ca12d2cd1fe3b3095202c50eb8cb2b340",
+  "speech/about/0001t000p01.wav": "c6754bc2f576a76b265c126cda10949bd4881f21533acd0c11e123e884b5eb51",
+  "speech/shop_druid/books/10.wav": "eb00f60db6473967dea63c64136bf81d5c39f5ad711d5cc761d6d08f6b84537c",
+  "speech/talk/0021f040p09.wav": "d1e67e67e536f960ca82a9b86dd8cc3e1560ad0d20e22177f77a53e7f4280c49",
+  "speech/talk/0021s031p03.wav": "6f6da39fb57654a93c9d7de71c30868e0eeba29d0082702b18db33a55ee2e2d0"
+ },
  "spells": {
   "sha256": "73fe786381a98ac4575e6a4dac558ece47db4a34f3649f961beec49a8ac46ff7"
  },

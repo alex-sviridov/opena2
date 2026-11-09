@@ -327,6 +327,19 @@ def ui_hashes(install=None):
     return out
 
 
+SOUNDS = ("music/menu.wav", "sfx/click00.wav", "sfx/units/sword.wav", "sfx/characters/dina/attack/1.wav",
+          "sfx/characters/galinel/select/2.wav", "sfx/town/shop/nofit.wav", "speech/about/0001t000p01.wav",
+          "speech/talk/0021f040p09.wav", "speech/talk/0021s031p03.wav", "speech/shop_druid/books/10.wav")
+
+
+def sound_hashes(install):
+    """SHA-256 of the decoded 16-bit PCM of ten sounds (every format kind and the noisy / partial-block cases)."""
+    from allods2.common import as_fs
+    from allods2.formats import sound
+    fs = as_fs(install)
+    return {p: hashlib.sha256(sound.load(p, fs).pcm_bytes()).hexdigest() for p in SOUNDS}
+
+
 def main(argv):
     only = None
     if len(argv) > 2 and argv[1] == "--only":                 # `--only interface,ui [INSTALL]`: refresh just these keys, keep the others
@@ -336,7 +349,7 @@ def main(argv):
     if only is not None:
         with open(GOLDEN, encoding="ascii") as f:
             out = json.load(f)
-        makers = {"interface": interface_hash, "ui": ui_hashes, "fog": fog_hashes, "minimaps": minimap_hashes, "arrows": arrows_hashes}
+        makers = {"interface": interface_hash, "ui": ui_hashes, "fog": fog_hashes, "minimaps": minimap_hashes, "arrows": arrows_hashes, "sound": sound_hashes}
         for k in only:
             out[k] = makers[k](install)
         _write(out)
@@ -355,6 +368,7 @@ def main(argv):
     out["ui"] = ui_hashes(install)
     out["fog"] = fog_hashes(install)
     out["arrows"] = arrows_hashes(install)
+    out["sound"] = sound_hashes(install)
     _write(out)
 
 

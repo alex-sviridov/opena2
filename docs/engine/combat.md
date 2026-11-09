@@ -653,7 +653,7 @@ decay `-1` per 32 ticks on even blocks with the stage table of 12.6. Do not rele
 
 ### 12.11 Open questions
 
-1. Sound tables (the engine has no audio): which `.res` / data.bin entries are the unit sound set entries `k + 1` (`FUN_00467e42`, template `+0x24` -> `FUN_00420e30` -> `FUN_00402880`), the hero voice samples (`FUN_00468094 +0x50..+0x58`) and the UI sound `0x627740[0xf]` of the skill-up line (start: `FUN_00420e30`, `FUN_00420eb0`, `0x481967` scenario.dll ordinal loader).
+1. Sound tables: **answered (K10)**: the sound set entries are the five ids of `units.reg` `Sound`, the hero voices are `sfx/characters/<bank>/` ([sound §4](../formats/sound.md#4-sound-ids-and-variants)), the UI sound `0x627740[0xf]` is `sfx.reg` id 15 `message`; the engine has no audio yet (K11).
 
 Answered here (the old items 1 and 2): the summon-cap key order is exact now ([12.6](#126-corpse-decay-fun_005110b8-and-what-the-client-draws), "Master mark" and "CMap order" below); a dropped item keeps its effects because the pile holds item objects ([items §15](../data/items.md#15-equip-use-pack-and-ground-items-confirmed-engine-sim-gearpy)).
 

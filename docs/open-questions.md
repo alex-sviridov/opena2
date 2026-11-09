@@ -21,7 +21,7 @@ from both places when answered).
 
 ## Combat and death
 
-- Sound tables (unit sound set entries, hero voices, UI sound `0x627740[0xf]`, the hit sound set); the engine has no audio. [combat §12.11](engine/combat.md#1211-open-questions) 1
+- Sound (K10 answered the tables; [sound](formats/sound.md#open-questions)): the hit-material slot's call site `0x467cd2`, the attenuation constants of `0x41b1f8`, the dialogue code of `speech/` names and `SoundRandom` (`0x43c979`); the engine has no audio yet.
 - Attack order aimed at a structure: answered (accepted, fought like a creature; [combat 5.5](engine/combat.md)); only the mage / spell-carrier branch against a structure is untraced.
 
 ## AI
@@ -70,7 +70,7 @@ from both places when answered).
 
 ## Formats and not started
 
-- Section 12 music: the reader of the next-theme global `0x5f1a08` and the callers of `FUN_004754e9`; section 11 inn / shop fields (multiplayer only). [map](formats/map.md#open-questions)
+- Section 12 music: answered in [sound §5](formats/sound.md#5-music-confirmed-unless-noted) (`0x4754e9` picks the nearest zone and writes `0x5f1a08`); left: whether `0x5f1a08` is reset after use; section 11 inn / shop fields (multiplayer only). [map](formats/map.md#open-questions)
 - Line of sight tables and the `FUN_00559536` gate; block-layer dynamic bits and per-class `movementType` (`FUN_00557a89`, vtable `+0x20`). [map](formats/map.md#open-questions)
 - Dirt mark: caller of the clear `FUN_00559ce5` (the `+0x5c` byte is answered: damage spread, [spells](data/spells.md#4-effect-handlers)). [map](formats/map.md#open-questions)
 - Structure registration at load: does a unit-made cell record exist before the structures (then `FUN_00559890` skips the refresh)? `FUN_005508a0` callers. [map](formats/map.md#open-questions)

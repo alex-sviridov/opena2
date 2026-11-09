@@ -8,7 +8,8 @@
     python -m allods2 map info MAP [--install DIR]
     python -m allods2 map render MAP DEST.png [--layers terrain objects structures units items | all] [--relief] [--dirt]
                                  [--rect X Y W H] [--install DIR]
-    python -m allods2 data export units|items|spells|progression DEST.json [--install DIR]
+    python -m allods2 data export units|items|spells|progression|sounds DEST.json [--install DIR]
+    python -m allods2 sound export-all DEST [--install DIR]
     python -m allods2 res ls [PATH] [--install DIR]
     python -m allods2 res list ARCHIVE.res
     python -m allods2 res extract INSTALL|ARCHIVE.res DEST
@@ -56,6 +57,7 @@ allods2.common). Write into out/ or outside the repo, never samples/.
 import argparse
 import math
 import os
+import types
 
 import numpy as np
 
@@ -308,6 +310,13 @@ def data_export(a):
         table = spelldefs.load(fs)
         msg = "%d spells (%d empty records), %d with descriptions -> %s" % (
             len(table), table.extra_records, sum(1 for d in table if d.description), a.dest)
+    elif a.table == "sounds":
+        from .formats import soundtable
+        t = soundtable.to_json(fs)
+        table = types.SimpleNamespace(to_dict=lambda: t)
+        msg = "%d sound ids (%d with a missing file), %d unit sound sets, %d voice banks -> %s" % (
+            len(t["table"]["sounds"]), len(t["table"]["missing_files"]), len(t["unit_sound_sets"]),
+            len(t["hero_banks"]), a.dest)
     elif a.table == "progression":
         from .formats import progression
         table = progression.load(fs)
@@ -321,6 +330,36 @@ def data_export(a):
     with open(a.dest, "w", encoding="utf-8") as f:
         json.dump(table.to_dict(), f, indent=1, sort_keys=True)
     print(msg)
+    return 0
+
+
+def sound_export_all(a):
+    """Every .wav of the install as 16-bit PCM WAV under DEST/<game path>, plus DEST/index.csv."""
+    import csv
+    from .formats import sound, soundtable
+    fs = as_fs(a.install)
+    table = soundtable.load(fs)
+    by_path = {}
+    for sid, path in table.ids.items():
+        by_path.setdefault(path, []).append(sid)
+    os.makedirs(a.dest, exist_ok=True)
+    rows = []
+    for path in fs.files():
+        if not path.lower().endswith(".wav"):
+            continue
+        snd = sound.load(path, fs)
+        out = os.path.join(a.dest, *path.split("/"))
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        with open(out, "wb") as f:
+            f.write(snd.to_wav())
+        ids = " ".join(str(i) for i in sorted(by_path.get(path.lower(), ())))
+        rows.append((ids, path, "%.3f" % snd.duration, snd.sample_rate, snd.channels,
+                     "adpcm" if snd.tag == sound.WAVE_MSADPCM else "pcm", soundtable.purpose(path)))
+    with open(os.path.join(a.dest, "index.csv"), "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(("id", "file", "duration_s", "sample_rate", "channels", "source_format", "purpose"))
+        w.writerows(rows)
+    print("%d files, %.0f s of audio -> %s" % (len(rows), sum(float(r[2]) for r in rows), a.dest))
     return 0
 
 
@@ -411,9 +450,14 @@ def main(argv=None):
     x.add_argument("source", help="ARCHIVE.res or an install directory")
     x.add_argument("dest")
     x.set_defaults(func=res_extract)
+    g = groups.add_parser("sound", help="sounds and music").add_subparsers(dest="cmd", required=True)
+    se = g.add_parser("export-all", help="write every sound and music track as WAV plus index.csv")
+    se.add_argument("dest")
+    se.add_argument("--install", default=INSTALL)
+    se.set_defaults(func=sound_export_all)
     g = groups.add_parser("data", help="game database tables").add_subparsers(dest="cmd", required=True)
     de = g.add_parser("export", help="write a table as JSON (units: monsters and humans; items: weapons, shields, armour, special items; spells; progression: XP curve and hero templates)")
-    de.add_argument("table", choices=("units", "items", "spells", "progression"))
+    de.add_argument("table", choices=("units", "items", "spells", "progression", "sounds"))
     de.add_argument("dest")
     de.add_argument("--install", default=INSTALL)
     de.set_defaults(func=data_export)

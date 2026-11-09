@@ -165,5 +165,5 @@ Small bounded formats first, dependencies before dependants. Done:
    chunk): done, [saves](formats/saves.md) (the server stream's object serialisers are open).
 6. **`famehall.dat`**: done, [saves §5](formats/saves.md#5-famehalldat-confirmed-the-installs-file-decodes-exactly).
 
-Not planned as formats: `.smk` (standard Smacker), `.wav` (standard
-RIFF), the network protocol.
+Not planned as formats: `.smk` (standard Smacker), the network protocol.
+`.wav` is standard RIFF but half of it is MS ADPCM: decoded by [sound](formats/sound.md).
