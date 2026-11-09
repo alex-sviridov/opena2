@@ -161,3 +161,60 @@ def test_info_panel_lists_the_carried_quest_items_of_the_own_hero():
     rows = info.quest_rows(w, u, 1)
     assert len(rows) == 1 and rows[0].y == info.QUEST_Y and rows[0].text.endswith(" x2")
     assert info.quest_rows(w, u, 2) == []           # not the viewer's unit
+
+
+# --- P: pick up all sacks in sight (message 0x13, order 0x1a, Brain mode 12) ------------------------------------------------------------------
+
+def test_pickall_walks_to_the_nearest_sack_then_the_next_and_stands_when_none_is_left():
+    from engine.sim import PickAll
+    w, u = world_with_hero()
+    w.place_pile(22, 20, 0, [code_of("Boots")])
+    w.place_pile(20, 25, 0, [code_of("Helm")])
+    sim = Simulation(w)
+    assert gear.nearest_sack(w, u) in ((22, 20), (20, 25))
+    sim.step([PickAll(1, (u.id,))])
+    assert u.order == gear.PICKALL_ORDER
+    run(sim, 600)
+    assert not w.items and sorted(u.carried) == sorted([code_of("Boots"), code_of("Helm")])
+    assert u.order == 0xC                                   # nothing left in sight: FUN_0056d52b
+    consistent(w)
+
+
+def test_nearest_sack_prefers_the_own_cell_then_the_innermost_ring_and_takes_the_last_cell_found():
+    w, u = world_with_hero()
+    w.place_pile(24, 20, 0, [code_of("Boots")])             # ring 4
+    w.place_pile(21, 21, 0, [code_of("Helm")])              # ring 1
+    assert gear.nearest_sack(w, u) == (21, 21)
+    w.place_pile(21, 19, 0, [code_of("Boots")])             # ring 1 too: d = 1 finds (21, 21) and (21, 19); the last one found wins
+    assert gear.nearest_sack(w, u) == (21, 19)
+    w.place_pile(20, 20, 0, [code_of("Boots")])
+    assert gear.nearest_sack(w, u) == (20, 20)              # the own cell first
+    for i in [i for i, p in w.items.items() if max(abs(p.x - 20), abs(p.y - 20)) < 10]:
+        w.remove_item(i)
+    w.place_pile(31, 20, 0, [code_of("Boots")])
+    assert gear.nearest_sack(w, u) is None                  # a hero's sight here is 6 cells (the human recompute): ring 11 is not scanned
+
+
+def test_pickall_ui_key_sends_only_hero_units():
+    from engine.sim import PickAll
+    from engine.ui import OrderInput
+    oi = OrderInput(1, 640, lambda: (10, 11), lambda: "own", hero_fn=lambda i: i == 11)
+    assert oi.key("p") == (PickAll(1, (11,)), None)
+    oi = OrderInput(1, 640, lambda: (10, 11), lambda: "own", hero_fn=lambda i: False)
+    assert oi.key("p") == (None, None)
+
+
+# --- a doll item on the cursor leaves the doll and the hero's map sprite (FUN_004b012f, FUN_0046a215) --------------------------------------------
+
+def test_hidden_slot_removes_the_item_from_the_equipped_view_and_the_hero_look():
+    from engine.ui import info, pack
+    from engine import herolook
+    w, u = world_with_hero()
+    gear.give_item(w, u, code_of("Sword"))
+    assert gear.move_item(w, u, gear.KIND_PACK, gear.KIND_SLOT, 0, 0, 1) and 1 in gear.slots_of(u)
+    assert herolook._codes(w, u).get(1) == code_of("Sword") and 1 not in herolook._codes(w, u, 1)
+    carried = pack.Carried(u.id, gear.KIND_SLOT, 0, 1, None)
+    assert pack.hidden_slot(carried, u) == 1
+    assert pack.hidden_slot(carried._replace(kind=gear.KIND_PACK), u) == 0
+    assert pack.hidden_slot(None, u) == 0 and pack.hidden_slot(carried._replace(unit=u.id + 1), u) == 0
+    assert 1 not in info.equipped_items(w, u, 1) and 1 in info.equipped_items(w, u)

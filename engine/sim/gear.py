@@ -31,6 +31,7 @@ EMPTY = S.Item(0, 0)
 DROP_REACH = 2                  # a dropped item lands on the target cell when it is within 2 cells of the hero in both axes, else on the hero's cell
 POTION, SCROLL, BOOK = 3, 4, 5  # item type bytes `+0x44` of the specials (SUBTYPE of the name prefix)
 USE_FLAGS = 8                   # `FUN_00523613`: an effect with flags 0 gets `|= 8` (single use) before it is applied
+PICKALL_ORDER = 0x1a          # unit order of the P key (`FUN_0056dafe`), Brain mode 12
 PICK_ORDER, PICK_STATE = 2, 2   # unit order `+0x50` and state `+0x54` of the pickup
 K_HEAL_HP, K_HEAL_MANA = 6, 9
 K_TEACH = STAT_TEACH
@@ -534,6 +535,77 @@ def pickup_tick(world, u):
     for i in sorted(world.items_at(u.x, u.y)):
         pick_up(world, u, world.items[i])
         break
+
+
+# --- pick up all sacks in sight (message 0x13, key P; order 0x1a, Brain mode 12) -----------------------------------------------
+
+def set_pickall(world, u):
+    """`FUN_0056dafe`: cancel, order 0x1a, `mover+0x90 := 0`, Brain mode 0 (the group pass chooses the sack)."""
+    from . import movement as mv
+    mv.cancel(u, world)
+    u.order = PICKALL_ORDER
+    u.mode_go = u.mode_attack = u.mode_cast = u.mode_cell = u.mode_follow = u.mode_look = u.mode_pick = u.mode_loot = False
+    u.anchor = None
+    u.mover.waiting = u.mover.parked = False
+    u.mover.arrived = False
+
+
+def nearest_sack(world, u):
+    """`FUN_00559eed(unit, 1)`: the unit's own cell when a sack lies there (no reachability test); else the square rings `r = 1 .. sight` round it
+    (`sight` = the scan byte `+0xa5`), per ring `d = -r .. r` the cells `(x+d, y+r)`, `(x+d, y-r)` and, for `|d| != r`, `(x+r, y+d)`, `(x-r, y+d)`; a
+    cell counts when a sack lies on it and the unit's footprint there is free in the live layer (`FUN_00555cd50`, `FUN_0055a10b`).  The scan stops after the
+    first `d` that found a cell, and the list is pushed at its front (`FUN_0055f170`): **the last cell found is the target**.  None when nothing is in sight."""
+    from . import orders
+    from .ai.perception import _scan_range
+    here = (u.x, u.y)
+    if world.items_at(*here):
+        return here
+    sight = _scan_range(u, world)
+    for r in range(1, sight + 1):
+        found = None
+        for d in range(-r, r + 1):
+            cells = [(u.x + d, u.y + r), (u.x + d, u.y - r)]
+            if abs(d) != r:
+                cells += [(u.x + r, u.y + d), (u.x - r, u.y + d)]
+            for c in cells:
+                if 0 <= c[0] < world.width and 0 <= c[1] < world.height and world.items_at(*c) and orders._target_free(world, u, c):
+                    found = c
+            if found is not None:
+                return found
+    return None
+
+
+def refresh_pickall(world, u):
+    """`FUN_0056a909` (order 0x1a in the group-pass executor, every pass): Brain mode 12 towards the nearest sack with `brain+0xa` = its cell, else the
+    unit stands (`FUN_0056d52b`: order 0xc)."""
+    from . import movement as mv
+    cell = nearest_sack(world, u)
+    if cell is None:
+        mv.set_stand(world, u)
+        return
+    m = u.mover
+    u.mode_go = u.mode_attack = u.mode_cast = u.mode_cell = u.mode_follow = u.mode_look = u.mode_pick = False
+    u.mode_loot = True
+    if m.goal != cell:
+        m.goal = cell
+        m.arrived = m.failed = False
+        m.waiting = m.parked = False
+
+
+def loot_mode(world, u):
+    """Brain mode 12 (`FUN_0056eb2d`): on the cell `brain+0xa` and at its centre (`FUN_00551383`) state 2 (the tick files the sack), the next time state 0
+    and mode 0; elsewhere the move driver towards the cell (`FUN_0056e4ac`, as Brain mode 1) and state 1."""
+    from . import movement as mv
+    m = u.mover
+    if (u.x, u.y) == m.goal and (u.sub_x, u.sub_y) == (mv.CENTRE, mv.CENTRE):
+        if u.state != PICK_STATE:
+            u.state = PICK_STATE
+        else:
+            u.state = 0
+            u.mode_loot = False
+    else:
+        mv.go_tick(world, u)
+        u.state = mv.MOVE_STATE
 
 
 def command_pickup(world, u, cell, index):

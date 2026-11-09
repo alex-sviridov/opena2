@@ -166,8 +166,9 @@ def _trunc(v):
 class _Ctx:
     """Per-call state shared by the builders."""
 
-    def __init__(self, world, camera, tick, assets, opts, hover=None):
+    def __init__(self, world, camera, tick, assets, opts, hover=None, hidden=None):
         self.world, self.cam, self.tick, self.assets, self.opts = world, camera, tick, assets, opts
+        self.hidden = hidden or {}  # {unit id: creature slot whose item is on the cursor} (ui/pack.py `hidden_slot`): the hero is drawn without it
         self.hover = hover          # entity id under the pointer: that unit is drawn at light row 0 (`FUN_004632a1`, ui-layout 7)
         self.cx, self.cy = camera.ix, camera.iy
         self.win = view_window(camera)
@@ -431,7 +432,7 @@ def _unit(ctx, u):
     opts = ctx.opts
     if not fog.unit_visible(ctx.world, u):              # S != 0: neither the sprite, the shadow nor the pick rect (vision.md 2)
         return
-    skey = herolook.look_key(ctx.world, ctx.assets, u) or u.type_id     # a hero is drawn from its equipment's folder (herolook.py)
+    skey = herolook.look_key(ctx.world, ctx.assets, u, ctx.hidden.get(u.id, 0)) or u.type_id     # a hero is drawn from its equipment's folder (herolook.py)
     aset = ctx.assets.unit_set(skey)
     if aset is None:
         ctx.items.missing += 1
@@ -890,7 +891,7 @@ def _unregistered_units(world, assets):
     return lost
 
 
-def build_draw_list(world, camera, tick, assets, options=None, debug=None, selection=(), hover=None, ai_info=None):
+def build_draw_list(world, camera, tick, assets, options=None, debug=None, selection=(), hover=None, ai_info=None, hidden=None):
     """Sprites (and requested debug overlays) of map objects and structures for
     `camera`, in drawing order: sorted by `DrawItem.depth` =
     (pass, row, -col, slot, seq, part, sub) (the exe's scan order, docs/engine/rendering.md).
@@ -898,7 +899,7 @@ def build_draw_list(world, camera, tick, assets, options=None, debug=None, selec
     `debug`: any object with boolean `passability`, `markers`, `depth`; `selection`: unit ids that
     get a selection bar, `hover`: the unit id under the pointer (it gets bars too).  `DrawList.picks` holds the unit pick rects in draw order."""
     opts = options or DrawOptions()
-    ctx = _Ctx(world, camera, tick, assets, opts, hover)
+    ctx = _Ctx(world, camera, tick, assets, opts, hover, hidden)
     if opts.objects:
         for ent in world.objects.values():
             if ent.kind == "object":

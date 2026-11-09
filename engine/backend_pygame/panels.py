@@ -98,7 +98,7 @@ class Panels:
         mode = ui.shown_mode
         if kind == "unit":
             if mode == info.MODE_PICTURE:
-                surf = self.portrait_surface(info.portrait(world, val, info_picture))
+                surf = self.portrait_surface(info.portrait(world, val, info_picture, pack_mod.hidden_slot(ui.pack.carried, val)))
                 if surf is not None:
                     window.blit(surf, (p.x, p.y + 2))
         if kind == "structure":
@@ -210,7 +210,7 @@ class Panels:
             if img is not None:
                 window.blit(img, (x, r.y), pygame.Rect(sx, 0, (sw if sw else img.get_width() - sx), img.get_height()))
         if pk.unit is None:
-            draw_text_exact(window, main.line(pack_mod.T_NO_HERO), pack_mod.pad(self.layout) + (r.x + r.right - 16) // 2, r.y + r.h // 2 - 8, "label", 2, 2)
+            draw_text_exact(window, main.line(pack_mod.T_NO_HERO), pack_mod.pad(self.layout) + (r.x + r.right - 16) // 2, (r.y + r.bottom) // 2, "label", 2 | 8, 2)    # `0x4a3104`: flags 0xa
             return
         for side, art in ((view.left, pack_mod.ARROWS[:2]), (view.right, pack_mod.ARROWS[2:])):
             if side is not None:
@@ -250,9 +250,9 @@ class Panels:
         if pic is not None and mouse is not None:
             window.blit(pic, (mouse[0] - 40, mouse[1] - 40))
 
-    def doll_mask(self, world, u):
+    def doll_mask(self, world, u, hidden=0):
         """The 240 x 160 hit mask of a unit's paper doll (`FUN_004688f7` with the mask: each layer writes slot + 1, the body 0), cached per layer list."""
-        layers = tuple(info.doll_mask_layers(world, u))
+        layers = tuple(info.doll_mask_layers(world, u, hidden))
         if layers not in self._masks:
             self._masks[layers] = paperdoll.hit_mask(layers, self.fs)
         return self._masks[layers]

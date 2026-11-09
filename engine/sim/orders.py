@@ -7,7 +7,7 @@ comments; routine addresses there).  Layer 4: reads and writes `engine.world` on
 
 from engine.world import OrderGroup
 
-from .commands import (AttackUnit, CastScroll, CastSpell, DropGold, Guard, MoveItem, MoveUnits, PickUp, Retreat, SetAutoCast, SetAutoSpell, SetFormation, SetRetreatMode, StandStill, Stop,
+from .commands import (AttackUnit, CastScroll, CastSpell, DropGold, Guard, MoveItem, MoveUnits, PickAll, PickUp, Retreat, SetAutoCast, SetAutoSpell, SetFormation, SetRetreatMode, StandStill, Stop,
                        Swarm)
 from .combat import can_order_attack, find_target, refresh_attack, set_attack
 from .movement import (ATTACK_ORDER, CENTRE, RETREAT_ORDER, MoveTo, _in_map, _set_action, IDLE, cancel, fail_stop, live_cells, path_grid,
@@ -282,6 +282,8 @@ def _pass_orders(world, g):
             ai.retreat_exec(world, u)                   # FUN_0056c9bc
         elif u.order == gear.PICK_ORDER:
             gear.refresh_pickup(world, u)               # FUN_0056c8da: order 2, go to the sack / Brain mode 7
+        elif u.order == gear.PICKALL_ORDER:
+            gear.refresh_pickall(world, u)              # FUN_0056a909: order 0x1a, the nearest sack in sight / Brain mode 12
 
 
 def attack_group(world, g, target):
@@ -352,6 +354,11 @@ def orders_system(world, commands):
             if g is not None and g.members:
                 _cancel_group(world, g)
                 gear.command_pickup(world, world.units[g.members[-1]], cmd.cell, cmd.index)
+        elif isinstance(cmd, PickAll):                  # message 0x13: the last unit of the intake gets order 0x1a (FUN_0056dafe)
+            g = intake(world, cmd.player_id, cmd.unit_ids)
+            if g is not None and g.members:
+                _cancel_group(world, g)
+                gear.set_pickall(world, world.units[g.members[-1]])
         elif isinstance(cmd, MoveItem):                 # message 0x22: hero container moves (sim/gear.py)
             u = _lookup(world, cmd.player_id, cmd.unit_id) if cmd.player_id in world.players else None
             if u is not None:

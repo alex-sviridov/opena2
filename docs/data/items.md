@@ -394,6 +394,11 @@ CONFIRMED by disassembly unless tagged. The mission reward of §11 is the payout
 is none, `FUN_005303ed` **generates a new quest** for the player; if there is one, `FUN_005325ee` pays it out (item upgrade, §11) and
 `FUN_0050338e(.., 9)` follows.
 
+**Single player never starts this** (CONFIRMED asm, K5b). The only sender of message `0x38` is `FUN_0041a800`, and its only caller is the mission-end routine
+`FUN_0048b885` at `0x48bab9`, in the branch for `client+0x5d8 != 2`; the single-player branch (`+0x5d8 == 2`) instead reads Var `0x300` and runs the hero recruit
+`FUN_004f312a` (`0x48ba81`) and sends nothing. So in a single-player game no quest is generated or paid, and the quest events below have no listener to feed
+(the quest board, accept `0x3a`, markers and message lines are multiplayer features: [ui-layout](../engine/ui-layout.md#open-questions)).
+
 **Records.** Twelve quest classes (constructors `0x547d50`, `0x547dd0`, `0x547e50`, `0x547ed0`, `0x547f80`, `0x548030`, `0x5480e0`, `0x548190`, `0x548240`, `0x5482f0`, `0x5483a0`, `0x548450`; vtables from `0x5d1728`) share the base init `FUN_0052dc3a(a1..a7)`:
 `+4 = a1`, `+8 = a2`, `+0xc = a3`, `+0x14 = a4`, `+0x18 = a5`, `+0x1c = a6` (required count), `+0x10 = 0` (open), `+0x24 = a7` (reward
 `v`). A virtual `OnEvent(kind, arg1, arg2)` (vtable `+0x14`) reaches the quest from the manager queue (`Post(kind, a, b)` =
@@ -500,6 +505,18 @@ weapon (class parameter 15 != 0) and slots 1..12 into the pack, which is the bag
 loader ([saves §3.6](../formats/saves.md#36-building-a-hero-from-a-record-fun_004ea6ab-confirmed-order)) clears the template equipment, makes a new pack,
 puts the 12 items through `+0x44` in record order (a refused or replaced one lands at the end of the pack) and files the pack items.
 
+### 15.1 The rest of the effect switch, effect kind 18 and the P key (CONFIRMED asm, K5b)
+
+- **Lore effects 38 / 39 / 40** (`itemLore`, `magicLore`, `creatureLore`; stats.txt "Magic Lore" / "Creature Lore"): the switch `FUN_0051d436` sends the kinds `0x26..0x28` to `0x51e013`, which
+  logs "Effect affects not implemented yet parameter" (`0x5fe6c8`) and calls the error routine `FUN_0043a0a8`; the recompute after the switch still runs.
+  **Nothing can carry one**: their stat rows have `cost -1`, `affect_min -1`, `usable_by -1`, so `magnitude` (`FUN_0051f7d3`) is always -1 and `roll_modifier` returns nothing
+  (150,000 random rolls over every class, budget and capacity produced none, `tests/test_engine_pickup.py`); no special item text, no section 9 record of the 46 maps and no
+  data.bin string uses the names. Engine: not modelled, no case to model.
+- **Effect kind 18 `rotationSpeed`**: `0x51dae4` adds the value to the byte `mover+0xa` (the turn-rate byte, [animation §2.4](../formats/animation.md)). For a human the recompute
+  that every switch ends with (`FUN_0051366b`, `0x514005`) writes `mover+0xa := creature +0x8c` (the speed stat), so the addition is **erased at once and never has an effect**
+  (a generated modifier: 0.4 % of rolls; the engine's human turn rate is its speed already). No change needed.
+- **Brain mode 12 = the P key** (message `0x13`, [click-to-move §3](../engine/click-to-move-research.md)): see [engine/items §4](../engine/items.md#4-p-pick-up-all-sacks-in-sight).
+
 ## VERIFY IN GAME
 
 - Price shown for a Common Iron Long Sword (600) and a Rare Bronze one (600), a Rare Mithrill Helm with `{defence=13}`.
@@ -515,12 +532,12 @@ Not a drop test: `FUN_0046a9c2(item)` on a client unit returns 1 ("unsuitable") 
 (not a mage), or the item has bit 4 and the unit is a mage; else 0. Its two callers are the info panel's carried-item release (`0x4b037f`, `0x4b1c56`):
 the dragged item is only accepted on a unit it suits (the server repeats the test in `FUN_00512573`, §15, so the engine needs nothing more). The same
 release posts message `0x463` (to the client object `FUN_0041e3f0`) when the carried item has flags `& 6 == 0` and code `0xe4d` (**Quest Documents**, used
-only by map 10): a one-off notice, not researched (no engine effect).
+only by map 10): the game window handles it in a mission (`0x48784e` -> `FUN_0048b1f9`: client mode `|= 0x4000`, which freezes the simulation like a modal window, and window `0x4ba` is shown); what that window says is not researched (map 10 only).
 
 ## Open questions
 
 - Gear ([§15](#15-equip-use-pack-and-ground-items-confirmed-engine-sim-gearpy)) left outside the engine: the shop kinds 4..8 of message `0x22`, the structure wells
-  (state `0xf` potions, command `0x24`), the character-file rewrite after an attribute potion, the lore effects
-  38..40, the setter of Brain mode 12 (`FUN_0056eb2d`), the stale destination of source kind 3, and effect kind 18 (turn rate; the recompute overwrites it).
+  (state `0xf` potions, command `0x24`), the character-file rewrite after an attribute potion, and the stale destination of source kind 3.
+  (Answered in [§15.1](#151-the-rest-of-the-effect-switch-effect-kind-18-and-the-p-key-confirmed-asm-k5b): the lore effects, effect kind 18, the setter of Brain mode 12.)
 - The `.a2c` item stream is decoded in [saves §3.4](../formats/saves.md#34-item-chunks-confirmed); left outside this spec: the Scenario.dll
   campaign state machine beyond the shop table (§13; its save block is [saves §6.3](../formats/saves.md#63-the-client-tail-confirmed-fun_0048dc9f-writes-fun_0048c2e9-reads-from-offset-4--0x100)).

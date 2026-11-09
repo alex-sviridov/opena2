@@ -134,7 +134,7 @@ switch btn:                                                     # immediate comm
 | `S` swarm | 6 | arm | 6 -> swarm cursor, cmd `0x1a` at the cell | I |
 | `T` stand ground | 7 | cmd `0x18` at once | - | stop family |
 | `R` retreat | 8 | cmd `0x14` at once | - | stop family |
-| `L` stand still, `P` pick up all sacks | - | `FUN_00419ffd` cmd `0x12`, `FUN_00419f2a` cmd `0x13` (keys, not via `418a02`) | - | stop family / K |
+| `L` stand still, `P` pick up all sacks | - | `FUN_00419ffd` cmd `0x12`, `FUN_00419f2a` cmd `0x13` (keys, not via `418a02`; `P` built in K5b: [items §4](items.md#4-p-pick-up-all-sacks-in-sight)) | - | stop family / K |
 
 Mode 8 (patrol cursor) is therefore **unreachable from the UI**: the only setter clears it in the same call (patrol
 `0x1d` can still be issued by the cursor code if some path leaves 8 armed: none found). With nothing selected the mask is

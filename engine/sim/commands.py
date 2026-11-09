@@ -79,6 +79,17 @@ class StandStill(Command):
 
 
 @dataclass(frozen=True)
+class PickAll(Command):
+    """Exe command 0x13 (key P, `FUN_00419f2a`; the client sends only the selected hero-type units): the last unit of the intake gets order 0x1a
+    (`FUN_0056dafe`): it walks to the nearest sack in its sight and files it, again every group pass until none is left (sim/gear.py `refresh_pickall`)."""
+    player_id: int
+    unit_ids: tuple
+
+    def __post_init__(self):
+        object.__setattr__(self, "unit_ids", tuple(self.unit_ids))
+
+
+@dataclass(frozen=True)
 class Retreat(Command):
     """Exe command 0x14 (key R / bar button 8, `FUN_00419e72`): members order 0x16, Brain mode 0, group order 0 (`FUN_00570c31`); the order has no
     end of its own (docs/engine/simulation.md 9.3)."""

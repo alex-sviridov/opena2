@@ -55,7 +55,38 @@ Xara, check 5; maps 80 and 91: triggers 2 / 6 fired right after the pickup, tick
 the guards were removed by hand. Coverage: **41 of 46 maps without a blocker** (was 34; 12 playable now, 29 with gameplay gaps, 5 blocked: the use-a-structure
 and cell-effect maps, K6 / K7).
 
+## 4. P: pick up all sacks in sight
+
+Key `P` (`FUN_00419f2a`, not via the bar dispatcher `FUN_00418a02`) sends message `0x13` with the **hero-type** selected units only (`unit+0x1b8 & 1`, each also needs its
+client object `+0x80`). The server intake adds every id to the group and the **last** unit gets order `0x1a` (`FUN_0056dafe`: cancel, order `0x1a`, `mover+0x90 := 0`, Brain mode 0).
+The group pass runs `FUN_0056a909` for it **every pass** (no gating), which calls `FUN_00559eed(unit, 1)`:
+
+1. a sack on the unit's own cell wins at once (`FUN_00553ad1`: cell flag `0x20` + the pile list; **no** reachability test);
+2. else the square rings `r = 1 .. sight` (`sight` = the scan byte `+0xa5`; a hero's is `human_sight_word >> 8`), per ring `d = -r .. r`, the cells `(x+d, y+r)`,
+   `(x+d, y-r)` and, for `|d| != r`, `(x+r, y+d)`, `(x-r, y+d)`; a cell counts when a sack lies there **and** the unit's footprint on it is free in the live layer
+   (`FUN_0055a10b` = `FUN_00553ad1` + `FUN_0055cd50`); the scan stops after the first `d` that found any cell;
+3. found cells are **pushed at the front** of the list (`FUN_0055f170`), and the first entry is taken (`FUN_0055f0d0`): **the last cell found is the target** (so among the
+   cells of one `d` step the order above reversed: `(x-r, y+d)` first). It goes to `brain+0xa`, Brain mode := 12;
+4. nothing found: the unit stands (`FUN_0056d52b`, order `0xc`) - the order ends.
+
+Brain mode 12 (`FUN_0056eb2d`): at the cell and at its centre (`FUN_00551383`: sub-position `(0x80, 0x80)`) state := 2 (the tick files the sack, as in §1), the next time state := 0
+and mode 0 (the order stays, so the next pass looks for the next sack); elsewhere the move driver `FUN_0056e4ac(unit, brain+0xa, 0)` (the same call as Brain mode 1) and state := 1.
+A walk that fails clears the mode like any failure; the target is re-chosen every 16 ticks, so a nearer sack that appears (or is taken) changes it.
+Engine: `OrderInput.key("p")` (`hero_fn` filters the heroes), `PickAll` (`sim/commands.py`), `gear.set_pickall`, `nearest_sack`, `refresh_pickall`, `loot_mode`, `Unit.mode_loot`,
+`movement._tick_inner`. Not modelled: the 16-bit cell-word wrap at the map edge (the border cells hold no sack).
+
+## 5. The hero on the cursor leaves the doll
+
+`FUN_004b012f(slot)` (a doll slot picked up, [ui-layout 11.13](ui-layout.md)) sets `unit+0x1b8 |= 8` (redraw), moves the item **out of the client unit's slot** (`unit+0x188+4*slot`
+:= 0) into the cursor (`client+0x3f4`), then `FUN_0046a215` (the hero's sprite-set choice, [animation 1.3](../formats/animation.md)) and message `0x46e` to the view. So the doll **and
+the hero on the map are drawn without that item while it is carried** (a weapon on the cursor: unarmed set). The server slot is unchanged until the `0x22` move is sent on the drop.
+Engine: `pack.hidden_slot`, `info.equipped_items(hidden=)`, `herolook.look_key(hidden=)`, `build_draw_list(hidden=)`. Message `0x46e` is relayed by the game window to its child
+`+0xcc` (`0x48865e`); the view's table maps it to the default case: **no effect** (INFERRED: nothing else listens).
+
 ## VERIFY IN GAME
+
+- `P` with a hero selected and several sacks in sight: the hero visits the nearest ring first, then the next, and stops when none is left; a sack on its own cell is taken first.
+- Dragging the weapon off the doll: the hero on the map puts the weapon away at once.
 
 - A click on a sack with the pickup cursor: the hero walks onto the cell and the line "Picked up ..." appears; a click on a sack under a unit.
 - A hero with a full pack (0x400 entries, not reachable in practice) loses the rest of the pile.
@@ -65,4 +96,5 @@ and cell-effect maps, K6 / K7).
 
 - The client sound for the item notice `FUN_00504b3a` and the gold message (`0x67`).
 - `unit +0xe4` (the pack index the client sends in `0x21`): INFERRED to be the 0x7FFF default; the engine sends 0x7FFF.
-- Two or more selected units: the cursor forbids it, but `FUN_00419d8e` would send one message per unit; only the last of the intake walks.
+- Two or more selected units on a pickup: the cursor forbids it, but `FUN_00419d8e` would send one message per unit; only the last of the intake walks.
+- The 16-bit cell wrap of the P scan at the map edge; the window `0x4ba` that message `0x463` (Quest Documents dropped on a doll slot, map 10 only) opens (`FUN_0048b1f9`: client mode `|= 0x4000`, a modal view).

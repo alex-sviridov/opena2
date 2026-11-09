@@ -506,6 +506,11 @@ class PackWindow:
         return self.drop_in_pack(world, player_id, -1)
 
 
+def hidden_slot(carried, u):
+    """The creature slot of `u` whose item is on the cursor (`FUN_004b012f` empties the client slot at the pick-up), 0 when none is."""
+    return carried.index + 1 if carried is not None and carried.kind == KIND_SLOT and u is not None and carried.unit == u.id else 0
+
+
 def _hero(u):
     from . import info
     return info.is_hero(u)

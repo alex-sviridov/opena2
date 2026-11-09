@@ -11,7 +11,8 @@ from engine.sim import spells as spell_mod
 from engine.ui import (CursorInput, CursorState, DebugFlags, Layout, MinimapPanel, OrderInput, ScrollInput,
                        SelectionInput, bar, choose_cursor, choose_minimap_cursor, drain_no_way, level_up_messages, target_cell)
 from engine.ui.book import button_text as book_button_text, draw_views
-from engine.ui.pack import button_text as pack_button_text, doll_tip
+from engine.ui.pack import KIND_SLOT, button_text as pack_button_text, doll_tip
+from engine.ui.info import is_hero
 from engine.ui.selection import band_lines, clip_to, drag_nonempty
 from engine.ui.widgets import info_button_rect
 from engine.ui.spellbook import auto_slot_mask, selection_item_mask, selection_slot_mask
@@ -36,7 +37,7 @@ FKEY_NUMBERS = {getattr(pygame, "K_F%d" % n): n for n in range(4, 13)}
 SMOOTHING_TEXT = 0x6A                                                # main.txt 0x6a + state: "Smoothing is Off" / "On" (Ctrl+O, DAT_00622768)
 OPTION_KEYS = {pygame.K_w: "w", pygame.K_n: "n", pygame.K_c: "c", pygame.K_u: "u"}     # Ctrl+W retreat, N day/night, C colours, U auto-cast (messages.OptionToggles)
 FLYING_TEXT = 0x66                                                   # main.txt 0x66 + state: "Flying damage is Off" / "On"
-ORDER_KEYS = {pygame.K_m: "m", pygame.K_a: "a", pygame.K_d: "d", pygame.K_s: "s", pygame.K_t: "t", pygame.K_g: "g", pygame.K_r: "r", pygame.K_l: "l", pygame.K_c: "c"}
+ORDER_KEYS = {pygame.K_m: "m", pygame.K_a: "a", pygame.K_d: "d", pygame.K_s: "s", pygame.K_t: "t", pygame.K_g: "g", pygame.K_r: "r", pygame.K_l: "l", pygame.K_c: "c", pygame.K_p: "p"}
 BOOK_KEYS = {pygame.K_b, pygame.K_q, pygame.K_SPACE, pygame.K_i, pygame.K_BACKQUOTE}     # message 0x40f (B, Q) / 0x40e (I, backquote) / both (Space): the spell book and the backpack (`0x40cd29`, `0x40ccb6`, `0x40cd6e`)
 CHAT_KEYS = {pygame.K_BACKSPACE: "backspace", pygame.K_UP: "up"}       # the edit line's extra keys (engine.ui.chat)
 NAMED_KEYS = {pygame.K_ESCAPE: "escape", pygame.K_PAUSE: "pause", pygame.K_TAB: "tab", pygame.K_RETURN: "return", pygame.K_KP_ENTER: "return"}
@@ -255,7 +256,8 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     ordering = OrderInput(player_id, layout.screen.w, lambda: player.selection,
                           lambda: selection_state(world, player_id), player.formation, lambda: castable_spell(world, player_id),
                           lambda: selection_slot_mask(world, player.selection) if selection_state(world, player_id) == "own" else 0,
-                          lambda: selection_item_mask(world, player.selection) if selection_state(world, player_id) == "own" else 0)
+                          lambda: selection_item_mask(world, player.selection) if selection_state(world, player_id) == "own" else 0,
+                          lambda uid: uid in world.units and is_hero(world.units[uid]))
     ordering.book = ui.book
     caches = Caches(SurfaceCache(terrain_view), SpriteCache(assets))
     ticks = TickClock(tick_period_ms(speed), pygame.time.get_ticks())
@@ -458,7 +460,8 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
         hover = (pick_at(items.hover_picks, *mouse) if mouse is not None and not ui.frozen and layout.viewport.contains(*mouse) and not ui.book.contains(mouse)
                  else None)
         items = build_draw_list(world, camera, world.tick, assets, options, debug, player.selection, hover,
-                                ai_info=ai_overlay(world, debug, player.selection))
+                                ai_info=ai_overlay(world, debug, player.selection),
+                                hidden={ui.pack.carried.unit: ui.pack.carried.index + 1} if ui.pack.carried is not None and ui.pack.carried.kind == KIND_SLOT else None)
         lines = [(t, player_ramp(c[1], fs) if isinstance(c, tuple) else c) for t, c in messages.entries(now)]      # ("player", colour row) = `0x61fac8 + 32 * row`
         numbers = floating_entries(world, floats, camera, assets, fs, now) if options.flying_damage else ()
         sel_state = selection_state(world, player_id)

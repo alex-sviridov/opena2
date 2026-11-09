@@ -550,6 +550,7 @@ class Unit:
                                     # (saves.Item, index = creature slot - 1: weapon, second hand, armour slots 3..12; empty slot = code 0); () = the template strings
     pack: tuple = ()                # humans loaded from a character record: the backpack items (saves.Item); `carried` holds their codes
     pack_index: int = 0x7FFF        # pack +0x1c: where the next item filed in the pack goes (0x7fff = the end); set by item messages (sim/gear.py)
+    mode_loot: bool = False         # Brain mode 12 (`FUN_0056eb2d`): walk to the sack chosen by order 0x1a (`brain+0xa`), then pick it up (sim/gear.py)
     mode_pick: bool = False         # Brain mode 7 (`FUN_0056ea24`): file the sack on the own cell (state 2)
     pick_cell: tuple = None         # brain +0xa of the pickup order 2: the sack's cell
     gear_speed: int = None          # the speed stat +0x8c of a human with an explicit loadout (load penalty, equipment bonus); None: the Reaction rule

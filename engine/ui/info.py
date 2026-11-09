@@ -136,20 +136,24 @@ def item_picture_name(code):
     return "%02d%02d%1d%02d" % (material, cls, (code >> 5) & 7, code & 31)
 
 
-def equipped_items(world, u):
-    """`{creature slot: resolved item}` of a human: its own loadout, else the template's equipment strings (read only)."""
+def equipped_items(world, u, hidden=0):
+    """`{creature slot: resolved item}` of a human: its own loadout, else the template's equipment strings (read only).  `hidden`: a creature slot whose
+    item is on the cursor (`FUN_004b012f` takes it out of the client unit at once: the doll and the hero's map sprite are drawn without it)."""
     if u.equipment:
-        return gear_mod.gear_of(world, u)
-    if u.stats is None or world.item_table is None:
+        got = dict(gear_mod.gear_of(world, u))
+    elif u.stats is None or world.item_table is None:
         return {}
-    return combatstats.template_gear(u.stats, world.item_table, is_mage(u))[0]
+    else:
+        got = dict(combatstats.template_gear(u.stats, world.item_table, is_mage(u))[0])
+    got.pop(hidden, None)
+    return got
 
 
-def doll_layers(world, u):
+def doll_layers(world, u, hidden=0):
     """The paper-doll files in draw order (`FUN_004688f7`, paperdoll.md): `[path]` of `.256` layers (and a leading `.bmp` for horse types).
     Layer slot n = creature slot n + 1; a layer without an item or without a file is skipped by the backend."""
     mage, female = is_mage(u), is_female(u)
-    gear = equipped_items(world, u)
+    gear = equipped_items(world, u, hidden)
     weapon = gear.get(1)
     two = (not mage) and weapon is not None and weapon.defn.name.lower() in TWO_HANDED_CLASSES
     body = BODIES[(2 if mage else 0) | (4 if female else 0)]
@@ -171,11 +175,11 @@ def doll_layers(world, u):
     return out
 
 
-def doll_mask_layers(world, u):
+def doll_mask_layers(world, u, hidden=0):
     """`[(path, id)]` of the hit mask (`doll_mask_order`, same files as `doll_layers`): id = slot + 1, the body 0 (it clears what lies under it, mages).  The mage's
     P8 is in the order but never drawn, so it covers nothing."""
     mage, female = is_mage(u), is_female(u)
-    gear = equipped_items(world, u)
+    gear = equipped_items(world, u, hidden)
     weapon = gear.get(1)
     two = (not mage) and weapon is not None and weapon.defn.name.lower() in TWO_HANDED_CLASSES
     base = "graphics/equipment/" + BODIES[(2 if mage else 0) | (4 if female else 0)] + "/"
@@ -196,11 +200,11 @@ def gear_mod_code(item):
     return combatstats.item_code(item)
 
 
-def portrait(world, u, info_picture=None):
+def portrait(world, u, info_picture=None, hidden=0):
     """('doll', [paths]) for a human, ('bmp', path) for anything else (`graphics/infowindow/<InfoPicture>[face].bmp`), None without a picture.
     `info_picture(unit) -> name or None` is the units.reg `InfoPicture` lookup."""
     if is_human(u):
-        return "doll", doll_layers(world, u)
+        return "doll", doll_layers(world, u, hidden)
     name = info_picture(u) if info_picture else None
     if not name:
         return None

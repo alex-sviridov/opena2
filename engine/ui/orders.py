@@ -4,7 +4,7 @@ clicks, hotkeys and minimap clicks into commands.  The pending target mode is `v
 A left release with a click on a non-empty selection dispatches on the cursor chosen at the release (R 1.2);
 the pending mode is reset after every such dispatch, also when nothing was ordered."""
 
-from engine.sim import AttackUnit, CastScroll, CastSpell, Guard, MoveUnits, PickUp, Retreat, SelectUnits, SetAutoSpell, SetFormation, StandStill, Stop, Swarm
+from engine.sim import AttackUnit, CastScroll, CastSpell, Guard, MoveUnits, PickAll, PickUp, Retreat, SelectUnits, SetAutoSpell, SetFormation, StandStill, Stop, Swarm
 from allods2.text import decode_text
 
 from . import spellbook
@@ -35,12 +35,13 @@ class OrderInput:
     """`selection_fn()` -> the player's selection tuple; `state_fn()` -> 'none' | 'own' | 'foreign';
     `formation` the player's current client mode."""
 
-    def __init__(self, player_id, screen_w, selection_fn, state_fn, formation=1, spell_fn=None, mask_fn=None, item_mask_fn=None):
+    def __init__(self, player_id, screen_w, selection_fn, state_fn, formation=1, spell_fn=None, mask_fn=None, item_mask_fn=None, hero_fn=None):
         self._pending = 0
         self.book = None                    # the spell book window (`engine.ui.book.SpellBookWindow`): `C` opens it, leaving the cast mode closes it
         self.item_mask_fn = item_mask_fn    # () -> `view+0x150`, the slot mask of the selection's scrolls (None: no scrolls modelled)
         self.player_id, self.screen_w = player_id, screen_w
         self.selection_fn, self.state_fn = selection_fn, state_fn
+        self.hero_fn = hero_fn              # (unit id) -> True for a hero-type unit (`unit+0x1b8 & 1`); None: every unit counts
         self.spell_fn = spell_fn            # () -> the spell number the selection can cast now, 0 for none (`castable_spell`): the stand-in for the spellbook window's choice
         self.mask_fn = mask_fn              # () -> the slot mask of the selection (`view+0x148`, `spellbook.selection_slot_mask`); None: not modelled
         self.spell = 0                      # the spell armed by `C` / F4-F12 (spell of the selected slot, FUN_0041f370)
@@ -113,6 +114,9 @@ class OrderInput:
             return Retreat(self.player_id, tuple(self.selection_fn())), None
         if name == "l":                     # stand still (FUN_00419ffd, a key, not via FUN_00418a02): cmd 0x12; the pending mode is left alone
             return StandStill(self.player_id, tuple(self.selection_fn())), None
+        if name == "p":                     # pick up all sacks in sight (FUN_00419f2a, a key): cmd 0x13 with the selected hero-type units only
+            ids = tuple(i for i in self.selection_fn() if self.hero_fn is None or self.hero_fn(i))
+            return (PickAll(self.player_id, ids), None) if ids and self.state_fn() == "own" else (None, None)
         return None, None
 
     def auto_cast(self, knows, hover_slot=-1):

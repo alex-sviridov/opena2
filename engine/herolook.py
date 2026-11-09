@@ -19,10 +19,10 @@ WEAPON, SHIELD, ARMOUR = 1, 2, 8            # creature slots read by the view (`
 _template_codes = {}
 
 
-def _codes(world, u):
+def _codes(world, u, hidden=0):
     """`{slot: item code}` of slots 1, 2, 8: the explicit loadout, else the template's equipment strings as the constructor equips them."""
     if u.equipment:
-        return {s: it.code for s, it in gear.slots_of(u).items() if s in (WEAPON, SHIELD, ARMOUR)}
+        return {s: it.code for s, it in gear.slots_of(u).items() if s in (WEAPON, SHIELD, ARMOUR) and s != hidden}
     table = world.item_table
     if table is None or u.stats is None:
         return {}
@@ -30,16 +30,17 @@ def _codes(world, u):
     if key not in _template_codes:
         equipped, _ = cs.template_gear(u.stats, table)
         _template_codes[key] = {s: cs.item_code(r) for s, r in equipped.items() if s in (WEAPON, SHIELD, ARMOUR)}
-    return _template_codes[key]
+    return {s: c for s, c in _template_codes[key].items() if s != hidden}
 
 
-def look_key(world, assets, u):
-    """The hero sprite set key (`"heroes_l/swordsman"`) of unit `u`, or None for a unit that is not a hero or whose folder does not exist."""
+def look_key(world, assets, u, hidden=0):
+    """The hero sprite set key (`"heroes_l/swordsman"`) of unit `u`, or None for a unit that is not a hero or whose folder does not exist.  `hidden`: the
+    creature slot whose item is on the cursor (taken out of the client unit at once, `FUN_004b012f`; `FUN_0046a215` then re-picks the set)."""
     if not xp.is_hero(u):
         return None
     names, materials = assets.hero_look()
     mage = gear.is_mage(u)
-    codes = _codes(world, u)
+    codes = _codes(world, u, hidden)
     if u.hp <= 0:
         name = "mage_st" if mage else "unarmed"
     else:

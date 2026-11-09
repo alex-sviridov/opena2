@@ -128,7 +128,7 @@ def draw_text(surface, text, x, y, colour=(255, 255, 255), align="left", font=DE
 
 # --- exact placement of the exe's `FUN_0045d536(x, y, text, flags, colours, off)` (docs/engine/ui-layout.md 11.8) ---------------------
 
-LEFT, RIGHT, CENTRE = 0, 1, 2
+LEFT, RIGHT, CENTRE, BOTTOM, MIDDLE = 0, 1, 2, 4, 8       # draw flags (`FUN_0045e531`; fonts.md)
 SHADOW_TABLE = tuple(SHADOW_COLOUR for _ in range(16))        # slot 6 of the font vtable: a constant (8, 8, 8) table
 
 
@@ -141,7 +141,7 @@ def measure(text, font=DEFAULT_FONT):
 
 
 def draw_text_exact(surface, text, x, y, colour="normal", flags=LEFT, font=DEFAULT_FONT, off=SHADOW_OFFSET):
-    """`FUN_0045d536` placement: flags 0 left, 1 right (`x -= measure`), 2 centre (`x -= measure // 2`), `y` = the top of the glyph cell, the shadow
+    """`FUN_0045d536` placement: flags 0 left, 1 right (`x -= measure`), 2 centre (`x -= measure // 2`), 4 bottom, 8 middle (`y -= glyph0 width`, `>> 1`), `y` = the top of the glyph cell, the shadow
     `off` pixels right and down in the constant (8, 8, 8) table.  Unlike `draw_text(align=)` the origin is the exact measure, not the rendered
     surface width (`measure + 3`).  Returns the measure."""
     w = measure(text, font)
@@ -149,6 +149,13 @@ def draw_text_exact(surface, text, x, y, colour="normal", flags=LEFT, font=DEFAU
         x -= w
     if flags & CENTRE:
         x -= w >> 1
+    if flags & (BOTTOM | MIDDLE):                   # the vertical flags use the width of glyph 0 (sic, `FUN_0045e531`: fonts.md)
+        f = game_font(font)
+        glyph0 = f.cell_width() if f is not None else 16
+        if flags & BOTTOM:
+            y -= glyph0
+        if flags & MIDDLE:
+            y -= glyph0 >> 1
     if off:
         surface.blit(render_text(text, SHADOW_TABLE, font, shadow=False), (x + off, y + off))
     surface.blit(render_text(text, colour, font, shadow=False), (x, y))

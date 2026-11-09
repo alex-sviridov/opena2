@@ -525,7 +525,7 @@ def cancel(u, world=None):
     derived from positions).  Plans, `dest`, `turning` and the dynamic list are untouched."""
     u.mover.target_facing = u.facing
     u.mover.follow = None                       # FUN_0056d969: mover+0x7c := 0
-    u.mode_pick = False
+    u.mode_pick = u.mode_loot = False
     u.ai_cast = False                           # FUN_0056d969 0x56da27: brain+0x60 := 0 (docs/engine/ai.md 12.7)
     u.state = IDLE_STATE
     u.stopped = False
@@ -638,7 +638,7 @@ def _tick_unit(world, u):
         if u.order == MOVE_ORDER:
             fail_stop(world, u)
         else:
-            u.mode_go = False
+            u.mode_go = u.mode_loot = False
             u.mode_attack = u.mode_cast = u.mode_cell = False
             u.mode_follow = False
             if world.ai_on and u.order == ai.GUARD_ORDER:       # 0x56e320: mode 0 and the auto target scan FUN_0056ed4e
@@ -679,6 +679,10 @@ def _tick_inner(world, u):
         u.mode_cast = False                             # the exe has one mode byte: the last writer wins
     if u.mode_cell and (u.mode_attack or u.mode_go or u.mode_look or u.mode_cast):
         u.mode_cell = False
+    if u.mode_loot:                                     # Brain mode 12 (FUN_0056eb2d): walk to the chosen sack, then file it (sim/gear.py)
+        from . import gear
+        gear.loot_mode(world, u)
+        return
     if u.mode_pick:                                     # Brain mode 7 (FUN_0056ea24): the sack on the own cell (sim/gear.py)
         from . import gear
         gear.pick_mode(world, u)

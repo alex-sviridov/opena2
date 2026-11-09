@@ -827,7 +827,7 @@ and only the attack type / range / to-hit for 56 (staves and shaman staffs, cata
 
 ## Open questions
 
-1. The quest system (accept `FUN_0052f8e2`, the board, rewards) and the exact meaning of the quest events 5-0x11 (start: `FUN_0052e3eb`, the senders in `0x57e5f0`-`0x57edda`).
+1. (Answered K5b, no engine work: the quest system is multiplayer only, [items §14](../data/items.md#14-quests-and-the-item-upgrade-message-0x38); the senders `0x57e5f0`-`0x57edda` are virtual methods of the area objects the generator creates, with no direct callers.) The exact meaning of the quest events 5-0x11 stays unresearched.
 2. Sound tables (12.11 item 1) and the hit sound set entries (16.1).
 3. I2 open question is in 12.11; assumptions in section 13.
 4. Attack order aimed at a structure: **answered** ([5.4 / 5.5](#54-hits-on-structures-fun_00516ea0--fun_005201b2-confirmed-engine-combatresolve_structure_attack-structure_damage)); only the mage / spell branches against a structure stay untraced.

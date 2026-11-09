@@ -30,13 +30,13 @@ from both places when answered).
 - Party options message `0x46`: sub `0x80` (`FUN_00578910`) is not built; the registry default of `AutoCasting` on a first run. [ai](engine/ai.md#open-questions)
 - Caster follow branch `FUN_00569968`: the word `+0xa0` (a spell-list unit under defend heals the leader; engine: plain scan). [ai](engine/ai.md#open-questions)
 - AI casting ([ai §12](engine/ai.md#12-casters-and-special-attacks-confirmed-unless-marked-engine-127)): whether `FUN_00519483` scales the book wrapper in place (`+9` range; also [spells](data/spells.md#11-open-questions)); `FUN_005551d6` in the revive `FUN_00510534`. [ai](engine/ai.md#open-questions)
-- Quest side of [ai §15.2](engine/ai.md#152-the-quest-that-sends-a-group-order-2): the quest generator and accept path (no quest system in the engine; shipped squads with creation bit 8; completion events `FUN_0057e87a`). [ai](engine/ai.md#open-questions)
-- Quest system (accept `FUN_0052f8e2`, board, rewards) and the meaning of quest events 5-0x11 (listeners in [combat §16.4](engine/combat.md#164-death-the-event-queue-and-the-trigger-runtime); start `FUN_0052e3eb`, senders in `0x57e5f0`-`0x57edda`). [combat](engine/combat.md#open-questions) 1
+- (answered K5b) Quest side of [ai §15.2](engine/ai.md#152-the-quest-that-sends-a-group-order-2): the quest system is multiplayer only (no quest is generated in single player, [items §14](data/items.md#14-quests-and-the-item-upgrade-message-0x38)); nothing to build.
+- (answered K5b) Quest system (accept `FUN_0052f8e2`, board, rewards), quest events: multiplayer only, see [items §14](data/items.md#14-quests-and-the-item-upgrade-message-0x38); the engine needs none.
 
 ## Spells
 
 - [Effects](engine/effects.md#open-questions): the structure branch of the carriers (`vtable +0x34`, `FUN_00559b7f`); the human scan's recompute triggers besides the stat switch; the client effect messages (`FUN_005044ba`, `FUN_00504498`, `FUN_005045a5`).
-- Backpack window leftovers: text flag 8, message `0x463` / `0x46e`, open sound, releases over the minimap / heads / window 8, the hero-screen lists' gold cell (phase K). [ui-layout 11.13](engine/ui-layout.md#1113-backpack-window-bottom-bar-id-2-class-fun_004a2bba-vtable-0x5ce978-confirmed-unless-marked) (`FUN_004a2bba`, `FUN_004b028d`)
+- Backpack window leftovers (K5b answered: text flag 8, message `0x46e`, the doll item on the cursor, Ctrl+F): the open sound, releases over the minimap / heads / window 8, the window `0x4ba` of message `0x463` (map 10), the hero-screen lists' gold cell (phase K, hero_ui). [ui-layout 11.13](engine/ui-layout.md#open-questions)
 
 ## Triggers and scenario
 
@@ -58,7 +58,7 @@ from both places when answered).
 - Tips window (message `0x45b`, `tips:`): draw of `FUN_004deca4`; no install mission uses the tag. [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages)
 - Info-panel knowledge table: character-file load / write-back (`Knowledge(blob)` / `to_blob`) and the exact engine mapping of client relation bit 8 (`FUN_0041e860`). [ui-layout](engine/ui-layout.md#open-questions) (`FUN_004ea6ab`, `0x4141fa`)
 - Info panel: whether the new-game name field accepts `|`. [ui-layout open questions](engine/ui-layout.md#open-questions)
-- Message list: quest-event lines need a quest system (none in the engine), alternative message colour tables `0x61fb08` / `0x61fba8`. [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages)
+- Message list: quest-event lines (multiplayer only, no work), alternative message colour tables `0x61fb08` / `0x61fba8`. [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages)
 
 ## Rendering and engine
 
