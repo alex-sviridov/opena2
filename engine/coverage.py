@@ -93,9 +93,7 @@ STATUS_SPELLS = frozenset((4, 8, 13, 19, 20, 21, 27, 28, 29))
 USE_KINDS = (("Usable Pointer", "pointer"), ("Usable Altar", "altar"), ("Switch", "switch"), ("Well", "well"), ("King's Grave", "grave"))
 
 # script kinds whose engine behaviour is narrower than the kind: a counted no-op or a subset of the parameters (triggers.md 3, 4, 12)
-PARTIAL_KINDS = {("check", 25): ("cell effect layers are not readable by the script: the value stays 0", BLOCKER, "tilefx"),
-                 ("instant", 29): ("tile spell duration: counted no-op", GAMEPLAY, "tilefx"),
-                 ("instant", 30): ("unit spell duration: counted no-op", GAMEPLAY, "tilefx")}
+PARTIAL_KINDS = {}
 # the kinds that read a parameter number: only parameter 6 (HP) is built for check 4 and instant 34 (the installed maps use only 6)
 TRIGGER_GROUP = {"check": "checks", "instant": "instants", "group": "group commands"}
 

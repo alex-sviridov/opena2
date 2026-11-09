@@ -100,7 +100,7 @@ def test_scripted_casts_make_hidden_casters_and_instant_25_sets_a_trap():
     for i in range(5):
         run1(w, i)
     assert not w.unbuilt_casts and not w.script.unsupported
-    assert w.script.unbuilt == {("instant", 29): 1, ("instant", 30): 1}
+    assert not w.script.unbuilt                              # instants 29 / 30 act on a cell record / the unit's effects (sim/effects.py); none here
     c21, c24 = w.transients                                 # sim/traps.py: FUN_004f086f / FUN_004f0832
     assert (c21.x, c21.y, c21.state, c21.cast.spell, c21.cast.cell, c21.stats.get("spell_power")) == (10, 10, 0xE, 7, (12, 12), 100)
     assert (c24.x, c24.y, c24.state, c24.cast.spell, c24.cast.target, c24.stats.get("spell_power")) == (10, 10, 0xD, 18, a.id, 100)
@@ -109,7 +109,6 @@ def test_scripted_casts_make_hidden_casters_and_instant_25_sets_a_trap():
     for c in w.script.checks:
         T.eval_check(w, w.script, c)
     assert w.script.values[0] == 0 and w.script.values[1] == 1 and w.script.values[2] == 0      # bit 12 is Invisibility, bit 4 (a protection) is not active
-    assert w.script.unbuilt[("check", 25)] == 1 and w.script.unbuilt[("check", 26)] == 0       # check 26 reads the effect mask (sim/effects.py)
 
 
 def test_instants_31_and_14_have_nothing_to_change():

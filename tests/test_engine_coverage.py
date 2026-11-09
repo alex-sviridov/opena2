@@ -29,9 +29,10 @@ def test_trigger_status_asks_the_trigger_code():
     assert C.trigger_status("check", 99) == C.MISSING and C.trigger_status("instant", 99) == C.MISSING and C.trigger_status("group", 99) == C.MISSING
 
 
-def test_counted_no_ops_are_partial():
-    assert C.script_feature("check", 25).status == C.PARTIAL and C.script_feature("check", 25).impact == C.BLOCKER
-    assert C.script_feature("instant", 29).impact == C.GAMEPLAY
+def test_k7_kinds_are_built_and_a_partial_kind_keeps_its_note(monkeypatch):
+    assert [C.script_feature(w, k).status for w, k in (("check", 25), ("instant", 29), ("instant", 30))] == [C.BUILT] * 3
+    monkeypatch.setitem(C.PARTIAL_KINDS, ("instant", 29), ("a counted no-op", C.GAMEPLAY, "tilefx"))
+    assert C.script_feature("instant", 29).status == C.PARTIAL and C.script_feature("instant", 29).impact == C.GAMEPLAY
     assert C.script_feature("check", 5).status == C.BUILT and C.script_feature("check", 99).status == C.MISSING
 
 

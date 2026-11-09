@@ -82,7 +82,7 @@ is drawn from its equipment (orange cloak, [animation §1.3](formats/animation.m
 - Spells: structures are not modelled as spell targets (attack orders on structures are accepted and fought like creatures);
   the Prismatic Spray chain, Lightning / Spray bolts and the Fire Ball explosion (lights, steam, burnt ground, burning trees)
   are built, but the status effects of units other than Invisibility and Stone Curse (poisoned, blessed, hasted, ...) have no drawing of their own.
-- Triggers: instants 29 / 30 (spell durations) are counted no-ops, 37 (set music) and the unnamed kinds are not implemented
+- Triggers: 37 (set music) and the unnamed kinds are not implemented
   (`not implemented:` lines in `engine.log`).
 - Multiplayer is out of scope.
 
@@ -91,7 +91,7 @@ is drawn from its equipment (orange cloak, [animation §1.3](formats/animation.m
 Ordered by value when written; **the order by data is in [coverage.md](coverage.md)** (K0: pickup click, use a structure and cell effects first; "use a structure" was missing here).
 
 1. **Inventory and hero windows**: the Heads panel, hero window with the paper doll, stats and skills, item shops.
-2. **More spells**: structure targets, effect drawing (so a poisoned or blessed unit looks so), spell durations (instants 29 / 30).
+2. **More spells**: structure targets, effect drawing (so a poisoned or blessed unit looks so).
 3. **Full triggers**: the remaining check / instant kinds, variable references 8000-9999, unit names >= 11001.
 4. **Campaign**: end-of-mission chain, hero recruit, roster carry-over, the campaign variables `0x301`-`0x30d`, world map and towns.
 5. **Full UI**: start menu, new-game and options screens, in-game menu entries, town-scene animations, tooltips for every element.

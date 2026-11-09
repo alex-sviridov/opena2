@@ -177,6 +177,20 @@ block bits `| 5` in the static and the live layer (the cell is blocked like an o
 Darkness on the same cell remove each other **and** themselves. Unstamp (`FUN_0055a533`) clears the slot only when it holds this carrier.
 CONFIRMED.
 
+### 6.5 Script access: check 25, instants 29 and 30 (CONFIRMED, engine `engine/sim/effects.py`)
+
+- **Check 25 `FUN_005777d3`**: `rec = FUN_0055a82c(n0 + n1 * 0x100)` (the cell's record when the static byte has bit `0x20`, else none); value 1 when `rec + n2 * 4` is non-zero. Pure state: it is
+  evaluated at every pass of the trigger evaluator and carries no history, so a wall that expired or was burnt away reads 0 again. Engine `effects.tile_layer`; the cell record's slots are `World.cell_fx`
+  (part of `dump()`, so of the replay hash).
+- **Instant 29 `FUN_00578696`**: for each of the 6 slots of the cell's record whose carrier's spell id (`+0xc`) equals `n2`, `carrier +0x50 := n3` (low word). The area tick (`0x517d45`) reads `+0x50` as
+  **unsigned** (`XOR EAX, EAX; MOV AX`; branch `<= 0` = zero), so 32768 counts down 32768 ticks (long enough to count as permanent), then unstamps as usual; the `& 15` pulse follows the new
+  value. Engine `effects.set_tile_duration` (`Carrier.life` is kept as s16: the same countdown). Nothing else changes (no stamp, no effect).
+- **Instant 30 `FUN_0057871f`**: every effect of the unit's list (`+0x20`) whose id (`+0xc`) is `n0` gets ticks `+0x42 := n1` (low word); the mask bit and the stat change stay (>= 0x2581 never counts down).
+  Engine `effects.set_unit_duration`.
+- What the three maps need ([structures §6](structures.md)): 93 a Wall of Fire on both rows (check 25 layer 0, `v70` and `v71`); 94 Wall of Earth, where row 113 / 117 want (63, 65, 67) walled and row 115 only
+  (65, 115): straight walls from the north / south, and the **diagonal** shape (§6.2 table B; from the east side: caster at x + 4, directions 5-7) in the middle, found by a direction search over the exact shapes; 95 two Poison Clouds
+  made by instant 21 at the start, made long-lived by instant 29 once `v74 = 3`, burnt away by Wall of Fire (§6.4) on the checked cells. The tests solve each with scripted `CastSpell` commands.
+
 ## 7. The effect pass and the effect mask
 
 - Creature tick `FUN_0050f12c`: unless state 0x10, **first** iterate the list in order: `+0x38` tick, then remove the effect if finished
@@ -217,6 +231,7 @@ CONFIRMED.
 | Brain order 4 (Stone Curse) | `effects.stone_check` (after the sleep pre-check; a step in progress, the engine's form of brain order 3, finishes first) and `effects.brain_stone` in `movement._tick_inner` |
 | `FUN_0057977a(.., area)` | `ai.on_hit(.., area=True)` / `declare_war(.., area, victim)`, counter `AiState.area_hits` (`brain+0xac`) |
 | `FUN_00513128(victim, dmg, spell)` | `xp.damage_credit(.., spell=)`: spell damage pays a mage into the sphere, a non-mage nothing (also fixed for the phase I missiles and Drain Life) |
+| trigger check 25 (`0x5777d3`), instants 29 / 30 | `effects.tile_layer` / `set_tile_duration` / `set_unit_duration` (§6.5) |
 | trigger check 26 (`0x577857`) | reads `Unit.effect_mask` |
 
 Dumps: a unit's `effects` entry, the carriers' area fields, `cell_fx` and `AiState.area_hits` are written only when present, so the older goldens

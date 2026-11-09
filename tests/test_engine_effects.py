@@ -417,3 +417,53 @@ def test_a_fight_with_effect_spells_is_deterministic_and_consistent():
     assert a.check_consistency() == [] and not a.unbuilt_casts
     spells_cast = {e.spell for e in a.fight_log if isinstance(e, CastStarted)}
     assert len(spells_cast) >= 3 and seen, (spells_cast, seen)
+
+
+# --- K7: trigger check 25 and instants 29 / 30 (docs/engine/triggers.md; FUN_005777d3, FUN_00578696, FUN_0057871f) ---------------------------
+
+class _Chk:
+    def __init__(self, kind, nums, index=0):
+        self.type, self.nums, self.index, self.unit, self.group, self.var_refs = kind, nums, index, None, None, ()
+
+
+def _check25(w, x, y, layer):
+    from engine.sim import triggers as T
+
+    class Scr:
+        values = [0]
+    T.eval_check(w, Scr, _Chk(25, (x, y, layer) + (0,) * 7))
+    return Scr.values[0]
+
+
+def test_check_25_reads_the_slot_layer_of_the_cell_only():
+    w = world()
+    m = monster(w, 1, 20, 10)
+    effects.release(w, m, sp(w, 17), 30, cell=(20, 20))
+    carriers_pass(w)
+    assert (_check25(w, 19, 20, 3), _check25(w, 19, 20, 0), _check25(w, 19, 20, 2)) == (1, 0, 0)     # Wall of Earth = layer 3
+    assert _check25(w, 20, 22, 3) == 0 and _check25(w, 40, 40, 3) == 0 and _check25(w, 19, 20, 9) == 0
+    carriers_pass(w, 600)
+    assert _check25(w, 19, 20, 3) == 0                                                              # true exactly while the carrier is there
+
+
+def test_instant_29_sets_the_lifetime_of_that_spell_only_and_the_cell_expires_on_time():
+    w = world()
+    m = monster(w, 1, 20, 10)
+    c = effects.release(w, m, sp(w, 17), 30, cell=(20, 20))
+    carriers_pass(w)
+    effects.set_tile_duration(w, 19, 20, 6, 5)                                                       # another spell: untouched
+    assert c.life != 5
+    effects.set_tile_duration(w, 19, 20, 17, 32768)
+    assert c.life & 0xFFFF == 32768
+    carriers_pass(w, 32767)
+    assert _check25(w, 19, 20, 3) == 1
+    carriers_pass(w, 2)
+    assert _check25(w, 19, 20, 3) == 0
+
+
+def test_instant_30_sets_the_ticks_of_the_unit_effects_of_that_spell():
+    w = world()
+    m = monster(w, 1, 20, 10)
+    m.effects = [Effect(12, ticks=100), Effect(20, ticks=100)]
+    effects.set_unit_duration(m, 12, 0x8000)
+    assert [e.ticks for e in m.effects] == [0x8000, 100]

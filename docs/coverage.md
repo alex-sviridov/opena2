@@ -22,7 +22,7 @@ adds what the engine itself reports. It found one crash (map 96, a cast at a 2 x
 
 Scanned 46 campaign maps; smoke run 1600 ticks of the map script and the AI with no player.
 
-**43 of 46 maps have no known blocker** (15 playable now, 28 with gameplay gaps), 3 are blocked. This is an upper bound: it means no feature in the list below stops the mission and the smoke run did not crash, not that the map has been played.
+**46 of 46 maps have no known blocker** (20 playable now, 26 with gameplay gaps), 0 are blocked. This is an upper bound: it means no feature in the list below stops the mission and the smoke run did not crash, not that the map has been played.
 
 - **blocker**: the mission cannot be completed as designed (a script variable that gates the goal is fed by an action the engine cannot do).
 - **gameplay gap**: content the engine ignores but the goal does not depend on (a usable well, a spell duration).
@@ -51,7 +51,7 @@ Scanned 46 campaign maps; smoke run 1600 ticks of the map script and the AI with
 | 62 | Escapers | playable, gameplay gaps |  | use.well x1 | ok |
 | 63 | Magicianess | playable, gameplay gaps |  | use.well x2 | ok |
 | 70 |  | playable, gameplay gaps |  | use.grave x6 | lost |
-| 71 |  | playable, gameplay gaps |  | instant.29 x2 | ok |
+| 71 |  | playable now |  |  | ok |
 | 72 | Lost Caravans | playable now |  |  | ok |
 | 73 | Revolted Castle | playable, gameplay gaps |  | use.grave x1, use.well x4 | ok |
 | 74 | SmartShaman | playable, gameplay gaps |  | use.well x1 | ok |
@@ -69,10 +69,10 @@ Scanned 46 campaign maps; smoke run 1600 ticks of the map script and the AI with
 | 90 |  | playable now |  |  | ok |
 | 91 |  | playable now |  |  | ok |
 | 92 | Great warrior's grave | playable, gameplay gaps |  | use.grave x1 | lost |
-| 93 |  | blocked | check.25 |  | ok |
-| 94 |  | blocked | check.25 |  | ok |
-| 95 |  | blocked | check.25 | instant.29 x2 | ok |
-| 96 |  | playable, gameplay gaps |  | instant.30 x3 | ok |
+| 93 |  | playable now |  |  | ok |
+| 94 |  | playable now |  |  | ok |
+| 95 |  | playable now |  |  | ok |
+| 96 |  | playable now |  |  | ok |
 | 100 |  | playable, gameplay gaps |  | use.well x1 | ok |
 | 101 |  | playable now |  |  | ok |
 | 102 |  | playable, gameplay gaps |  | use.grave x9 | lost |
@@ -85,9 +85,6 @@ Scanned 46 campaign maps; smoke run 1600 ticks of the map script and the AI with
 
 | Feature | What | Status | Impact | Step | Maps | Unblocks alone | Note |
 |---|---|---|---|---|---|---|---|
-| `check.25` | check 25: Spell on Tile | partial | blocker | tilefx | 3 | 3 | cell effect layers are not readable by the script: the value stays 0 |
-| `instant.29` | instant 29: Tile Spell Duration | partial | gameplay | tilefx | 2 | - | tile spell duration: counted no-op |
-| `instant.30` | instant 30: Unit Spell Duration | partial | gameplay | tilefx | 1 | - | unit spell duration: counted no-op |
 | `music.zones` | music zones (section 12) | missing | polish | sound | 46 | - | the engine has no audio |
 | `spell.status` | spells whose status effect has no drawing (protections, Bless, Curse, Haste, Slow, Shield) | partial | polish | draw | 41 | - | simulated (effects.md); only Invisibility and Stone Curse change the unit's look |
 | `unit.ranged` | units that shoot (attack range > 1, no spell) | partial | polish | draw | 36 | - | simulated exactly, the arrow is not drawn (combat.md 3, 10) |
@@ -118,7 +115,7 @@ Variable references 8000-9999 and unit names >= 11001 are used by no map. Status
 | `check.21` | Health of building | 5 | built |
 | `check.23` | Get Scenario Variable | 2 | built |
 | `check.24` | Get Subobjective | 2 | built |
-| `check.25` | Spell on Tile | 3 | partial |
+| `check.25` | Spell on Tile | 3 | built |
 | `check.26` | Spell on Unit | 1 | built |
 | `instant.2` | Send message | 46 | built |
 | `instant.3` | Set value to variable | 10 | built |
@@ -140,8 +137,8 @@ Variable references 8000-9999 and unit names >= 11001 are used by no map. Status
 | `instant.24` | Cast spell to unit | 1 | built |
 | `instant.25` | Set trap | 5 | built |
 | `instant.28` | Give All | 9 | built |
-| `instant.29` | Tile Spell Duration | 2 | partial |
-| `instant.30` | Unit Spell Duration | 1 | partial |
+| `instant.29` | Tile Spell Duration | 2 | built |
+| `instant.30` | Unit Spell Duration | 1 | built |
 | `instant.32` | Phase Out Group | 9 | built |
 | `instant.33` | Phase In Group | 5 | built |
 | `instant.34` | Set Unit Parameter | 1 | built |
@@ -213,7 +210,7 @@ Steps the maps do not need to be completed but a finished game does; each touche
 
 - no crashes.
 - script kinds the engine does not know (`not implemented`): none.
-- script no-ops the engine counted (`Script.unbuilt`): check:25, instant:29; unbuilt spell releases: none.
+- script no-ops the engine counted (`Script.unbuilt`): none; unbuilt spell releases: none.
 - the idle party (nothing ordered) is **lost** within 1600 ticks on maps 43, 60, 70, 92, 102, 110: a fresh level-1 party standing still; not checked against the original, not a blocker.
 
 ### Proposed step order
@@ -222,14 +219,13 @@ First the steps that unblock maps (greedy: the next one completes the most block
 
 | # | Step | Effort | Maps newly playable | Playable after | Maps touched | Backlog item |
 |---|---|---|---|---|---|---|
-| 1 | `tilefx` Cell effects for scripts: check 25 reads the cell layers, instants 29 / 30 set spell durations | 1 | 3 (93, 94, 95) | 46 | 5 | 3 |
-| 2 | `use_more` Use a structure, the rest: signpost messages, wells, King's graves, altars (research of each class) | 2 | - | 46 | 26 | - |
-| 3 | `draw` Draw what is simulated: status effects of units, arrows of shooters | 2 | - | 46 | 46 | 2 |
-| 4 | `sound` Sound and music: music zones, unit and UI sounds, the 0xfe / 0xfd / 0xfa messages | 5 | - | 46 | 46 | 6 |
-| 5 | `hero_ui` Hero windows: the Heads panel, hero screen (stats, skills, paper doll), item shops | 3 | - | 46 | 46 | 1 |
-| 6 | `menus` Start menu, new-game and options screens, in-game menu entries | 4 | - | 46 | 46 | 5 |
-| 7 | `save` Save / load: the game%d.sav writer and reader | 4 | - | 46 | 46 | 7 |
-| 8 | `campaign` Campaign flow: world map, towns, hero recruit, roster carry-over, the Scenario.dll variables | 8 | - | 46 | 46 | 4 |
+| 1 | `use_more` Use a structure, the rest: signpost messages, wells, King's graves, altars (research of each class) | 2 | - | 46 | 26 | - |
+| 2 | `draw` Draw what is simulated: status effects of units, arrows of shooters | 2 | - | 46 | 46 | 2 |
+| 3 | `sound` Sound and music: music zones, unit and UI sounds, the 0xfe / 0xfd / 0xfa messages | 5 | - | 46 | 46 | 6 |
+| 4 | `hero_ui` Hero windows: the Heads panel, hero screen (stats, skills, paper doll), item shops | 3 | - | 46 | 46 | 1 |
+| 5 | `menus` Start menu, new-game and options screens, in-game menu entries | 4 | - | 46 | 46 | 5 |
+| 6 | `save` Save / load: the game%d.sav writer and reader | 4 | - | 46 | 46 | 7 |
+| 7 | `campaign` Campaign flow: world map, towns, hero recruit, roster carry-over, the Scenario.dll variables | 8 | - | 46 | 46 | 4 |
 
 <!-- coverage:end -->
 

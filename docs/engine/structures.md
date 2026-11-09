@@ -187,9 +187,9 @@ the lookup rule returns the right switch from every neighbour cell. The rest of 
 
 | Map | Needs beyond switches |
 |---|---|
-| 93 | Firewall puzzle: checks 25 (spell on tile, layer 0, cells (121..125, 69) and (121..125, 75)) set v70 / v71, then instant 25 "Fire teleporter" (115,72) -> (100,104) and sub-objective; K7 (check 25) |
-| 94 | Stonewall puzzle: 9 check-25 cells in layer 3 (63..67, 113..117) -> "Earth teleporter" (66,107) -> (122,124); K7 |
-| 95 | Fog puzzle: instants 21 (make spell effect, spell 6) at (66,25), (69,27), checks 25 layer 2 on 9 cells, instant 29 Tile Spell Duration, "Water teleporter" (68,37) -> (20,19); K7 |
+| 93 | Firewall puzzle: checks 25 (spell on tile, layer 0, cells (121..125, 69) and (121..125, 75)) set v70 / v71, then instant 25 "Fire teleporter" (115,72) -> (100,104) and sub-objective; check 25 built (K7, effects §6.5): two Wall of Fire casts solve it |
+| 94 | Stonewall puzzle: 9 check-25 cells in layer 3 (63..67, 113..117) -> "Earth teleporter" (66,107) -> (122,124); K7 built: straight walls on rows 113 / 117 and a diagonal one on 115 |
+| 95 | Fog puzzle: instants 21 (make spell effect, spell 6) at (66,25), (69,27), checks 25 layer 2 on 9 cells, instant 29 Tile Spell Duration, "Water teleporter" (68,37) -> (20,19); K7 built: Wall of Fire burns the clouds off rows 24 / 26 / 28 |
 | 96 | "Air" puzzle without check 25: instants 24 (cast spell 18 on units 20, 21, 22) and 30 (Unit Spell Duration), check 26 (Spell on Unit, bit 12 Invisibility) on the three units every pass, then instant 25 "Air teleporter" (31,71) -> (40,39); the mission ends on a distance test to (10,135) with the item counter `v74` set by `Drop all` on unit 49 when the hero is near it |
 
 **Map 103** ("Find the magic Oracle"): 16 switches, two independent puzzles, all pairs at 3-cell spacing.

@@ -117,7 +117,7 @@ dying countdown, [combat §12.3](combat.md)). All CONFIRMED at the routine; name
 | 22 | Teleportation | `5776fd` | a unit standing on `(n0, n1)` (cell record `+4`) is moved to `(n2, n3)` (`FUN_0055a96c`) -> 1, else 0: a check with a side effect, unused |
 | 23 | Get Scenario Variable | `57777b` | `ScenarioGetVar(n0)` (Scenario.dll ordinal 1, `[0x62729c]`) |
 | 24 | Get Subobjective | `5777a4` | `ScenarioGetVar(n0 + 0x2f0)` |
-| 25 | Spell on Tile | `5777d3` | 1 if the cell `(n0, n1)` has an area effect in layer `n2` (cell record `+0x14`, 6 layers) |
+| 25 | Spell on Tile | `5777d3` | 1 if slot `n2` of the cell record of `(n0, n1)` (`FUN_0055a82c(n0 + n1 * 0x100)`, 16-bit index; `+0x14 + 4k`, 6 layers: 0 Wall of Fire, 2 Poison Cloud, 3 Wall of Earth, 4 Light, 5 Darkness) holds a carrier. CONFIRMED a **live state read**: no spell or caster filter, no cast / impact event, true exactly while the carrier occupies the slot (an unstamp, a burnt cloud, a Wall of Earth that skipped an occupied cell all read 0). `n2` is not range-tested in the exe (`rec + n2 * 4`); the engine answers 0 outside 0-5 (DECISION: no map uses one) |
 | 26 | Spell on Unit | `577857` | 1 if `u+0x144` bit `n0` (effect kind) is set (bit 12 = Invisibility) |
 | 27 | Centered on Tile | `5778ad` | `x == n1 and y == n2` and at the cell centre (sub-cell 128, 128) -> 1: the routine reads `n1`, `n2` although X, Y are packed as `n0`, `n1`, so it tests `x == Y and y == 0` and is never true (quirk; unused) |
 | `0x10002` | Constant / TRUE / FALSE | compiler | `values[slot] = value` once |
@@ -250,11 +250,10 @@ message `0x41d` and the buttons are decoded in [§11](#11-the-end-of-the-mission
   still in the command group it had at map start (a player command or an owner change moves it out) and of the
   same owner; phased-out members still count), `Player`, the structure `MapObject`. `Script.values` / `fired`
   are the 1000 slots, `Script.errors` the compiler's messages, `Script.trace` the fired triggers and run instants.
-* **Implemented** checks: 1-27 (11 and 13 do nothing; 22 teleports like instant 27; 25 and the effect bits of 26 other than 12 answer 0 and are counted in `Script.unbuilt`, the engine has no cell or unit effects) and the constants; the item checks read `Unit.carried` (the mirror of the pack: CONFIRMED to search the pack only, [items](items.md#1-the-flow-confirmed-gog-allods2exe); K5). Instants: **all kinds of the exe** except variable references (`Script.unsupported`, T§2.3: never written) and unit names (`>= 11001`): 1-6 (group sub-commands 1-5, 10, 11, 14, 15, 17, 18 through `ai.set_group_order`, `orders.attack_group` and `follow.*`),
+* **Implemented** checks: 1-27 (11 and 13 do nothing; 22 teleports like instant 27; 25 reads `World.cell_fx` (`effects.tile_layer`), 26 `Unit.effect_mask`) and the constants; the item checks read `Unit.carried` (the mirror of the pack: CONFIRMED to search the pack only, [items](items.md#1-the-flow-confirmed-gog-allods2exe); K5). Instants: **all kinds of the exe** except variable references (`Script.unsupported`, T§2.3: never written) and unit names (`>= 11001`): 1-6 (group sub-commands 1-5, 10, 11, 14, 15, 17, 18 through `ai.set_group_order`, `orders.attack_group` and `follow.*`),
   7 (the player's formation byte, `Player.formation`), 8-10, 11-13 and 28 and 38 (items: `gear.give_item` / `remove_item` / `take_all`, the pack, [items](items.md)), 14 / 15 / 31 (nothing to change), 16-19, 20 (drop all: a pile on the unit's cell), 22, 23 (`Script.gold`), 26,
   27 (`teleport`: `FUN_0055a96c`), 32-36 (34 for the parameters 6, 15 defence, 16 absorption), 39; unknown kinds log "Bad instant"; drop locations go to `Script.drops`.
-  21 and 24 (a scripted cast from a hidden caster, `traps.cast_at_cell` / `cast_at_unit`) and 25 (`traps.set_record`) are built ([effects §10](effects.md#10-cell-record-effects-traps-and-the-hidden-caster-confirmed-engine-enginesimtrapspy)). **Documented no-ops** (`Script.unbuilt`): 29 and 30
-  (durations of the effects of a spell on a tile / unit: there are none to change), check 25 / 26 (above).
+  21 and 24 (a scripted cast from a hidden caster, `traps.cast_at_cell` / `cast_at_unit`) and 25 (`traps.set_record`) are built ([effects §10](effects.md#10-cell-record-effects-traps-and-the-hidden-caster-confirmed-engine-enginesimtrapspy)). 29 and 30 are built (`effects.set_tile_duration` / `set_unit_duration`, [effects §6.5](effects.md#65-script-access-check-25-instants-29-and-30-confirmed-engine-enginesimeffectspy)); `Script.unbuilt` now only counts kinds with nothing to change.
 * **Phase out / in**: the unit leaves `world.units`, the spatial index, its command group / squad record and the
   selections into `Script.phased` and stays a `TriggerGroup` member; phase-in draws the `FUN_00510089` tries
   from `world.rng` (radius 0 draws nothing), puts the unit at the cell centre with no step in progress, appends
@@ -443,8 +442,7 @@ new-game chain (open question "Main shell"). **Unimplemented kinds** log `not im
 
 Tests: `tests/test_engine_mission32.py` (win by attacking the sword carrier, script loss, hero loss, replay hash, no unsupported kinds, the once-only report).
 
-**Left for phase K** (documented no-ops or absent): instants 29 / 30 (spell durations; counted in `Script.unbuilt`), the `Spell on Tile / Unit` checks 25 / 26 for effect kinds the
-engine lacks, variable references 8000-9999 (never written in the exe), unit names `>= 11001`, instant 37 (set music) and the other unnamed kinds ("Bad instant"),
+**Left for phase K** (documented no-ops or absent): variable references 8000-9999 (never written in the exe), unit names `>= 11001`, instant 37 (set music) and the other unnamed kinds ("Bad instant"),
 hero recruit `FUN_004f312a`, roster carry-over, campaign variables `0x301`-`0x30d`, the start menu / new-game screen, sound of the `0xfe` / `0xfd` / `0xfa` messages.
 
 ## Open questions

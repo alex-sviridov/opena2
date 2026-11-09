@@ -518,6 +518,42 @@ def _holds(world, c, x, y):
     return v is not None and v[_slot(c.spell)] == c.uid
 
 
+def _record(world, x, y):
+    """`FUN_0055a82c`: the effect slots of the cell whose 16-bit index is `x + y * 256` (None = no record)."""
+    i = (x + y * 256) & 0xFFFF
+    return world.cell_fx.get((i & 0xFF, i >> 8))
+
+
+def tile_layer(world, x, y, layer):
+    """Trigger check 25 (`FUN_005777d3`, CONFIRMED): the cell record `FUN_0055a82c(x + y * 256)` (16-bit index; none = no slot used) holds a
+    carrier in slot `layer`.  A live state read: no spell filter, no caster test, true exactly while the carrier occupies the slot.  The exe reads
+    `record + layer * 4` unchecked; a layer outside 0-5 answers 0 here (DECISION: no map uses one)."""
+    v = _record(world, x, y)
+    return int(v is not None and 0 <= layer < 6 and v[layer] is not None)
+
+
+def set_tile_duration(world, x, y, spell, life):
+    """Instant 29 (`FUN_00578696`, CONFIRMED): every one of the 6 slots of the cell record that holds a carrier whose spell (`+0xc`) is `spell` gets
+    its lifetime `+0x50` := `life` (the low word).  The countdown reads it as unsigned (`0x517d45`: `MOV AX`, test `<= 0` = zero), so 32768 runs
+    32768 ticks and then expires; no other effect on the carrier."""
+    v = _record(world, x, y)
+    if v is None:
+        return
+    by_uid = {c.uid: c for c in world.carriers}
+    for uid in v:
+        c = by_uid.get(uid)
+        if c is not None and c.spell == spell:
+            c.life = s16(life)
+
+
+def set_unit_duration(u, spell, ticks):
+    """Instant 30 (`FUN_0057871f`, CONFIRMED): every effect in the unit's list whose id (`+0xc`) is `spell` gets ticks `+0x42` := the low word (the
+    mask bit and the stat change are untouched; >= 0x2581 never counts down)."""
+    for e in u.effects:
+        if e.id == spell:
+            e.ticks = ticks & 0xFFFF
+
+
 def _unstamp(world, uid, spell, x, y):
     """`FUN_0055a533`: the slot is cleared when it holds that carrier."""
     v = world.cell_fx.get((x, y))

@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from allods2.formats import scenario as S
 from engine.world import DEAD, OrderGroup
 
-from . import ai, campaign, gear, place, traps
+from . import ai, campaign, effects, gear, place, traps
 from .combat import combat_stats
 from .pathfinding import chebyshev
 
@@ -443,9 +443,8 @@ def eval_check(world, script, c):
         if who:
             teleport(world, who[0], n[2] & 0xFF, n[3] & 0xFF)
         vals[c.index] = int(bool(who))
-    elif kind == 25:                                    # FUN_005777d3: an area effect in a layer of the cell; the engine has no cell effects
-        script.unbuilt[("check", 25)] += 1
-        vals[c.index] = 0
+    elif kind == 25:                                    # FUN_005777d3: a carrier in slot n2 of the cell record (sim/effects.py)
+        vals[c.index] = effects.tile_layer(world, n[0], n[1], n[2])
     elif kind == 26:                                    # FUN_00577857: +0x144 bit n0 (the effect mask, sim/effects.py; Unit.hidden for an object-less Invisibility)
         vals[c.index] = int(bool(u.effect_mask & (1 << (n[0] & 31))) or (n[0] == 12 and u.hidden))
     elif kind == 27:
@@ -656,11 +655,13 @@ def run_instant(world, script, index):
         gear.give_item(world, u, c.item)
     elif kind == 13:
         gear.remove_item(world, u, c.item)
-    elif kind in (14, 15, 29, 30, 31):
-        # 14 / 15: a client refresh; 29 / 30: durations of the effects of a spell on a tile / unit; 31: outpost repop delay.  The engine has no
-        # spell effects and no outposts, so there is nothing to change (re-check when the effect system exists)
-        if kind in (29, 30):
-            script.unbuilt[("instant", kind)] += 1
+    elif kind == 29:                                    # FUN_00578696: the lifetime of the area effects of a spell on a cell (sim/effects.py)
+        effects.set_tile_duration(world, n[0], n[1], n[2], n[3])
+    elif kind == 30:                                    # FUN_0057871f: the ticks of the unit's effects of that spell
+        effects.set_unit_duration(u, n[0], n[1])
+    elif kind in (14, 15, 31):
+        # 14 / 15: a client refresh; 31: outpost repop delay.  The engine has no outposts, so there is nothing to change
+        pass
     elif kind == 20:
         items = gear.take_all(world, u)
         if items:
