@@ -4,6 +4,7 @@
     python -m allods2 anim preview-all DEST [--install DIR] [--only CLASS ...]
     python -m allods2 anim preview SPRITE DEST [--install DIR] [--speed N]
                                    [--player P] [--variant V] [--grid PNG]
+    python -m allods2 map list [--install DIR]
     python -m allods2 map info MAP [--install DIR]
     python -m allods2 map render MAP DEST.png [--layers terrain objects structures units items | all] [--relief] [--dirt]
                                  [--rect X Y W H] [--install DIR]
@@ -62,7 +63,7 @@ from . import graphics as gfx
 import a2res
 from a2res import OS
 
-from .common import INSTALL, OUT, as_fs
+from .common import INSTALL, OUT, as_fs, campaign_maps
 
 
 def source(path, install=None):
@@ -158,16 +159,42 @@ def anim_preview_all(a):
     return 0
 
 
-def open_map(spec, install=None):
-    from .formats import Map
+class MapNotFound(FileNotFoundError):
+    """A MAP argument that is neither a file nor a campaign map of the install; the message lists the campaign maps."""
+
+
+def resolve_map(spec, install=None):
+    """`(path, fs)` of MAP (a file on disk, or 10 / 10.alm / scenario/10.alm in the install); MapNotFound when there is none."""
+    spec = str(spec)
     if os.path.isfile(spec):
-        return Map.load(spec, a2res.OS)
+        return spec, a2res.OS
     path = spec.replace("\\", "/")
     if "/" not in path:
         path = "scenario/" + path
     if not path.lower().endswith(".alm"):
         path += ".alm"
-    return Map.load(path, as_fs(install))
+    fs = as_fs(install)
+    if not fs.isfile(path):
+        names = [os.path.basename(m)[:-4] for m in campaign_maps(fs)]
+        raise MapNotFound("no such map: %r (looked for the file %s and %s in the install).\n"
+                          "Campaign maps: %s\nList them with: python -m engine maps"
+                          % (spec, os.path.abspath(spec), path, " ".join(names)))
+    return path, fs
+
+
+def open_map(spec, install=None):
+    from .formats import Map
+    path, fs = resolve_map(spec, install)
+    return Map.load(path, fs)
+
+
+def map_list(a):
+    fs = as_fs(a.install)
+    for m in campaign_maps(fs):
+        mp = open_map(m, fs)
+        h = mp.header
+        print("%-4s %3d x %-3d %d players  %s" % (os.path.basename(m)[:-4], h.width, h.height, h.player_count, h.name))
+    return 0
 
 
 def map_info(a):
@@ -358,6 +385,9 @@ def main(argv=None):
     mi.add_argument("map")
     mi.add_argument("--install", default=INSTALL)
     mi.set_defaults(func=map_info)
+    ml = g.add_parser("list", help="list the campaign maps (number, size, players, name)")
+    ml.add_argument("--install", default=INSTALL)
+    ml.set_defaults(func=map_list)
     mr = g.add_parser("render", help="draw map layers into a PNG")
     mr.add_argument("map")
     mr.add_argument("dest")
@@ -388,4 +418,7 @@ def main(argv=None):
     de.add_argument("--install", default=INSTALL)
     de.set_defaults(func=data_export)
     a = ap.parse_args(argv)
-    return a.func(a)
+    try:
+        return a.func(a)
+    except MapNotFound as e:
+        ap.exit(2, "%s: error: %s\n" % (ap.prog, e))

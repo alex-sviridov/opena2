@@ -10,6 +10,7 @@ reports and crash traceback; docs/superpowers/specs/2026-11-05-prototype-j4-desi
    python -m engine minimap MAP DEST.png [--units] [--install DIR]
    python -m engine play MAP [--out DIR] [--size WxH] [--speed N] [--difficulty 1|2|3] [--seed N] [--hero-name NAME] [--install DIR]
    python -m engine replay SESSION [--verify] [--install DIR]
+   python -m engine maps [--install DIR]           (the campaign maps: number, size, players, name)
 
 MAP as for `python -m allods2 map` (10, scenario/10.alm, or a file).  X, Y =
 the viewport's top-left in world pixels (x = 32*col, y = 32*row - height).
@@ -235,6 +236,8 @@ def play_cmd(a, parser):
     a.no_shadows = a.no_light = a.no_smoothing = a.no_objects = False
     a.debug, a.triggers, a.party, a.interface = "", True, 0, True
     a.seed = a.seed if a.seed is not None else time.time_ns() & 0xFFFFFFFF
+    from allods2.cli import resolve_map
+    resolve_map(a.map, a.install)                  # a wrong MAP fails here, before a session directory exists
     try:
         directory = session.new_session_dir(a.map, a.out)
     except OSError as e:
@@ -340,11 +343,24 @@ def main(argv=None):
     pl.add_argument("--seed", type=int)
     pl.add_argument("--hero-name", default="Hero")
     pl.add_argument("--install")
+    mp = sub.add_parser("maps", help="list the campaign maps")
+    mp.add_argument("--install")
     rp = sub.add_parser("replay", help="run a recorded session again, headless")
     rp.add_argument("session", help="a session directory or its session.json")
     rp.add_argument("--verify", action="store_true", help="exit 1 when the world hash differs from final.json")
     rp.add_argument("--install")
     a = p.parse_args(argv)
+    from allods2.cli import MapNotFound
+    try:
+        return _dispatch(a, p)
+    except MapNotFound as e:
+        p.exit(2, "%s: error: %s\n" % (p.prog, e))
+
+
+def _dispatch(a, p):
+    if a.cmd == "maps":
+        from allods2.cli import map_list
+        return map_list(a)
     if a.cmd == "replay":
         return replay_cmd(a)
     if a.cmd == "play":
