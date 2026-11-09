@@ -82,7 +82,7 @@ Quirks (CONFIRMED on the install):
 | `FUN_0045ade7(hwnd, 16 voices, NULL)` (called `0x482446` from `0x4823e2`) | `DirectSoundCreate` (ordinal 1), `SetCooperativeLevel(3)` (exclusive), primary buffer set to 22,050 Hz stereo 16-bit (falls back 8-bit, mono, 11,025 Hz); default secondary format PCM 22,050 mono 16 at `0x61f628`; voice table `0x61f63c` (16 x 0x10 bytes: priority +4, buffer +8, owner +0xc); failure or `-nomusic` zeroes `0x6226a8` (sound off) |
 | `0x45a1a2(path)` | sound object constructor: stores the path only |
 | `0x45a3f4` | lazy loader: own RIFF reader on the virtual file system, static buffer (flags `0xea`, else `0xe6`); **tag 1 copied in 64 KB chunks; tag 2 decoded by Windows** (`acmStreamOpen` / `Size` / `PrepareHeader` / `Convert`, msacm32); then 15 `DuplicateSoundBuffer` copies = 16 voices per sound |
-| `0x45aa2f(this; volume_mB, pan, freq, priority, loop)` | play: lazy load (a missing file fails silently and is retried at every play), free duplicate by `GetStatus & 1` (all busy = dropped), `0x45ab9c` claims a global voice (steals the lowest priority below the new one, else dropped), SetVolume / SetPan / SetFrequency / Play |
+| `0x45aa2f(this; volume_mB, pan, loop, priority, freq)` (order corrected in K11, [audio §1](../engine/audio.md#1-corrections-to-soundmd-found-in-k11-confirmed-0x45aa2f-read-again); no caller passes a frequency) | play: lazy load (a missing file fails silently and is retried at every play), free duplicate by `GetStatus & 1` (all busy = dropped), `0x45ab9c` claims a global voice (steals the lowest priority below the new one, else dropped), SetVolume / SetPan / SetFrequency / Play |
 | `0x41b1f8(x, y, &vol, &pan)` | positional mix on the view, **no DirectSound 3D** (formulas in §3.1) |
 | `0x622698` / `0x6226a0` | SFX and speech volume in mB, added to every play; slider curve `0x45b3a3` (INFERRED `-R*((R-pos)/R)^2`, R = 10000); the SFX slider test plays `sfx[0x64]` at priority `0xdc` |
 | registry (loader `0x43c978`, writer `0x43ca2b`; open `0x440bb7`, `0x440cd2`) | **`HKEY_LOCAL_MACHINE`**`\SOFTWARE\Rage of Mages 2` (CONFIRMED: only `0x80000002` pushes in that code; opened with `KEY_READ` only, so the write likely fails without admin rights, INFERRED), five **DWORD** values read / written inline with `RegQueryValueExA` / `RegSetValueExA` (no wrappers; return codes ignored; a missing value keeps the constructor default of the settings object `0x622688`, `0x476130`): `SoundMusPos` -700 (+8, range 5000 at +0xc), `SoundSfxPos` -700 (+0x10 / +0x14), `SoundSpeechPos` -700 (+0x18 / +0x1c), `MusicEnabled` 1 (+0x24), `SoundRandom` 0 (+0). **`SoundRandom` is vestigial**: stored by the options dialog (`0x43daa5`) and persisted, but nothing reads it (INFERRED from a full search of the readers). A further DWORD (name at `0x5f075c`) lands in `0x5f1a04`, forced to >= 1, meaning unknown |
@@ -101,7 +101,7 @@ World units are 256 per cell; `view[+0x5c], [+0x60]` = the camera's top-left cel
 There is **no cutoff** in the function: the volume floor -10000 mB (silent) is reached at `dist` ~ 9452 (about 37 cells), 8 cells = -1.7 dB,
 16 cells = -6.4 dB, 30 cells = -41.5 dB. Callers use priority `(10000 - |volume|) / 100` (0..100), the play call adds the global SFX volume
 `[0x622698]` (speech: `[0x6226a0]`) and `0x45aa2f` clamps at -10000. 15 call sites: `0x41514e`, `0x41565c`, `0x415a82` (in `0x40d9b2`), the unit
-sound helpers `0x467cd2`, `0x467da8`, `0x467e42`, the hero voices `0x468094`-`0x4686ab`, and `0x46c1d0`. Non-positional UI sounds call `0x45aa2f`
+sound helpers `0x467cd2`, `0x467da8`, `0x467e42`, the hero voices `0x468094`-`0x4686ab`, and `0x46c1d0`. Hero order / select / wound / death voices add the **speech** volume `[0x6226a0]`. Engine side: [audio](../engine/audio.md). Non-positional UI sounds call `0x45aa2f`
 directly with pan 0 (INFERRED).
 
 So the engine must decode ADPCM itself (the exe asks the Windows ACM; the output is the standard MS ADPCM decode, §2.1) and
@@ -140,7 +140,7 @@ unchanged HP is not traced (the slot-[1] sound is rare).
 
 Not in `sfx.reg`. Bank constructor `0x4c5038` builds 15 banks (0x6c bytes at `0x627758 + k*0x6c`) from `sfx\characters\<bank>\...`:
 `select/N.wav`, `attack/N`, `move/N`, `swarm/N` (N = 1..4), `retreat/1`, `pickup/1`, `defend/1`, `easy`, `hard`, `dead`. **Variants:** the
-constructor probes N = 1, 2, ... until the first missing file and stores the counts (+0x5c...); a voice plays `rand(count-1)`. So the
+constructor probes N = 1, 2, ... until the first missing file and stores the counts (+0x5c...); a voice plays `rand(count-1)` (inclusive, `0..count-1`: every file is reachable). So the
 variant count is the number of consecutive files on disk (`sounds.json["hero_banks"]`: aldor select 3, others 1-2).
 Bank order (CONFIRMED): aldor, sagita, hildarius, galinel, igles, dina, xbow, knight, druid, troll, orc, mage. Chooser `0x468094` on the
 unit type `+0x1dc`: types 1-6 = xbow, knight, druid, troll, orc, mage; 21 = the hero by flags `+0x1b8` (bit 4 / bit 2 select aldor,
