@@ -75,15 +75,15 @@ def test_phase_lights_follow_the_table_and_end_at_age_22():
     w = world()
     effects.spawn_explosion(w, (20, 20))
     a = None
-    m0 = lights.light_map(w, a, 0)
+    m0 = lights.light_map(w, a, 1)                                   # made in step 0, first drawn after it (tick 1) at age 0
     assert set(m0.values()) == {16} and len(m0) == 5                 # phase 0: radius 1 (a plus), value 16
-    m2 = lights.light_map(w, a, 2)                                   # phase 1: radius 2 value 8
+    m2 = lights.light_map(w, a, 3)                                   # phase 1: radius 2 value 8
     assert m2[(20, 20)] == 8 and (22, 20) in m2 and (22, 22) not in m2
-    m4 = lights.light_map(w, a, 4)                                   # phase 2: radius 3 value 0
+    m4 = lights.light_map(w, a, 5)                                   # phase 2: radius 3 value 0
     assert m4[(20, 20)] == 0 and (23, 20) in m4
-    assert lights.light_map(w, a, 16)[(20, 20)] == 40                # phase 8
-    assert lights.light_map(w, a, 21)[(20, 20)] == 46                # phase 10
-    assert lights.light_map(w, a, 22) == {} and lights.light_map(w, a, -1) == {}
+    assert lights.light_map(w, a, 17)[(20, 20)] == 40                # phase 8
+    assert lights.light_map(w, a, 22)[(20, 20)] == 46                # phase 10 (age 21, the last frame)
+    assert lights.light_map(w, a, 23) == {} and lights.light_map(w, a, 0) == {}
 
 
 def test_explosion_sprite_and_steam_are_drawn():
@@ -97,10 +97,10 @@ def test_explosion_sprite_and_steam_are_drawn():
     effects.spawn_explosion(w, (20, 20))
     w.tick = 4
     effects.explosion_system(w, [])
-    w.tick = 6                                                       # age 6: frame 3; steam counter 2: frame 1
+    w.tick = 6                                                       # drawn at tick 6: exe age 5: frame 2; steam counter 2: frame 1
 
     def pics(tick):
         return sorted((i.sprite[1], i.frame) for i in build_draw_list(w, cam(20, 20), tick, a, PLAIN)
                       if i.kind == "sprite" and i.sprite[0] == "projectile")
-    assert pics(6) == [(8, 1), (13, 3)]                              # bare water: steam only, the fire needs a map object (`0x408981` gate)
-    assert [p for p in pics(22) if p[0] == 13] == [] and pics(26) == []         # the explosion ends at age 22, the list entry at 4 + 22
+    assert pics(6) == [(8, 1), (13, 2)]                              # bare water: steam only, the fire needs a map object (`0x408981` gate)
+    assert [p for p in pics(22) if p[0] == 13] != [] and [p for p in pics(23) if p[0] == 13] == [] and pics(26) == []     # the last frame (age 21) is drawn at tick 22; the list entry ends at 4 + 22

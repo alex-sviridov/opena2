@@ -783,7 +783,7 @@ def explosion_system(world, commands=()):
                     obj = any(world.objects[i].kind == "object" for i in world.objects_at(x, y))
                     if not water or obj:
                         world.scorch(x, y, burn=False)
-        if age <= e.life:                           # the view draws ages 0 .. life - 1; kept one tick longer so the last frame is still drawn
+        if age <= e.life:                           # the view draws ages 0 .. life - 1 on the ticks `born + 1 .. born + life`; kept one step longer (harmless)
             keep.append(e)
     world.explosions = keep
 
@@ -915,7 +915,7 @@ def spawn_cast_fx(world, caster, number, target, cell, flight=0):
 
 
 def flash_system(world, commands=()):
-    """Drops the one-shot sprites whose steps are over (drawn on the ticks `born .. born + life - 1`)."""
+    """Drops the one-shot sprites whose steps are over (drawn on the ticks `born + 1 .. born + life`, after the step that made them)."""
     if world.flashes:
         world.flashes = [f for f in world.flashes if world.tick - f.born < f.life]
 
@@ -1038,7 +1038,7 @@ def arrow_system(world, commands=()):
 
 
 def bolt_system(world, commands=()):
-    """Drops the bolts whose 13 ticks are over (the view draws ages 1 .. 13 on the ticks `born .. born + 12`) and, on its spawn tick, a cast-action
+    """Drops the bolts whose 13 ticks are over (the view draws ages 1 .. 13 on the ticks `born + 1 .. born + 13`, after the step that made it) and, on its spawn tick, a cast-action
     bolt whose first target is gone (`FUN_0046707e` makes nothing then)."""
     if world.bolts:
         world.bolts = [b for b in world.bolts if world.tick - b.born < b.life

@@ -43,12 +43,13 @@ def light_map(world, assets, tick):
 
 
 def explosion_phases(world, assets, tick):
-    """`[(explosion, age, phase)]` of the live fire explosions: age = ticks since creation (0 .. life - 1), phase `obj+0x74` = `(age / 2) mod Phases`
+    """`[(explosion, age, phase)]` of the live fire explosions: age `obj+0x9c` = -1 at creation and 0 after the first tick of the creation step, so the frame
+    after step `born` (`tick = born + 1`) shows age 0 and the last one (`born + life`) age `life - 1`; phase `obj+0x74` = `(age / 2) mod Phases`
     (`FUN_0046c1d0` case 0xd, CONFIRMED; the record's Phases, 11 when the set is unknown)."""
     out = []
     pset = None
     for e in getattr(world, "explosions", ()):
-        age = tick - e.born
+        age = tick - e.born - 1
         if 0 <= age < e.life:
             if pset is None and assets is not None:
                 pset = assets.projectile_set(13)
@@ -81,11 +82,12 @@ def burns(world, assets, x, y):
 
 
 def bolt_age(b, tick):
-    """The age `obj+0x9c` the bolt is drawn at on `tick`, None while it does not exist (before its spawn tick or after its 13 ticks): the cast
-    action's bolt starts at age 0 and draws ages 1 .. 13, a message-created one (`Bolt.age0 = -1`, the hidden caster's 0x8c) draws 0 .. 12."""
+    """The age `obj+0x9c` the bolt is drawn at on `tick`, None while it does not exist (before its first draw or after its 13 steps).  The object is made in
+    step `born` and ticked once in it (server step -> message loop -> view tick, `FUN_00488aa1`), so the frame after that step (`tick = born + 1`) shows
+    age 1 (the cast action's bolt, `age0 = 0`) or age 0 (the message-made 0x8c form, `age0 = -1`), and the 13 steps are drawn on `born + 1 .. born + 13`."""
     n = tick - b.born
-    if 0 <= n < b.life:
-        return n + 1 + b.age0
+    if 1 <= n <= b.life:
+        return n + b.age0
     return None
 
 

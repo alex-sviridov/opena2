@@ -698,7 +698,7 @@ def _bolts(ctx):
         a16 = bool(pset.rec["A16"])
         n = 0
         for var, pts in bolt_segments(w, b, ctx.tick):
-            ref = pset.frame_at("effect", 0, ctx.tick - b.born, age0=b.age0, colour=var)
+            ref = pset.frame_at("effect", 0, ctx.tick - b.born - 1, age0=b.age0, colour=var)      # exe age = tick - born + age0 (`bolt_age`)
             for x, y in pts:
                 pos = (int(x) << 3, int(y) << 3)
                 dep = (PASS_PROJECTILE, int(y) >> 5, -(int(x) >> 5), 0, (1 << 22) + b.born, n)

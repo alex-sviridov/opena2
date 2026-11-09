@@ -342,7 +342,7 @@ class Arrow:
 
 @dataclass
 class Flash:
-    """A client one-shot sprite of a cast (Teleport 0x36 twice, Drain Life 0x3c; `effects.spawn_cast_fx`): drawn on the ticks `born .. born + life - 1`
+    """A client one-shot sprite of a cast (Teleport 0x36 twice, Drain Life 0x3c; `effects.spawn_cast_fx`): drawn on the ticks `born + 1 .. born + life` (after the step that made it)
     at `pos` (1/256 cell) or on the footprint centre of `target`.  Client only, not dumped."""
     pid: int
     born: int

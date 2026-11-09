@@ -190,10 +190,10 @@ def test_the_bolt_light_is_phase_times_10_on_the_2x2_vertices_of_each_point_cell
     c = caster(w)
     t = foe(w, 2, 26, 20)
     effects.spawn_bolt(w, c, 28, (t.id,))
-    m4 = lights.light_map(w, None, w.tick)                      # age 1: phase 4 -> 40
+    m4 = lights.light_map(w, None, w.tick + 1)                  # made in step `born`, first drawn after it: age 1: phase 4 -> 40
     assert m4 and set(m4.values()) == {40}
-    assert lights.light_map(w, None, w.tick + 4) and set(lights.light_map(w, None, w.tick + 4).values()) == {0}      # age 5: phase 0
-    assert lights.light_map(w, None, w.tick + 13) == {} and lights.light_map(w, None, w.tick - 1) == {}
+    assert lights.light_map(w, None, w.tick + 5) and set(lights.light_map(w, None, w.tick + 5).values()) == {0}      # age 5: phase 0
+    assert lights.light_map(w, None, w.tick + 14) == {} and lights.light_map(w, None, w.tick) == {}
 
 
 def test_the_spray_draws_a_segment_per_list_entry_with_the_variant_row():
@@ -300,7 +300,7 @@ def test_the_bolt_spawns_on_the_shoot_delay_tick_of_the_cast_action():
     cast, st = start(w, c, t)
     (b,) = w.bolts
     assert b.born == 38 and c.action_start_tick == 30           # action tick 8 of the cast = world tick 38
-    assert lights.bolt_age(b, 37) is None and lights.bolt_age(b, 38) == 1 and lights.bolt_age(b, 50) == 13 and lights.bolt_age(b, 51) is None
+    assert lights.bolt_age(b, 38) is None and lights.bolt_age(b, 39) == 1 and lights.bolt_age(b, 51) == 13 and lights.bolt_age(b, 52) is None     # drawn after the step it was made in
 
 
 def test_a_shoot_delay_past_the_sequence_never_fires():
@@ -352,7 +352,7 @@ def test_a_hidden_caster_makes_the_spray_at_once_on_its_cell_and_no_lightning():
     effects.spawn_bolt(w, hidden, 30, (t.id,))
     (b,) = w.bolts
     assert (b.born, b.age0, b.origin, b.life) == (70, -1, (21 * 256 + 128, 22 * 256 + 128), 13)
-    assert [lights.bolt_age(b, 70 + k) for k in (0, 1, 12)] == [0, 1, 12] and lights.bolt_age(b, 83) is None
+    assert [lights.bolt_age(b, 70 + k) for k in (1, 2, 13)] == [0, 1, 12] and lights.bolt_age(b, 70) is None and lights.bolt_age(b, 84) is None
     assert [lights.bolt_phase(a) for a in (0, 1, 2, 12)] == [0, 4, 3, 3]
 
 
@@ -373,6 +373,6 @@ def test_bolt_sprites_are_drawn_and_the_carriers_of_10_and_11_have_no_missile():
     ts = [foe(w, 2 + i, 24, 18 + 2 * i) for i in range(2)]
     cast, st = start(w, c, ts[0])
     spells.cast_release(w, c, cast, st)
-    pics = [i for i in build_draw_list(w, cam(22, 20), w.tick, a, PLAIN) if i.kind == "sprite" and i.sprite[0] == "projectile"]
+    pics = [i for i in build_draw_list(w, cam(22, 20), w.tick + 1, a, PLAIN) if i.kind == "sprite" and i.sprite[0] == "projectile"]
     assert pics and {i.sprite[1] for i in pics} == {30}                          # no flying missile of the carriers (id 30 is the bolt)
     assert {i.frame % 5 for i in pics} == {4} and {i.frame // 5 for i in pics} == {0, 1}
