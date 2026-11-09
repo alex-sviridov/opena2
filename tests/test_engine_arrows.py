@@ -317,3 +317,18 @@ def test_arrow_start_uses_the_unit_position_but_the_cast_start_the_footprint_cen
     px, py = s.x * C + s.sub_x, s.y * C + s.sub_y
     assert effects.arrow_origin(w, s) == (px - (64 - SO[k]) * 8, py - (78 - SO[k + 1]) * 8)                # +8 / +0xc
     assert effects.shoot_origin(w, s) == (px + 128 - (64 - SO[k]) * 8, py + 128 - (78 - SO[k + 1]) * 8)     # +0x5c / +0x60
+
+
+def test_the_lens_is_clipped_half_open_on_both_the_source_and_the_target_pixel():
+    """`FUN_004a6b4b` tests every target and every source pixel with `PtInRect` (half-open: `right` / `bottom` are outside) against the clip rect."""
+    import numpy as np
+    from allods2.anim.lens import apply_lens
+    pix = np.arange(40 * 30, dtype=np.uint32).reshape(30, 40)
+    before = pix.copy()
+    apply_lens(pix, 39, 0)                                         # the bulge's centre in the top-right corner: three quarters fall outside
+    assert pix.shape == (30, 40)
+    changed = np.argwhere(pix != before)
+    assert len(changed) and changed[:, 0].min() >= 0 and changed[:, 1].max() <= 39
+    pix2 = before.copy()
+    apply_lens(pix2, 200, 200)                                     # nothing inside the frame: untouched
+    assert (pix2 == before).all()
