@@ -443,9 +443,9 @@ new-game chain (open question "Main shell"). **Unimplemented kinds** log `not im
 Tests: `tests/test_engine_mission32.py` (win by attacking the sword carrier, script loss, hero loss, replay hash, no unsupported kinds, the once-only report).
 
 **Left for phase K** (documented no-ops or absent): variable references 8000-9999 (never written in the exe), unit names `>= 11001`, instant 37 (set music) and the other unnamed kinds ("Bad instant"),
-hero recruit `FUN_004f312a`, roster carry-over, campaign variables `0x301`-`0x30d`, the start menu / new-game screen, sound of the `0xfe` / `0xfd` / `0xfa` messages.
+hero recruit `FUN_004f312a`, roster carry-over, campaign variables `0x301`-`0x30d`, the start menu / new-game screen (the UI sounds of the `0xfe` / `0xfd` / `0xfa` messages are built in K11, [audio §2.5](audio.md)).
 
 ## Open questions
 
 * The recruit of `FUN_004f312a` (hero Var(0x305) at a mission end), the roster carry-over `FUN_004ebd5f` (saves §4: per-player upkeep `FUN_004f3cad`, `FUN_004f3d14`) and the campaign variables other than `0x300` / `0x305` / `0x380+` (who writes `0x301`-`0x30d`, `0x303` for mission 21, the markers at `0x214` / `0x228`).
-* Which UI sound `0x627740[0x10]` / `[0xe]` samples play for the `0xfe` / `0xfd` / `0xfa` messages (table ids 16 / 14 / 14 per [audio.md](audio.md) 2.5; the UI wiring is K11 slice 2). The story window is decoded: [ui-layout 11.5](ui-layout.md#115-on-screen-messages).
+* The story window is decoded: [ui-layout 11.5](ui-layout.md#115-on-screen-messages); its UI sounds (table ids 16 / 14 / 14) are built ([audio.md](audio.md) 2.5).

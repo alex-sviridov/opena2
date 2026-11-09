@@ -45,6 +45,18 @@ KEYS = {pygame.K_LEFT: "left", pygame.K_RIGHT: "right", pygame.K_UP: "up", pygam
 PLAYER_ID = 1       # single player: the human is record 1 (map.md part 5)
 
 
+class TapQueue(CommandQueue):
+    """The command queue that also remembers what was put since the audio last looked (`tap`; None = nobody listens): the order / select voices of
+    docs/engine/audio.md 2.3 follow the commands the player issues."""
+
+    tap = None
+
+    def put(self, cmd):
+        super().put(cmd)
+        if self.tap is not None:
+            self.tap.append(cmd)
+
+
 def ensure_display(w, h):
     """pygame display of size (w, h); created once (needed for convert_alpha)."""
     if not pygame.get_init():
@@ -213,7 +225,7 @@ def key_name(ev):
 
 def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Allods 2", max_frames=None,
         assets=None, options=None, debug=None, minimap=None, player_id=PLAYER_ID, commands=(), ai=True,
-        trace=False, hero_name="Hero", mission_id=None, frame_hook=None, sim_hook=None):
+        trace=False, hero_name="Hero", mission_id=None, frame_hook=None, sim_hook=None, audio=None, music_zones=()):
     """Accumulator main loop: fixed-step sim, variable-rate drawing.  Returns the `Simulation` when the window
     closes (or after `max_frames`, for tests).  `layout`: `Layout` of the window size (the camera is built from
     `layout.viewport`).  `ai`: the monsters think (docs/engine/ai.md; `--no-ai` of the CLI).  F1-F3 and Shift+F4/F5 toggle the debug overlays, F4-F12 are the spell shortcuts, Ctrl+H the health bars, Ctrl+F cycles the formation.
@@ -227,7 +239,9 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     window, TAB toggles the info panel's picture / text mode; while any dialog is open the loop skips `sim.step`, closes the tick block at resume (`TickClock.resume`: one tick, no burst), freezes the edge scroll and the world input, and keeps drawing.  Closing the window quits at once.  `trace`: the "No way" line (the
     exe's `-trace`), `hero_name`: the name of the player's heroes, `mission_id`: the `mission<id>.txt` of the story windows.
     `frame_hook(frame, ui, world)` runs at the start of every frame (a test hook); `sim_hook(sim)` gets the `Simulation` once built
-    (the session recorder of `play`)."""
+    (the session recorder of `play`).  `audio`: a `backend_pygame.audio.Audio` (None = silent run; docs/engine/audio.md): the loop drains `World.sound_events`
+    with the real camera and fog, feeds the issued commands to its Director, plays the UI sounds `GameUi` queues, starts the mission playlist (`music_zones` =
+    `Map.music()` zones) and stops the music on victory."""
     options, debug = options or DrawOptions(), debug or DebugFlags()
     layout = layout or Layout.for_size(camera.view_w + 160, camera.view_h)
     screen = ensure_display(*layout.size)
@@ -242,7 +256,9 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     ui.doll_mask = lambda u: iface.panels.doll_mask(world, u)
     texts, messages = ui.main, ui.messages
     panel = MinimapPanel.from_layout(minimap.geometry, layout) if minimap else None
-    sim, queue, scroll = Simulation(world, ai=ai, triggers=world.script is not None, vision=world.fog is not None), CommandQueue(), ScrollInput()
+    sim, queue, scroll = (Simulation(world, ai=ai, triggers=world.script is not None, vision=world.fog is not None, keep_sound_events=audio is not None),
+                          TapQueue(), ScrollInput())
+    queue.tap = [] if audio is not None else None
     sim.ui = ui
     if sim_hook is not None:
         sim_hook(sim)
@@ -281,6 +297,8 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
                 return
         panel.center_camera(camera, *pos)
 
+    if audio is not None:
+        audio.start_mission(music_zones, camera)
     gc.collect()
     gc.freeze()                         # the loaded world and art stay out of the collector's scans: a gen-2 pass over them paused a frame ~30 ms
     running = True
@@ -290,6 +308,8 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
             frame_hook(frames, ui, world)
         dt = clock.tick(60)
         for ev in pygame.event.get():
+            if audio is not None and audio.handle_event(ev):
+                continue                                        # the music track ended: the next one started
             if ev.type == pygame.QUIT:
                 running = False
             elif ev.type == pygame.KEYUP and ev.key in KEYS:
@@ -455,6 +475,9 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
         drain_no_way(world, player_id, messages, now, texts, trace)
         ui.poll(now)
         ui.after_step()
+        if audio is not None:
+            heard, queue.tap = queue.tap, []
+            audio.frame(now, world, camera, heard, ui.take_sounds())
         ui.sync_pack()
         ordering.update()
         hover = (pick_at(items.hover_picks, *mouse) if mouse is not None and not ui.frozen and layout.viewport.contains(*mouse) and not ui.book.contains(mouse)
@@ -494,5 +517,9 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
         if max_frames is not None and frames >= max_frames:
             break
     gc.unfreeze()
+    if audio is not None:
+        if ui.quit == "victory":
+            audio.stop_music()                                  # `0x48da92`: victory tears the mission down, the music stops hard
+        audio.close()
     pygame.quit()
     return sim

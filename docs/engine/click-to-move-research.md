@@ -527,7 +527,7 @@ player's (and broadcast id 0) messages and drops the rest (`drain_no_way`).
 
 ## 9. Open questions
 
-1. The per-order voice slots beyond the unit pick (sound engine, out of scope; the pick itself is §6.2).
+1. The per-order voice slots beyond the unit pick: built in K11 ([audio §2.3](audio.md)); the pick itself is §6.2.
 2. `FUN_00582a10` heap: the block after the `+0xb8` table (`(H+10)(W+6)` dwords); the last-row read of `FUN_00417f31` for panel column `W+3`/`W+4` (INFERRED skipped, result `H+4`).
 
 ## 10. Corrections to the existing docs (applied)

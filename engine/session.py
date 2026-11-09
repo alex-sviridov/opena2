@@ -180,9 +180,10 @@ def load_session(path):
     return s
 
 
-def replay_session(path, install=None, ticks=None):
+def replay_session(path, install=None, ticks=None, on_start=None, on_tick=None):
     """Run a recorded session headless.  Returns `(world, final)` with `final` = tick / result / hash as `Recorder.finish`
-    writes them; `ticks` defaults to the recorded final tick (the last command's tick + 1 when there is no final.json)."""
+    writes them; `on_start(world, assets, session)` and `on_tick(world, commands)` (after each step) are the hooks of the audio log: with `on_tick` the sound events are kept for the consumer
+    (they are not part of the hash); `ticks` defaults to the recorded final tick (the last command's tick + 1 when there is no final.json)."""
     from engine.sim import triggers
     s = load_session(path)
     final_path = os.path.join(s["dir"], "final.json")
@@ -190,9 +191,11 @@ def replay_session(path, install=None, ticks=None):
     if os.path.exists(final_path):
         with open(final_path, encoding="utf-8") as f:
             recorded = json.load(f)
-    world, _ = build_game(s["map"], install, seed=s["seed"], difficulty=s["difficulty"], vision=True)
-    sim = Simulation(world, triggers=True, vision=True)     # play runs with fog and the dump holds the fog bits
+    world, assets = build_game(s["map"], install, seed=s["seed"], difficulty=s["difficulty"], vision=True)
+    sim = Simulation(world, triggers=True, vision=True, keep_sound_events=on_tick is not None)     # play runs with fog and the dump holds the fog bits
+    if on_start is not None:
+        on_start(world, assets, s)
     n = ticks if ticks is not None else (recorded["tick"] if recorded and "tick" in recorded
                                           else max((t for t, _ in s["commands"]), default=0) + 1)
-    replay(sim, s["commands"], n)
+    replay(sim, s["commands"], n, on_tick)
     return world, {"tick": world.tick, "result": triggers.result(world), "hash": world.dump_hash()}, recorded

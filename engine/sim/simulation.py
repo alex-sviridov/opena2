@@ -73,8 +73,8 @@ class Simulation:
         self.world.tick += 1
 
 
-def replay(sim, log, ticks):
-    """Step `sim` for `ticks` ticks, feeding each tick the commands logged for it."""
+def replay(sim, log, ticks, on_tick=None):
+    """Step `sim` for `ticks` ticks, feeding each tick the commands logged for it; `on_tick(world, commands)` runs after each step (the audio log)."""
     by_tick = {}
     regen = sim.world.ai_on                     # the AI regenerates its commands: drop the logged ones (a sim without AI applies them)
     for tick, cmd in log:
@@ -82,4 +82,7 @@ def replay(sim, log, ticks):
             continue
         by_tick.setdefault(tick, []).append(cmd)
     for _ in range(ticks):
-        sim.step(by_tick.get(sim.world.tick, ()))
+        cmds = by_tick.get(sim.world.tick, ())
+        sim.step(cmds)
+        if on_tick is not None:
+            on_tick(sim.world, cmds)

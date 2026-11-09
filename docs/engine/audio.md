@@ -4,7 +4,7 @@ Goal: the engine sounds and plays music the way the exe does. Formats, the id ta
 [formats/sound.md](../formats/sound.md); this page is the engine side: **where the exe triggers sounds (with addresses), the playback
 rules, the music state machine, the layers, settings, tests, VERIFY BY EAR**. Marks: **CONFIRMED** = routine read with REA (K10 + K11
 research, allods2.exe sha256 in [formats/README](../formats/README.md)), **INFERRED** otherwise. Code: `engine/audio/` (pure, no pygame) and
-`engine/backend_pygame/audio.py` (mixer glue). Tests: `tests/test_engine_audio*.py`.
+`engine/backend_pygame/audio.py` (mixer glue). Tests: `tests/test_engine_audio*.py`. Status: slices 1 and 2 built (§9, §10).
 
 ## 1. Corrections to sound.md found in K11 (CONFIRMED, `0x45aa2f` read again)
 
@@ -213,12 +213,12 @@ duplicate) or `dropped:voices` (no voice), `dropped:fog`, `dropped:cooldown`. A 
 * `test_engine_audio_world.py`: world-dump goldens and `replay --verify` unchanged with audio on or off.
 * `test_engine_audio_music.py`: the music state machine: random start, wrap, zone theme switch at the mission start and at track end, theme never cleared, victory stop, defeat none.
 * `test_engine_audio_voices.py`: cooldown 3000 / 2000 shared stamp, an empty slot still stamps, `rand(count-1)` inclusive, skip rule of move / swarm.
-* backend smoke: `Audio` plays and stops with the dummy driver; settings round trip.
+* `test_engine_audio_backend.py` (slice 2): `Audio` plays / stops / mutes with the dummy driver, no device = silence, `MusicPlayer` on a synthetic wav (start, end event, stale event, fade, stop, missing file, mute), the UI sound queue, the flags and settings overrides (settings file never written), the play loop with a `NullAudio`, `replay --audio-log` on a short scripted session of map 32 (CSV columns, `#` header, `--verify` hash identical with and without it).
 
 ## 9. Slice 1 as built (decisions where the spec was silent; all INFERRED unless marked)
 
 Built (slice 1, no device): `engine/audio/{events,mix,mixer,voices,music,ambience,director,audiolog,settings}.py`, `engine/sim/sounds.py` (the emitters), tests `tests/test_engine_audio_*.py` +
-`tests/audio_scenarios.py` (goldens `["audio"]`, `tools/update_golden.py --only audio`). Not built: the pygame backend, UI wiring (`Director.ui` callers), `replay --audio-log`, the settings CLI flags, the coverage flip.
+`tests/audio_scenarios.py` (goldens `["audio"]`, `tools/update_golden.py --only audio`). Slice 2 is §10.
 
 * **Sim emission points.** `swing`: `combat.swing_tick` at the wind-up end (the hit tick), when a target exists, sound = the attacker's units.reg slot [attack] (a bow's shot is the same call); a type with no data /
   empty slot emits nothing. `cast`: `spells.cast_tick` at the wind-up end (the release tick stands for the client's cast frame: the sim has no frame clock), `500 + spell number`. `spell`: `spells.cast_start` (the
@@ -243,6 +243,27 @@ Built (slice 1, no device): `engine/audio/{events,mix,mixer,voices,music,ambienc
   `stopped`. A replay passes `replay_ms(tick, rate)`; the replay camera rule of §5 is the caller's.
 * **Music zones** use the view centre in 1/256 cell units and `rand(3)` = 0..3 (inclusive, like every `FUN_0051fa25`); `stop` forgets the playlist.
 
+## 10. Slice 2 as built (the backend, the wiring, the CLI; all INFERRED decisions unless marked)
+
+Files: `engine/backend_pygame/audio.py` (`NullAudio`, `Audio`, `MusicPlayer`, `wav_duration_ms`), wiring in `backend_pygame/window.py` (`TapQueue`, the `audio=` / `music_zones=` arguments of `run`), `engine/ui/game.py` (the sound queue),
+`engine/__main__.py` (flags, `replay --audio-log`), `engine/session.py` + `engine/sim/simulation.py` (`replay(on_tick=)`), tests `tests/test_engine_audio_backend.py`.
+
+* **Layering.** `NullAudio(fs, settings, seed, log, viewer)` owns the soundtable, the hero banks and the `Director`; `frame(now_ms, world, camera, commands, ui_sounds)` = the director frame with the ambience pass, the UI sounds, the music ticks. `Audio` adds the output:
+  every audible `Played` (`played`, `stolen`) starts `mixer.Channel(p.channel)` with the model's channel (16 channels = the 16 voices), `updated` sets the loop's volume / pan, `stopped` stops it. Gains = `mix.pan_gains(volume_mB, pan)`. Durations for the model are read from the wav headers
+  (`wav_duration_ms`: data size / frame size, or the `fact` frame count of ADPCM), the decode to a cached `mixer.Sound` (`Sound.to_wav`) happens on the first play; a file with no samples has no duration (`dropped:missing`). Mute: nothing is started and the music volume is 0 (nothing is loaded);
+  the log still shows the unmuted volumes. pygame is imported lazily (a `NullAudio` / the replay need none); the mixer failing to open sets `Audio.ok = False` and everything stays silent.
+* **Music.** `MusicPlayer` loads `BytesIO(fs.read(path))` with `pygame.mixer.music.load(.., "wav")`, volume = `gain(bus_mB)`; `set_endevent(custom type)`; the window loop gives every event to `audio.handle_event`, which asks `MusicState.track_ended()` (ignored when nothing is current or the stream is
+  still busy: a stop / fade / restart posts a stale event). **The track change at an end is not sample-gapless** (the next file is loaded when the event arrives, a few ms; `mixer.music.queue` would be gapless but cannot be re-decided by the state machine: VERIFY BY EAR). Zones: `Map.music[1]` (x, y, radius in cells -> `<< 8`);
+  the view centre in 1/256 cells is `(camera px + view / 2) * 8`; `MusicState.tick` is called for every sim tick since the last frame (capped at 64), so the 16-tick roll survives a slow frame and a pause draws nothing. The default zone record (section 12 head) is not used (the exe's `0x4754e9` reads only the list).
+  Victory: when the loop ends with `ui.quit == "victory"` the music is hard-stopped (`0x48da92`); the complete dialog, the defeat dialog, pause and the menu keep it playing.
+* **Order / select voices.** The window's queue is a `TapQueue`: every command put (mouse orders, bar buttons, hotkeys, selection release) is also kept in `tap`; each frame the new ones go to `Director.frame(commands=)` (only the viewer's non-AI commands speak). The sim runs with `keep_sound_events=True` when audio is on.
+* **UI sounds** (`GameUi.sound(id, priority)`, `take_sounds()`; the UI plays nothing itself): dialog button press (2) on an enabled button; command-bar button (8) when the press runs a button (`BarWindow.clicked`); info panel mode / menu / pack / book buttons (1) on the release, plus 7 for pack / book; pack and book toggles by key, button or
+  Space (7; Space opening both plays it twice, as the two messages do); mission-complete (14) / failed (16) dialogs when pushed; the `("sound", slot, 0xDC)` actions of `message_action` (slots 16 / 14); the chat echo line (`0x91`, `message` 15 at priority 100). **Not duplicated:** the skill-up line plays no UI sound because the sim's `skillup` event
+  already plays `message` for the viewer's own heroes (§2.1); the other `message` sites (`0x93`, `0xb9`, sub-types 5-8 / `0x10`) have no engine source yet. Option-toggle lines have none in the exe. Not built: the options slider test button (`0x474`, no options screen), town sounds.
+* **CLI.** `run` / `play`: `--mute`, `--sfx-volume N`, `--music-volume N`, `--speech-volume N` (clamped 0-100, override the settings file for the run, which is only read, never written), `--no-audio` (no `Audio` at all). `replay SESSION [--verify] --audio-log CSV`: the sim of the replay keeps its sound events, after each step
+  `NullAudio.frame` runs on the replay clock (`tick * 1000 // 16`: the default speed, the journal has no speed) with a `PartyCamera` (480 px square view centred on the viewer's live units), **default settings** (the log must not depend on the user's file), the audio seed = the session seed, the music started with the map's zones. The CSV has two `#` header lines then the §7 columns. Hash, tick and `--verify` are identical with and without the option (tested).
+* **Measured.** 400 frames of map 32 with the dummy driver run at the same 7.0 s (60 fps cap) with and without audio; a `NullAudio` replay of 400 ticks adds a few rows (ambience one-shots, the select voice).
+
 ## VERIFY BY EAR
 
 1. Hero voice gaps: after a move order, another order within 3 s is silent (shared stamp); select 2 s.
@@ -264,3 +285,5 @@ Built (slice 1, no device): `engine/audio/{events,mix,mixer,voices,music,ambienc
 - The town windows `0x4b978f`, `0x4be6b0`, `0x4c03c2` and the speech-test sample of the options dialog.
 - Pickup / retreat / swarm bank offsets (INFERRED from the layout).
 - Hurt kind: [combat §12.7](combat.md) / `view/damage.hit_sound_kind` pick k from the **new** HP (`0x412a58`-`0x412acb`), sound.md §4.1 and §2.1 above say the old view HP; the engine follows the former. Re-read `0x467e42` / `0x467f60` to settle it.
+- Gapless track change at a track end (the next track is loaded on the end event); whether `Channel.set_volume(l, r)` of SDL_mixer reproduces DirectSound's pan law at the screen edge.
+- The remaining `message` (id 15) sites (`0x93`, `0xb9`, sub-types 5-8 / `0x10` of `0x92`): they need message sources the engine does not have (quests, trade).

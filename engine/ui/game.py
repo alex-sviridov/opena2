@@ -18,6 +18,10 @@ from .widgets import info_button_rect
 
 QUIT_REASONS = ("menu", "windows", "victory", "defeat")
 
+# UI sound ids (sfx.reg, docs/engine/audio.md 2.5) and priorities: the UI always gets a voice (`0xdc`), the message line plays at 100
+S_CLICK00, S_CLICK01, S_IBOOK, S_CLICK04, S_MESSAGE, S_COMPLETE, S_FAILED = 1, 2, 7, 8, 15, 14, 16
+UI_PRIORITY, MESSAGE_PRIORITY = 0xDC, 0x64
+
 
 class GameUi:
     """`main` / `dialogs` / `unit_names`: `MainText` objects (`.line(i)`, `.lines`); `mission_text`: the whole `mission<id>.txt` or None."""
@@ -48,6 +52,15 @@ class GameUi:
         self.pressed = None                     # (dialog, button index) under a held left button
         self.watch = PickupWatch(world, player_id)
         self._complete_shown = self._failed_shown = False
+        self.sounds = []                        # [(sfx id, priority)] the backend plays and clears each frame (audio.md 2.5); the UI never plays anything itself
+
+    def sound(self, sid, priority=UI_PRIORITY):
+        """Queue a flat UI sound (the exe's `FUN_0045aa2f(id, 0, 0, 0xdc)`)."""
+        self.sounds.append((sid, priority))
+
+    def take_sounds(self):
+        out, self.sounds = self.sounds, []
+        return out
 
     # -- state the loop reads ------------------------------------------------------------------------------------------------------
     @property
@@ -176,7 +189,7 @@ class GameUi:
         if name == "pause":
             return self.toggle_pause()
         if name in ("b", "q"):
-            self.book.toggle()                  # `0x40cd29` (B / Q): message 0x40f, mission mode only
+            self.toggle_book()                  # `0x40cd29` (B / Q): message 0x40f, mission mode only
             return True
         if name in ("i", "`", "~"):
             self.toggle_pack()                  # `0x40ccb6` (I, the backquote key): message 0x40e
@@ -212,11 +225,18 @@ class GameUi:
             return
         p = self.world.players[self.player_id]
         self.messages.show("%s: %s" % (p.name, text), now_ms, CHAT_MS, ("player", p.colour))
+        self.sound(S_MESSAGE, MESSAGE_PRIORITY)     # message `0x91` posts a text line: sfx `message`, priority 0x64
 
     def toggle_pack(self):
         """Message `0x40e` (`FUN_0041adc2` open / `FUN_0041ae4f` close): the book window stacks above an open inventory."""
         self.pack.toggle()
         self.book.inventory_open = self.pack.open
+        self.sound(S_IBOOK)                     # `0x41adc2` / `0x41ae4f`
+
+    def toggle_book(self):
+        """Message `0x40f` (`FUN_0041af4a` open / `FUN_0041b077` close)."""
+        self.book.toggle()
+        self.sound(S_IBOOK)
 
     DEAD_HERO_HP = -0x28                        # `0x40cdaa`: `cmp word [hero+0x104], -0x28; jg`
 
@@ -231,11 +251,13 @@ class GameUi:
             self.pack.open_pack()
             self.book.open_book()
             self.book.inventory_open = True
+            self.sound(S_IBOOK)
+            self.sound(S_IBOOK)                 # both windows open: the two messages each play it
             return
         if self.pack.open:
             self.toggle_pack()
         if self.book.open:
-            self.book.toggle()
+            self.toggle_book()
 
     # -- the pack, the carried item ----------------------------------------------------------------------------------------------------
     def sync_pack(self):
@@ -308,6 +330,8 @@ class GameUi:
         if top is not None:
             i = top.button_at(pos)
             self.pressed = (top, i) if i is not None and top.buttons[i].enabled else None
+            if self.pressed is not None:
+                self.sound(S_CLICK01)               # `0x4d5c41`: the generic button class, on press
             return True, None
         if self.pack.contains(pos):
             if clicks >= 2:
@@ -334,7 +358,10 @@ class GameUi:
         Nothing while an item is carried (`client+0x3f4`)."""
         if ordering is None or self.pack.carried is not None or self.frozen:
             return None
+        self.bar.clicked = False
         cmd, close = self.bar.press(bar.cell_at(self.layout, pos), ordering, cast_enabled, self.book.open)
+        if self.bar.clicked:
+            self.sound(S_CLICK04)               # `0x40c295`: the view runs a command-bar button
         if close:
             self.book.close()
         return cmd
@@ -348,12 +375,13 @@ class GameUi:
             if name == "mode" and self.layout.text_in_extra:
                 continue                        # no mode button while window 8 shows the text
             if info_button_rect(self.layout, name).contains(*pos):
+                self.sound(S_CLICK00)           # `0x4aebc8`: every info panel button, on the release
                 if name == "mode":
                     self.toggle_mode()
                 elif name == "menu":
                     self.open_menu()
                 elif name == "book":
-                    self.book.toggle()          # message 0x40f
+                    self.toggle_book()          # message 0x40f
                 elif name == "pack":
                     self.toggle_pack()          # message 0x40e
                 return True
@@ -404,7 +432,9 @@ class GameUi:
                 keep.append(ev)
                 continue
             for act in campaign_mod.message_action(ev.number, modal=self.frozen):
-                if act[0] == "text":
+                if act[0] == "sound":
+                    self.sound(act[1], act[2])      # `0x485ff7` ...: sound `0xdc` on UI slot act[1] (campaign.message_action)
+                elif act[0] == "text":
                     self._story(int(act[1][5:]))
                     opened += 1
                 elif act[0] == "queue":
@@ -420,6 +450,7 @@ class GameUi:
                 self._complete_shown = True
                 self._close_book_for_result()
                 self.modals.push(modal.complete_dialog(self.layout, self.main_text, self.dialog_text))
+                self.sound(S_COMPLETE)              # `0x486f74`
                 opened += 1
             elif dlg.kind == "defeat":
                 opened += self._open_failed()
@@ -441,6 +472,7 @@ class GameUi:
         cause = self.world.players[self.player_id].death_code      # message 0xb4's cause (2 = the hero died, 3.. = the script's fail code)
         reason = story.failure_text(self.mission_text, self.main_text, cause)
         self.modals.push(modal.failed_dialog(self.layout, self.main_text, self.dialog_text, reason, self.wrap))
+        self.sound(S_FAILED)                        # `0x48707e`
         return 1
 
     def after_step(self):

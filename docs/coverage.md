@@ -85,7 +85,6 @@ Scanned 46 campaign maps; smoke run 1600 ticks of the map script and the AI with
 
 | Feature | What | Status | Impact | Step | Maps | Unblocks alone | Note |
 |---|---|---|---|---|---|---|---|
-| `music.zones` | music zones (section 12) | missing | polish | sound | 46 | - | the engine has no audio |
 
 ### Script kinds the maps use (reachable from an active trigger)
 
@@ -194,7 +193,6 @@ Steps the maps do not need to be completed but a finished game does; each touche
 
 | Step | Effort | Backlog item |
 |---|---|---|
-| `sound` Sound and music: music zones, unit and UI sounds, the 0xfe / 0xfd / 0xfa messages | 5 | 6 |
 | `hero_ui` Hero windows: the Heads panel, hero screen (stats, skills, paper doll), item shops | 3 | 1 |
 | `campaign` Campaign flow: world map, towns, hero recruit, roster carry-over, the Scenario.dll variables | 8 | 4 |
 | `menus` Start menu, new-game and options screens, in-game menu entries | 4 | 5 |
@@ -213,11 +211,10 @@ First the steps that unblock maps (greedy: the next one completes the most block
 
 | # | Step | Effort | Maps newly playable | Playable after | Maps touched | Backlog item |
 |---|---|---|---|---|---|---|
-| 1 | `sound` Sound and music: music zones, unit and UI sounds, the 0xfe / 0xfd / 0xfa messages | 5 | - | 46 | 46 | 6 |
-| 2 | `hero_ui` Hero windows: the Heads panel, hero screen (stats, skills, paper doll), item shops | 3 | - | 46 | 46 | 1 |
-| 3 | `menus` Start menu, new-game and options screens, in-game menu entries | 4 | - | 46 | 46 | 5 |
-| 4 | `save` Save / load: the game%d.sav writer and reader | 4 | - | 46 | 46 | 7 |
-| 5 | `campaign` Campaign flow: world map, towns, hero recruit, roster carry-over, the Scenario.dll variables | 8 | - | 46 | 46 | 4 |
+| 1 | `hero_ui` Hero windows: the Heads panel, hero screen (stats, skills, paper doll), item shops | 3 | - | 46 | 46 | 1 |
+| 2 | `menus` Start menu, new-game and options screens, in-game menu entries | 4 | - | 46 | 46 | 5 |
+| 3 | `save` Save / load: the game%d.sav writer and reader | 4 | - | 46 | 46 | 7 |
+| 4 | `campaign` Campaign flow: world map, towns, hero recruit, roster carry-over, the Scenario.dll variables | 8 | - | 46 | 46 | 4 |
 
 <!-- coverage:end -->
 
@@ -243,6 +240,8 @@ drawing, sound and shell.
 | K9 | `draw`: status effects of units, arrows of shooters | 2 | polish only (46 maps) | 46 |
 | then | `sound`, `hero_ui`, `menus`, `save`, `campaign` | 5 + 3 + 4 + 4 + 8 | none: no map needs them to be completed | 46 |
 
+**K11 done (2026-11-09):** the pygame audio backend, the play-loop wiring (sim sounds, order / select voices, ambience, UI sounds, mission playlist with the zone themes), the settings flags and `replay --audio-log` ([audio](engine/audio.md) §10); the `sound` step left the proposal, the counts are unchanged (polish only).
+
 **K9 done (2026-11-09):** the shooters' arrows, bolts, stones and the Sonic lens, the one-shot Teleport / Drain Life sprites and the spell missiles' start (ShootOffset, altitude 0) are drawn from the client projectile model of the exe; the **status effects need no drawing** (CONFIRMED: the exe's hit sprites live 0 steps, only Invisibility and Stone Curse change a unit, no panel icon): [rendering.md "Arrows and shots"](engine/rendering.md#arrows-and-shots-k9) and [Status effects](engine/rendering.md#status-effects-k9). The regenerated block reads 46 of 46 playable, no polish gap left but sound.
 
 **K5 done (2026-11-09):** the pickup click and the pack-based script items are built ([items](engine/items.md)); the regenerated block above reads 41 of 46 maps without a blocker (12 playable now), as predicted.
@@ -259,7 +258,7 @@ switch class are only partly read: command `0x24` in [click-to-move-research](en
 | 3. Full triggers | Almost nothing left: check 25 and instants 29 / 30 (K7). Variable references 8000-9999 and unit names >= 11001 are used by no map: drop them. |
 | 4. Campaign | Blocks no single map (the party of a map is placed fresh, [triggers §9](engine/triggers.md#9-the-party-at-map-start-fun_004f2c83)); it is the largest step and gates a finished game, not a playable map. |
 | 5. Full UI | Same: shell, not map content. |
-| 6. Sound and music | Every map has music zones; polish. |
+| 6. Sound and music | Done (K11): music zones, unit, order, ambience and UI sounds; not yet judged by ear. |
 | 7. Save / load | Not a map blocker. |
 | **missing** | **Use a structure** is not in the backlog at all, yet 5 maps are blocked on it (K6) and 33 maps contain a usable structure (K8). |
 

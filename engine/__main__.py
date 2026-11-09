@@ -9,7 +9,8 @@ reports and crash traceback; docs/superpowers/specs/2026-11-05-prototype-j4-desi
    python -m engine world-dump MAP DEST.json [--install DIR]
    python -m engine minimap MAP DEST.png [--units] [--install DIR]
    python -m engine play MAP [--out DIR] [--size WxH] [--speed N] [--difficulty 1|2|3] [--seed N] [--hero-name NAME] [--install DIR]
-   python -m engine replay SESSION [--verify] [--install DIR]
+   python -m engine replay SESSION [--verify] [--audio-log CSV] [--install DIR]
+   (run and play also take --mute, --sfx-volume N, --music-volume N, --speech-volume N (0-100, this run only; settings file: docs/engine/audio.md 6) and --no-audio)
    python -m engine maps [--install DIR]           (the campaign maps: number, size, players, name)
    python -m engine coverage [GAME_DIR] [--ticks N] [--csv PATH] [--docs PATH|-] [--maps 10,32]
                                                    (map coverage report, phase K0: out/coverage.csv + docs/coverage.md)
@@ -51,6 +52,7 @@ from engine.rng import DEFAULT_SEED
 from engine.world import DEFAULT_DIFFICULTY, World
 
 
+AUDIO_VIEW_PX = 480     # the replay's audio camera: the 640x480 viewport (docs/engine/audio.md 7)
 BORDER_CELLS = 8        # the camera never shows the 8-cell map border (ui-layout.md section 3)
 
 
@@ -220,15 +222,94 @@ def debug_move_commands(world, args):
     return [FollowPath(uid, expand_line((u.x, u.y), ends))]
 
 
+def audio_settings(a):
+    """The settings file with the command-line overrides of this run (`--mute`, `--sfx-volume`, `--music-volume`, `--speech-volume`); never written."""
+    from engine.audio import settings
+    def pct(v):
+        return None if v is None else max(0, min(100, v))
+    return settings.load().override(mute=True if getattr(a, "mute", False) else None, sfx=pct(getattr(a, "sfx_volume", None)),
+                                    music=pct(getattr(a, "music_volume", None)), speech=pct(getattr(a, "speech_volume", None)))
+
+
+def make_audio(a, assets):
+    """The pygame `Audio` of a run, or None with `--no-audio`.  No device = a silent Audio (never an error)."""
+    if getattr(a, "no_audio", False):
+        return None
+    from engine.backend_pygame.audio import Audio
+    return Audio(assets.fs, audio_settings(a))
+
+
+def map_music_zones(a):
+    """The music zones (section 12) of the map."""
+    from allods2.cli import open_map
+    return open_map(a.map, a.install).music[1]
+
+
+class PartyCamera:
+    """The replay's camera (audio.md 5: the log has none): centred on the viewing player's live units, a fixed 480 x 480 px view."""
+
+    view_w = view_h = AUDIO_VIEW_PX
+    x = y = 0.0
+
+    def follow(self, world, viewer=1):
+        us = [u for u in world.units.values() if u.owner == viewer and u.hp > 0]
+        if us:
+            self.x = sum(u.x for u in us) / len(us) * 32 + 16 - self.view_w / 2
+            self.y = sum(u.y for u in us) / len(us) * 32 + 16 - self.view_h / 2
+
+
+def replay_audio_log(path, install=None):
+    """`(on_start, on_tick)` hooks for `session.replay_session`: the replay through the Director + `NullAudio` on the replay clock, writing the CSV `path`."""
+    from engine.audio.audiolog import AudioLog
+    from engine.audio.director import replay_ms
+    from engine.backend_pygame.audio import NullAudio, replay_rate
+    from engine.audio.settings import Settings
+    state = {}
+    rate = replay_rate()
+
+    def on_start(world, assets, sess):
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        state["f"] = open(path, "w", encoding="utf-8", newline="")
+        header = ["audio log of session %s (map %s, seed %s, difficulty %s)" % (sess["dir"], sess["map"], sess["seed"], sess["difficulty"]),
+                  "replay clock %d ticks per second, camera centred on the party (%d px square), default settings; UI sounds are not in a replay" % (rate, AUDIO_VIEW_PX)]
+        state["log"] = AudioLog(state["f"], header)
+        state["audio"] = NullAudio(assets.fs, Settings(), seed=sess["seed"], log=state["log"])
+        state["cam"] = PartyCamera()
+        state["audio"].start_mission(map_zones(sess, assets), None)
+
+    def map_zones(sess, assets):
+        try:
+            from allods2.cli import open_map
+            return open_map(sess["map"], install).music[1]
+        except Exception:                           # noqa: BLE001  a replay never fails for its sound log
+            return ()
+
+    def on_tick(world, cmds):
+        cam = state["cam"]
+        cam.follow(world)
+        state["audio"].frame(replay_ms(world.tick, rate), world, cam, cmds)
+
+    def finish():
+        if "f" in state:
+            state["f"].close()
+        return state["log"].rows if "log" in state else 0
+    return on_start, on_tick, finish
+
+
 def replay_cmd(a):
-    """`replay SESSION`: tick, result and hash of the run; with `--verify` exit 1 on a hash different from final.json."""
+    """`replay SESSION`: tick, result and hash of the run; with `--verify` exit 1 on a hash different from final.json; `--audio-log CSV` also writes the audio log."""
     from engine import session
+    on_start = on_tick = finish = None
+    if getattr(a, "audio_log", None):
+        on_start, on_tick, finish = replay_audio_log(a.audio_log, a.install)
     try:
-        world, got, recorded = session.replay_session(a.session, a.install)
+        world, got, recorded = session.replay_session(a.session, a.install, on_start=on_start, on_tick=on_tick)
     except (OSError, ValueError, KeyError) as e:
         print("replay: %s" % e, file=sys.stderr)
         return 2
     print("tick %d result %s hash %s" % (got["tick"], got["result"] or "-", got["hash"]))
+    if finish is not None:
+        print("audio log: %d rows -> %s" % (finish(), a.audio_log))
     if a.verify:
         if not recorded or "hash" not in recorded:
             print("replay: no recorded hash (final.json missing or the session was killed)", file=sys.stderr)
@@ -277,7 +358,7 @@ def play_cmd(a, parser):
         window.run(world, tv, camera, a.layout, a.speed, "Allods 2 - " + world.name, assets=assets, options=opts,
                    debug=debug, minimap=mm, ai=True, hero_name=a.hero_name,
                    mission_id=mission.group(1) if mission else None,
-                   frame_hook=rec.frame, sim_hook=rec.attach)
+                   frame_hook=rec.frame, sim_hook=rec.attach, audio=make_audio(a, assets), music_zones=map_music_zones(a))
         reason = {"won": "victory", "lost": "defeat"}.get(triggers.result(world), "quit")
     except BaseException as e:                     # a crash or Ctrl+C: the session is still written
         reason = "interrupted" if isinstance(e, KeyboardInterrupt) else "crash"
@@ -289,7 +370,15 @@ def play_cmd(a, parser):
     return 1 if reason == "crash" else 0
 
 
-def main(argv=None):
+def add_audio_flags(q):
+    q.add_argument("--mute", action="store_true", help="silence the run (the stored volumes stay)")
+    q.add_argument("--sfx-volume", type=int, metavar="N", help="effects volume 0-100 for this run (settings file: docs/engine/audio.md 6)")
+    q.add_argument("--music-volume", type=int, metavar="N", help="music volume 0-100 for this run")
+    q.add_argument("--speech-volume", type=int, metavar="N", help="voice volume 0-100 for this run")
+    q.add_argument("--no-audio", action="store_true", help="no sound device at all")
+
+
+def build_parser():
     p = argparse.ArgumentParser(prog="python -m engine")
     sub = p.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run")
@@ -367,6 +456,14 @@ def main(argv=None):
     rp.add_argument("session", help="a session directory or its session.json")
     rp.add_argument("--verify", action="store_true", help="exit 1 when the world hash differs from final.json")
     rp.add_argument("--install")
+    rp.add_argument("--audio-log", metavar="CSV", help="also run the sound model on the replay and write its log (docs/engine/audio.md 7)")
+    add_audio_flags(r)
+    add_audio_flags(pl)
+    return p
+
+
+def main(argv=None):
+    p = build_parser()
     a = p.parse_args(argv)
     from allods2.cli import MapNotFound
     try:
@@ -422,7 +519,8 @@ def _dispatch(a, p):
         mission = re.search(r"(\d+)(?:\.alm)?$", os.path.basename(a.map.rstrip("/\\")), re.I)
         window.run(world, tv, camera, a.layout, a.speed, "Allods 2 - " + world.name,
                    assets=assets, options=opts, debug=debug, minimap=mm, commands=commands, ai=not a.no_ai or a.triggers,
-                   trace=a.trace, hero_name=a.hero_name, mission_id=mission.group(1) if mission else None)
+                   trace=a.trace, hero_name=a.hero_name, mission_id=mission.group(1) if mission else None,
+                   audio=make_audio(a, assets), music_zones=map_music_zones(a))
     elif a.interface:
         from engine.backend_pygame.interface import screenshot_window
         from engine.world import UNIT_ID_BASE

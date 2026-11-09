@@ -56,7 +56,6 @@ STEPS = {s.id: s for s in (
     Step("use_more", "Use a structure, the rest: signpost messages, wells, King's graves, altars (research of each class)", 2),
     Step("tilefx", "Cell effects for scripts: check 25 reads the cell layers, instants 29 / 30 set spell durations", 1, backlog=3),
     Step("draw", "Draw what is simulated: status effects of units, arrows of shooters", 2, backlog=2),
-    Step("sound", "Sound and music: music zones, unit and UI sounds, the 0xfe / 0xfd / 0xfa messages", 5, glob=True, backlog=6),
     Step("hero_ui", "Hero windows: the Heads panel, hero screen (stats, skills, paper doll), item shops", 3, glob=True, backlog=1),
     Step("campaign", "Campaign flow: world map, towns, hero recruit, roster carry-over, the Scenario.dll variables", 8, glob=True, backlog=4),
     Step("menus", "Start menu, new-game and options screens, in-game menu entries", 4, glob=True, backlog=5),
@@ -82,7 +81,8 @@ FEATURES = {f.id: f for f in (
             "K9: the arrow, bolt, stone and the Sonic lens are drawn (rendering.md \"Arrows and shots\", tests/test_engine_arrows.py)"),
     Feature("spell.status", "spells whose status effect has no drawing (protections, Bless, Curse, Haste, Slow, Shield)", BUILT, POLISH, "",
             "K9: the exe draws none (CONFIRMED: its hit sprites live 0 steps; rendering.md \"Status effects\"), only Invisibility and Stone Curse change the unit's look"),
-    Feature("music.zones", "music zones (section 12)", MISSING, POLISH, "sound", "the engine has no audio"),
+    Feature("music.zones", "music zones (section 12)", BUILT, POLISH, "",
+            "K11: the mission playlist, the zone roll every 16 ticks and the gapless theme switch at the track end (audio.md 4, 9; the music `Decision`s are tested, the sound is VERIFY BY EAR)"),
     Feature("unit.caster", "units with a spell book or a special-attack slot", BUILT, POLISH, "", "AI casting K1, effects K2"),
     Feature("unit.flyer", "flying units (movement type 3)", BUILT, POLISH, "", "movement and combat rows, combat.md 2"),
     Feature("unit.ghost", "ghosts and bees (movement type 2)", BUILT, POLISH, "", ""),
@@ -372,8 +372,7 @@ def gaps(row, feats):
 
 
 def verdict(row, feats):
-    """`blocked`, `playable, gameplay gaps` (a usable structure the engine ignores, a spell duration) or `playable now` (polish gaps only: no sound,
-    arrows and status effects not drawn)."""
+    """`blocked`, `playable, gameplay gaps` (a usable structure the engine ignores, a spell duration) or `playable now` (polish gaps only)."""
     if blockers(row, feats):
         return "blocked"
     return "playable, gameplay gaps" if any(feats[g].impact == GAMEPLAY for g in gaps(row, feats)) else "playable now"

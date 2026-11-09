@@ -68,6 +68,7 @@ class BarWindow:
 
     def __init__(self):
         self.hl = None
+        self.clicked = False           # set when a press ran a button (the exe's click sound `0x40c295`)
         self.seen = 0                  # the pending mode the highlight last followed
 
     def sync(self, pending):
@@ -92,6 +93,7 @@ class BarWindow:
         if self.hl == i or (i == 4 and book_open):
             return None, False
         self.hl = i
+        self.clicked = True
         cmd = press(i, ordering, cast_enabled)
         if i in IMMEDIATE_CELLS:
             self.hl = None

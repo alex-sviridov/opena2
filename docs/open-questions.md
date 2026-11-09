@@ -21,7 +21,8 @@ from both places when answered).
 
 ## Combat and death
 
-- Sound (K10 answered the tables, the attenuation, the registry options, the speech names and the music zones; [sound](formats/sound.md#open-questions)): the server events behind the unchanged-HP blow sound, the shop-speech trigger, the unreferenced / missing speech names, `0x5f1a04`; the sound events and the audio model are built (K11 slice 1, [audio](engine/audio.md)); the backend is not.
+- Sound (K10 answered the tables, the attenuation, the registry options, the speech names and the music zones; [sound](formats/sound.md#open-questions)): the server events behind the unchanged-HP blow sound, the shop-speech trigger, the unreferenced / missing speech names, `0x5f1a04`; the engine plays sound and music (K11, [audio](engine/audio.md)): open items in the next line.
+- Audio K11 ([audio](engine/audio.md#open-questions), starting routines `FUN_0041da16`, `0x467e42`, `FUN_0041b311`): the callers of table ids 3-6 / 11-13 and which `message` (15) sites fire in single player; fog gating of unit sounds and the view state `+0x78 == 1`; which object defs are n44 / n34 / n58 and the first `rand` of the ambience; the town window sounds and the speech test sample; the pickup / retreat / swarm bank offsets; the hurt kind from the old or the new HP (`0x467e42` / `0x467f60`); the DirectSound pan law and the 74 % default against the real mixer (by ear); the exact gapless music switch.
 - Attack order aimed at a structure: answered (accepted, fought like a creature; [combat 5.5](engine/combat.md)); only the mage / spell-carrier branch against a structure is untraced.
 
 ## AI
@@ -40,7 +41,7 @@ from both places when answered).
 
 ## Triggers and scenario
 
-- [Triggers](engine/triggers.md#open-questions): the hero recruit `FUN_004f312a` (Var(0x305) at a mission end), the roster carry-over `FUN_004ebd5f` and the campaign variables `0x301`-`0x30d` / the markers at `0x214`; the UI sounds of the `0xfe` / `0xfd` / `0xfa` messages. Instants 29 / 30 stay documented no-ops (the effect system exists now: [effects](engine/effects.md)).
+- [Triggers](engine/triggers.md#open-questions): the hero recruit `FUN_004f312a` (Var(0x305) at a mission end), the roster carry-over `FUN_004ebd5f` and the campaign variables `0x301`-`0x30d` / the markers at `0x214`. Instants 29 / 30 stay documented no-ops (the effect system exists now: [effects](engine/effects.md)).
 - Scenario event classes: unit `behaviour` bits 1, 2, 4 and the three scenario booleans `+0x194` / `+0x198` / `+0x19c` (`FUN_005303ed`). [map](formats/map.md#open-questions), [unit-struct](engine/unit-struct.md#open-questions)
 
 ## Movement and orders
