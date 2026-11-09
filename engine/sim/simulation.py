@@ -8,7 +8,7 @@ from .movement import movement_system
 from .orders import orders_system
 from .selection import selection_system
 from .spells import carrier_system
-from .effects import bolt_system, explosion_system
+from .effects import bolt_system, explosion_system, flash_system
 from .traps import transient_system
 from .vitals import vitals_system
 
@@ -30,7 +30,7 @@ class Simulation:
             if world.script is None:
                 raise ValueError("triggers=True needs triggers.enable(world, map) first")
             ai = True
-        self.systems = [vitals_system, orders_system, selection_system, transient_system, carrier_system, explosion_system, bolt_system, movement_system] if systems is None else list(systems)
+        self.systems = [vitals_system, orders_system, selection_system, transient_system, carrier_system, explosion_system, bolt_system, flash_system, movement_system] if systems is None else list(systems)
         if ai:                                  # the monsters think at tick & 15 == 6, before the drain (docs/engine/ai.md 10)
             if not world.ai_on:
                 ai_mod.enable(world)

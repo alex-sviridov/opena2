@@ -800,6 +800,7 @@ def movement_system(world, commands):
             apply_follow_path(world, cmd)
     for u in list(world.units.values()):
         _tick_unit(world, u)
+    effects.arrow_system(world)         # the client's projectile list is stepped after the units of the same step (view `0x40bf30`), so after the creature pass
 
 
 from . import ai, combat, death, effects, follow, spells, structures, traps    # noqa: E402  the fight code imports this module: bound here, used at call time (circular on purpose)

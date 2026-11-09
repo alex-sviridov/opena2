@@ -23,7 +23,7 @@ copy `FUN_0051cb98` (used by apply). Base object `FUN_0050d493`. CONFIRMED.
 | Offset | Type | Meaning | Tag |
 |---|---|---|---|
 | `+0x0c` | u16 | **id** = the spell number (the switch writes it); the list search key (`FUN_005106f4`), the mask bit `1 << (id & 31)` | CONFIRMED `0x51ce12`, `0x5106f4` |
-| `+0x0e` | u16 | client effect id `2n + 8` (unit-attached sprite, [palettes](../formats/palettes.md)) | CONFIRMED |
+| `+0x0e` | u16 | client effect id `2n + 8` (the cast action's projectile; its lifetime is 0 for every id but the flights, Teleport, Heal and Drain Life, so **no unit-attached sprite is ever drawn**, [rendering: Status effects](rendering.md#status-effects-k9); palettes in [palettes](../formats/palettes.md)) | CONFIRMED |
 | `+0x3c` | u8 | **kind** = stat index of the text (`0x5f8f50`, [databin](../formats/databin.md#stat-names-and-modifier-text)); 0 for plain effects | CONFIRMED `0x51e8fa` |
 | `+0x3d` | u8 | flags: 1 duration, 2 continuous, 4 charges, 8 single use (text time part `FUN_0051f29c`; `permanent` = 0); 0x80 finished (`FUN_00542540`) | CONFIRMED |
 | `+0x40` | s16 (s32 for flags 0) | **value** | CONFIRMED |

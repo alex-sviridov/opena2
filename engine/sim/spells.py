@@ -435,6 +435,8 @@ def cast_start(world, u, c, st):
     if spell.number in (LIGHTNING, PRISMATIC_SPRAY) and t is not None:      # the client message starts action 8; its ShootDelay tick makes the bolt
         from . import effects
         effects.spawn_bolt(world, u, 28 if spell.number == LIGHTNING else 30, (t.id,) if spell.number == LIGHTNING else (c.chain or ()))
+    from . import effects
+    effects.spawn_cast_fx(world, u, spell.number, t, c.cell)       # Teleport / Drain Life: the one-shot client sprites (the other flights are carriers)
     u.step_end = world.tick         # the client message `FUN_005041d6` stores the server tick in unit +0x138
     u.action, u.action_start_tick = mv.ATTACK, world.tick      # client action 8 plays the shared attack block (animation.md 2.4)
     return True
@@ -701,7 +703,7 @@ def release_on(world, u, c, st, spell, t):
         carrier = world.next_carrier_id()
         n = flight_ticks(spell, dx, dy) & 0xFFFF
         world.carriers.append(Carrier(carrier, "missile", u.id, t.id, c.spell, level, n, world.tick, True, (u.x * 256 + u.sub_x, u.y * 256 + u.sub_y), n,
-                                      (t.x * 256 + t.sub_x, t.y * 256 + t.sub_y)))
+                                      (t.x * 256 + t.sub_x, t.y * 256 + t.sub_y), origin=effects.shoot_origin(world, u)))
     else:
         carrier = world.next_carrier_id()
         world.carriers.append(Carrier(carrier, "point", u.id, t.id, c.spell, level, 0, world.tick, True, (u.x * 256 + u.sub_x, u.y * 256 + u.sub_y), 0, (t.x * 256 + t.sub_x, t.y * 256 + t.sub_y)))

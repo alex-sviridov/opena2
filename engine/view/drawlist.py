@@ -14,6 +14,8 @@ from typing import NamedTuple
 
 import numpy as np
 
+from allods2.anim.lens import LENS_SIZE
+from allods2.anim.projectiles import direction16
 from allods2.anim.scene import piece_cells
 from allods2.anim.structures import BridgeSet
 from allods2.formats import objects as fobj
@@ -87,7 +89,7 @@ class DrawOptions:
 
 @dataclass(frozen=True)
 class DrawItem:
-    kind: str                   # "sprite" | "shadow" | "marker" | "passability" | "depth" | "bar" | "searched" | "path" | "hop"
+    kind: str                   # "sprite" | "shadow" | "lens" | "marker" | "passability" | "depth" | "bar" | "searched" | "path" | "hop"
     entity: int = None          # world id
     sprite: tuple = None        # (set_kind "object"|"structure"|"bridge"|"unit"|"backpack", type_id, source)
     frame: int = 0              # index into the sprite file
@@ -583,7 +585,8 @@ def _burning_sprites(ctx):
                                           depth=(PASS_CELL, y, -x, slot, 0)))
 
 
-MISSILE_Z = 28              # px above the ground at the shooter and the target (DECISION: chest height; the exe adds the unit's shoot offset, INFERRED)
+MISSILE_Z = 0               # CONFIRMED `FUN_0046707e` / `FUN_00466e18` / `FUN_0046025d`: a projectile's altitude `obj+0x10` starts at 0 and follows the target's (0), the
+                            # screen position is the world position / 8 and the sprite is only lifted by the ground relief: the "height" is the ShootOffset point
 
 
 def missile_position(c, target, age):
@@ -593,13 +596,13 @@ def missile_position(c, target, age):
     tx, ty = c.aim if target is None else target
     n = max(c.flight, 1)
     k = min(age, c.flight) if c.flight else 1
-    return (c.start[0] + _trunc((tx - c.start[0]) * k / n), c.start[1] + _trunc((ty - c.start[1]) * k / n))
+    sx, sy = c.origin or c.start
+    return (sx + _trunc((tx - sx) * k / n), sy + _trunc((ty - sy) * k / n))
 
 
 def missile_facing(dx, dy):
-    """The 16-direction facing (0 north, 4 east, `ProjectileSet.frame_at`) nearest to the direction (dx, dy) (INFERRED: the exe's rounding is not traced)."""
-    byte = round(math.atan2(dx, -dy) / (2 * math.pi) * 256) & 255
-    return ((byte + 8) >> 4) & 15
+    """The 16-direction facing (0 north, 4 east, `ProjectileSet.frame_at`) of the vector (dx, dy): `FUN_004608de`, CONFIRMED (`direction16`)."""
+    return direction16(dx, dy)
 
 
 class _Carrier:
@@ -629,7 +632,9 @@ def _carriers(ctx):
             ctx.items.culled += 1
             continue
         end = tpos or c.aim
-        facing = missile_facing(end[0] - c.start[0], end[1] - c.start[1])
+        prev = missile_position(c, tpos, max(min(age, c.flight) - 1, 0))      # `FUN_0046c1d0`: the facing is taken from the position before the step
+        facing = missile_facing(end[0] - prev[0], end[1] - prev[1]) if prev != end else missile_facing(end[0] - (c.origin or c.start)[0],
+                                                                                                     end[1] - (c.origin or c.start)[1])
         ent = _Carrier(c)
         rec = pset.rec
         a16 = bool(rec["A16"])
@@ -649,6 +654,70 @@ def _carriers(ctx):
 class _Fx:
     """The `ent` of a client effect object's draw items."""
     id = -1
+
+
+def _flashes(ctx):
+    """P6: the one-shot cast sprites (Teleport 0x36: frame `age - 1`, 21 steps, both ends; Drain Life 0x3c: frame `age` = 1 for its single step on the
+    target's footprint centre), the generic projectile path (`.16a` alpha, altitude 0, no shadow, no direction)."""
+    w = ctx.world
+    for f in w.flashes:
+        age = ctx.tick - f.born
+        if age < 0 or age >= f.life:
+            continue
+        pos = f.pos
+        if pos is None:
+            t = w.find_unit(f.target)
+            if t is None:
+                continue
+            size = max(getattr(t, "size", 1), 1)
+            pos = (t.x * 256 + t.sub_x + ((size - 1) << 7), t.y * 256 + t.sub_y + ((size - 1) << 7))
+        cx, cy = pos[0] >> 8, pos[1] >> 8
+        if not in_window(ctx.win, cx, cy):
+            ctx.items.culled += 1
+            continue
+        pset = ctx.assets.projectile_set(f.pid)
+        if pset is None:
+            ctx.items.missing += 1
+            continue
+        ref = pset.frame_at("effect", 0, age, age0=0)
+        a16 = bool(pset.rec["A16"])
+        dep = (PASS_PROJECTILE, cy, -cx, 0, (1 << 24) + f.born, f.pid, int(pos[0]))
+        _projectile_item(ctx, _Fx, None, pset, ref, pos, dep + (0, 0), "alpha" if a16 else "opaque", "main", z0=0)
+        if not a16 and pset.rec["Palette"]:
+            _projectile_item(ctx, _Fx, None, pset, ref, pos, dep + (1, 0), "half", "main_b", z0=0)
+
+
+def _arrows(ctx):
+    """P6: the shooter projectiles (ids 1-6; 7 is the screen lens, no sprite) at the position `arrow_system` steps them to: the generic projectile path
+    of `FUN_0046cb7b`, frame `phase + Phases * ((facing - 8) & 15)` (16 facings, no mirroring in the data; `RotationPhases == 1` = the one picture of the
+    sling stone), `.16a` alpha when `A16` else opaque (+ the `b.256` half overlay when the record has a palette).  CONFIRMED: no shadow, no trail,
+    altitude 0 (the sprite sits at the ShootOffset point and flies in the ground plane at the target's footprint centre), nothing is drawn on the
+    impact (the object is simply removed)."""
+    w = ctx.world
+    for a in w.arrows:
+        if not a.live:
+            continue
+        cx, cy = a.x >> 8, a.y >> 8
+        if not in_window(ctx.win, cx, cy):
+            ctx.items.culled += 1
+            continue
+        if a.pid == 7:                                  # the screen lens (animation.md 4.5): no sprite, a bulge of the pixels drawn so far, at (x, y - relief)
+            px, py = (a.x * CELL) >> 8, (a.y * CELL) >> 8
+            sx, sy = px - ctx.cx, py - fobj.ground_height(w.heights, a.x, a.y, 1, 1) - ctx.cy
+            if ctx.visible(sx - LENS_SIZE, sy - LENS_SIZE, 2 * LENS_SIZE + 1, 2 * LENS_SIZE + 1):
+                ctx.items.append(DrawItem("lens", -1, None, 0, sx, sy, 0, 0, depth=(PASS_PROJECTILE, cy, -cx, 0, (1 << 23) + a.born, a.shooter, 0, 0)))
+            continue
+        pset = ctx.assets.projectile_set(a.pid)
+        if pset is None:
+            ctx.items.missing += 1
+            continue
+        ref = pset.frame_at("flight", a.facing, a.age - 1, age0=0)
+        a16 = bool(pset.rec["A16"])
+        dep = (PASS_PROJECTILE, cy, -cx, 0, (1 << 23) + a.born, a.shooter)
+        pos = (a.x, a.y)
+        _projectile_item(ctx, _Fx, None, pset, ref, pos, dep + (0, 0), "alpha" if a16 else "opaque", "main", z0=0)
+        if not a16 and pset.rec["Palette"]:
+            _projectile_item(ctx, _Fx, None, pset, ref, pos, dep + (1, 0), "half", "main_b", z0=0)
 
 
 def _explosions(ctx):
@@ -919,6 +988,8 @@ def build_draw_list(world, camera, tick, assets, options=None, debug=None, selec
         _carriers(ctx)
         _explosions(ctx)
         _bolts(ctx)
+        _arrows(ctx)
+        _flashes(ctx)
         _cell_effects(ctx)
         _burning_sprites(ctx)
     ctx.items.sort(key=lambda i: i.depth)

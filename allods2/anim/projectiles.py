@@ -64,6 +64,27 @@ def load_projectile_records(fs=None):
     return out
 
 
+def direction16(dx, dy):
+    """`FUN_004608de(x, y)` on an object at `p`: the facing code 0..15 (0 north, 4 east, 8 south, 12 west) of `(dx, dy) = (x - p.x, y - p.y)`.
+    Five bands per quadrant by the ratio of the longer to the shorter axis (>= 4, >= 4/3, else the diagonal band).  CONFIRMED asm `0x4608de`."""
+    a, b = abs(dx), abs(dy)
+    if a >= b * 4:
+        code = 0
+    elif a * 3 >= b * 4:
+        code = 1
+    elif b >= a * 4:
+        code = 4
+    elif b * 3 >= a * 4:
+        code = 3
+    else:
+        code = 2
+    if dy > 0:
+        code = code + 4 if dx > 0 else 12 - code
+    else:
+        code = code + 12 if dx < 0 else 4 - code
+    return code & 15
+
+
 def phase_rule(pid):
     if pid in (LIGHTNING_ID, CHAIN_ID):
         return "pingpong"

@@ -16,6 +16,7 @@ from operator import attrgetter
 import numpy as np
 import pygame
 
+from allods2.anim.lens import apply_lens
 from engine.view import TerrainItem
 from engine.view.drawlist import shadow_offsets
 
@@ -50,6 +51,8 @@ def draw_items(frame, caches, items, only=None, clip=None):
                 blit(val, (it.sx, it.sy))
         elif kind == "bar":
             draw_bar(surface, it, caches.ball)
+        elif kind == "lens":
+            apply_lens(frame.arr, it.sx, it.sy)
         else:
             _overlay(surface, caches, it)
 

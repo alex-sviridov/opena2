@@ -355,7 +355,7 @@ Files: `engine/rng.py`, `engine/sim/combatstats.py`, `engine/sim/combat.py`, `en
 3. **Pathing failure under order 3:** mode 0 (no auto scan), restored by the executor.
 4. **Difficulty:** the map-load tweak of monster to-hit/defence (`[0x6044c4+0xd8]`, [unit-struct §1](unit-struct.md)) is implemented as an option (hard: to-hit and defence +50 via `monster_stats(hard=)`); the default is mode 2 = skip, so the shipped behaviour is unchanged ([ai §10.1](ai.md#101-difficulty-tweak-fun_00561bf9-0x561e20-0x561f0b-confirmed)).
 5. **Seed:** per game, explicit (section 2 of simulation §10).
-6. **Ranged attacks** (range > 1) use the same code: wind-up + `extra`, no projectile in the simulation; the visual arrow is a view matter (not drawn yet).
+6. **Ranged attacks** (range > 1) use the same code: wind-up + `extra`, no projectile in the simulation; the visual arrow is a view matter, built in K9 ([rendering](rendering.md#arrows-and-shots-k9): client `Arrow`, not dumped).
 7. **Stats are built lazily** (`combat_stats(world, unit)`, from `Unit.stats`, `World.item_table`, `Unit.skills`) and cached in `Unit.combat`; a skill-up or an
    equipment change must clear it (progression hook, later). A unit without a template fights with all-zero stats.
 8. **Units with HP <= 0 get no Brain tick**: `_tick_unit` runs the dying branch (`sim/death.py`, section 13).
@@ -708,8 +708,7 @@ loop at `0x46cf31` follows the body draws, CONFIRMED by call order); the positio
 the attack action restarted at the cast start (`cast_start`: `action = "attack"`, animation.md 2.4 shares the block). UI: `C` (the original key of button 5) arms `pending = CAST` with the spell
 `castable_spell` finds (the lowest unit-target damage spell in a selected unit's book that its mana pays; the spellbook window is a J item), the cast cursor exists already, a click on a unit sends
 `CastSpell` (`OrderInput.release`, cmd `0x1e`), a click on the ground sends nothing (the sim has the cell form `CastSpell(cell=...)` = cmd `0x1f`, the UI does not send it: the client's cell-cast path is not traced) and the mode resets either way, right release cancels it and keeps the selection (R 1.5).
-There is no clickable command bar in the engine yet: the panel button of the spec belongs to the command bar of J1. VERIFY IN GAME (INFERRED here): missile spawn height (`MISSILE_Z` = 28 px) and
-facing rounding, the trail not drawn when the carrier is younger than one tick, that the cast button is disabled when the mana is short, `C` + click instead of the spellbook.
+There is no clickable command bar in the engine yet: the panel button of the spec belongs to the command bar of J1. Missile spawn height and facing rounding: **answered in K9** (CONFIRMED: the start is the caster's ShootOffset point at altitude 0, the facing is `FUN_004608de`, [rendering](rendering.md#arrows-and-shots-k9)). VERIFY IN GAME (INFERRED here): the trail not drawn when the carrier is younger than one tick, that the cast button is disabled when the mana is short, `C` + click instead of the spellbook.
 
 Timeline (tests): order at tick T0; the next `tick & 15 == 6` is `P`; `CastStarted` at `P + 1`; `CastReleased` at `P + 1 + windup`; the damage at `release + max(flight, 1)` with
 `flight = trunc(sqrt(dx^2 + dy^2)) / speed` (positions in 1/256 cell, Fire Arrow speed 200: 8 ticks at 7 cells).

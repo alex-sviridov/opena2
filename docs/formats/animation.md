@@ -908,6 +908,8 @@ By ID:
 | others, `Palette ≠ 0` | opaque (`+0x18`, own table), then `b.256` at 50 % with its all-zero palette = darkens by half ([sprites](sprites.md)) |
 | others, `Palette = 0` | opaque `+0x14` with `projectiles.pal` |
 
+**Lifetime `obj+0xa8` at creation** (CONFIRMED `FUN_0046707e` switch for the cast action, `FUN_00466e18` for the shooters, the message loop for the `0x86` / `0x8b` / `0x8c` forms): ids 10 / 0x12 / 0x28 `dist / 200`, 0xc `dist / 0x180`, 0x1c / 0x1e 13, 0x36 21, 0x38 / 0x3c 1, shooters (ids 1-7) `dist / 200`, **every other cast id 0**: an object with 0 on entry is removed by the tick before any draw (units tick first, then the projectile list, `0x40bf30`), so the hit-sprite cases `0x10 ... 0x42` never run: [rendering: Status effects](../engine/rendering.md#status-effects-k9). Shooter arrows: [rendering: Arrows and shots](../engine/rendering.md#arrows-and-shots-k9) (facing `FUN_004608de`, start, step rule, no impact drawing).
+
 So spell effects use **no additive blending**. IDs 10/12 also draw a
 smoke trail (§5.1).
 

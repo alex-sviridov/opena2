@@ -207,6 +207,13 @@ def casts_summaries():
     return spell_scenarios.all_summaries()
 
 
+def arrows_hashes(install=None):
+    """{volley, volley+3: sha256 of the 640x480 frame, shots, world: dump hash} of tests/arrow_scenarios.py (map 73, shooters with arrows in flight, K9)."""
+    sys.path.insert(0, os.path.join(ROOT, "tests"))
+    import arrow_scenarios
+    return arrow_scenarios.hashes(AssetCache(install), install)
+
+
 def ui_hashes(install=None):
     """{scenario: sha256 of the RGB bytes} of the J1 interface (docs/engine/ui-layout.md 11): map 10 with the placed party, the hero selected, the
     panel in both modes, a message line, the level-up line (XP set through the engine's xp path), the menu / End Quest / pause / story / mission complete / failed windows, and
@@ -329,7 +336,7 @@ def main(argv):
     if only is not None:
         with open(GOLDEN, encoding="ascii") as f:
             out = json.load(f)
-        makers = {"interface": interface_hash, "ui": ui_hashes, "fog": fog_hashes, "minimaps": minimap_hashes}
+        makers = {"interface": interface_hash, "ui": ui_hashes, "fog": fog_hashes, "minimaps": minimap_hashes, "arrows": arrows_hashes}
         for k in only:
             out[k] = makers[k](install)
         _write(out)
@@ -347,6 +354,7 @@ def main(argv):
     out["casts"] = casts_summaries()
     out["ui"] = ui_hashes(install)
     out["fog"] = fog_hashes(install)
+    out["arrows"] = arrows_hashes(install)
     _write(out)
 
 

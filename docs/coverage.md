@@ -86,8 +86,6 @@ Scanned 46 campaign maps; smoke run 1600 ticks of the map script and the AI with
 | Feature | What | Status | Impact | Step | Maps | Unblocks alone | Note |
 |---|---|---|---|---|---|---|---|
 | `music.zones` | music zones (section 12) | missing | polish | sound | 46 | - | the engine has no audio |
-| `spell.status` | spells whose status effect has no drawing (protections, Bless, Curse, Haste, Slow, Shield) | partial | polish | draw | 41 | - | simulated (effects.md); only Invisibility and Stone Curse change the unit's look |
-| `unit.ranged` | units that shoot (attack range > 1, no spell) | partial | polish | draw | 36 | - | simulated exactly, the arrow is not drawn (combat.md 3, 10) |
 
 ### Script kinds the maps use (reachable from an active trigger)
 
@@ -186,7 +184,7 @@ From unit spell slots and books, and from `castSpell` / `teachSpell` on carried 
 | Class | Units | Maps | Engine |
 |---|---|---|---|
 | casters (book or special-attack slot) | 1465 | 42 | AI casting K1, effects K2 |
-| shooters | 577 | 36 | simulated exactly, the arrow is not drawn (combat.md 3, 10) |
+| shooters | 577 | 36 | K9: the arrow, bolt, stone and the Sonic lens are drawn (rendering.md "Arrows and shots", tests/test_engine_arrows.py) |
 | flyers | 494 | 37 | movement and combat rows, combat.md 2 |
 | ghosts and bees | 396 | 29 | built |
 
@@ -215,12 +213,11 @@ First the steps that unblock maps (greedy: the next one completes the most block
 
 | # | Step | Effort | Maps newly playable | Playable after | Maps touched | Backlog item |
 |---|---|---|---|---|---|---|
-| 1 | `draw` Draw what is simulated: status effects of units, arrows of shooters | 2 | - | 46 | 46 | 2 |
-| 2 | `sound` Sound and music: music zones, unit and UI sounds, the 0xfe / 0xfd / 0xfa messages | 5 | - | 46 | 46 | 6 |
-| 3 | `hero_ui` Hero windows: the Heads panel, hero screen (stats, skills, paper doll), item shops | 3 | - | 46 | 46 | 1 |
-| 4 | `menus` Start menu, new-game and options screens, in-game menu entries | 4 | - | 46 | 46 | 5 |
-| 5 | `save` Save / load: the game%d.sav writer and reader | 4 | - | 46 | 46 | 7 |
-| 6 | `campaign` Campaign flow: world map, towns, hero recruit, roster carry-over, the Scenario.dll variables | 8 | - | 46 | 46 | 4 |
+| 1 | `sound` Sound and music: music zones, unit and UI sounds, the 0xfe / 0xfd / 0xfa messages | 5 | - | 46 | 46 | 6 |
+| 2 | `hero_ui` Hero windows: the Heads panel, hero screen (stats, skills, paper doll), item shops | 3 | - | 46 | 46 | 1 |
+| 3 | `menus` Start menu, new-game and options screens, in-game menu entries | 4 | - | 46 | 46 | 5 |
+| 4 | `save` Save / load: the game%d.sav writer and reader | 4 | - | 46 | 46 | 7 |
+| 5 | `campaign` Campaign flow: world map, towns, hero recruit, roster carry-over, the Scenario.dll variables | 8 | - | 46 | 46 | 4 |
 
 <!-- coverage:end -->
 
@@ -246,6 +243,8 @@ drawing, sound and shell.
 | K9 | `draw`: status effects of units, arrows of shooters | 2 | polish only (46 maps) | 46 |
 | then | `sound`, `hero_ui`, `menus`, `save`, `campaign` | 5 + 3 + 4 + 4 + 8 | none: no map needs them to be completed | 46 |
 
+**K9 done (2026-11-09):** the shooters' arrows, bolts, stones and the Sonic lens, the one-shot Teleport / Drain Life sprites and the spell missiles' start (ShootOffset, altitude 0) are drawn from the client projectile model of the exe; the **status effects need no drawing** (CONFIRMED: the exe's hit sprites live 0 steps, only Invisibility and Stone Curse change a unit, no panel icon): [rendering.md "Arrows and shots"](engine/rendering.md#arrows-and-shots-k9) and [Status effects](engine/rendering.md#status-effects-k9). The regenerated block reads 46 of 46 playable, no polish gap left but sound.
+
 **K5 done (2026-11-09):** the pickup click and the pack-based script items are built ([items](engine/items.md)); the regenerated block above reads 41 of 46 maps without a blocker (12 playable now), as predicted.
 
 K5, K6 and K7 together unblock all 12 blocked maps; K5 and K7 are one small step each, K6 is the only research-heavy blocker (the use order and the
@@ -256,7 +255,7 @@ switch class are only partly read: command `0x24` in [click-to-move-research](en
 | Backlog item | Data says |
 |---|---|
 | 1. Inventory and hero windows | Split. The **pickup click** is the cheapest, most valuable step (K5, 7 maps). The hero windows block no map (the pack window and the info panel exist): they move behind the blockers. |
-| 2. More spells | Effect drawing and arrows are polish only (K9). Structure targets: no map or AI needs them. The spell durations belong to K7. |
+| 2. More spells | Effect drawing and arrows: done (K9). Structure targets: no map or AI needs them. The spell durations belong to K7. |
 | 3. Full triggers | Almost nothing left: check 25 and instants 29 / 30 (K7). Variable references 8000-9999 and unit names >= 11001 are used by no map: drop them. |
 | 4. Campaign | Blocks no single map (the party of a map is placed fresh, [triggers §9](engine/triggers.md#9-the-party-at-map-start-fun_004f2c83)); it is the largest step and gates a finished game, not a playable map. |
 | 5. Full UI | Same: shell, not map content. |

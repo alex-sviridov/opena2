@@ -11,6 +11,8 @@ Layer 4: reads and writes `engine.world` only.
   `FUN_00518681`; the cell slots are `World.cell_fx` (`FUN_0055a37a` / `FUN_0055a533` / `FUN_005189b5`).
 """
 
+import math
+
 from allods2.formats import spelldefs
 
 from engine.world import Carrier, Effect
@@ -791,21 +793,23 @@ def explosion_system(world, commands=()):
 BOLT_LIFE = 13              # `FUN_0046707e` switch: `obj+0xa8 = 0xd` for ids 0x1c / 0x1e; the tick returns "remove" when it is 0 on entry
 
 
-def shoot_origin(world, u):
+def shoot_origin(world, u, pos=None, table=True):
     """The projectile start `FUN_0046707e` computes for the cast action (CONFIRMED `0x46718c`-`0x4672e0`), in 1/256 cell: with a ShootOffset table on the
     unit type, `centre - (CenterX - SO[k]) * 8`, `centre - (CenterY - SO[k + 1]) * 8` for `k = (direction - 8) & 14` (direction = `facing >> 4`),
-    else (empty table, or projectile 0x36) `centre - CenterX + (SelectionX2 - SelectionX1) / 2` (C division) and the same for y, an almost
+    else (empty table, or projectile 0x36: `table=False`) `centre - CenterX + (SelectionX2 - SelectionX1) / 2` (C division) and the same for y, an almost
     unmoved point (the unit mixes 1/8 pixels with pixels; the Selection offsets `+0x84`..`+0x90` are INFERRED).  `centre` is the footprint centre
-    (`view+0x5c / +0x60`: position + `(size - 1) * 128`)."""
+    (`view+0x5c / +0x60`: position + `(size - 1) * 128`), or `pos` (the second Teleport object at the destination, `0x46c154` copy)."""
     cx = u.x * 256 + u.sub_x + ((max(getattr(u, "size", 1), 1) - 1) << 7)
     cy = u.y * 256 + u.sub_y + ((max(getattr(u, "size", 1), 1) - 1) << 7)
+    if pos is not None:
+        cx, cy = pos
     assets = getattr(world, "assets", None)
     aset = assets.unit_set(u.type_id) if assets is not None and hasattr(assets, "unit_set") else None
     if aset is None:
         return (cx, cy)
     t = aset.t
     so = list(t.ShootOffset)
-    if so:
+    if so and table:
         k = (((u.facing >> 4) & 15) - 8) & 14
         return (cx - (t.CenterX - so[k]) * 8, cy - (t.CenterY - so[k + 1]) * 8)
 
@@ -845,6 +849,119 @@ def spawn_bolt(world, caster, pid, targets):
     if delay is None:
         return
     world.bolts.append(Bolt(pid, caster.id, tuple(targets), shoot_origin(world, caster), world.tick + delay))
+
+
+# --- the one-shot client sprites of a cast: Teleport (0x36) and Drain Life (0x3c) -------------------------------------------------------
+# `FUN_0046707e` sets the lifetime by projectile id: 10 / 0x12 / 0x28 flight, 0xc flight, 0x1c / 0x1e 13, 0x36 21, 0x38 / 0x3c 1, **every other id 0**,
+# and the tick (`FUN_0046c1d0`) removes an object whose lifetime is 0 on entry in the same view step it was made (units tick first, then the projectile
+# list, `0x40bf30`): Bless, Curse, Haste, Slow, Shield, the protections, Poison Cloud (as a unit effect), Stone Curse have **no** sprite at the target.
+
+FLASH = {23: 0x36, 26: 0x3c}        # spell number -> projectile id of the one-shot sprite (Heal's 0x38 draws nothing: `FUN_0046cb7b` case 0x38)
+FLASH_LIFE = {0x36: 21, 0x3c: 1}
+
+
+def spawn_cast_fx(world, caster, number, target, cell):
+    """The client side of a cast message for the spells whose projectile lives longer than 0 steps without being a flight: Teleport (made at tick 0
+    of the cast action: two objects, the caster's own point and the destination, age `phase = age - 1`, 21 steps) and Drain Life (at the
+    ShootDelay tick, on the target's footprint centre, 1 step, `phase = age`).  A hidden caster (type word 0) has no view: nothing."""
+    from engine.world import Flash
+    pid = FLASH.get(number)
+    if pid is None or caster.type_id == 0:
+        return
+    if pid == 0x36:
+        if cell is None:
+            return
+        world.flashes.append(Flash(pid, world.tick, FLASH_LIFE[pid], shoot_origin(world, caster, table=False)))
+        world.flashes.append(Flash(pid, world.tick, FLASH_LIFE[pid], shoot_origin(world, caster, (cell[0] * 256 + 128, cell[1] * 256 + 128), table=False)))
+        return
+    delay = shoot_delay(world, caster)
+    if delay is None or target is None:
+        return
+    world.flashes.append(Flash(pid, world.tick + delay, FLASH_LIFE[pid], None, target.id))
+
+
+def flash_system(world, commands=()):
+    """Drops the one-shot sprites whose steps are over (drawn on the ticks `born .. born + life - 1`)."""
+    if world.flashes:
+        world.flashes = [f for f in world.flashes if world.tick - f.born < f.life]
+
+
+# --- the client arrows (projectiles 1-7 of the shooters, docs/engine/rendering.md "Arrows and shots") ----------------------------------
+
+ARROW_SPEED = 200           # `FUN_00466e18`: steps = trunc(distance in 1/256 cell) / 200 (the server adds the same flight to the wind-up)
+
+
+def _idiv(a, b):
+    """C integer division (truncation toward zero)."""
+    q = abs(a) // abs(b)
+    return q if (a < 0) == (b < 0) else -q
+
+
+def arrow_delay(world, u):
+    """The tick of the shoot action (client action 7, message `0x72`) at which `FUN_00466e18` fires: the unit type's ShootDelay
+    (`UnitSet.attack_events("shoot")["release"]`, CONFIRMED animation.md 2.4); None when the type has no projectile or the delay is at or past the
+    attack sequence.  A test double without unit sets: (0, 0) = no arrow."""
+    assets = getattr(world, "assets", None)
+    aset = assets.unit_set(u.type_id) if assets is not None and hasattr(assets, "unit_set") else None
+    if aset is None or not aset.t.Projectile:
+        return None, 0
+    return aset.attack_events("shoot").get("release"), aset.t.Projectile
+
+
+def spawn_arrow(world, shooter, target):
+    """The client side of message `0x72` (a ranged swing start, `FUN_00504ab8`): the shoot action starts now and `FUN_00466e18` makes the unit
+    type's `Projectile` on its ShootDelay tick.  Only unit targets (the routine looks the target up in the unit list `+0x8e`, INFERRED for
+    structures: no arrow).  The object is made by `arrow_system` on that tick."""
+    from engine.world import Arrow
+    delay, pid = arrow_delay(world, shooter)
+    if delay is None or target is None:
+        return
+    world.arrows.append(Arrow(pid, shooter.id, target.id, world.tick + delay))
+
+
+def arrow_origin(world, u):
+    """The arrow's start (`0x466e9d`-`0x466f4f`): the unit position `(+8, +0xc)` plus `(SO[k] - Center) * 8` per axis, `k = (direction - 8) & 14`
+    (the table of the unit type; every shooter has one).  Altitude 0.  Same formula as the bolt's (`shoot_origin`)."""
+    return shoot_origin(world, u)
+
+
+def arrow_system(world, commands=()):
+    """The per-step life of the arrows, after the creature pass (the exe makes the object in the unit's tick and steps the projectile list after the
+    units in the same view step, `0x40bf30`): spawn on the ShootDelay tick (nothing when a unit is gone or `trunc(dist / 200)` is 0), then
+    each step: remove when no steps are left on entry, else face the target's centre (`FUN_004608de`), move `(T - p) / steps_left` (C division,
+    so the last step lands on T), age + 1, steps - 1.  The target's centre is read every step (a moving target is followed)."""
+    if not world.arrows:
+        return
+    from allods2.anim.projectiles import direction16
+    keep = []
+    for a in world.arrows:
+        if not a.live:
+            if world.tick < a.born:
+                keep.append(a)
+                continue
+            u, t = world.find_unit(a.shooter), world.find_unit(a.target)
+            if u is None or t is None:
+                continue
+            ox, oy = arrow_origin(world, u)
+            dx, dy = (u.x - t.x) * 256 + u.sub_x - t.sub_x, (u.y - t.y) * 256 + u.sub_y - t.sub_y
+            steps = int(math.sqrt(dx * dx + dy * dy)) // ARROW_SPEED
+            if steps <= 0:
+                continue
+            a.live, a.x, a.y, a.steps, a.age = True, ox, oy, steps, 0
+        elif a.steps <= 0:
+            continue
+        t = world.find_unit(a.target)
+        if t is not None:
+            size = max(getattr(t, "size", 1), 1)
+            a.tx = t.x * 256 + t.sub_x + ((size - 1) << 7)
+            a.ty = t.y * 256 + t.sub_y + ((size - 1) << 7)
+        a.facing = direction16(a.tx - a.x, a.ty - a.y)
+        a.x += _idiv(a.tx - a.x, a.steps)
+        a.y += _idiv(a.ty - a.y, a.steps)
+        a.age += 1
+        a.steps -= 1
+        keep.append(a)
+    world.arrows = keep
 
 
 def bolt_system(world, commands=()):
