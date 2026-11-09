@@ -88,6 +88,8 @@ is drawn from its equipment (orange cloak, [animation §1.3](formats/animation.m
 
 ## Phase K backlog, by value
 
+Ordered by value when written; **the order by data is in [coverage.md](coverage.md)** (K0: pickup click, use a structure and cell effects first; "use a structure" was missing here).
+
 1. **Inventory and hero windows**: the Heads panel, hero window with the paper doll, stats and skills, item shops.
 2. **More spells**: structure targets, effect drawing (so a poisoned or blessed unit looks so), spell durations (instants 29 / 30).
 3. **Full triggers**: the remaining check / instant kinds, variable references 8000-9999, unit names >= 11001.

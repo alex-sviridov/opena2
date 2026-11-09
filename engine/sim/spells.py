@@ -421,7 +421,8 @@ def cast_start(world, u, c, st):
     if t is None:
         bx, by = c.cell[0] * 256 + 128, c.cell[1] * 256 + 128      # INFERRED: the cell centre (only the client's flight time uses it)
     elif unit_size(t) > 1:
-        bx, by = (centre_x(t) & 0xFFFF) - 1, (centre_y(t) & 0xFFFF) - 1
+        f = foot(t)
+        bx, by = (centre_x(f) & 0xFFFF) - 1, (centre_y(f) & 0xFFFF) - 1
     else:
         bx, by = t.x * 256 + t.sub_x, t.y * 256 + t.sub_y
     from .combat import log

@@ -56,6 +56,18 @@ def test_timeline_order_start_release_flight_delivery():
     assert 5 <= 1000 - t.hp <= 10 and c.mana == 7 and not w.carriers
 
 
+def test_cast_at_a_two_cell_target_starts():
+    """Map 96 crashed in `cast_start` for a target with a 2 x 2 footprint: the footprint centre was read from the unit, not from its `Foot`."""
+    from allods2.formats.unitstats import MONSTER, UnitType
+    w = world()
+    sim = Simulation(w)
+    c, t = caster(w, 1, 10, 15), fighter(w, 2, 17, 15, owner=2, hp=1000)
+    t.stats = UnitType(MONSTER, 1, "big", 1, 1, {"token_size": 2}, (), ())
+    cast(sim, c, t)
+    run(sim, 40)
+    assert len(events(w, CastStarted)) == 1 and len(events(w, CastReleased)) == 1
+
+
 def test_mana_exact_spends_all_and_one_short_never_starts():
     w = world()
     sim = Simulation(w)

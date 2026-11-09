@@ -11,6 +11,8 @@ reports and crash traceback; docs/superpowers/specs/2026-11-05-prototype-j4-desi
    python -m engine play MAP [--out DIR] [--size WxH] [--speed N] [--difficulty 1|2|3] [--seed N] [--hero-name NAME] [--install DIR]
    python -m engine replay SESSION [--verify] [--install DIR]
    python -m engine maps [--install DIR]           (the campaign maps: number, size, players, name)
+   python -m engine coverage [GAME_DIR] [--ticks N] [--csv PATH] [--docs PATH|-] [--maps 10,32]
+                                                   (map coverage report, phase K0: out/coverage.csv + docs/coverage.md)
 
 MAP as for `python -m allods2 map` (10, scenario/10.alm, or a file).  X, Y =
 the viewport's top-left in world pixels (x = 32*col, y = 32*row - height).
@@ -105,6 +107,16 @@ def world_dump(a):
     with open(a.dest, "w", encoding="ascii") as f:
         f.write(w.dump_json())
     print("%s: %d entities -> %s" % (w.name, len(w.objects), a.dest))
+    return 0
+
+
+def coverage_cmd(a):
+    """Map coverage report (engine/coverage.py): the csv and the generated block of docs/coverage.md."""
+    from allods2.common import ROOT
+    from engine import coverage
+    only = set(a.maps.split(",")) if a.maps else None
+    docs = None if a.docs == "-" or only else (a.docs or os.path.join(ROOT, "docs", "coverage.md"))
+    coverage.run(a.game_dir, a.ticks, a.csv, docs, only)
     return 0
 
 
@@ -345,6 +357,12 @@ def main(argv=None):
     pl.add_argument("--install")
     mp = sub.add_parser("maps", help="list the campaign maps")
     mp.add_argument("--install")
+    cv = sub.add_parser("coverage", help="what stands between each campaign map and full playability (out/coverage.csv, docs/coverage.md)")
+    cv.add_argument("game_dir", nargs="?", help="the game install (default: ALLODS2_INSTALL or samples/allods2_en_gog)")
+    cv.add_argument("--ticks", type=int, default=1600, help="smoke run length per map (default 1600 = 100 s of game time)")
+    cv.add_argument("--csv", help="output csv (default out/coverage.csv)")
+    cv.add_argument("--docs", help="docs page whose generated block is rewritten (default docs/coverage.md; '-' = skip)")
+    cv.add_argument("--maps", help="comma list of map numbers (partial run: writes the csv only)")
     rp = sub.add_parser("replay", help="run a recorded session again, headless")
     rp.add_argument("session", help="a session directory or its session.json")
     rp.add_argument("--verify", action="store_true", help="exit 1 when the world hash differs from final.json")
@@ -363,6 +381,8 @@ def _dispatch(a, p):
         return map_list(a)
     if a.cmd == "replay":
         return replay_cmd(a)
+    if a.cmd == "coverage":
+        return coverage_cmd(a)
     if a.cmd == "play":
         return play_cmd(a, p)
     if a.cmd == "minimap":
