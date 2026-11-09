@@ -703,7 +703,7 @@ def release_on(world, u, c, st, spell, t):
         carrier = world.next_carrier_id()
         n = flight_ticks(spell, dx, dy) & 0xFFFF
         world.carriers.append(Carrier(carrier, "missile", u.id, t.id, c.spell, level, n, world.tick, True, (u.x * 256 + u.sub_x, u.y * 256 + u.sub_y), n,
-                                      (t.x * 256 + t.sub_x, t.y * 256 + t.sub_y), origin=effects.shoot_origin(world, u)))
+                                      (t.x * 256 + t.sub_x, t.y * 256 + t.sub_y)))
     else:
         carrier = world.next_carrier_id()
         world.carriers.append(Carrier(carrier, "point", u.id, t.id, c.spell, level, 0, world.tick, True, (u.x * 256 + u.sub_x, u.y * 256 + u.sub_y), 0, (t.x * 256 + t.sub_x, t.y * 256 + t.sub_y)))

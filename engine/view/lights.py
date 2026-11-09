@@ -25,8 +25,13 @@ def light_map(world, assets, tick):
         value = lt.structure_light_value(rec.get("LightPulse") or 0, tick)
         for v in lt.structure_light_vertices(ent.x, ent.y, ent.x + aset.W - 1, ent.y + aset.TH - 1, radius):
             out[v] = value
+    for a in getattr(world, "arrows", ()):                         # the client flights (cast action): the light follows the sprite
+        if a.live and a.pid in MISSILE_IDS:
+            light = lt.projectile_light(a.pid)
+            if light is not None:
+                _stamp(out, a.x >> 8, a.y >> 8, *light)
     for c in getattr(world, "carriers", ()):
-        if c.kind != "missile" or c.spell * 2 + 8 not in MISSILE_IDS:
+        if c.kind != "missile" or c.spell * 2 + 8 not in MISSILE_IDS or c.target is not None:
             continue
         light = lt.projectile_light(c.spell * 2 + 8)
         cell = missile_cell(world, c, tick)

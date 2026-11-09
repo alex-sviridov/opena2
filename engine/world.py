@@ -318,7 +318,7 @@ class Bolt:
 
 @dataclass
 class Arrow:
-    """A client shooter projectile (projectiles.reg ids 1-7, `FUN_00466e18`; docs/engine/rendering.md "Arrows and shots"): made by the shoot action of a
+    """A client projectile (shooters' ids 1-7 by `FUN_00466e18`, the spell flights 10 / 12 / 18 / 40 by the cast action `FUN_0046707e`; docs/engine/rendering.md "Arrows and shots"): made by the shoot action of a
     unit type with `Projectile != 0` at its ShootDelay tick (`born`), flies `trunc(dist / 200)` steps at the target's footprint centre and is removed
     on the step after it arrived.  `x, y` in 1/256 cell and `facing` (0..15, 0 north, 4 east) are updated every tick by `effects.arrow_system`
     (the exe's per-step move `(T - p) / steps_left`); `live` is False until the spawn tick.  Client only, not dumped."""
@@ -334,6 +334,9 @@ class Arrow:
     steps: int = 0                  # +0xa8: steps left
     age: int = 0                    # +0x9c: steps made (the first drawn age is 1)
     facing: int = 0                 # +0x70
+    spell: bool = False             # made by the cast action (`FUN_0046707e`: start at the footprint centre, distance to the target's centre) rather than the shoot action
+    speed: int = 200                # lifetime = trunc(distance) / speed (0x180 for the Fire Ball)
+    trail: list = field(default_factory=list)       # ids 10 / 12: the last 6 pre-move positions (x, y), oldest first (`view +0x11c` list)
 
 
 @dataclass
@@ -382,7 +385,6 @@ class Carrier:
     stamped: bool = False           # +0x4c
     direction: int = 0              # +0x4e (8-way)
     step: int = 0                   # +0x4f
-    origin: tuple = None            # missile: the client projectile's start (the caster's ShootOffset point, `effects.shoot_origin`) in 1/256 cell; view only, not dumped
 
     def area_dump(self):
         if self.effect is None and self.centre is None:

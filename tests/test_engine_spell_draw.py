@@ -29,7 +29,7 @@ def assets(**rec):
     return MissileAssets(uassets(), pset)
 
 
-def missile(uid=1, start=(10, 10), aim=(17, 10), born=0, flight=8, target=0):
+def missile(uid=1, start=(10, 10), aim=(17, 10), born=0, flight=8, target=None):       # target None: the cell form (a unit-target flight is a client Arrow)
     return Carrier(uid, "missile", 0, target, 1, 1, flight, born, True, POS(*start), flight, POS(*aim))
 
 
@@ -94,7 +94,7 @@ def test_outside_the_window_is_culled_and_a_vanished_target_keeps_its_line():
     out = draw(w, tick=2)
     assert not projectile_items(out) and out.culled >= 1
     w2 = world_with(unit(1, 10, 10))
-    w2.carriers.append(missile(target=0xDEAD))                          # no such unit: the aim position of the release
+    w2.carriers.append(missile())                                       # the aim position of the release
     assert projectile_items(draw(w2, tick=4))
 
 
@@ -134,7 +134,7 @@ def test_a_missile_in_flight_changes_the_frame_and_stays_inside_the_view(tmp_pat
     tc, sc = SurfaceCache(tv), SpriteCache(a)
     base = render.screenshot(tv, cam_, 0, None, tc, a, DrawOptions(), None, sc)
     sx, sy = (u.x << 8) | u.sub_x, (u.y << 8) | u.sub_y
-    w.carriers.append(Carrier(1, "missile", u.id, 0, 1, 1, 8, 0, True, (sx, sy), 8, (sx + 4 * 256, sy)))
+    w.carriers.append(Carrier(1, "missile", u.id, None, 1, 1, 8, 0, True, (sx, sy), 8, (sx + 4 * 256, sy)))
     shot = render.screenshot(tv, cam_, 4, str(tmp_path / "missile.png"), tc, a, DrawOptions(), None, sc)
     diff = np.argwhere((base != shot).any(axis=2))
     assert len(diff) > 20                                               # the firebolt and its smoke were blended in
@@ -164,3 +164,40 @@ def test_fifteen_missiles_cost_next_to_nothing_in_the_draw_list_and_the_carrier_
     assert loaded - base < 15.0, (base, loaded)                         # generous: 75 sprite items; the budget at 60 fps is 16.7 ms for everything
     sim_ms = mean_ms(lambda: carrier_system(w, ()), 200)
     assert sim_ms < 1.0, sim_ms
+
+
+# --- K9 follow-up: the unit-target flights are client Arrows made by the cast action (FUN_0046707e) --------------------------------------------
+
+from engine.world import Arrow
+
+
+def live_flight(**kw):
+    a = dict(x=10 * C + 128, y=10 * C + 128, tx=17 * C + 128, ty=10 * C + 128, steps=6, age=2, facing=4, spell=True,
+             trail=[(10 * C + 128 + 40 * k, 10 * C + 128) for k in range(3)])
+    a.update(kw)
+    return Arrow(10, 1, 2, 0, live=True, **a)
+
+
+def test_a_unit_target_carrier_is_not_drawn_its_client_flight_is():
+    w = world_with(unit(1, 10, 10), unit(2, 17, 10, owner=2))
+    w.carriers.append(missile(target=2))                                 # the server carrier of a unit-target cast: no sprite of its own
+    assert not projectile_items(draw(w, tick=3))
+    w.arrows.append(live_flight())
+    items = projectile_items(draw(w, tick=3))
+    assert [i.sprite[2] for i in sorted(items, key=lambda i: i.depth)] == ["main", "trail", "trail", "trail"]
+
+
+def test_the_client_flight_frame_uses_age_one_first_and_the_facing_row():
+    w = world_with(unit(1, 10, 10), unit(2, 17, 10, owner=2))
+    for age in (1, 2, 3, 4):
+        w.arrows[:] = [live_flight(age=age, trail=[])]
+        main = projectile_items(draw(w, tick=0))[0]
+        assert main.frame == (age // 2) % 4 + 4 * ((4 - 8) & 15)         # unit-fired: age 0 at creation, the first drawn age is 1 (carriers started at -1)
+
+
+def test_the_client_flight_has_no_height_and_the_light_follows_it():
+    from engine.view import lights
+    w = world_with(unit(1, 10, 10), unit(2, 17, 10, owner=2))
+    w.arrows.append(live_flight(x=12 * C, y=11 * C, trail=[]))
+    out = lights.light_map(w, assets(), 0)
+    assert out and any(v == (12, 11) or (v[0] in (12, 13) and v[1] in (11, 12)) for v in out)

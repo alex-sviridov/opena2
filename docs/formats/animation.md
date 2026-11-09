@@ -915,8 +915,7 @@ smoke trail (§5.1).
 
 `ProjectileSet` has one action, `flight` (default rule, loops) or
 `effect` (special rules, once). `frame_at(action, facing, t, age0=None)`:
-`age0` defaults to 0 for IDs < 8 and −1 for spell IDs (INFERRED; the
-spawner decides). Previews play one `flight` cycle, `effect` for its fixed
+`age0` defaults to 0 for IDs < 8 and −1 for spell IDs (the spawner decides: CONFIRMED 0 for everything made by `FUN_00466e18` / `FUN_0046707e`, so the spell flights drawn from the cast action start at age 0 too; −1 only for the message-made `0x86` / `0x8b` / `0x8c` forms). Previews play one `flight` cycle, `effect` for its fixed
 lifetime or `Phases` ticks (server lifetimes are data, §3.4).
 
 ### 4.5 The screen lens (projectile 7)

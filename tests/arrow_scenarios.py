@@ -41,9 +41,9 @@ def run(assets, install=None, arrows=True, frames=None):
         for i in range(TICKS):
             sim.step(cmds if i == 0 else [])
             for a in w.arrows:
-                if a.live:
+                if a.live and not a.spell:              # the shooters' arrows only (a caster of the group makes a spell flight too)
                     seen.add((a.shooter, a.born))
-            live = [a for a in w.arrows if a.live]
+            live = [a for a in w.arrows if a.live and not a.spell]
             if frames is not None and live and first is None:
                 first = w.tick
             if frames is not None and first is not None and w.tick in (first, first + 3):

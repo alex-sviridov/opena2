@@ -865,6 +865,8 @@ def spawn_bolt(world, caster, pid, targets):
 # and the tick (`FUN_0046c1d0`) removes an object whose lifetime is 0 on entry in the same view step it was made (units tick first, then the projectile
 # list, `0x40bf30`): Bless, Curse, Haste, Slow, Shield, the protections, Poison Cloud (as a unit effect), Stone Curse have **no** sprite at the target.
 
+FLIGHT = {10: 200, 12: 0x180, 18: 200, 40: 200}   # projectile id -> the divisor of `FUN_0046707e`'s lifetime (Fire Arrow, Fire Ball, Ice Missile, Diamond Dust)
+TRAIL_IDS = (10, 12)                              # the smoke trail (`FUN_0046c1d0` end: the last 6 pre-move positions)
 FLASH = {23: 0x36, 26: 0x3c}        # spell number -> projectile id of the one-shot sprite (Heal's 0x38 draws nothing: `FUN_0046cb7b` case 0x38)
 FLASH_LIFE = {0x36: 21, 0x3c: 1}
 
@@ -873,9 +875,16 @@ def spawn_cast_fx(world, caster, number, target, cell):
     """The client side of a cast message for the spells whose projectile lives longer than 0 steps without being a flight: Teleport (made at tick 0
     of the cast action: two objects, the caster's own point and the destination, age `phase = age - 1`, 21 steps) and Drain Life (at the
     ShootDelay tick, on the target's footprint centre, 1 step, `phase = age`).  A hidden caster (type word 0) has no view: nothing."""
-    from engine.world import Flash
+    from engine.world import Arrow, Flash
     pid = FLASH.get(number)
-    if pid is None or caster.type_id == 0:
+    if caster.type_id == 0:
+        return
+    if 2 * number + 8 in FLIGHT:                    # the spell flights: a client projectile made at the ShootDelay tick (`FUN_0046707e`, lifetime `dist / speed`)
+        delay = shoot_delay(world, caster)
+        if delay is not None and target is not None:
+            world.arrows.append(Arrow(2 * number + 8, caster.id, target.id, world.tick + delay, spell=True, speed=FLIGHT[2 * number + 8]))
+        return
+    if pid is None:
         return
     if pid == 0x36:
         if cell is None:
@@ -980,10 +989,14 @@ def arrow_system(world, commands=()):
             u, t = world.find_unit(a.shooter), _target_object(world, a.target)
             if u is None or t is None:
                 continue
-            ox, oy = arrow_origin(world, u)
-            tx, ty = _target_pos(t)
+            if a.spell:                                 # `FUN_0046707e`: start at the footprint centre, distance to the target's centre `+0x5c / +0x60`
+                ox, oy = shoot_origin(world, u)
+                tx, ty = _target_centre(world, t)
+            else:                                       # `FUN_00466e18`: start at `+8 / +0xc`, distance to the target's `+8 / +0xc`
+                ox, oy = arrow_origin(world, u)
+                tx, ty = _target_pos(t)
             dx, dy = u.x * 256 + u.sub_x - tx, u.y * 256 + u.sub_y - ty
-            steps = int(math.sqrt(dx * dx + dy * dy)) // ARROW_SPEED
+            steps = int(math.sqrt(dx * dx + dy * dy)) // a.speed
             if steps <= 0:
                 continue
             a.live, a.x, a.y, a.steps, a.age = True, ox, oy, steps, 0
@@ -993,6 +1006,10 @@ def arrow_system(world, commands=()):
         if t is not None:
             a.tx, a.ty = _target_centre(world, t)
         a.facing = direction16(a.tx - a.x, a.ty - a.y)
+        if a.pid in TRAIL_IDS:                          # `FUN_0046c1d0` after the switch: drop the oldest beyond 6, add the position before the move
+            if len(a.trail) > 5:
+                del a.trail[0]
+            a.trail.append((a.x, a.y))
         a.x += _idiv(a.tx - a.x, a.steps)
         a.y += _idiv(a.ty - a.y, a.steps)
         a.age += 1

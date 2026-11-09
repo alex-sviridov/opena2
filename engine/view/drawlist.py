@@ -596,7 +596,7 @@ def missile_position(c, target, age):
     tx, ty = c.aim if target is None else target
     n = max(c.flight, 1)
     k = min(age, c.flight) if c.flight else 1
-    sx, sy = c.origin or c.start
+    sx, sy = c.start
     return (sx + _trunc((tx - sx) * k / n), sy + _trunc((ty - sy) * k / n))
 
 
@@ -617,8 +617,8 @@ def _carriers(ctx):
     the trail file, oldest first and drawn after the missile body (CONFIRMED order of the draw routine), the missile frame by facing and age (`ProjectileSet.frame_at`, age0 -1)."""
     w = ctx.world
     for c in w.carriers:
-        if c.kind != "missile" or c.spell in (10, 11):      # Lightning / Prismatic Spray: no flying missile, the client draws the bolt (`_bolts`)
-            continue
+        if c.kind != "missile" or c.spell in (10, 11) or c.target is not None:
+            continue            # Lightning / Spray: the client draws the bolt (`_bolts`); a unit-target flight is a client `Arrow` made by the cast action (`_arrows`)
         pset = ctx.assets.projectile_set(c.spell * 2 + 8)
         if pset is None:
             ctx.items.missing += 1
@@ -633,8 +633,7 @@ def _carriers(ctx):
             continue
         end = tpos or c.aim
         prev = missile_position(c, tpos, max(min(age, c.flight) - 1, 0))      # `FUN_0046c1d0`: the facing is taken from the position before the step
-        facing = missile_facing(end[0] - prev[0], end[1] - prev[1]) if prev != end else missile_facing(end[0] - (c.origin or c.start)[0],
-                                                                                                     end[1] - (c.origin or c.start)[1])
+        facing = missile_facing(end[0] - prev[0], end[1] - prev[1]) if prev != end else missile_facing(end[0] - c.start[0], end[1] - c.start[1])
         ent = _Carrier(c)
         rec = pset.rec
         a16 = bool(rec["A16"])
@@ -718,6 +717,10 @@ def _arrows(ctx):
         _projectile_item(ctx, _Fx, None, pset, ref, pos, dep + (0, 0), "alpha" if a16 else "opaque", "main", z0=0)
         if not a16 and pset.rec["Palette"]:
             _projectile_item(ctx, _Fx, None, pset, ref, pos, dep + (1, 0), "half", "main_b", z0=0)
+        if pset.has_trail and a.trail:                  # ids 10 / 12: the 6 previous positions, oldest first, after the body (`FUN_0046cb7b`)
+            points = [((y << 16) | x) & 0xFFFFFFFF for x, y in a.trail]
+            for k, (tref, _) in enumerate(pset.trail(points)):
+                _projectile_item(ctx, _Fx, None, pset, tref, a.trail[k], dep + (2 + k, 0), "alpha", "trail", z0=0)
 
 
 def _explosions(ctx):
