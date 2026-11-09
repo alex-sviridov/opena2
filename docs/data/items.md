@@ -509,10 +509,18 @@ puts the 12 items through `+0x44` in record order (a refused or replaced one lan
 - A dropped shaman staff keeps its spell after pickup; a hero over the capacity (`Body * 10 + 1`) walks slower by `load / capacity`.
 - Weight: Bronze Cuirass 38, Meteoric / Crystal items heavier (material f64 1).
 
+## Client suitability test `FUN_0046a9c2` (CONFIRMED asm, answers the old "client-side drop test")
+
+Not a drop test: `FUN_0046a9c2(item)` on a client unit returns 1 ("unsuitable") when the item's flag byte `+8` has bit 2 and the unit's `+0x1b8` has no bit 2
+(not a mage), or the item has bit 4 and the unit is a mage; else 0. Its two callers are the info panel's carried-item release (`0x4b037f`, `0x4b1c56`):
+the dragged item is only accepted on a unit it suits (the server repeats the test in `FUN_00512573`, §15, so the engine needs nothing more). The same
+release posts message `0x463` (to the client object `FUN_0041e3f0`) when the carried item has flags `& 6 == 0` and code `0xe4d` (**Quest Documents**, used
+only by map 10): a one-off notice, not researched (no engine effect).
+
 ## Open questions
 
 - Gear ([§15](#15-equip-use-pack-and-ground-items-confirmed-engine-sim-gearpy)) left outside the engine: the shop kinds 4..8 of message `0x22`, the structure wells
-  (state `0xf` potions, command `0x24`), the client-side drop test `FUN_0046a9c2`, the character-file rewrite after an attribute potion, the lore effects
+  (state `0xf` potions, command `0x24`), the character-file rewrite after an attribute potion, the lore effects
   38..40, the setter of Brain mode 12 (`FUN_0056eb2d`), the stale destination of source kind 3, and effect kind 18 (turn rate; the recompute overwrites it).
 - The `.a2c` item stream is decoded in [saves §3.4](../formats/saves.md#34-item-chunks-confirmed); left outside this spec: the Scenario.dll
   campaign state machine beyond the shop table (§13; its save block is [saves §6.3](../formats/saves.md#63-the-client-tail-confirmed-fun_0048dc9f-writes-fun_0048c2e9-reads-from-offset-4--0x100)).
