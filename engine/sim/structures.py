@@ -1,12 +1,16 @@
 """Using a structure (command `0x24`, order `0xf`, Brain mode 15, state `0xf`): docs/engine/structures.md, design 2026-11-09-use-structure-design.md.
 
-Built: the walk to the structure and the toggle of the switches 1 / 2 and the altars 1 / 2 (types 28, 29, 76, 77: `+0x42 = (+0x42 == 0) ? 1 : 0`, which
-check 21 reads).  The wells, signposts and graves are K8 (structures.md 7): the lookup finds them and nothing happens.  Layer 4: reads and writes
-`engine.world` only.
+Built: the walk to the structure and the effect of every usable class, as data (`USE_A`, `WELLS`) plus one handler per behaviour: the toggle of the
+switches 1 / 2 and the altars 1 / 2 (types 28, 29, 76, 77: `+0x42 = (+0x42 == 0) ? 1 : 0`, which check 21 reads), the signposts 70-75 (run the
+instant `+0x6c` when it is > 0), the wells 15 / 16 (lookup B: 3 charges, a Potion Big Healing / Mana drunk through `gear.use_item`); graves and
+houses do nothing (structures.md 3, 7).  The multiplayer shops / inns end the case like the exe (their messages are out of scope).  Layer 4: reads
+and writes `engine.world` only.
 
 The effect is not the clicked structure's: state `0xf` looks for the first structure of the list within Chebyshev 2 of `(x - 1, y - 1)` of the unit's
 cell (`FUN_0052c129` -> `FUN_0052bfe7`, CONFIRMED, structures.md 3); `World.use_clicked` (debug) uses the clicked one instead.
 """
+
+from dataclasses import dataclass
 
 from .pathfinding import Foot, chebyshev, foot
 
@@ -14,6 +18,18 @@ USE_ORDER, USE_STATE = 0xF, 0xF         # unit order `+0x50` and state `+0x54`
 TOGGLE_TYPES = frozenset((28, 29, 76, 77))      # switches 1 / 2, altars 1 / 2 (type word `+0xe`, `0x50f9d4`-`0x50f9fe`)
 LOOKUP_RANGE = 2                        # `FUN_0054fb7f` Chebyshev distance of the position lookup
 FLAG_DESTROYED = 1                      # engine.world.FLAG_DESTROYED
+POINTER_TYPES = frozenset(range(70, 76))        # "Usable Pointer" 1-6, class "Pointer" `0x5f90b0` (structure ctor by type 0x46-0x4b, `FUN_00561422`)
+SHOP_INN_TYPES = frozenset((0x22, 0x23, 0x5D, 0x5E, 0x5F, 0x69, 0x6A, 0x6B, 0x43, 0x44, 0x45, 0x63, 0x64, 0x65, 0x6F, 0x70, 0x71))  # multiplayer: the case ends (0x83 / 0x84)
+WELLS = {0xF: "Potion Big Healing", 0x10: "Potion Big Mana"}   # lookup B by the type byte `+0x40`: the potion made per charge (`0x5fe2dc`, `0x5fe2f0`)
+
+
+@dataclass(frozen=True)
+class StructureState:
+    """Event: server message `0x82` (`FUN_00503672`: structure id, its `+0x42` word) sent to the clients.  The client stores it and posts the info-panel
+    refresh; **no sound, no text** (structures.md 4.1).  Lives in `World.events`, never in the dump or the hash."""
+    tick: int
+    uid: int
+    hp: int
 
 
 def approach(obj):
@@ -105,18 +121,68 @@ def find_structure(world, point):
 
 
 def toggle(world, obj):
-    """`+0x42 = (+0x42 == 0) ? 1 : 0`; the client stores the HP of message `0x82` and draws the destroyed art for `hp < 1` (structures.md 4)."""
+    """`+0x42 = (+0x42 == 0) ? 1 : 0`, then message `0x82`; the client draws the destroyed art for `hp < 1` (structures.md 4)."""
     obj.hp = 0 if obj.hp else 1
     if obj.hp < 1:
         obj.flags |= FLAG_DESTROYED
     else:
         obj.flags &= ~FLAG_DESTROYED
+    world.events.append(StructureState(world.tick, obj.uid, obj.hp))
+
+
+def run_pointer(world, obj):
+    """Class "Pointer": `if (+0x6c > 0) FUN_00574f3f(+0x6c)`: the instant runs at every use (no flag); the runtime index 0 is never reachable
+    (quirk, map.md part 6); a signpost without a record keeps `-1`."""
+    index = world.pointers.get(obj.uid, -1)
+    if index > 0 and world.script is not None:
+        from . import triggers
+        triggers.run_instant(world, world.script, index)
+
+
+def potion_item(world, name):
+    """`FUN_00522fab(name)`: the item object of the data.bin special item of that name (its effects from the modifier text), and its resolved record;
+    None when the table has no such name (the exe logs "no such ID" and goes on with id 0: not a game case)."""
+    from . import gear
+    from allods2.formats import saves as S
+    for d in getattr(world.item_table, "defs", ()):
+        if d.name == name and d.kind == "special":
+            item = S.Item(14 << 8 | d.index, 1, d.price, ())
+            return item, gear.resolve(world.item_table, item)
+    return None
+
+
+def use_well(world, u, obj):
+    """Lookup B, type byte 0xf / 0x10: while `+0x42 > 0` one charge goes (message `0x82`) **before** and independently of the potion, which is made and
+    drunk by the unit (`FUN_00523613`: effects applied, item destroyed; a full pack, a full unit, class, owner: never tested)."""
+    if obj.hp <= 0:
+        return
+    obj.hp -= 1
+    world.events.append(StructureState(world.tick, obj.uid, obj.hp))
+    made = potion_item(world, WELLS[obj.type_id])
+    if made is not None and made[1] is not None:
+        from . import gear
+        gear.use_item(world, u, made[0], made[1])
+
+
+USE_A = {28: toggle, 29: toggle, 76: toggle, 77: toggle}       # lookup A, by the type word `+0xe`: handler(world, obj); then lookup B always runs
 
 
 def use_tick(world, u):
-    """The state switch case `0xf` (`FUN_0050f12c`, `0x50f896`): lookup A at `(x - 1, y - 1)` and the switch / altar toggle."""
+    """The state switch case `0xf` (`FUN_0050f12c`, `0x50f896`, CONFIRMED): lookup A at `(x - 1, y - 1)`: a shop / inn or a Pointer ends the case (a
+    Pointer runs its instant first), a switch / altar toggles; then lookup B at the unit's own cell: a well gives its potion.  Graves, houses and the
+    multiplayer church: nothing."""
     obj = world.objects.get(u.use_obj) if world.use_clicked else None
     if obj is None:
         obj = find_structure(world, (u.x - 1, u.y - 1))
-    if obj is not None and obj.kind == "structure" and obj.type_id in TOGGLE_TYPES:
-        toggle(world, obj)
+    if obj is not None and obj.kind == "structure":
+        if obj.type_id in SHOP_INN_TYPES:
+            return
+        if obj.type_id in POINTER_TYPES:
+            run_pointer(world, obj)
+            return
+        handler = USE_A.get(obj.type_id)
+        if handler is not None:
+            handler(world, obj)
+    obj = find_structure(world, (u.x, u.y))
+    if obj is not None and obj.kind == "structure" and obj.type_id in WELLS:
+        use_well(world, u, obj)

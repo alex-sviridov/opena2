@@ -22,7 +22,7 @@ adds what the engine itself reports. It found one crash (map 96, a cast at a 2 x
 
 Scanned 46 campaign maps; smoke run 1600 ticks of the map script and the AI with no player.
 
-**46 of 46 maps have no known blocker** (20 playable now, 26 with gameplay gaps), 0 are blocked. This is an upper bound: it means no feature in the list below stops the mission and the smoke run did not crash, not that the map has been played.
+**46 of 46 maps have no known blocker** (46 playable now, 0 with gameplay gaps), 0 are blocked. This is an upper bound: it means no feature in the list below stops the mission and the smoke run did not crash, not that the map has been played.
 
 - **blocker**: the mission cannot be completed as designed (a script variable that gates the goal is fed by an action the engine cannot do).
 - **gameplay gap**: content the engine ignores but the goal does not depend on (a usable well, a spell duration).
@@ -32,52 +32,52 @@ Scanned 46 campaign maps; smoke run 1600 ticks of the map script and the AI with
 
 | Map | Name | Verdict | Blockers | Gameplay gaps | Smoke |
 |---|---|---|---|---|---|
-| 10 |  | playable, gameplay gaps |  | use.pointer x1 | ok |
-| 20 |  | playable, gameplay gaps |  | use.pointer x3 | ok |
-| 21 |  | playable, gameplay gaps |  | use.pointer x3 | ok |
-| 30 |  | playable, gameplay gaps |  | use.grave x5, use.pointer x1, use.well x1 | ok |
-| 31 | Adamantium mines | playable, gameplay gaps |  | use.grave x6 | ok |
+| 10 |  | playable now |  |  | ok |
+| 20 |  | playable now |  |  | ok |
+| 21 |  | playable now |  |  | ok |
+| 30 |  | playable now |  |  | ok |
+| 31 | Adamantium mines | playable now |  |  | ok |
 | 32 | Get Sword | playable now |  |  | ok |
-| 40 |  | playable, gameplay gaps |  | use.pointer x3, use.well x3 | ok |
+| 40 |  | playable now |  |  | ok |
 | 41 |  | playable now |  |  | ok |
-| 42 | Mad dragon | playable, gameplay gaps |  | use.grave x2 | ok |
-| 43 | Dirty work | playable, gameplay gaps |  | use.grave x1 | lost |
-| 50 |  | playable, gameplay gaps |  | use.pointer x1 | ok |
+| 42 | Mad dragon | playable now |  |  | ok |
+| 43 | Dirty work | playable now |  |  | lost |
+| 50 |  | playable now |  |  | ok |
 | 51 |  | playable now |  |  | ok |
-| 52 | Waterfall | playable, gameplay gaps |  | use.well x2 | ok |
-| 53 | Guard Traveller | playable, gameplay gaps |  | use.grave x4, use.well x1 | ok |
-| 60 |  | playable, gameplay gaps |  | use.well x1 | lost |
+| 52 | Waterfall | playable now |  |  | ok |
+| 53 | Guard Traveller | playable now |  |  | ok |
+| 60 |  | playable now |  |  | lost |
 | 61 |  | playable now |  |  | ok |
-| 62 | Escapers | playable, gameplay gaps |  | use.well x1 | ok |
-| 63 | Magicianess | playable, gameplay gaps |  | use.well x2 | ok |
-| 70 |  | playable, gameplay gaps |  | use.grave x6 | lost |
+| 62 | Escapers | playable now |  |  | ok |
+| 63 | Magicianess | playable now |  |  | ok |
+| 70 |  | playable now |  |  | lost |
 | 71 |  | playable now |  |  | ok |
 | 72 | Lost Caravans | playable now |  |  | ok |
-| 73 | Revolted Castle | playable, gameplay gaps |  | use.grave x1, use.well x4 | ok |
-| 74 | SmartShaman | playable, gameplay gaps |  | use.well x1 | ok |
-| 75 | Old Warrior | playable, gameplay gaps |  | use.grave x1, use.well x3 | ok |
+| 73 | Revolted Castle | playable now |  |  | ok |
+| 74 | SmartShaman | playable now |  |  | ok |
+| 75 | Old Warrior | playable now |  |  | ok |
 | 76 | DangerousForest | playable now |  |  | ok |
-| 77 | MageGhost | playable, gameplay gaps |  | use.grave x6, use.well x2 | ok |
+| 77 | MageGhost | playable now |  |  | ok |
 | 80 |  | playable now |  |  | ok |
 | 81 |  | playable now |  |  | ok |
 | 82 |  | playable now |  |  | ok |
-| 83 |  | playable, gameplay gaps |  | use.well x2 | ok |
+| 83 |  | playable now |  |  | ok |
 | 84 | Orakul | playable now |  |  | ok |
 | 85 | StoryMan | playable now |  |  | ok |
-| 86 | SwampMage | playable, gameplay gaps |  | use.well x1 | ok |
-| 87 |  | playable, gameplay gaps |  | use.well x1 | ok |
+| 86 | SwampMage | playable now |  |  | ok |
+| 87 |  | playable now |  |  | ok |
 | 90 |  | playable now |  |  | ok |
 | 91 |  | playable now |  |  | ok |
-| 92 | Great warrior's grave | playable, gameplay gaps |  | use.grave x1 | lost |
+| 92 | Great warrior's grave | playable now |  |  | lost |
 | 93 |  | playable now |  |  | ok |
 | 94 |  | playable now |  |  | ok |
 | 95 |  | playable now |  |  | ok |
 | 96 |  | playable now |  |  | ok |
-| 100 |  | playable, gameplay gaps |  | use.well x1 | ok |
+| 100 |  | playable now |  |  | ok |
 | 101 |  | playable now |  |  | ok |
-| 102 |  | playable, gameplay gaps |  | use.grave x9 | lost |
+| 102 |  | playable now |  |  | lost |
 | 103 | Find the magic Oracle | playable now |  |  | ok |
-| 110 |  | playable, gameplay gaps |  | use.grave x13 | lost |
+| 110 |  | playable now |  |  | lost |
 
 ### Per feature the engine does not fully have
 
@@ -88,10 +88,6 @@ Scanned 46 campaign maps; smoke run 1600 ticks of the map script and the AI with
 | `music.zones` | music zones (section 12) | missing | polish | sound | 46 | - | the engine has no audio |
 | `spell.status` | spells whose status effect has no drawing (protections, Bless, Curse, Haste, Slow, Shield) | partial | polish | draw | 41 | - | simulated (effects.md); only Invisibility and Stone Curse change the unit's look |
 | `unit.ranged` | units that shoot (attack range > 1, no spell) | partial | polish | draw | 36 | - | simulated exactly, the arrow is not drawn (combat.md 3, 10) |
-| `use.grave` | usable King's grave | missing | gameplay | use_more | 12 | - | behaviour not researched |
-| `use.pointer` | usable signpost that shows a story message | missing | gameplay | use_more | 6 | - | section 11 list C `enabled`: using it runs an instant 2 (Send message), no state changes (map.md part 6, FUN_0050f12c 0x50f944) |
-| `use.pointer_script` | usable signpost whose instant changes the script | missing | blocker | use_more | 0 | 0 | a signpost instant other than a message (none in the install: every signpost only sends a message) |
-| `use.well` | usable well (Well 2 / Well 3) | missing | gameplay | use_more | 15 | - | behaviour not researched |
 
 ### Script kinds the maps use (reachable from an active trigger)
 
@@ -219,13 +215,12 @@ First the steps that unblock maps (greedy: the next one completes the most block
 
 | # | Step | Effort | Maps newly playable | Playable after | Maps touched | Backlog item |
 |---|---|---|---|---|---|---|
-| 1 | `use_more` Use a structure, the rest: signpost messages, wells, King's graves, altars (research of each class) | 2 | - | 46 | 26 | - |
-| 2 | `draw` Draw what is simulated: status effects of units, arrows of shooters | 2 | - | 46 | 46 | 2 |
-| 3 | `sound` Sound and music: music zones, unit and UI sounds, the 0xfe / 0xfd / 0xfa messages | 5 | - | 46 | 46 | 6 |
-| 4 | `hero_ui` Hero windows: the Heads panel, hero screen (stats, skills, paper doll), item shops | 3 | - | 46 | 46 | 1 |
-| 5 | `menus` Start menu, new-game and options screens, in-game menu entries | 4 | - | 46 | 46 | 5 |
-| 6 | `save` Save / load: the game%d.sav writer and reader | 4 | - | 46 | 46 | 7 |
-| 7 | `campaign` Campaign flow: world map, towns, hero recruit, roster carry-over, the Scenario.dll variables | 8 | - | 46 | 46 | 4 |
+| 1 | `draw` Draw what is simulated: status effects of units, arrows of shooters | 2 | - | 46 | 46 | 2 |
+| 2 | `sound` Sound and music: music zones, unit and UI sounds, the 0xfe / 0xfd / 0xfa messages | 5 | - | 46 | 46 | 6 |
+| 3 | `hero_ui` Hero windows: the Heads panel, hero screen (stats, skills, paper doll), item shops | 3 | - | 46 | 46 | 1 |
+| 4 | `menus` Start menu, new-game and options screens, in-game menu entries | 4 | - | 46 | 46 | 5 |
+| 5 | `save` Save / load: the game%d.sav writer and reader | 4 | - | 46 | 46 | 7 |
+| 6 | `campaign` Campaign flow: world map, towns, hero recruit, roster carry-over, the Scenario.dll variables | 8 | - | 46 | 46 | 4 |
 
 <!-- coverage:end -->
 
@@ -245,6 +240,9 @@ drawing, sound and shell.
 | K6 | `use`: command `0x24`, the use order (state `0xf`), the switch state that check 21 reads | 3 | 2 (96, 103) | 43 |
 | K7 | `tilefx`: check 25 reads the cell layers, instants 29 / 30 set spell durations | 1 | 3 (93, 94, 95: they need K6 as well) | 46 |
 | K8 | `use_more`: signpost messages, wells, King's graves, altars (research each class) | 2 | gameplay only (33 maps touch a usable structure) | 46 |
+
+**K8 done (2026-11-09):** wells, signposts and graves are built ([structures §0](engine/structures.md)); the 33 maps that contain one run the use of every such structure in `tests/test_engine_structures_k8.py`; the regenerated block reads 46 of 46 playable now, 0 with gameplay gaps.
+
 | K9 | `draw`: status effects of units, arrows of shooters | 2 | polish only (46 maps) | 46 |
 | then | `sound`, `hero_ui`, `menus`, `save`, `campaign` | 5 + 3 + 4 + 4 + 8 | none: no map needs them to be completed | 46 |
 
@@ -266,8 +264,7 @@ switch class are only partly read: command `0x24` in [click-to-move-research](en
 | 7. Save / load | Not a map blocker. |
 | **missing** | **Use a structure** is not in the backlog at all, yet 5 maps are blocked on it (K6) and 33 maps contain a usable structure (K8). |
 
-**What the report does not know.** The effort figures are estimates. The behaviour of wells, graves and altars is not researched (no script reads
-them, so they are listed as gameplay gaps, not blockers; K8 may find more). The verdicts are an upper bound: a map without a listed blocker may still fail
+**What the report does not know.** The effort figures are estimates. The behaviour of wells, graves and altars was researched in K6 / K8 ([structures](engine/structures.md)). The verdicts are an upper bound: a map without a listed blocker may still fail
 for a reason the scan cannot see (a balance problem, a bug in a path of the engine no test covers), which only a play-through shows; map 32 is the one
 prepared for it ([prototype.md](prototype.md)). The idle party is lost within 100 s on six maps (43, 60, 70, 92, 102, 110); with a fresh level-1 party and
 nothing ordered this may be the original's behaviour too, but it was not compared.

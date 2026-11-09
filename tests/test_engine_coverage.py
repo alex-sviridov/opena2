@@ -19,6 +19,7 @@ def _feats():
     f = dict(C.FEATURES)
     f["check.99"] = C.Feature("check.99", "no such check", C.MISSING, C.BLOCKER, "tilefx")
     f["use.fake"] = C.Feature("use.fake", "a blocker of the use step", C.MISSING, C.BLOCKER, "use")      # K6 built the real ones
+    f["use.well"] = C.Feature("use.well", "a gameplay gap of the use_more step", C.MISSING, C.GAMEPLAY, "use_more")     # K8 built the real one
     return f
 
 
@@ -84,7 +85,7 @@ def test_install_maps_scan_and_smoke():
     by = {r["map"]: r for r in rows}
     assert C.verdict(by["32"], feats) == "playable now"
     assert by["21"]["counts"]["item.quest_pickup"] == 1 and C.verdict(by["21"], feats) != "blocked"      # Quest Treasure: the exit checks for it (K5 built the pickup)
-    assert by["10"]["counts"]["use.pointer"] >= 1 and C.verdict(by["10"], feats) == "playable, gameplay gaps"   # a signpost that only sends a message
+    assert by["10"]["counts"]["use.pointer"] >= 1 and C.verdict(by["10"], feats) == "playable now"   # a signpost that only sends a message (K8 built it)
     assert by["103"]["counts"]["use.scripted"] == 16 and C.blockers(by["103"], feats) == []      # the switch puzzle (check 21 on 16 switches): built by K6
     assert all(not r["smoke"]["crash"] and r["smoke"]["tick"] == 40 for r in rows)
     assert by["32"]["counts"]["check.5"] and by["32"]["counts"]["instant.4"]

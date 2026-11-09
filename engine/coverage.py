@@ -65,14 +65,15 @@ STEPS = {s.id: s for s in (
 
 # Features that are not script kinds.  Per-map counts come from `scan`.
 FEATURES = {f.id: f for f in (
-    Feature("use.pointer", "usable signpost that shows a story message", MISSING, GAMEPLAY, "use_more",
-            "section 11 list C `enabled`: using it runs an instant 2 (Send message), no state changes (map.md part 6, FUN_0050f12c 0x50f944)"),
-    Feature("use.pointer_script", "usable signpost whose instant changes the script", MISSING, BLOCKER, "use_more",
-            "a signpost instant other than a message (none in the install: every signpost only sends a message)"),
+    Feature("use.pointer", "usable signpost that shows a story message", BUILT, GAMEPLAY, "",
+            "K8: state 0xf runs the instant `+0x6c` (> 0) at every use (`World.pointers`, structures.md 3, FUN_0050f12c 0x50f944)"),
+    Feature("use.pointer_script", "usable signpost whose instant changes the script", BUILT, BLOCKER, "",
+            "K8: any instant runs through `triggers.run_instant` (the install has only messages)"),
     Feature("use.altar", "usable altar", BUILT, GAMEPLAY, "", "K6: the same HP toggle as a switch (docs/engine/structures.md 3)"),
     Feature("use.switch", "usable switch", BUILT, GAMEPLAY, "", "K6: `UseStructure`, state 0xf toggles HP 0 <-> 1 (engine/sim/structures.py)"),
-    Feature("use.well", "usable well (Well 2 / Well 3)", MISSING, GAMEPLAY, "use_more", "behaviour not researched"),
-    Feature("use.grave", "usable King's grave", MISSING, GAMEPLAY, "use_more", "behaviour not researched"),
+    Feature("use.well", "usable well (Well 2 / Well 3)", BUILT, GAMEPLAY, "",
+            "K8: 3 charges, Potion Big Healing / Mana through `gear.use_item` (structures.md 7.1, tests/test_engine_structures_k8.py)"),
+    Feature("use.grave", "usable King's grave", BUILT, GAMEPLAY, "", "K8: no server effect, the walk and the stop only (CONFIRMED, structures.md 3)"),
     Feature("use.scripted", "usable structure whose state a script reads (switch puzzle: check 21 on a switch)", BUILT, BLOCKER, "",
             "K6: the use toggles the HP that check 21 reads (maps 96 and 103 solved by scripted uses, tests/test_engine_structures.py)"),
     Feature("item.quest_pickup", "quest item a trigger checks for that lies on the map (carried by a monster or in a sack)", BUILT, BLOCKER, "",

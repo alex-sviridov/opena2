@@ -354,6 +354,8 @@ def enable(world, m, strict=False, assets=None, party=0):
         ai.enable(world)
     world.script = compile_scenario(world, scenario)
     world.script.strict = strict
+    world.pointers = {p.uid: S.runtime_instant_index(scenario.instants, p.instant) for p in getattr(m, "section11", ((), (), ()))[2]
+                      if p.enabled and p.instant < len(scenario.instants)}      # section 11 list C: signpost +0x6c (map.md part 6)
     if hasattr(m, "item_records"):                      # FUN_00562745 0x564280: the section 9 cell records (sim/traps.py)
         traps.load_map(world, m)
     return world.script

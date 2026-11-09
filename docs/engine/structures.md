@@ -7,6 +7,29 @@ word, `+0x40` type byte, `+0x42` s16 HP, `+0x44` max HP, `+0x10` position object
 `+0x6c` signpost instant). Commands: [click-to-move-research](click-to-move-research.md); script side: [triggers](triggers.md).
 Everything in this file is single player.
 
+## 0. Status per class (K6 + K8, `engine/sim/structures.py`)
+
+| Class (IDs) | Server effect | Status | Engine | Tests |
+|---|---|---|---|---|
+| Switches 1 / 2 (28, 29), Altars 1 / 2 (76, 77) | HP 0 <-> 1, message `0x82`; art follows `hp < 1` | CONFIRMED `0x50f9d4`-`0x50fa1c` | `USE_A` -> `toggle` | `test_engine_structures*.py` |
+| Wells (15 health, 16 mana) | lookup B: charge `-1` (3 per well), message `0x82`, potion drunk (+100 capped) | CONFIRMED `0x50fa2f`-`0x50fc09`, `FUN_00522fab`, `FUN_00523613` | `WELLS` -> `use_well` | `test_engine_structures_k8.py` |
+| Usable Pointers / signposts (70-75) | instant `+0x6c` when `> 0` at every use, then the case ends (lookup B skipped) | CONFIRMED `0x50f944` | `run_pointer`, `World.pointers` (built in `triggers.enable` from section 11 list C) | same |
+| King's Graves (39, 40) | none (the walk and the stop) | CONFIRMED (no code tests the types) | no handler | same |
+| Shops / inns (multiplayer ids) | messages `0x83` / `0x84`, the case ends | CONFIRMED, out of scope | `SHOP_INN_TYPES` ends the case, no message | - |
+| "Saving Place" (66) | client save UI | INFERRED, no campaign map has it | not built | - |
+
+**Feedback (CONFIRMED by reading `FUN_0050f12c`, `FUN_00503672`, `FUN_00523613`, `FUN_0040d9b2` case `0x82`).** The server sends exactly one message for
+a use: `0x82` (structure id and its `+0x42` word) from a toggle or a well charge; the client only stores the word. There is **no sound, no text line
+and no animation** for a switch, altar, well, grave or the potion (the item use sends nothing; the attribute check `FUN_004e9e97` is not reached for
+health / mana). The only text is a signpost's script instant (`Send message`, a story window). So K8 logs **no sound event**: the engine emits the
+`StructureState` event (`World.events`, not hashed) for message `0x82` and nothing else. The Sound step has nothing to add for structure uses.
+
+**Real maps (`tests/test_engine_structures_k8.py`, `ALLODS2_ALL_MAPS=1` for all 33):** per structure type, the maps that contain it (map data):
+Well 2 (15): 30, 40, 52 (2), 63, 73 (2), 75 (2), 83, 100; Well 3 (16): 40 (2), 53, 60, 62, 63, 73 (2), 74, 75, 77 (2), 83, 86, 87; signposts (live = the
+runtime instant index `> 0`): 10, 20 (3), 21 (3), 30, 40 (3), 50; map 76's signpost is not live (index 0, the quirk); graves: 30, 31, 42, 43, 53, 70, 73, 75, 77,
+92, 102, 110. The test uses every well, grave and signpost of those maps from a neighbour cell: the expectation follows the exe's lookup (map 40's uid 4
+well is captured by uid 2, the first structure within 2 of the stop cell, and gives nothing).
+
 ## 1. Which structures are usable (CONFIRMED data, `structures.reg`)
 
 The client decides with the `Usable` flag (record `+0x8c`, [animation §1](../formats/animation.md)): hover flag `0x800` (`FUN_004180c6`,
@@ -271,8 +294,20 @@ Answers to Q5:
    then lookup B (own cell): type 15 / 16 with HP > 0: HP -= 1, apply health / mana +100 (capped).
 3. **View**: HP is the only state (`MapObject.hp`); draw destroyed art for `hp < 1` of a non-Indestructible structure (existing logic). No restamp, no pathing change.
 4. **Scripts**: check 21 / instant 26 already exist; K6 needs only the writer. Instant 26 does not tell the view (keep that).
-5. **Tests**: the pair on maps 93-96 (use both -> trigger 1 fires within 16 ticks, teleporter trap placed); map 103 puzzle A + B (checks of §6), wells (3 uses, +100 capped, 4th nothing), signpost (instant each time), altar toggle, grave no-op, lookup quirk (a unit next to switch 8 toggles uid 1).
-6. Coverage keys: `use.scripted`, `use.switch`, `use.altar` are K6 (the altar is the same toggle); `use.well`, `use.pointer`, `use.grave` K8 (grave = hover and walk only).
+5. **Tests (K6/K8)**: the pair on maps 93-96 (use both -> trigger 1 fires within 16 ticks, teleporter trap placed); map 103 puzzle A + B (checks of §6), wells (3 uses, +100 capped, 4th nothing), signpost (instant each time), altar toggle, grave no-op, lookup quirk (a unit next to switch 8 toggles uid 1).
+6. Coverage keys: `use.scripted`, `use.switch`, `use.altar` are K6 (the altar is the same toggle); `use.well`, `use.pointer`, `use.pointer_script`, `use.grave` K8, all BUILT
+   (grave = hover and walk only).
+
+### 8.1 K8 decisions and what the exe settles
+* A switch / altar use **also runs lookup B**: case `0xf` falls through to it unless the Pointer / shop / inn branch broke out (tested: a switch next to a well, the
+  signpost that shadows a well).
+* The potion path of 7.1 is exact: the charge goes first (message `0x82`); `gear.use_item` is K4's `FUN_00523613`, so Healing / Mana, the cap, the recompute and the
+  dead-carrier rule (`hp <= 0`: nothing) are not re-implemented. data.bin names "Potion Big Healing" (special 71, `health=+100`) and "Potion Big Mana" (74,
+  `mana=+100`) are read from the item table; a table without them keeps the charge change and does nothing else (the exe would log "no such ID": not a game case).
+* Nothing random: no `rand` is called in a use (tested), so the world RNG is untouched and a replay gives the same hash.
+* Not stored per hero: charges are the structure's `+0x42`, shown by the info panel as `Health hp/max` for the selected well (existing reader).
+* VERIFY IN GAME: that a well's info panel shows the falling charge count (`0x82` posts the refresh; INFERRED from the handler); the well sound heard
+  in the original, if any, is not from the server (no sound request exists in the path read here).
 
 ## Open questions
 

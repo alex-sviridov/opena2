@@ -684,6 +684,7 @@ class World:
         self._next_carrier = 1
         self._next_group = 1
         self.ai_sleep = True        # server+0xbbe8 == 0: squads far from every human unit sleep (sim/ai/ `wake`, ai.md 15)
+        self.pointers = {}          # signpost structure uid -> runtime instant index (`+0x6c`), set by `triggers.enable`; not in dump()
         self.use_clicked = False    # debug: state 0xf uses the clicked structure, not the exe's position lookup (docs/engine/structures.md 3)
         self.ai_on = False          # sim/ai/ `enable`: the squads are in `ai_groups` and the state is part of dump()
         self.ai_groups = {}         # (owner, squad) -> AiGroup, in creation order
