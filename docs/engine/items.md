@@ -41,7 +41,7 @@ piece; 38 the same for every unit; 20 drops the pack as a pile on the unit's cel
 - **Info panel (ENGINE ADDITION, not in the original).** The own hero's carried quest items (special items that are no potion, scroll or book) are listed
   in sage under the stats: at most two lines from `(0x2A, 0xDC)`, `name` or `name xN` for a stack. The original shows them only in the pack window.
 - **Message.** The pickup line is `PickupWatch` (ui-layout §11.5). Sound: none found in the server routine; the client sound on the item notice
-  `FUN_00504b3a` was not researched (the engine has no audio): open question.
+  `FUN_00504b3a` was not researched (the item notice has no `SoundEvent`: [audio.md](audio.md) 2.1 says pick-up has none): open question.
 
 ## 3. The seven maps (debug run, `tests/test_engine_pickup.py::test_quest_item_can_be_reached_and_its_checks_hold`)
 

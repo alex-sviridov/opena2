@@ -10,7 +10,7 @@ from allods2.formats import progression as prog
 from allods2.formats.itemgen import loot_item
 from engine.world import DEAD, HeroDied, Item, Killed, Loot, Removed, death_stage
 
-from . import xp
+from . import sounds, xp
 from .combat import combat_stats, log
 from .combatstats import equipment_bag, equipment_codes
 from . import gear
@@ -53,6 +53,7 @@ def dying_tick(world, u):
     if not u.death_seen:
         u.death_seen = True
         u.death_tick = world.tick
+        sounds.death(world, u)                  # the death animation starts: the [dead] sound (`0x4106be`; audio.md 2.1)
         st = combat_stats(world, u)
         u.combat = replace(st, block=st.block.copy())
         u.combat.block.defence = int(u.combat.block.defence / 2)        # signed truncating halving

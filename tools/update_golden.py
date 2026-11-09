@@ -207,6 +207,13 @@ def casts_summaries():
     return spell_scenarios.all_summaries()
 
 
+def audio_hashes():
+    """{scenario: {count, sha256 of the SoundEvent list}} of tests/audio_scenarios.py (synthetic worlds; no install needed; docs/engine/audio.md 8)."""
+    sys.path.insert(0, os.path.join(ROOT, "tests"))
+    import audio_scenarios
+    return audio_scenarios.all_hashes()
+
+
 def arrows_hashes(install=None):
     """{volley, volley+3: sha256 of the 640x480 frame, shots, world: dump hash} of tests/arrow_scenarios.py (map 73, shooters with arrows in flight, K9)."""
     sys.path.insert(0, os.path.join(ROOT, "tests"))
@@ -349,7 +356,7 @@ def main(argv):
     if only is not None:
         with open(GOLDEN, encoding="ascii") as f:
             out = json.load(f)
-        makers = {"interface": interface_hash, "ui": ui_hashes, "fog": fog_hashes, "minimaps": minimap_hashes, "arrows": arrows_hashes, "sound": sound_hashes}
+        makers = {"interface": interface_hash, "ui": ui_hashes, "fog": fog_hashes, "minimaps": minimap_hashes, "arrows": arrows_hashes, "sound": sound_hashes, "audio": lambda install: audio_hashes()}
         for k in only:
             out[k] = makers[k](install)
         _write(out)
@@ -369,6 +376,7 @@ def main(argv):
     out["fog"] = fog_hashes(install)
     out["arrows"] = arrows_hashes(install)
     out["sound"] = sound_hashes(install)
+    out["audio"] = audio_hashes()
     _write(out)
 
 

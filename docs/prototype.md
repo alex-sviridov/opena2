@@ -76,7 +76,7 @@ is drawn from its equipment (orange cloak, [animation §1.3](formats/animation.m
 ## Known differences and gaps
 
 - No start menu or new-game screen: the shell exits after the end dialog ([triggers §12](engine/triggers.md#12-j3-win-and-lose-on-map-32)).
-- No sound or music (the engine has no audio).
+- No sound or music yet: the sim emits sound events and the audio model exists ([audio.md](engine/audio.md), K11 slice 1); the pygame backend and the UI wiring are slice 2.
 - No save / load; no campaign flow between missions ([campaign](engine/triggers.md#11-the-end-of-mission-flow)): hero recruit, roster carry-over.
 - Interface: the Heads panel is only a picture (no hero windows), no town / shop windows, menu entries of later phases disabled.
 - Spells: structures are not modelled as spell targets (attack orders on structures are accepted and fought like creatures);

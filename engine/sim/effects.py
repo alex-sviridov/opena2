@@ -17,6 +17,8 @@ from allods2.formats import spelldefs
 
 from engine.world import Carrier, Effect
 
+from . import sounds
+
 # effect flags (+0x3d)
 F_DURATION, F_CONTINUOUS, F_CHARGES, F_SINGLE, F_FINISHED = 1, 2, 4, 8, 0x80
 FOREVER = 0x2581                # ticks >= 9601 never count down (FUN_0051cc9f)
@@ -695,6 +697,8 @@ def field_tick(world, c):
     """`FUN_0051806c` (Blizzard 7, Acid Stream 9; spells.md 9b): a step when the counter reads 0 (then 2 again): Blizzard one stone at
     `centre + (rand(0..5) - 2, rand(0..5) - 2)` (32 steps), Acid Stream the rows of step `+0x4f` (6 steps); each valid cell reaches both
     occupants (and the structure).  Returns True when the carrier is done."""
+    if c.spell == BLIZZARD and world.tick - c.born == 8:
+        sounds.blizzard(world, c.centre[0] * 256 + 128, c.centre[1] * 256 + 128)     # the Blizzard object's step 8 (`0x46c955`; audio.md 2.2): `sfx[523]`
     s = c.life
     c.life = s16(c.life - 1)
     if s != 0:
@@ -749,6 +753,7 @@ def spawn_explosion(world, cell):
     """`FUN_005045a5` for spell 2 -> client message 0x86 handler `0x414f00`-`0x4151c1`: projectile 13 at the cell centre (`cell * 256 + 128`), age -1,
     `+0xa8` = 22.  CONFIRMED (the id `+0xe` of the carrier being 13 = `2n + 9` is INFERRED, spells.md 7)."""
     from engine.world import Explosion
+    sounds.spell_object(world, cell[0] * 256 + 128, cell[1] * 256 + 128, 13)       # message 0x86, projectile 13: `sfx[513]` at the cell centre
     world.explosions.append(Explosion(cell[0], cell[1], world.tick, EXPLOSION_LIFE))
 
 

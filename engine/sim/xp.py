@@ -7,6 +7,7 @@ Spec: docs/data/progression.md sections 3-4 and docs/engine/combat.md 12.7; rout
 from allods2.formats import progression as prog
 from engine.world import LevelUp
 
+from . import sounds
 from .combat import combat_stats, log
 
 MAX_SKILL = 100                 # an award is ignored at skill >= 100
@@ -72,6 +73,7 @@ def level_up(world, hero, school):
     from . import gear
     gear.recompute(world, hero)         # max HP / mana from the new XP total and the equipment; HP and mana are clamped, the combat stats rebuilt
     log(world, LevelUp(world.tick, hero.id, school, hero.skills[school]))
+    sounds.skillup(world, hero)         # the skill-up line's sound (`0x40e689`, table id 15; the viewer's own heroes only: the Director)
 
 
 def damage_credit(world, attacker, victim, dmg, before, spell=0):

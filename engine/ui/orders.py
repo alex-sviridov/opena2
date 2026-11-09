@@ -378,7 +378,7 @@ def level_up_messages(world, player_id, messages, now_ms, text, name_fn=None):
     """Show the skill-up line for the `LevelUp` entries of `world.fight_log` (read, not consumed) whose hero belongs to the
     local player.  CONFIRMED (`FUN_0040d9b2` case 0x92 sub 2, `0x40e2a3`-`0x40e65c`): the line is `main.txt[0x81 + school]`
     ("<School> skill improved"), `[0x86 + school]` when the hero is a mage (`+0x1b8 & 2`, INFERRED = template mana_max > 0),
-    followed by " (<hero name>)" in a game; 3000 ms in the message line.  The exe's skill-up sound is not played."""
+    followed by " (<hero name>)" in a game; 3000 ms in the message line.  The exe's skill-up sound is the sim's `skillup` `SoundEvent` (docs/engine/audio.md 2.1)."""
     from engine.world import LevelUp
     shown = False
     for ev in world.fight_log:

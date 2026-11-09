@@ -78,7 +78,7 @@ def recovery_ticks(base, hero_delay, complication, rng):
 # --- cast order, Brain mode 8, the cast phases (docs/data/spells.md 9c.1-9c.2) -------------------------------------------------------------
 
 from engine.world import DEAD, Carrier, CastReleased, CastStarted, SpellCast       # noqa: E402  (after the pure math above)
-from . import movement as mv                                                 # noqa: E402
+from . import movement as mv, sounds                                        # noqa: E402
 from .pathfinding import centre_x, centre_y, foot, unit_size                 # noqa: E402
 
 CAST_ORDER = 0xD                    # unit.order (+0x50): cast at a unit (`FUN_0056d3e6`); the group pass turns it into Brain mode 8
@@ -432,6 +432,7 @@ def cast_start(world, u, c, st):
         else:
             c.chain = spray_chain(world, u, c, st, spell, t)
     flight = client_flight_ticks(spell, bx - ax, by - ay)
+    sounds.spell_object(world, ax, ay, 2 * spell.number + 8, u.id)      # the cast message 0x86 / 0x8b / 0x8c makes the spell object: `sfx[500 + 2n + 8]` (audio.md 2.2)
     log(world, CastStarted(world.tick, u.id, t.id if t is not None else None, c.spell, flight))
     if spell.number in (LIGHTNING, PRISMATIC_SPRAY) and t is not None:      # the client message starts action 8; its ShootDelay tick makes the bolt
         from . import effects
@@ -726,6 +727,7 @@ def cast_tick(world, u):
         u.timer = (u.timer - 1) & 0xFF
         if u.timer == 0:
             if c is not None:
+                sounds.cast(world, u, c.spell)          # the cast animation frame: `sfx[500 + spell]` (`0x467da8`; our frame = the release tick, audio.md 2.1)
                 (cast_release_cell if c.cell is not None else cast_release)(world, u, c, st)
                 if c.item_count is not None:        # unit +0x68 / +0x64 := 0 (a staff stays; a scroll was taken out of the pack when the command arrived, `scroll_cast`)
                     u.cast = c = None

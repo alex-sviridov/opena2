@@ -711,6 +711,8 @@ class World:
         self.players = {}           # id (1-based record) -> Player
         self.groups = {}            # id -> OrderGroup, in creation order (sim/orders.py)
         self.events = []            # NoWay ...: for the UI, not part of dump()/the hash
+        self.sound_events = []      # audio.SoundEvent (sim/sounds.py): for the Director, never in dump()/the hash; `Simulation` clears it at each step unless asked to keep it
+        self.sound_sets = {}        # unit type id -> the `Sound` list of units.reg (cache of sim/sounds.py)
         self.fight_log = []         # Damage / Died entries (sim/combat.py), drained by the UI, not part of the dump
         self.item_table = None      # allods2.formats.itemdefs.ItemTable (from_map); combat stats read it
         self.spell_table = None     # allods2.formats.spelldefs.SpellTable (from_map); the cast code reads it

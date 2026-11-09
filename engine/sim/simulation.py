@@ -24,8 +24,9 @@ class Simulation:
     is applied by that very step (the exe's loop-back delivers synchronously: no extra tick of latency), so the caller
     puts a command into the next step after it was issued."""
 
-    def __init__(self, world, systems=None, ai=False, triggers=False, vision=False):
+    def __init__(self, world, systems=None, ai=False, triggers=False, vision=False, keep_sound_events=False):
         self.world = world
+        self.keep_sound_events = keep_sound_events      # a consumer (the audio Director) drains and clears `world.sound_events`; else each step drops the last tick's
         if triggers:                            # the scenario script (sim/triggers.py) runs inside the AI's group pass
             if world.script is None:
                 raise ValueError("triggers=True needs triggers.enable(world, map) first")
@@ -61,6 +62,8 @@ class Simulation:
 
     def step(self, commands=()):
         commands = list(commands)
+        if not self.keep_sound_events:
+            del self.world.sound_events[:]
         self.log.extend((self.world.tick, c) for c in commands)
         for system in self.systems:
             system(self.world, commands)

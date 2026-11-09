@@ -480,7 +480,7 @@ by `FUN_0056dbc6` (arrival and the group pass: the same plus `brain+0x50 := 1`).
 `FUN_0041da16(view)` (CONFIRMED asm `0x41da16`-`0x41dcdb`) returns 0 unless the game mode `+0x5d8 == 2` and the voice option `0x622778` is on; else it walks the selection set (`view+0x9d0`, hash order), living objects only (HP `obj+0x104 > 0`), into three lists: A = heroes (`+0x1b8 & 1`); for others, while A is still empty and `+0x1b8 & 0x10`: B if `obj+0x188 != 0`, else C when B is still empty; otherwise B when `obj+0x1dc` (word) is in 1..20. The result is a random member of the first non-empty list A, B, C: `list[rand() * n / 0x7fff]` (CRT `rand`, `FUN_00583290`). After a move/patrol/swarm/etc. order the picked unit's vtable method plays its voice (`move`: slot `+0x6c` =
 `0x4682a6`; swarm `+0x70`, attack `+0x68`, stand `+0x78`, pickup `+0x84`). `0x4682a6`: at most once per 3000 ms per unit
 (`obj+0x1bc`), random sample from the template list (`template+0x64` entries at `+0x24`), pan/volume from the unit's position relative to the
-view. For the move order the call is skipped when `voice_obj+0x78 == 1` (`0x418c99`). Out of scope for now (no sound engine in the recreation yet).
+view. For the move order the call is skipped when `voice_obj+0x78 == 1` (`0x418c99`). Built as the audio layer's `Voices` (docs/engine/audio.md 2.3); the backend that plays it is K11 slice 2.
 
 ### 6.3 "No way" (message `0x92`, string `0x81`)
 

@@ -60,8 +60,12 @@ def test_view_and_ui_are_pure():
     assert hits("engine/ui", PYGAME + BACKEND) == []
 
 
+def test_audio_is_pure():
+    assert hits("engine/audio", PYGAME + BACKEND + ("engine.view", "engine.ui", "engine.sim", "numpy")) == []
+
+
 def test_only_the_backend_imports_pygame():
-    for rel in ("engine/world.py", "engine/sim", "engine/view", "engine/ui", "engine/__init__.py"):
+    for rel in ("engine/world.py", "engine/sim", "engine/view", "engine/ui", "engine/__init__.py", "engine/audio"):
         assert hits(rel, PYGAME) == []
 
 

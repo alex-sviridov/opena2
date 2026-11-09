@@ -797,7 +797,7 @@ CONFIRMED (client `FUN_00419e72`, server `FUN_00570c31`, `FUN_0056da4f`, executo
 `FUN_00573b38` / `FUN_0057393c`; engine `commands.Retreat` / `SetRetreatMode`, `orders.retreat_group`, `ai.retreat_exec`, `ai.post_step`):
 - **Client.** R and bar cell 7 (button 8) run `FUN_00419e72` at once (`FUN_00418a02` clears the pending mode): message type `0x14` with the id of
   every selected own unit (`FUN_0041eb40` filter, `FUN_0050bbb8` appends), sent with `FUN_0050164f`, then the squad voice (`FUN_0041da16`, vtable `+0x7c`;
-  no sound engine). No cursor, no text, no click marker. Hotkey gating as for T / G ([ui-layout 6](ui-layout.md#6-cursors), own non-structure selection).
+  the order voice is `engine/audio/voices.py`, audio.md 2.3). No cursor, no text, no click marker. Hotkey gating as for T / G ([ui-layout 6](ui-layout.md#6-cursors), own non-structure selection).
 - **Server.** `FUN_00570c31(group)`: `FUN_00570e83` (cancel every member, group order := 0, as for every command), each member `FUN_0056da4f` =
   `FUN_0056dbfb` (cancel, `brain+0x50 := 0`) then **order := `0x16`, Brain mode := 0**; the anchor is not written; group order 0 (`record+0x20`). No formation
   and no destination: the group is not a move group, and the retreat option does not enter.
@@ -1007,7 +1007,7 @@ The guard scan of order 0xc (`FUN_0056a1fb`) is a no-op here; arrival and the bl
 
 **UI still stubbed:** hotkeys A/D/S act only on the cursor (pending modes 1/4/6 give no order), cursor rows
 attack-on-unit, swarm, patrol, defend, pickup, town, cast issue nothing (`OrderInput.release`), the minimap's pending modes,
-and the voice (acknowledgement and selection voice `FUN_0041da16`; no sound engine). The message-line "No way" is
+and the voice (acknowledgement and selection voice `FUN_0041da16`: [audio.md](audio.md) 2.3). The message-line "No way" is
 filtered by recipient (`drain_no_way`, research 6.3 CONFIRMED routing).
 
 **Consolidated VERIFY IN GAME** (each: predicted result, so a play session can tick them off):
@@ -1086,5 +1086,5 @@ cell and layer (rendering.md 2, `_unregistered_units`), the later walked object 
 
 ## Open questions
 
-1. The player commands `0x1b` (follow / defend a unit) and `0x1d` (patrol), `0x24` use, `0x1f` (cast at a cell) and the town order (the item commands `0x21` pickup, `0x22` move item and `0x23` drop gold are built: `PickUp`, `MoveItem`, `DropGold`, [items §15](../data/items.md#15-equip-use-pack-and-ground-items-confirmed-engine-sim-gearpy); the pickup cursor click does not issue `PickUp` yet): the simulation side of follow / patrol is built ([ai §14.2](ai.md#142-the-unit-orders-of-the-scripted-sub-commands-10-11-14-15-confirmed), `engine/sim/follow.py`), but the engine has no `Command` for them and `OrderInput.release` issues nothing (the cursor modes exist; mode 8 patrol is unreachable in the exe, [research §1.4](click-to-move-research.md)). Also the squad voice (no sound engine) and the consolidated VERIFY IN GAME list of §9 (items 1-11).
+1. The player commands `0x1b` (follow / defend a unit) and `0x1d` (patrol), `0x24` use, `0x1f` (cast at a cell) and the town order (the item commands `0x21` pickup, `0x22` move item and `0x23` drop gold are built: `PickUp`, `MoveItem`, `DropGold`, [items §15](../data/items.md#15-equip-use-pack-and-ground-items-confirmed-engine-sim-gearpy); the pickup cursor click does not issue `PickUp` yet): the simulation side of follow / patrol is built ([ai §14.2](ai.md#142-the-unit-orders-of-the-scripted-sub-commands-10-11-14-15-confirmed), `engine/sim/follow.py`), but the engine has no `Command` for them and `OrderInput.release` issues nothing (the cursor modes exist; mode 8 patrol is unreachable in the exe, [research §1.4](click-to-move-research.md)). Also the squad voice ([audio.md](audio.md) 2.3) and the consolidated VERIFY IN GAME list of §9 (items 1-11).
 2. Retreat ([8.3a](#83a-retreat-key-r-bar-button-8-and-the-retreat-mode-ctrl-w)): a Teleport-capable unit (`FUN_0056cb8c`, range `unit+0xa5`) flees on foot here; the game start does not send the option messages `0x46`. Start `0x56c9bc`, `0x48cb3e`.

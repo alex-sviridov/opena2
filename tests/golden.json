@@ -8,6 +8,28 @@
   "volley+3": "7526cef7c553ce5a0797fb3cccd1a0c735dc10197482ce4709c810be1f2ae3fe",
   "world": "a4a9037d66622025ac0de2a9f21b1a77f0a98d38c1c82769b1dd092ff1a07ad4"
  },
+ "audio": {
+  "cast": {
+   "count": 3,
+   "sha256": "512c4cee97572af2320b37910923484f2e37645fea8e583238917c57102c0e7e"
+  },
+  "hero_melee": {
+   "count": 11,
+   "sha256": "c27c4930cb9485fecac36771a58527e8db4c1dc57c7902b73423269afff3b93e"
+  },
+  "melee": {
+   "count": 19,
+   "sha256": "c7c98cf5605cfdd323ea19bd3c767eff2f6878cbafb99a8d3fff025cc0cc8929"
+  },
+  "pickup": {
+   "count": 0,
+   "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "switch": {
+   "count": 0,
+   "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  }
+ },
  "casts": {
   "mana_runs_out": {
    "damage": [

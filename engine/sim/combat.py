@@ -5,8 +5,9 @@ Spec: docs/engine/combat.md (C§ numbers in the comments); routine addresses are
 
 from typing import NamedTuple
 
-from engine.world import DEAD, Damage, Died, SpellCast
+from engine.world import DEAD, Damage, Died, Healed, SpellCast
 
+from . import sounds
 from . import movement as mv        # movement reaches back into this module only at call time (`_tick_unit`, `follow_drive`)
 from .combatstats import CombatStats, u8, unit_combat_stats
 from .pathfinding import centre_x, centre_y, foot
@@ -155,6 +156,10 @@ LOG_LIMIT = 20000
 def log(world, entry):
     """Append to the fight log, keeping it bounded for sessions nobody drains."""
     world.fight_log.append(entry)
+    if type(entry) is Damage or (type(entry) is Healed and entry.amount):     # message 0x73 reaches the client: the victim's wound sound (sim/sounds.py; structures have none)
+        t = world.units.get(entry.target)
+        if t is not None:
+            sounds.hurt(world, t, entry.hp + entry.amount if type(entry) is Damage else entry.hp - entry.amount, entry.hp)
     if len(world.fight_log) > LOG_LIMIT:
         del world.fight_log[:LOG_LIMIT // 2]
 
@@ -331,6 +336,8 @@ def swing_tick(world, u):
     elif u.phase == PHASE_WINDUP:
         u.timer = (u.timer - 1) & 0xFF
         if u.timer == 0:
+            if t is not None or ob is not None:
+                sounds.swing(world, u)                                  # the swing lands at the hit frame (`0x46617c` -> `0x467cd2`)
             if ob is not None:
                 resolve_structure_attack(world, u, ob, st)
             elif t is not None:

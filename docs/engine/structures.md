@@ -22,7 +22,7 @@ Everything in this file is single player.
 a use: `0x82` (structure id and its `+0x42` word) from a toggle or a well charge; the client only stores the word. There is **no sound, no text line
 and no animation** for a switch, altar, well, grave or the potion (the item use sends nothing; the attribute check `FUN_004e9e97` is not reached for
 health / mana). The only text is a signpost's script instant (`Send message`, a story window). So K8 logs **no sound event**: the engine emits the
-`StructureState` event (`World.events`, not hashed) for message `0x82` and nothing else. The Sound step has nothing to add for structure uses.
+`StructureState` event (`World.events`, not hashed) for message `0x82` and nothing else. The audio layer has nothing to add for structure uses ([audio.md](audio.md) 2.1; tested: no `SoundEvent`).
 
 **Real maps (`tests/test_engine_structures_k8.py`, `ALLODS2_ALL_MAPS=1` for all 33):** per structure type, the maps that contain it (map data):
 Well 2 (15): 30, 40, 52 (2), 63, 73 (2), 75 (2), 83, 100; Well 3 (16): 40 (2), 53, 60, 62, 63, 73 (2), 74, 75, 77 (2), 83, 86, 87; signposts (live = the

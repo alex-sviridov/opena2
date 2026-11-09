@@ -448,4 +448,4 @@ hero recruit `FUN_004f312a`, roster carry-over, campaign variables `0x301`-`0x30
 ## Open questions
 
 * The recruit of `FUN_004f312a` (hero Var(0x305) at a mission end), the roster carry-over `FUN_004ebd5f` (saves §4: per-player upkeep `FUN_004f3cad`, `FUN_004f3d14`) and the campaign variables other than `0x300` / `0x305` / `0x380+` (who writes `0x301`-`0x30d`, `0x303` for mission 21, the markers at `0x214` / `0x228`).
-* Which UI sound `0x627740[0x10]` / `[0xe]` samples play for the `0xfe` / `0xfd` / `0xfa` messages (the engine has no audio). The story window is decoded: [ui-layout 11.5](ui-layout.md#115-on-screen-messages).
+* Which UI sound `0x627740[0x10]` / `[0xe]` samples play for the `0xfe` / `0xfd` / `0xfa` messages (table ids 16 / 14 / 14 per [audio.md](audio.md) 2.5; the UI wiring is K11 slice 2). The story window is decoded: [ui-layout 11.5](ui-layout.md#115-on-screen-messages).

@@ -70,7 +70,7 @@ Deliverables: `spells.py`, `commands.py`, `world.py`, `orders.py`, `simulation.p
 - **Cast animation**: `unit_frame` shows the `cast` action (action 8) during the windup/recovery of `Unit.spell_cast`.
 - **UI** (`engine/ui/orders.py`, `cursor.py`, `layout.py`): one spell slot: hotkey and a panel button (positions from the exe's command bar where known, otherwise a DECISION recorded in [ui-layout](../../engine/ui-layout.md));
   clicking it sets the **pending mode 5 (cast)** (cursor table in click-to-move-research §1.3-1.4), a left click on a hostile unit issues `CastSpell`, a click elsewhere cancels/moves as the exe does.
-  The refusal responses use the exe's text and message line (research 2.1.1); sound is not played (no audio yet).
+  The refusal responses use the exe's text and message line (research 2.1.1); sound is not played here ([audio.md](../../engine/audio.md)).
 - **Info panel**: the mana row already exists (`interface.py`); I4b adds the spell slot state (greyed when mana < cost) and the hero's mana bar update.
 - Tests: draw-list contents for a flying carrier (item present, depth order, interpolated position, trail), pending-mode transitions, hotkey and button -> command, refusal text. Screenshot test of a fixed tick with a missile in flight (existing screenshot harness).
 

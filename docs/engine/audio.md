@@ -215,6 +215,34 @@ duplicate) or `dropped:voices` (no voice), `dropped:fog`, `dropped:cooldown`. A 
 * `test_engine_audio_voices.py`: cooldown 3000 / 2000 shared stamp, an empty slot still stamps, `rand(count-1)` inclusive, skip rule of move / swarm.
 * backend smoke: `Audio` plays and stops with the dummy driver; settings round trip.
 
+## 9. Slice 1 as built (decisions where the spec was silent; all INFERRED unless marked)
+
+Built (slice 1, no device): `engine/audio/{events,mix,mixer,voices,music,ambience,director,audiolog,settings}.py`, `engine/sim/sounds.py` (the emitters), tests `tests/test_engine_audio_*.py` +
+`tests/audio_scenarios.py` (goldens `["audio"]`, `tools/update_golden.py --only audio`). Not built: the pygame backend, UI wiring (`Director.ui` callers), `replay --audio-log`, the settings CLI flags, the coverage flip.
+
+* **Sim emission points.** `swing`: `combat.swing_tick` at the wind-up end (the hit tick), when a target exists, sound = the attacker's units.reg slot [attack] (a bow's shot is the same call); a type with no data /
+  empty slot emits nothing. `cast`: `spells.cast_tick` at the wind-up end (the release tick stands for the client's cast frame: the sim has no frame clock), `500 + spell number`. `spell`: `spells.cast_start` (the
+  cast message) at the caster's position, `500 + 2n + 8` (the projectile id of every `0x86` / `0x8b` / `0x8c`; the sprite-less buffs still send it), and `effects.spawn_explosion` (message `0x86`, projectile 13 at the
+  cell centre: `sfx[513]`); id 23 is skipped. Other area / field impacts send no `0x86` of their own in the engine. `blizzard`: `effects.field_tick` when `world.tick - c.born == 8` (our step 8; exact tick, a missile-delivered
+  Blizzard would miss it), at the carrier's centre cell. `hurt`: `combat.log` for every `Damage` entry on a unit (all message-`0x73` sources: blows, spells, poison, Drain Life) and every `Healed` with amount > 0
+  (an amount-0 heal sends nothing, INFERRED), old HP = `hp + amount` / `hp - amount`, kind by `events.hurt_kind`. **`hurt_kind` follows the old `view/damage.hit_sound_kind` (new HP below half, none at new HP <= -10);
+  sound.md 4.1 and §2.1 above say "old HP"; not re-read in the exe: VERIFY.** `death`: `death.dying_tick` at the first dying tick. `skillup`: `xp.level_up` (the Director plays it for the viewer's own heroes only; the
+  option word `client+0x404 & 1` is not modelled). `sound_events` is not dumped; `Simulation` clears it at the start of each step unless `keep_sound_events=True` (then the consumer clears it: `Director.drain`).
+* **Sound sets.** `units.reg Sound` through `world.assets.unit_types()` (Parent inheritance already applied), cached in `World.sound_sets`; a world with no assets emits no unit-slot events. Slots <= 0 are empty.
+* **Voice bank (`voices.bank_of`).** Reduced server id (`10210 -> 21`, unit-struct `+0x14c`): 1-6 = xbow, knight, druid, troll, orc, mage; 22 (`Fighter_Hero`) = igles; 23 (`Mage_Hero`) = dina; 21 (`Start_*`)
+  by the template name `Start_<M|F><F|M>`: MF aldor, FF sagita, MM hildarius, FM galinel (the exe reads flag bits; the name letters are our stand-in). Wound / death use the bank for every human with type word
+  1..0x17; with no bank (types 7-20: the generic `Man_*`) they are **silent** (the exe's `<= 0x17` test, no fallback to `Sound`). Real data check: `Man_Unarmed` has server id 1, so it speaks with the xbow bank
+  (VERIFY BY EAR: generic humans in the campaign).
+* **Order voices.** Candidates = the command's alive units with a bank; heroes (type >= 21) first, else the classes (stand-in for the three flag arrays); index `min(size - 1, size * rand15 // 0x7fff)` from the audio RNG.
+  The skip rule `+0x78 == 1` is the caller's `skip_voice` flag (default off). Only the viewer's own, non-AI commands speak; a select command speaks for its `unit_ids`.
+* **Ambience.** Object classes from the `objects.reg` fields: n44 = `DeadObject < 0 and FireObject == -2` (the 21 dead-tree records), n34 = `Phases >= 2` (45 animated trees / bushes), n58 = the rest (126 stones etc.);
+  only n34 / n58 enter the one-shot formula, any of the three makes a one-shot possible. Fire wall = a `cell_fx` entry with slot 0. Window bounds inclusive, clamped `[8, size - 8]`. Pan weight and the one-shot's pan:
+  see `ambience.py` (weight `(10000 - |v|) / 10000`, one-shot pan 0). One-shot id offset `rand(9)` (ids come in blocks of 10). One timer serves the pass and the one-shot (`next = now + 5000 + rand15 // 7`).
+* **Director.** View in cells from the camera: `x // 32`, `view_w // 32` (floored). Fog gating by `event.owner != viewer` and the tile's `0x4000` bit (no fog = everything heard). `dropped:missing` is a play with a null
+  table slot or a file with no duration (no voice taken, as the exe). Mute is not applied by the model: the backend silences when `settings.mute` (the log shows the unmuted volume). Loop results: `played`, `updated`,
+  `stopped`. A replay passes `replay_ms(tick, rate)`; the replay camera rule of §5 is the caller's.
+* **Music zones** use the view centre in 1/256 cell units and `rand(3)` = 0..3 (inclusive, like every `FUN_0051fa25`); `stop` forgets the playlist.
+
 ## VERIFY BY EAR
 
 1. Hero voice gaps: after a move order, another order within 3 s is silent (shared stamp); select 2 s.
@@ -225,6 +253,8 @@ duplicate) or `dropped:voices` (no voice), `dropped:fog`, `dropped:cooldown`. A 
 6. Music: random start track, sequential wrap, zone theme changes on entering a zone (and the old theme repeating at every track end afterwards), silence after victory, `map.wav` after.
 7. DirectSound's pan law against §5 (left / right balance at a screen edge).
 8. Volume defaults: -700 mB buses against the engine's 74 %.
+9. Generic `Man_*` humans (server id 1-6) speaking with a class bank when wounded; `Man_Axe` etc. staying silent (§9).
+10. The cast sound timing (release tick) and the double cast sound, spell-object sounds at the caster's position.
 
 ## Open questions
 
@@ -233,3 +263,4 @@ duplicate) or `dropped:voices` (no voice), `dropped:fog`, `dropped:cooldown`. A 
 - Which object defs count as n44 / n34 / n58 in the ambience scan, and the exact `rand` of its first draw.
 - The town windows `0x4b978f`, `0x4be6b0`, `0x4c03c2` and the speech-test sample of the options dialog.
 - Pickup / retreat / swarm bank offsets (INFERRED from the layout).
+- Hurt kind: [combat §12.7](combat.md) / `view/damage.hit_sound_kind` pick k from the **new** HP (`0x412a58`-`0x412acb`), sound.md §4.1 and §2.1 above say the old view HP; the engine follows the former. Re-read `0x467e42` / `0x467f60` to settle it.

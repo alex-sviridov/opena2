@@ -11,6 +11,7 @@ Pure: no pygame.
 from dataclasses import dataclass
 
 from allods2.formats import objects as fobj
+from engine.audio.events import hurt_kind
 
 from .drawlist import CELL, FLYER_ALTITUDE, unit_position
 
@@ -77,21 +78,14 @@ def unit_anchor(world, camera, assets, u):
     return ((X * CELL) >> 8) - camera.ix, ((Y * CELL) >> 8) - z - alt - camera.iy, size
 
 
-# --- the unit's reaction sound to the HP message `0x73` (docs/engine/combat.md 8, 12.7; no audio in the engine yet) -----------------------
+# --- the unit's reaction sound to the HP message `0x73` (docs/engine/combat.md 8, 12.7; played by `engine.audio`, docs/engine/audio.md) -----------------------
 
 SOUND_REPEAT_MS = 1500      # `FUN_00467e42`: kinds 1 and 2 are dropped when the unit played one less than 0x5dc ms ago (`unit+0x1bc`)
 
 
 def hit_sound_kind(old_hp, new_hp, hp_max):
-    """The `vtable +0x74` argument the client handler picks after `0x73` (`0x412a58`-`0x412acb`): 0 when the HP did not change, nothing when the
-    new HP is -10 or less, else 2 below half of the maximum (`hp_max / 2` truncating) and 1 otherwise; any change counts, a heal too.
-    There is no pain animation, flash or other visual: the handler stores the HP, refreshes the info panel of the shown unit and marks the
-    unit's screen rectangle dirty (`+0x114 := 1`)."""
-    if new_hp == old_hp:
-        return 0
-    if new_hp <= -10:
-        return None
-    return 2 if new_hp < int(hp_max / 2) else 1
+    """The wound kind of message `0x73` (the rule lives in `engine.audio.events.hurt_kind`; the sim emits the sound events, docs/engine/audio.md 2.1)."""
+    return hurt_kind(old_hp, new_hp, hp_max)
 
 
 class HitSoundGate:

@@ -10,7 +10,7 @@ documented. Rule from the user: **reproduce the exe 1:1, even where it is not op
 |---|---|---|
 | "Stop(player, ids)" | no Stop message; four stand commands `0x17 G`, `0x18 T`, `0x12 L`, `0x14 R` (R§5) | `Stop` = cmd `0x18` (T, stand ground: cancel + order `0xc`, anchor own cell). G, L, R are phase I |
 | group move "formation or nearest free cell" | per-player Formation mode (Off / Auto / On); formation = rigid translation of the group shape around the truncated centroid; no leader, no free-cell search; Off = all aim at one cell and the pathfinder fallbacks spread them (R§4) | implement exactly; `SetFormation` command |
-| click marker | none; feedback = cursor, unit voice, "No way" text (R§6) | no marker; "No way" text event; voice out of scope (no sound engine) |
+| click marker | none; feedback = cursor, unit voice, "No way" text (R§6) | no marker; "No way" text event; voice: [audio.md](../../engine/audio.md) 2.3 |
 | right click | deselect (or cancel the pending mode); right drag = camera scroll (R§1.5) | implement both |
 | order replaces path | step is never aborted; replan from the next centre (R§3.4) | implement the timeline table |
 | arrival | order 1 stays until the group pass (`tick & 15 == 6`), then order `0xc`; parked units restart there (R§4.4) | implement the group pass |

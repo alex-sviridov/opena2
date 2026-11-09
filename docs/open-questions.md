@@ -21,7 +21,7 @@ from both places when answered).
 
 ## Combat and death
 
-- Sound (K10 answered the tables, the attenuation, the registry options, the speech names and the music zones; [sound](formats/sound.md#open-questions)): the server events behind the unchanged-HP blow sound, the shop-speech trigger, the unreferenced / missing speech names, `0x5f1a04`; the engine has no audio yet.
+- Sound (K10 answered the tables, the attenuation, the registry options, the speech names and the music zones; [sound](formats/sound.md#open-questions)): the server events behind the unchanged-HP blow sound, the shop-speech trigger, the unreferenced / missing speech names, `0x5f1a04`; the sound events and the audio model are built (K11 slice 1, [audio](engine/audio.md)); the backend is not.
 - Attack order aimed at a structure: answered (accepted, fought like a creature; [combat 5.5](engine/combat.md)); only the mage / spell-carrier branch against a structure is untraced.
 
 ## AI
