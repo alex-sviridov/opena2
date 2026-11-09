@@ -133,10 +133,17 @@ def bolt_segments(world, b, tick):
         t = world.find_unit(tid)
         if t is None:
             continue
-        p1 = screen((t.x * 256 + t.sub_x, t.y * 256 + t.sub_y), max(getattr(t, "size", 1), 1), FLYER_ALTITUDE if unit_flies(world, t) else 0)
+        p1 = screen((t.x * 256 + t.sub_x, t.y * 256 + t.sub_y), tile_size(world, t), FLYER_ALTITUDE if unit_flies(world, t) else 0)
         rand = boltline.CrtRand(bolt_seed(b, tick, i))
         out.append((i % 7 if b.pid == 30 else 0, boltline.build(p0[0], p0[1], p1[0], p1[1], rand)))
     return out
+
+
+def tile_size(world, u):
+    """units.reg `TileSize` of a unit (the view's footprint side; the engine `Unit` has no size attribute); 1 when the unit set is unknown."""
+    assets = getattr(world, "assets", None)
+    aset = assets.unit_set(u.type_id) if assets is not None and hasattr(assets, "unit_set") else None
+    return max(int(getattr(aset.t, "TileSize", 1)), 1) if aset is not None else 1
 
 
 def unit_flies(world, u):

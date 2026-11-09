@@ -271,3 +271,49 @@ def test_the_backend_applies_the_lens_in_place_in_draw_order(monkeypatch):
 def types_ns():
     import types
     return types.SimpleNamespace(sprites=None, ball=None)
+
+
+# --- structure targets (view+0x9d0 holds units and structures; FUN_0040403b files both) ----------------------------------------------------
+
+def test_arrow_at_a_structure_flies_to_its_footprint_centre():
+    from types import SimpleNamespace
+    from engine.world import MapObject
+    w, s, t = fight()
+    w.assets.structures = dict(w.assets.structures or {})
+    w.assets.structures[21] = SimpleNamespace(W=2, TH=3)                    # structures.reg TileWidth / TileHeight
+    ob = MapObject(0x6800, "structure", 21, 15, 12, owner=3, hp=500, hp_max=500, uid=0x800, footprint=((0, 0, True),))
+    w.add_object(ob)
+    effects.spawn_arrow(w, s, ob)
+    assert len(w.arrows) == 1 and w.arrows[0].target == ob.id
+    log = run(w, 12)
+    last = [e for e in log if e and e[0][4] == 0 and e[0][0]][0][0]
+    assert (last[1], last[2]) == (ob.x * C + ob.sub_x - 128 + 2 * 128, ob.y * C + ob.sub_y - 128 + 3 * 128)    # pos - 0x80 + size * 0x80
+    assert not w.arrows
+
+
+# --- big units: units.reg TileSize drives `+0x5c / +0x60` (vtable slots 0x20 / 0x24 return it), the arrow starts from `+8` ---------------------
+
+def big_world(size=2):
+    w, s, t = fight()
+    w.assets.units[7] = aset_of(unit_type(7, TileSize=size, Projectile=2, ShootDelay=1, ShootOffset=SO, CenterX=64, CenterY=78))
+    t.type_id = 7
+    return w, s, t
+
+
+def test_a_big_target_is_aimed_at_its_footprint_centre():
+    w, s, t = big_world(2)
+    effects.spawn_arrow(w, s, t)
+    log = run(w, 12)
+    last = [e for e in log if e and e[0][0] and e[0][4] == 0][0][0]
+    assert (last[1], last[2]) == (t.x * C + t.sub_x + 128, t.y * C + t.sub_y + 128)       # pos - 0x80 + 2 * 0x80
+    w, s, t = big_world(3)
+    assert effects.tile_size(w, t) == 3 and effects._target_centre(w, t) == (t.x * C + t.sub_x + 256, t.y * C + t.sub_y + 256)
+
+
+def test_arrow_start_uses_the_unit_position_but_the_cast_start_the_footprint_centre():
+    w, s, t = big_world(2)
+    s.type_id = 7
+    k = ((s.facing >> 4) - 8) & 14
+    px, py = s.x * C + s.sub_x, s.y * C + s.sub_y
+    assert effects.arrow_origin(w, s) == (px - (64 - SO[k]) * 8, py - (78 - SO[k + 1]) * 8)                # +8 / +0xc
+    assert effects.shoot_origin(w, s) == (px + 128 - (64 - SO[k]) * 8, py + 128 - (78 - SO[k + 1]) * 8)     # +0x5c / +0x60

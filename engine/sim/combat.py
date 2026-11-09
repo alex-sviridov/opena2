@@ -320,8 +320,8 @@ def swing_tick(world, u):
             from . import effects                                       # FUN_00516b2f: `FUN_005106d2(0xc)` -> the Invisibility effects get `+0x42 := 1`
             effects.end_invisibility(u)
             extra = attack_extra(attack_gap(foot(u), foot(t)) if ob is None else structure_gap(u, ob))
-            if st.range > 1 and t is not None:                          # message 0x72: the client's shoot action releases the arrow at ShootDelay
-                effects.spawn_arrow(world, u, t)
+            if st.range > 1:                                            # message 0x72: the client's shoot action releases the arrow at ShootDelay
+                effects.spawn_arrow(world, u, t if t is not None else ob)
             u.action, u.action_start_tick = mv.ATTACK, world.tick       # message 0x71: the client restarts the attack animation
             rest = st.windup + st.recovery                              # FUN_00504ab8: +0x138 = tick + +0x134 + +0x135 (the rest test, combat.md 12.5)
             u.step_end = world.tick + (rest if st.range > 1 else rest & 0xFF)   # +0x12c > 1: message 0x72 (dword); else 0x71 (byte argument)

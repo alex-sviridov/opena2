@@ -793,14 +793,23 @@ def explosion_system(world, commands=()):
 BOLT_LIFE = 13              # `FUN_0046707e` switch: `obj+0xa8 = 0xd` for ids 0x1c / 0x1e; the tick returns "remove" when it is 0 on entry
 
 
+def tile_size(world, u):
+    """The view's footprint side of a unit: units.reg `TileSize` (`+0xf0`, CONFIRMED: the unit classes' vtable slots `+0x20` / `+0x24` `0x4631ce` /
+    `0x4631f2` return it for both axes; 2 for the Troll, Ogre, Catapult, 3 for the Dragon), 1 without unit sets.  Not the server's token size."""
+    assets = getattr(world, "assets", None)
+    aset = assets.unit_set(u.type_id) if assets is not None and hasattr(assets, "unit_set") else None
+    return max(int(getattr(aset.t, "TileSize", 1)), 1) if aset is not None else 1
+
+
 def shoot_origin(world, u, pos=None, table=True):
     """The projectile start `FUN_0046707e` computes for the cast action (CONFIRMED `0x46718c`-`0x4672e0`), in 1/256 cell: with a ShootOffset table on the
     unit type, `centre - (CenterX - SO[k]) * 8`, `centre - (CenterY - SO[k + 1]) * 8` for `k = (direction - 8) & 14` (direction = `facing >> 4`),
     else (empty table, or projectile 0x36: `table=False`) `centre - CenterX + (SelectionX2 - SelectionX1) / 2` (C division) and the same for y, an almost
     unmoved point (the unit mixes 1/8 pixels with pixels; the Selection offsets `+0x84`..`+0x90` are INFERRED).  `centre` is the footprint centre
     (`view+0x5c / +0x60`: position + `(size - 1) * 128`), or `pos` (the second Teleport object at the destination, `0x46c154` copy)."""
-    cx = u.x * 256 + u.sub_x + ((max(getattr(u, "size", 1), 1) - 1) << 7)
-    cy = u.y * 256 + u.sub_y + ((max(getattr(u, "size", 1), 1) - 1) << 7)
+    size = tile_size(world, u)
+    cx = u.x * 256 + u.sub_x + ((size - 1) << 7)
+    cy = u.y * 256 + u.sub_y + ((size - 1) << 7)
     if pos is not None:
         cx, cy = pos
     assets = getattr(world, "assets", None)
@@ -909,9 +918,10 @@ def arrow_delay(world, u):
 
 
 def spawn_arrow(world, shooter, target):
-    """The client side of message `0x72` (a ranged swing start, `FUN_00504ab8`): the shoot action starts now and `FUN_00466e18` makes the unit
-    type's `Projectile` on its ShootDelay tick.  Only unit targets (the routine looks the target up in the unit list `+0x8e`, INFERRED for
-    structures: no arrow).  The object is made by `arrow_system` on that tick."""
+    """The client side of message `0x72` (a ranged swing start, `FUN_00504155` sends the target's id `+4`): the shoot action starts now and
+    `FUN_00466e18` makes the unit type's `Projectile` on its ShootDelay tick.  The target may be a unit or a structure: the routine looks the id up in
+    `view+0x9d0`, the one object table of units and structures (CONFIRMED: the structure builder `0x4a4880` adds the structure there and
+    `0x4a4a7c` files it; the structure-state message `0x82` uses the same lookup).  The object is made by `arrow_system` on that tick."""
     from engine.world import Arrow
     delay, pid = arrow_delay(world, shooter)
     if delay is None or target is None:
@@ -919,10 +929,38 @@ def spawn_arrow(world, shooter, target):
     world.arrows.append(Arrow(pid, shooter.id, target.id, world.tick + delay))
 
 
+def _target_object(world, tid):
+    """The view object of an arrow's target id: a unit, or a structure of the world's object table (None: gone)."""
+    t = world.find_unit(tid)
+    if t is not None:
+        return t
+    ob = world.objects.get(tid)
+    return ob if ob is not None and ob.kind in ("structure", "bridge") else None
+
+
+def _target_pos(ob):
+    """`obj+8 / +0xc` of the target view object (1/256 cell): a unit's position, a structure's anchor cell centre `(x << 8) + 0x80`."""
+    return ob.x * 256 + ob.sub_x, ob.y * 256 + ob.sub_y
+
+
+def _target_centre(world, ob):
+    """`obj+0x5c / +0x60` (`FUN_0046025d`, run on every object each frame by `FUN_0040403b`): `pos - 0x80 + size * 0x80` with `size` = vtable `+0x20` /
+    `+0x24`: a unit's `TileSize`, a structure's `TileWidth` / `TileHeight` from structures.reg (`0x4620fc`: record `+0x10`)."""
+    x, y = _target_pos(ob)
+    if getattr(ob, "kind", None) in ("structure", "bridge"):
+        assets = getattr(world, "assets", None)
+        sset = assets.structure_set(ob.type_id, None) if assets is not None and hasattr(assets, "structure_set") else None
+        w, h = (sset.W, sset.TH) if sset is not None else (1, 1)
+    else:
+        w = h = tile_size(world, ob)
+    return x - 128 + w * 128, y - 128 + h * 128
+
+
 def arrow_origin(world, u):
     """The arrow's start (`0x466e9d`-`0x466f4f`): the unit position `(+8, +0xc)` plus `(SO[k] - Center) * 8` per axis, `k = (direction - 8) & 14`
-    (the table of the unit type; every shooter has one).  Altitude 0.  Same formula as the bolt's (`shoot_origin`)."""
-    return shoot_origin(world, u)
+    (the table of the unit type; every shooter has one).  Altitude 0.  The base is the unit's position `+8 / +0xc`, **not** the footprint centre `+0x5c`
+    the cast action uses (asm `0x466f18`, `0x466f66`): the two differ for the 2 x 2 and 3 x 3 shooters (catapults, the Dragon casts, it does not shoot)."""
+    return shoot_origin(world, u, (u.x * 256 + u.sub_x, u.y * 256 + u.sub_y))
 
 
 def arrow_system(world, commands=()):
@@ -939,22 +977,21 @@ def arrow_system(world, commands=()):
             if world.tick < a.born:
                 keep.append(a)
                 continue
-            u, t = world.find_unit(a.shooter), world.find_unit(a.target)
+            u, t = world.find_unit(a.shooter), _target_object(world, a.target)
             if u is None or t is None:
                 continue
             ox, oy = arrow_origin(world, u)
-            dx, dy = (u.x - t.x) * 256 + u.sub_x - t.sub_x, (u.y - t.y) * 256 + u.sub_y - t.sub_y
+            tx, ty = _target_pos(t)
+            dx, dy = u.x * 256 + u.sub_x - tx, u.y * 256 + u.sub_y - ty
             steps = int(math.sqrt(dx * dx + dy * dy)) // ARROW_SPEED
             if steps <= 0:
                 continue
             a.live, a.x, a.y, a.steps, a.age = True, ox, oy, steps, 0
         elif a.steps <= 0:
             continue
-        t = world.find_unit(a.target)
+        t = _target_object(world, a.target)
         if t is not None:
-            size = max(getattr(t, "size", 1), 1)
-            a.tx = t.x * 256 + t.sub_x + ((size - 1) << 7)
-            a.ty = t.y * 256 + t.sub_y + ((size - 1) << 7)
+            a.tx, a.ty = _target_centre(world, t)
         a.facing = direction16(a.tx - a.x, a.ty - a.y)
         a.x += _idiv(a.tx - a.x, a.steps)
         a.y += _idiv(a.ty - a.y, a.steps)

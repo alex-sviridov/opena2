@@ -25,7 +25,7 @@ from allods2.graphics.terrain import TILE
 from . import fog
 from .. import herolook
 from .objmap import walk_order
-from .lights import burning_entries, cell_row, corner_lights, light_map
+from .lights import burning_entries, cell_row, corner_lights, light_map, tile_size
 from .pick import PickRect
 
 CELL = TILE
@@ -669,7 +669,7 @@ def _flashes(ctx):
             t = w.find_unit(f.target)
             if t is None:
                 continue
-            size = max(getattr(t, "size", 1), 1)
+            size = tile_size(w, t)
             pos = (t.x * 256 + t.sub_x + ((size - 1) << 7), t.y * 256 + t.sub_y + ((size - 1) << 7))
         cx, cy = pos[0] >> 8, pos[1] >> 8
         if not in_window(ctx.win, cx, cy):
