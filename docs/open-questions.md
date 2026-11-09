@@ -80,3 +80,7 @@ from both places when answered).
 - Saves ([saves](formats/saves.md#open-questions)): the server stream's object serialisers (`FUN_0052d16b`, `FUN_0052c3da`, `FUN_0052d5cb`, `FUN_00550008`, `FUN_0052d5b2`, `FUN_0053bbd0`, `FUN_0057a951`, start `FUN_004ec732`) and its 11 option words; the `+0x2f` byte; whether single player ever uses a stored character's items (VERIFY IN GAME); `famehall.dat` fields `b`, `c`; slot `game0000.sav` (read by the server start when `server+0x1ac != 0`, writer unknown) and `game9998.sav` (no sender).
 - Phase K save/load UI and writers: the Save / Load / Delete dialogs (`FUN_0043ebf6`, `FUN_0043deaf`, list `FUN_0043dc54`), the `game%d.sav` writer `FUN_0048dc9f` (+ loader `FUN_0048db37`), the mission-start auto-save `game9999.sav` "Restart last mission" (message `0x442` from `FUN_0048c8a3(0)`), the `famehall.dat` write at exit; single player never writes a `.a2c` ([ui-layout 11.4](engine/ui-layout.md#114-in-game-menu-pause-freeze)).
 - [Items K5](engine/items.md#open-questions): the client sound of the item notice `FUN_00504b3a` / gold message `0x67`; `unit +0xe4` (the pack index of message `0x21`, INFERRED 0x7FFF); several selected units on a pickup.
+
+## Structures
+
+- Using a structure ([structures](engine/structures.md#open-questions)): the client side of state `0xf` (animation / sound), the `0x82` handler, the real stop cell of a use walk (decides the map 103 lookup), the far walk to a blocked structure cell (engine: nearest free cell in range, DECISION), wells' full-pack case. `FUN_0050f12c` case `0xf`.

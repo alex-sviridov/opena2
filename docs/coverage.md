@@ -22,7 +22,7 @@ adds what the engine itself reports. It found one crash (map 96, a cast at a 2 x
 
 Scanned 46 campaign maps; smoke run 1600 ticks of the map script and the AI with no player.
 
-**41 of 46 maps have no known blocker** (12 playable now, 29 with gameplay gaps), 5 are blocked. This is an upper bound: it means no feature in the list below stops the mission and the smoke run did not crash, not that the map has been played.
+**43 of 46 maps have no known blocker** (15 playable now, 28 with gameplay gaps), 3 are blocked. This is an upper bound: it means no feature in the list below stops the mission and the smoke run did not crash, not that the map has been played.
 
 - **blocker**: the mission cannot be completed as designed (a script variable that gates the goal is fed by an action the engine cannot do).
 - **gameplay gap**: content the engine ignores but the goal does not depend on (a usable well, a spell duration).
@@ -45,38 +45,38 @@ Scanned 46 campaign maps; smoke run 1600 ticks of the map script and the AI with
 | 50 |  | playable, gameplay gaps |  | use.pointer x1 | ok |
 | 51 |  | playable now |  |  | ok |
 | 52 | Waterfall | playable, gameplay gaps |  | use.well x2 | ok |
-| 53 | Guard Traveller | playable, gameplay gaps |  | use.altar x1, use.grave x4, use.well x1 | ok |
+| 53 | Guard Traveller | playable, gameplay gaps |  | use.grave x4, use.well x1 | ok |
 | 60 |  | playable, gameplay gaps |  | use.well x1 | lost |
 | 61 |  | playable now |  |  | ok |
-| 62 | Escapers | playable, gameplay gaps |  | use.altar x1, use.well x1 | ok |
+| 62 | Escapers | playable, gameplay gaps |  | use.well x1 | ok |
 | 63 | Magicianess | playable, gameplay gaps |  | use.well x2 | ok |
 | 70 |  | playable, gameplay gaps |  | use.grave x6 | lost |
 | 71 |  | playable, gameplay gaps |  | instant.29 x2 | ok |
 | 72 | Lost Caravans | playable now |  |  | ok |
 | 73 | Revolted Castle | playable, gameplay gaps |  | use.grave x1, use.well x4 | ok |
 | 74 | SmartShaman | playable, gameplay gaps |  | use.well x1 | ok |
-| 75 | Old Warrior | playable, gameplay gaps |  | use.grave x1, use.switch x2, use.well x3 | ok |
-| 76 | DangerousForest | playable, gameplay gaps |  | use.altar x1 | ok |
+| 75 | Old Warrior | playable, gameplay gaps |  | use.grave x1, use.well x3 | ok |
+| 76 | DangerousForest | playable now |  |  | ok |
 | 77 | MageGhost | playable, gameplay gaps |  | use.grave x6, use.well x2 | ok |
-| 80 |  | playable, gameplay gaps |  | use.altar x1 | ok |
+| 80 |  | playable now |  |  | ok |
 | 81 |  | playable now |  |  | ok |
 | 82 |  | playable now |  |  | ok |
 | 83 |  | playable, gameplay gaps |  | use.well x2 | ok |
 | 84 | Orakul | playable now |  |  | ok |
 | 85 | StoryMan | playable now |  |  | ok |
-| 86 | SwampMage | playable, gameplay gaps |  | use.altar x1, use.well x1 | ok |
+| 86 | SwampMage | playable, gameplay gaps |  | use.well x1 | ok |
 | 87 |  | playable, gameplay gaps |  | use.well x1 | ok |
 | 90 |  | playable now |  |  | ok |
 | 91 |  | playable now |  |  | ok |
 | 92 | Great warrior's grave | playable, gameplay gaps |  | use.grave x1 | lost |
-| 93 |  | blocked | check.25, use.scripted | use.switch x2 | ok |
-| 94 |  | blocked | check.25, use.scripted | use.switch x2 | ok |
-| 95 |  | blocked | check.25, use.scripted | instant.29 x2, use.switch x2 | ok |
-| 96 |  | blocked | use.scripted | instant.30 x3, use.switch x2 | ok |
+| 93 |  | blocked | check.25 |  | ok |
+| 94 |  | blocked | check.25 |  | ok |
+| 95 |  | blocked | check.25 | instant.29 x2 | ok |
+| 96 |  | playable, gameplay gaps |  | instant.30 x3 | ok |
 | 100 |  | playable, gameplay gaps |  | use.well x1 | ok |
 | 101 |  | playable now |  |  | ok |
 | 102 |  | playable, gameplay gaps |  | use.grave x9 | lost |
-| 103 | Find the magic Oracle | blocked | use.scripted | use.switch x16 | ok |
+| 103 | Find the magic Oracle | playable now |  |  | ok |
 | 110 |  | playable, gameplay gaps |  | use.grave x13 | lost |
 
 ### Per feature the engine does not fully have
@@ -85,18 +85,15 @@ Scanned 46 campaign maps; smoke run 1600 ticks of the map script and the AI with
 
 | Feature | What | Status | Impact | Step | Maps | Unblocks alone | Note |
 |---|---|---|---|---|---|---|---|
-| `check.25` | check 25: Spell on Tile | partial | blocker | tilefx | 3 | 0 | cell effect layers are not readable by the script: the value stays 0 |
+| `check.25` | check 25: Spell on Tile | partial | blocker | tilefx | 3 | 3 | cell effect layers are not readable by the script: the value stays 0 |
 | `instant.29` | instant 29: Tile Spell Duration | partial | gameplay | tilefx | 2 | - | tile spell duration: counted no-op |
 | `instant.30` | instant 30: Unit Spell Duration | partial | gameplay | tilefx | 1 | - | unit spell duration: counted no-op |
 | `music.zones` | music zones (section 12) | missing | polish | sound | 46 | - | the engine has no audio |
 | `spell.status` | spells whose status effect has no drawing (protections, Bless, Curse, Haste, Slow, Shield) | partial | polish | draw | 41 | - | simulated (effects.md); only Invisibility and Stone Curse change the unit's look |
 | `unit.ranged` | units that shoot (attack range > 1, no spell) | partial | polish | draw | 36 | - | simulated exactly, the arrow is not drawn (combat.md 3, 10) |
-| `use.altar` | usable altar | missing | gameplay | use_more | 5 | - | behaviour not researched; no script instant is attached (map.md part 6) |
 | `use.grave` | usable King's grave | missing | gameplay | use_more | 12 | - | behaviour not researched |
 | `use.pointer` | usable signpost that shows a story message | missing | gameplay | use_more | 6 | - | section 11 list C `enabled`: using it runs an instant 2 (Send message), no state changes (map.md part 6, FUN_0050f12c 0x50f944) |
-| `use.pointer_script` | usable signpost whose instant changes the script | missing | blocker | use | 0 | 0 | a signpost instant other than a message (none in the install: every signpost only sends a message) |
-| `use.scripted` | usable structure whose state a script reads (switch puzzle: check 21 on a switch) | missing | blocker | use | 5 | 2 | check 21 / instant 26 name the structure; its state changes only when a unit uses it (FUN_0050f12c state 0xf), which the engine cannot do |
-| `use.switch` | usable switch | missing | gameplay | use | 6 | - | behaviour not researched; no script instant is attached |
+| `use.pointer_script` | usable signpost whose instant changes the script | missing | blocker | use_more | 0 | 0 | a signpost instant other than a message (none in the install: every signpost only sends a message) |
 | `use.well` | usable well (Well 2 / Well 3) | missing | gameplay | use_more | 15 | - | behaviour not researched |
 
 ### Script kinds the maps use (reachable from an active trigger)
@@ -225,15 +222,14 @@ First the steps that unblock maps (greedy: the next one completes the most block
 
 | # | Step | Effort | Maps newly playable | Playable after | Maps touched | Backlog item |
 |---|---|---|---|---|---|---|
-| 1 | `use` Use a structure, core: command 0x24, the use order (state 0xf), the switch state the scripts read | 3 | 2 (103, 96) | 43 | 6 | - |
-| 2 | `tilefx` Cell effects for scripts: check 25 reads the cell layers, instants 29 / 30 set spell durations | 1 | 3 (93, 94, 95) | 46 | 5 | 3 |
-| 3 | `use_more` Use a structure, the rest: signpost messages, wells, King's graves, altars (research of each class) | 2 | - | 46 | 28 | - |
-| 4 | `draw` Draw what is simulated: status effects of units, arrows of shooters | 2 | - | 46 | 46 | 2 |
-| 5 | `sound` Sound and music: music zones, unit and UI sounds, the 0xfe / 0xfd / 0xfa messages | 5 | - | 46 | 46 | 6 |
-| 6 | `hero_ui` Hero windows: the Heads panel, hero screen (stats, skills, paper doll), item shops | 3 | - | 46 | 46 | 1 |
-| 7 | `menus` Start menu, new-game and options screens, in-game menu entries | 4 | - | 46 | 46 | 5 |
-| 8 | `save` Save / load: the game%d.sav writer and reader | 4 | - | 46 | 46 | 7 |
-| 9 | `campaign` Campaign flow: world map, towns, hero recruit, roster carry-over, the Scenario.dll variables | 8 | - | 46 | 46 | 4 |
+| 1 | `tilefx` Cell effects for scripts: check 25 reads the cell layers, instants 29 / 30 set spell durations | 1 | 3 (93, 94, 95) | 46 | 5 | 3 |
+| 2 | `use_more` Use a structure, the rest: signpost messages, wells, King's graves, altars (research of each class) | 2 | - | 46 | 26 | - |
+| 3 | `draw` Draw what is simulated: status effects of units, arrows of shooters | 2 | - | 46 | 46 | 2 |
+| 4 | `sound` Sound and music: music zones, unit and UI sounds, the 0xfe / 0xfd / 0xfa messages | 5 | - | 46 | 46 | 6 |
+| 5 | `hero_ui` Hero windows: the Heads panel, hero screen (stats, skills, paper doll), item shops | 3 | - | 46 | 46 | 1 |
+| 6 | `menus` Start menu, new-game and options screens, in-game menu entries | 4 | - | 46 | 46 | 5 |
+| 7 | `save` Save / load: the game%d.sav writer and reader | 4 | - | 46 | 46 | 7 |
+| 8 | `campaign` Campaign flow: world map, towns, hero recruit, roster carry-over, the Scenario.dll variables | 8 | - | 46 | 46 | 4 |
 
 <!-- coverage:end -->
 
