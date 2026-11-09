@@ -106,7 +106,7 @@ animation time, no cooldown, no one-shot flag, no "already used" test. A new com
 looks the structure up by position:
 
 * lookup A: `FUN_0052c129(unit cell)` -> `FUN_0052bfe7(point (x-1, y-1))`: the **first** object of the building list (creation order = map
-  section 4 file order, `AddTail` `FUN_00545dd0`; INFERRED that the list is exactly that file order) whose position object is within
+  section 4 file order, CONFIRMED: `FUN_00561422` loops entry `1..count` and each structure goes through `FUN_0052c1be` -> `FUN_00546080` -> `AddTail` `FUN_00545dd0`) whose position object is within
   **Chebyshev 2** of the point (`FUN_0054fb7f` = max(|dx|, |dy|), `<= 2`); the object's `+0x10` is the footprint's top-left cell. Type and owner are
   not tested.
 * lookup B (after A's branches, only when A did not `break`): `FUN_0052bfe7(unit cell)`, same rule, no shift.
