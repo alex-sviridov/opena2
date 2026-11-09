@@ -234,3 +234,15 @@ class DropGold(Command):
     def __post_init__(self):
         object.__setattr__(self, "unit_ids", tuple(self.unit_ids))
         object.__setattr__(self, "cell", (int(self.cell[0]), int(self.cell[1])))
+
+
+@dataclass(frozen=True)
+class UseStructure(Command):
+    """Exe command `0x24` (`FUN_0041a0b5`, object target `+0xe`): the last unit of the selection walks to the structure and uses it (switch / lever / altar:
+    toggles its HP 0 <-> 1; sim/structures.py).  `unit_ids` as for the other orders; the client sends it for the `town` cursor (one hero selected)."""
+    player_id: int
+    unit_ids: tuple
+    object_id: int
+
+    def __post_init__(self):
+        object.__setattr__(self, "unit_ids", tuple(self.unit_ids))

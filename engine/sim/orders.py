@@ -8,12 +8,12 @@ comments; routine addresses there).  Layer 4: reads and writes `engine.world` on
 from engine.world import OrderGroup
 
 from .commands import (AttackUnit, CastScroll, CastSpell, DropGold, Guard, MoveItem, MoveUnits, PickAll, PickUp, Retreat, SetAutoCast, SetAutoSpell, SetFormation, SetRetreatMode, StandStill, Stop,
-                       Swarm)
+                       Swarm, UseStructure)
 from .combat import can_order_attack, find_target, refresh_attack, set_attack
 from .movement import (ATTACK_ORDER, CENTRE, RETREAT_ORDER, MoveTo, _in_map, _set_action, IDLE, cancel, fail_stop, live_cells, path_grid,
                        set_guard, set_move, set_retreat, set_stand, set_still, stop_unit, unit_size, unit_speed)
 from .pathfinding import chebyshev
-from . import ai, follow, gear, spells
+from . import ai, follow, gear, spells, structures
 
 MAX_IDS = 253                       # FUN_0050bbb8 stops appending at 253 (R 2)
 FORMATION_LIMIT = 2                 # server+0xa724: Chebyshev distance an Auto group may be spread over (R 3.2)
@@ -282,6 +282,8 @@ def _pass_orders(world, g):
             ai.retreat_exec(world, u)                   # FUN_0056c9bc
         elif u.order == gear.PICK_ORDER:
             gear.refresh_pickup(world, u)               # FUN_0056c8da: order 2, go to the sack / Brain mode 7
+        elif u.order == structures.USE_ORDER:
+            structures.refresh_use(world, u)            # FUN_0056af23: order 0xf, Brain mode 15
         elif u.order == gear.PICKALL_ORDER:
             gear.refresh_pickall(world, u)              # FUN_0056a909: order 0x1a, the nearest sack in sight / Brain mode 12
 
@@ -354,6 +356,11 @@ def orders_system(world, commands):
             if g is not None and g.members:
                 _cancel_group(world, g)
                 gear.command_pickup(world, world.units[g.members[-1]], cmd.cell, cmd.index)
+        elif isinstance(cmd, UseStructure):             # message 0x24: the last unit of the intake gets the use order (FUN_004f515d, FUN_0056d22b)
+            g = intake(world, cmd.player_id, cmd.unit_ids)
+            if g is not None and g.members:
+                _cancel_group(world, g)
+                structures.command_use(world, world.units[g.members[-1]], cmd.object_id)
         elif isinstance(cmd, PickAll):                  # message 0x13: the last unit of the intake gets order 0x1a (FUN_0056dafe)
             g = intake(world, cmd.player_id, cmd.unit_ids)
             if g is not None and g.members:

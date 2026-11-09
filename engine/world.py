@@ -553,6 +553,11 @@ class Unit:
     mode_loot: bool = False         # Brain mode 12 (`FUN_0056eb2d`): walk to the sack chosen by order 0x1a (`brain+0xa`), then pick it up (sim/gear.py)
     mode_pick: bool = False         # Brain mode 7 (`FUN_0056ea24`): file the sack on the own cell (state 2)
     pick_cell: tuple = None         # brain +0xa of the pickup order 2: the sack's cell
+    mode_use: bool = False          # Brain mode 15 (`FUN_0056ecbc`): walk to the structure's approach cell, then state 0xf (sim/structures.py)
+    use_obj: int = None             # brain +0x68 of the use order 0xf: the structure's object id
+    use_dest: tuple = None          # brain +0xa: the approach cell
+    use_goal: tuple = None          # the cell the walk plans to (sim/structures.py `walk_goal`)
+    use_dist: int = 1               # brain +0x14: the range (1 .. 3)
     gear_speed: int = None          # the speed stat +0x8c of a human with an explicit loadout (load penalty, equipment bonus); None: the Reaction rule
     skill_bonus: tuple = ()         # bonus words +0xe8 + 2k of the equipment, added to the school skills (sim/gear.py); () = none
     attr_bonus: tuple = ()          # equipment bonus (body, reaction, mind, spirit) on top of the template's capped attribute; () = none
@@ -679,6 +684,7 @@ class World:
         self._next_carrier = 1
         self._next_group = 1
         self.ai_sleep = True        # server+0xbbe8 == 0: squads far from every human unit sleep (sim/ai/ `wake`, ai.md 15)
+        self.use_clicked = False    # debug: state 0xf uses the clicked structure, not the exe's position lookup (docs/engine/structures.md 3)
         self.ai_on = False          # sim/ai/ `enable`: the squads are in `ai_groups` and the state is part of dump()
         self.ai_groups = {}         # (owner, squad) -> AiGroup, in creation order
         self.ai_emitted = []        # AI commands since the last drain by `Simulation.step` (the log), not part of dump()

@@ -525,7 +525,7 @@ def cancel(u, world=None):
     derived from positions).  Plans, `dest`, `turning` and the dynamic list are untouched."""
     u.mover.target_facing = u.facing
     u.mover.follow = None                       # FUN_0056d969: mover+0x7c := 0
-    u.mode_pick = u.mode_loot = False
+    u.mode_pick = u.mode_loot = u.mode_use = False
     u.ai_cast = False                           # FUN_0056d969 0x56da27: brain+0x60 := 0 (docs/engine/ai.md 12.7)
     u.state = IDLE_STATE
     u.stopped = False
@@ -638,7 +638,7 @@ def _tick_unit(world, u):
         if u.order == MOVE_ORDER:
             fail_stop(world, u)
         else:
-            u.mode_go = u.mode_loot = False
+            u.mode_go = u.mode_loot = u.mode_use = False
             u.mode_attack = u.mode_cast = u.mode_cell = False
             u.mode_follow = False
             if world.ai_on and u.order == ai.GUARD_ORDER:       # 0x56e320: mode 0 and the auto target scan FUN_0056ed4e
@@ -650,6 +650,8 @@ def _tick_unit(world, u):
     elif u.state == PICK_STATE:                         # state 2: file the sack on the own cell (case 2 of FUN_0050f12c)
         from . import gear
         gear.pickup_tick(world, u)
+    elif u.state == structures.USE_STATE:               # state 0xf: use the structure next to the unit (case 0xf of FUN_0050f12c)
+        structures.use_tick(world, u)
 
 
 def _tick_inner(world, u):
@@ -682,6 +684,9 @@ def _tick_inner(world, u):
     if u.mode_loot:                                     # Brain mode 12 (FUN_0056eb2d): walk to the chosen sack, then file it (sim/gear.py)
         from . import gear
         gear.loot_mode(world, u)
+        return
+    if u.mode_use:                                      # Brain mode 15 (FUN_0056ecbc): use a structure (sim/structures.py)
+        structures.use_mode(world, u)
         return
     if u.mode_pick:                                     # Brain mode 7 (FUN_0056ea24): the sack on the own cell (sim/gear.py)
         from . import gear
@@ -797,4 +802,4 @@ def movement_system(world, commands):
         _tick_unit(world, u)
 
 
-from . import ai, combat, death, effects, follow, spells, traps    # noqa: E402  the fight code imports this module: bound here, used at call time (circular on purpose)
+from . import ai, combat, death, effects, follow, spells, structures, traps    # noqa: E402  the fight code imports this module: bound here, used at call time (circular on purpose)
