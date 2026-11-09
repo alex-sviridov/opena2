@@ -323,7 +323,34 @@ def text_rows(world, u, texts, unit_names, viewer, hero_name="Hero", know_all=Tr
             add(texts.line(0xBE), 0x4A, 0xAE, CENTRE)
         if st.sure_hit:
             add(texts.line(0xBF), 0x4A, 0xBA, CENTRE)
+    if d == DETAIL_ALL:
+        rows.extend(quest_rows(world, u, viewer))
     return rows
+
+
+QUEST_X, QUEST_Y, QUEST_LINES = 0x2A, 0xDC, 2
+
+
+def quest_items(world, u):
+    """The special items of the unit's pack that are neither potions, scrolls nor books (the quest items), as `(name, count)`; `[]` without an item
+    table.  ENGINE ADDITION: the original lists the pack only in the pack window."""
+    table = world.item_table
+    if table is None:
+        return []
+    out = []
+    for it in u.pack or ():
+        r = table.resolve(it.code & 0xFFFF, gear_mod.effects_of(it.mods))
+        if r is not None and r.defn.kind == "special" and r.defn.subtype == 0:
+            out.append((table.display_name(it.code, gear_mod.effects_of(it.mods), None, "", "") or r.defn.name, it.count))
+    return out
+
+
+def quest_rows(world, u, viewer):
+    """A simple list of the own hero's carried quest items under the stats (at most `QUEST_LINES`, in font2 / sage), panel-relative."""
+    if u.owner != viewer or not is_hero(u):
+        return []
+    return [Row(name if n < 2 else "%s x%d" % (name, n), QUEST_X, QUEST_Y + 10 * k, LEFT, SAGE)
+            for k, (name, n) in enumerate(quest_items(world, u)[:QUEST_LINES])]
 
 
 def staff_damage(world, u, st):

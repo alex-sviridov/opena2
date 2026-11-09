@@ -38,16 +38,16 @@ def test_verdicts_distinguish_blockers_gameplay_and_polish():
     feats = _feats()
     assert C.verdict(_row("1", {"check.5": 2, "music.zones": 5}), feats) == "playable now"
     assert C.verdict(_row("2", {"use.well": 1}), feats) == "playable, gameplay gaps"
-    assert C.verdict(_row("3", {"item.quest_pickup": 1}), feats) == "blocked"
+    assert C.verdict(_row("3", {"use.scripted": 1}), feats) == "blocked"
     assert C.verdict(_row("4", {}, crash="AttributeError"), feats) == "blocked" and C.blockers(_row("4", {}, crash="x"), feats) == ["crash"]
 
 
 def test_step_order_unblocks_first_then_gameplay_then_global():
     feats = _feats()
-    rows = [_row("1", {"item.quest_pickup": 1}), _row("2", {"item.quest_pickup": 1, "check.99": 1}), _row("3", {"check.99": 1}),
+    rows = [_row("1", {"use.scripted": 1}), _row("2", {"use.scripted": 1, "check.99": 1}), _row("3", {"check.99": 1}),
             _row("4", {"use.well": 1}), _row("5", {})]
     order = C.proposed_order(rows, feats)
-    assert [o[0] for o in order[:2]] == ["pickup", "tilefx"] or [o[0] for o in order[:2]] == ["tilefx", "pickup"]
+    assert [o[0] for o in order[:2]] == ["use", "tilefx"] or [o[0] for o in order[:2]] == ["tilefx", "use"]
     assert {m for o in order[:2] for m in o[1]} == {"1", "2", "3"}      # map 2 needs both: it is completed by the second of the two
     names = [o[0] for o in order]
     assert names[2] == "use_more"                                            # the map with a usable well: a gameplay step before any global one
@@ -81,7 +81,7 @@ def test_install_maps_scan_and_smoke():
     rows, feats = C.collect(INSTALL, ticks=40, only={"32", "21", "10", "103"})
     by = {r["map"]: r for r in rows}
     assert C.verdict(by["32"], feats) == "playable now"
-    assert by["21"]["counts"]["item.quest_pickup"] == 1 and C.verdict(by["21"], feats) == "blocked"       # Quest Treasure: the exit checks for it
+    assert by["21"]["counts"]["item.quest_pickup"] == 1 and C.verdict(by["21"], feats) != "blocked"      # Quest Treasure: the exit checks for it (K5 built the pickup)
     assert by["10"]["counts"]["use.pointer"] >= 1 and C.verdict(by["10"], feats) == "playable, gameplay gaps"   # a signpost that only sends a message
     assert by["103"]["counts"]["use.scripted"] == 16 and C.blockers(by["103"], feats) == ["use.scripted"]      # the switch puzzle: check 21 on 16 switches
     assert all(not r["smoke"]["crash"] and r["smoke"]["tick"] == 40 for r in rows)

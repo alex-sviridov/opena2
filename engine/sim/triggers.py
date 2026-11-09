@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from allods2.formats import scenario as S
 from engine.world import DEAD, OrderGroup
 
-from . import ai, campaign, place, traps
+from . import ai, campaign, gear, place, traps
 from .combat import combat_stats
 from .pathfinding import chebyshev
 
@@ -382,7 +382,7 @@ def _units_of(world, script, pid):
 
 
 def _has_item(u, code):
-    """FUN_00529ee5 over the unit's inventory: the engine's inventory is the section 8 pack (`Unit.carried`)."""
+    """FUN_00529ee5 over the unit's inventory: `Unit.carried` mirrors the pack's codes (sim/gear.py `sync_carried`; the equipment slots are not searched, CONFIRMED)."""
     return any((c & 0xFFFF) == code for c in u.carried)
 
 
@@ -569,16 +569,6 @@ def phase_in(world, script, u, cell=None, radius=None):
     return True
 
 
-def take_item(u, code):
-    """`FUN_00529f3f(inventory, code)`: the first item whose code (low 16 bits) matches leaves the inventory (a stack gives one piece); True if found.
-    The engine's inventory is the section 8 pack (`Unit.carried`)."""
-    for i, c in enumerate(u.carried):
-        if (c & 0xFFFF) == code:
-            u.carried = tuple(u.carried[:i]) + tuple(u.carried[i + 1:])
-            return True
-    return False
-
-
 def teleport(world, u, x, y):
     """`FUN_0055a96c(u, x, y)`: when the cell passes the free test (`FUN_0055a928`: `FUN_0055c5a0` twice, here `_free`) the unit leaves its cell (stamps
     and occupant slots, `FUN_00553891`), takes the new one (centre of the cell, INFERRED), registers again (`FUN_0055020a`) and stands (`FUN_0056dba1`);
@@ -659,23 +649,22 @@ def run_instant(world, script, index):
         if c.player is not None:
             c.player.formation = {0: 0, 2: 1}.get(n[0] & 0xFF, 2)
     elif kind == 11:
-        if take_item(u, c.item):
-            u2 = c.second
-            if u2 is not None:
-                u2.carried = tuple(u2.carried) + (c.item,)
+        taken = gear.remove_item(world, u, c.item)
+        if taken is not None and c.second is not None:
+            gear.give_item(world, c.second, taken.code, taken.mods)
     elif kind == 12:
-        u.carried = tuple(u.carried) + (c.item,)
+        gear.give_item(world, u, c.item)
     elif kind == 13:
-        take_item(u, c.item)
+        gear.remove_item(world, u, c.item)
     elif kind in (14, 15, 29, 30, 31):
         # 14 / 15: a client refresh; 29 / 30: durations of the effects of a spell on a tile / unit; 31: outpost repop delay.  The engine has no
         # spell effects and no outposts, so there is nothing to change (re-check when the effect system exists)
         if kind in (29, 30):
             script.unbuilt[("instant", kind)] += 1
     elif kind == 20:
-        if u.carried:
-            world.place_pile(u.x, u.y, 0, [x & 0xFFFF for x in u.carried])      # FUN_005109f5 -> FUN_0052acf6: the pack becomes a pile
-        u.carried = ()
+        items = gear.take_all(world, u)
+        if items:
+            gear.drop_items(world, u.x, u.y, items)                             # FUN_005109f5 -> FUN_0052acf6: the pack becomes a pile
     elif kind == 21:                                    # FUN_004f086f: a hidden caster casts from cell (n0, n1) at cell (n2, n3) (sim/traps.py)
         traps.cast_at_cell(world, n[0], n[1], n[2], n[3], n[4], n[5] or 99)
     elif kind == 24:                                    # FUN_004f0832: a hidden caster casts from cell (n0, n1) at the unit
@@ -686,8 +675,8 @@ def run_instant(world, script, index):
     elif kind == 27:
         teleport(world, u, n[0] & 0xFF, n[1] & 0xFF)
     elif kind == 28:
-        c.second.carried = tuple(c.second.carried) + tuple(u.carried)
-        u.carried = ()
+        for it in gear.take_all(world, u):
+            gear.give_item(world, c.second, it.code, it.mods)
     elif kind == 34:
         if n[0] == 6:
             u.hp = _s16(n[1])
@@ -697,7 +686,7 @@ def run_instant(world, script, index):
             combat_stats(world, u).block.absorb = _s16(n[1])
     elif kind == 38:
         for m in world.units.values():
-            take_item(m, c.item)
+            gear.remove_item(world, m, c.item)
     elif kind == 35:
         script.scenario_vars[n[0]] = _i32(n[1])
     elif kind == 36:

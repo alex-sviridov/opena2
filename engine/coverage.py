@@ -52,7 +52,6 @@ class Feature:
 
 
 STEPS = {s.id: s for s in (
-    Step("pickup", "Click pickup: pickup cursor mode issues PickUp, ground piles and quest items reach the pack", 1, backlog=1),
     Step("use", "Use a structure, core: command 0x24, the use order (state 0xf), the switch state the scripts read", 3),
     Step("use_more", "Use a structure, the rest: signpost messages, wells, King's graves, altars (research of each class)", 2),
     Step("tilefx", "Cell effects for scripts: check 25 reads the cell layers, instants 29 / 30 set spell durations", 1, backlog=3),
@@ -76,8 +75,8 @@ FEATURES = {f.id: f for f in (
     Feature("use.grave", "usable King's grave", MISSING, GAMEPLAY, "use_more", "behaviour not researched"),
     Feature("use.scripted", "usable structure whose state a script reads (switch puzzle: check 21 on a switch)", MISSING, BLOCKER, "use",
             "check 21 / instant 26 name the structure; its state changes only when a unit uses it (FUN_0050f12c state 0xf), which the engine cannot do"),
-    Feature("item.quest_pickup", "quest item a trigger checks for that lies on the map (carried by a monster or in a sack)", MISSING, BLOCKER, "pickup",
-            "checks 12 / 16 / 17 name it; the engine moves items only from the pack window, no click issues PickUp (simulation.md 9)"),
+    Feature("item.quest_pickup", "quest item a trigger checks for that lies on the map (carried by a monster or in a sack)", BUILT, BLOCKER, "",
+            "K5: the pickup click issues PickUp, the script's item instants share the pack (docs/engine/items.md)"),
     Feature("unit.ranged", "units that shoot (attack range > 1, no spell)", PARTIAL, POLISH, "draw", "simulated exactly, the arrow is not drawn (combat.md 3, 10)"),
     Feature("spell.status", "spells whose status effect has no drawing (protections, Bless, Curse, Haste, Slow, Shield)", PARTIAL, POLISH, "draw",
             "simulated (effects.md); only Invisibility and Stone Curse change the unit's look"),

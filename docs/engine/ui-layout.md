@@ -168,7 +168,7 @@ when fogged), 6 swarm, 8 patrol, other values leave the previous cursor (engine:
 (`FUN_004accb4`): outside the map image, or no own non-structure selection: `sdefault`; else `smove`, pending 1/6
 `sattack`, 4 `sdefend`, 5 `scast`, 8 `spatrol` (2, 3, 7 `smove`). The `scast`/cast branch of the spellbook, the
 open-window and carried-item overrides are not modelled. Engine: the eight arrows, default, select, pickup, move, attack,
-swarm, town, the pending cursors and the `s*` minimap cursors; swarm (`Swarm`, cmd `0x1a`), G (`Guard`) and L (`StandStill`) issue their commands; defend/patrol/cast/town/pickup issue no order yet.
+swarm, town, the pending cursors and the `s*` minimap cursors; swarm (`Swarm`, cmd `0x1a`), G (`Guard`) and L (`StandStill`) issue their commands; pickup issues `PickUp` (cmd `0x21`, K5: [items](items.md)); defend/patrol/cast/town issue no order yet.
 
 **Pending-mode table (R 1.4, CONFIRMED; engine `OrderInput.key`).** Hotkeys act only with an own non-structure
 selection and no Ctrl:

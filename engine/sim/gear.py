@@ -436,6 +436,59 @@ def pick_up(world, u, pile):
     recompute(world, u)
 
 
+# --- script items (instants 11, 12, 13, 20, 28, 38): the same pack as the pickup ---------------------------------------------------
+
+def give_item(world, u, code, mods=()):
+    """`FUN_004fbf01` + `FUN_00529ac2` (instant 12, the second half of 11): a new item filed at the end of the unit's pack.  A unit without an explicit
+    loadout (monsters) keeps the section 8 list `Unit.carried`, which the death drop reads."""
+    code &= 0xFFFF
+    if not u.equipment:
+        u.carried = tuple(u.carried) + (code,)
+        if u.carried_mods or mods:
+            u.carried_mods = tuple(u.carried_mods) + ((),) * (len(u.carried) - 1 - len(u.carried_mods)) + (tuple(mods),)
+        return
+    _file(world, u, S.Item(code, 1, 0, tuple(mods)), APPEND)
+    sync_carried(u)
+    recompute(world, u)
+
+
+def remove_item(world, u, code):
+    """`FUN_00529f3f` (instants 11, 13, 38): the first pack entry whose code word matches gives one piece (a stack is split, a single entry leaves the
+    list).  Returns the item taken, or None."""
+    code &= 0xFFFF
+    if not u.equipment:
+        for i, c in enumerate(u.carried):
+            if (c & 0xFFFF) == code:
+                mods = u.carried_mods[i] if i < len(u.carried_mods) else ()
+                u.carried = tuple(u.carried[:i]) + tuple(u.carried[i + 1:])
+                if u.carried_mods:
+                    u.carried_mods = tuple(u.carried_mods[:i]) + tuple(u.carried_mods[i + 1:])
+                return S.Item(code, 1, 0, tuple(mods))
+        return None
+    pack = list(u.pack)
+    for i, it in enumerate(pack):
+        if (it.code & 0xFFFF) == code:
+            taken = pack_take(pack, i, 1)
+            u.pack = tuple(pack)
+            sync_carried(u)
+            recompute(world, u)
+            return taken
+    return None
+
+
+def take_all(world, u):
+    """The whole pack leaves the unit (instants 20 and 28: `FUN_005109f5` / `FUN_00529e5b` swap in an empty one); returns the items."""
+    if not u.equipment:
+        items = [S.Item(c, 1, 0, tuple(u.carried_mods[i]) if i < len(u.carried_mods) else ()) for i, c in enumerate(u.carried)]
+        u.carried, u.carried_mods = (), ()
+        return items
+    items = list(u.pack)
+    u.pack = ()
+    sync_carried(u)
+    recompute(world, u)
+    return items
+
+
 # --- the pickup order (message 0x21; order 2, Brain mode 7, state 2) ----------------------------------------------------------
 
 def set_pickup(world, u, cell):

@@ -22,7 +22,7 @@ adds what the engine itself reports. It found one crash (map 96, a cast at a 2 x
 
 Scanned 46 campaign maps; smoke run 1600 ticks of the map script and the AI with no player.
 
-**34 of 46 maps have no known blocker** (10 playable now, 24 with gameplay gaps), 12 are blocked. This is an upper bound: it means no feature in the list below stops the mission and the smoke run did not crash, not that the map has been played.
+**41 of 46 maps have no known blocker** (12 playable now, 29 with gameplay gaps), 5 are blocked. This is an upper bound: it means no feature in the list below stops the mission and the smoke run did not crash, not that the map has been played.
 
 - **blocker**: the mission cannot be completed as designed (a script variable that gates the goal is fed by an action the engine cannot do).
 - **gameplay gap**: content the engine ignores but the goal does not depend on (a usable well, a spell duration).
@@ -34,11 +34,11 @@ Scanned 46 campaign maps; smoke run 1600 ticks of the map script and the AI with
 |---|---|---|---|---|---|
 | 10 |  | playable, gameplay gaps |  | use.pointer x1 | ok |
 | 20 |  | playable, gameplay gaps |  | use.pointer x3 | ok |
-| 21 |  | blocked | item.quest_pickup | use.pointer x3 | ok |
+| 21 |  | playable, gameplay gaps |  | use.pointer x3 | ok |
 | 30 |  | playable, gameplay gaps |  | use.grave x5, use.pointer x1, use.well x1 | ok |
 | 31 | Adamantium mines | playable, gameplay gaps |  | use.grave x6 | ok |
 | 32 | Get Sword | playable now |  |  | ok |
-| 40 |  | blocked | item.quest_pickup | use.pointer x3, use.well x3 | ok |
+| 40 |  | playable, gameplay gaps |  | use.pointer x3, use.well x3 | ok |
 | 41 |  | playable now |  |  | ok |
 | 42 | Mad dragon | playable, gameplay gaps |  | use.grave x2 | ok |
 | 43 | Dirty work | playable, gameplay gaps |  | use.grave x1 | lost |
@@ -49,16 +49,16 @@ Scanned 46 campaign maps; smoke run 1600 ticks of the map script and the AI with
 | 60 |  | playable, gameplay gaps |  | use.well x1 | lost |
 | 61 |  | playable now |  |  | ok |
 | 62 | Escapers | playable, gameplay gaps |  | use.altar x1, use.well x1 | ok |
-| 63 | Magicianess | blocked | item.quest_pickup | use.well x2 | ok |
+| 63 | Magicianess | playable, gameplay gaps |  | use.well x2 | ok |
 | 70 |  | playable, gameplay gaps |  | use.grave x6 | lost |
 | 71 |  | playable, gameplay gaps |  | instant.29 x2 | ok |
-| 72 | Lost Caravans | blocked | item.quest_pickup |  | ok |
+| 72 | Lost Caravans | playable now |  |  | ok |
 | 73 | Revolted Castle | playable, gameplay gaps |  | use.grave x1, use.well x4 | ok |
 | 74 | SmartShaman | playable, gameplay gaps |  | use.well x1 | ok |
 | 75 | Old Warrior | playable, gameplay gaps |  | use.grave x1, use.switch x2, use.well x3 | ok |
 | 76 | DangerousForest | playable, gameplay gaps |  | use.altar x1 | ok |
 | 77 | MageGhost | playable, gameplay gaps |  | use.grave x6, use.well x2 | ok |
-| 80 |  | blocked | item.quest_pickup | use.altar x1 | ok |
+| 80 |  | playable, gameplay gaps |  | use.altar x1 | ok |
 | 81 |  | playable now |  |  | ok |
 | 82 |  | playable now |  |  | ok |
 | 83 |  | playable, gameplay gaps |  | use.well x2 | ok |
@@ -67,7 +67,7 @@ Scanned 46 campaign maps; smoke run 1600 ticks of the map script and the AI with
 | 86 | SwampMage | playable, gameplay gaps |  | use.altar x1, use.well x1 | ok |
 | 87 |  | playable, gameplay gaps |  | use.well x1 | ok |
 | 90 |  | playable now |  |  | ok |
-| 91 |  | blocked | item.quest_pickup |  | ok |
+| 91 |  | playable now |  |  | ok |
 | 92 | Great warrior's grave | playable, gameplay gaps |  | use.grave x1 | lost |
 | 93 |  | blocked | check.25, use.scripted | use.switch x2 | ok |
 | 94 |  | blocked | check.25, use.scripted | use.switch x2 | ok |
@@ -75,7 +75,7 @@ Scanned 46 campaign maps; smoke run 1600 ticks of the map script and the AI with
 | 96 |  | blocked | use.scripted | instant.30 x3, use.switch x2 | ok |
 | 100 |  | playable, gameplay gaps |  | use.well x1 | ok |
 | 101 |  | playable now |  |  | ok |
-| 102 |  | blocked | item.quest_pickup | use.grave x9 | lost |
+| 102 |  | playable, gameplay gaps |  | use.grave x9 | lost |
 | 103 | Find the magic Oracle | blocked | use.scripted | use.switch x16 | ok |
 | 110 |  | playable, gameplay gaps |  | use.grave x13 | lost |
 
@@ -88,7 +88,6 @@ Scanned 46 campaign maps; smoke run 1600 ticks of the map script and the AI with
 | `check.25` | check 25: Spell on Tile | partial | blocker | tilefx | 3 | 0 | cell effect layers are not readable by the script: the value stays 0 |
 | `instant.29` | instant 29: Tile Spell Duration | partial | gameplay | tilefx | 2 | - | tile spell duration: counted no-op |
 | `instant.30` | instant 30: Unit Spell Duration | partial | gameplay | tilefx | 1 | - | unit spell duration: counted no-op |
-| `item.quest_pickup` | quest item a trigger checks for that lies on the map (carried by a monster or in a sack) | missing | blocker | pickup | 7 | 7 | checks 12 / 16 / 17 name it; the engine moves items only from the pack window, no click issues PickUp (simulation.md 9) |
 | `music.zones` | music zones (section 12) | missing | polish | sound | 46 | - | the engine has no audio |
 | `spell.status` | spells whose status effect has no drawing (protections, Bless, Curse, Haste, Slow, Shield) | partial | polish | draw | 41 | - | simulated (effects.md); only Invisibility and Stone Curse change the unit's look |
 | `unit.ranged` | units that shoot (attack range > 1, no spell) | partial | polish | draw | 36 | - | simulated exactly, the arrow is not drawn (combat.md 3, 10) |
@@ -226,16 +225,15 @@ First the steps that unblock maps (greedy: the next one completes the most block
 
 | # | Step | Effort | Maps newly playable | Playable after | Maps touched | Backlog item |
 |---|---|---|---|---|---|---|
-| 1 | `pickup` Click pickup: pickup cursor mode issues PickUp, ground piles and quest items reach the pack | 1 | 7 (102, 21, 40, 63, 72, 80, 91) | 41 | 7 | 1 |
-| 2 | `use` Use a structure, core: command 0x24, the use order (state 0xf), the switch state the scripts read | 3 | 2 (103, 96) | 43 | 6 | - |
-| 3 | `tilefx` Cell effects for scripts: check 25 reads the cell layers, instants 29 / 30 set spell durations | 1 | 3 (93, 94, 95) | 46 | 5 | 3 |
-| 4 | `use_more` Use a structure, the rest: signpost messages, wells, King's graves, altars (research of each class) | 2 | - | 46 | 28 | - |
-| 5 | `draw` Draw what is simulated: status effects of units, arrows of shooters | 2 | - | 46 | 46 | 2 |
-| 6 | `sound` Sound and music: music zones, unit and UI sounds, the 0xfe / 0xfd / 0xfa messages | 5 | - | 46 | 46 | 6 |
-| 7 | `hero_ui` Hero windows: the Heads panel, hero screen (stats, skills, paper doll), item shops | 3 | - | 46 | 46 | 1 |
-| 8 | `menus` Start menu, new-game and options screens, in-game menu entries | 4 | - | 46 | 46 | 5 |
-| 9 | `save` Save / load: the game%d.sav writer and reader | 4 | - | 46 | 46 | 7 |
-| 10 | `campaign` Campaign flow: world map, towns, hero recruit, roster carry-over, the Scenario.dll variables | 8 | - | 46 | 46 | 4 |
+| 1 | `use` Use a structure, core: command 0x24, the use order (state 0xf), the switch state the scripts read | 3 | 2 (103, 96) | 43 | 6 | - |
+| 2 | `tilefx` Cell effects for scripts: check 25 reads the cell layers, instants 29 / 30 set spell durations | 1 | 3 (93, 94, 95) | 46 | 5 | 3 |
+| 3 | `use_more` Use a structure, the rest: signpost messages, wells, King's graves, altars (research of each class) | 2 | - | 46 | 28 | - |
+| 4 | `draw` Draw what is simulated: status effects of units, arrows of shooters | 2 | - | 46 | 46 | 2 |
+| 5 | `sound` Sound and music: music zones, unit and UI sounds, the 0xfe / 0xfd / 0xfa messages | 5 | - | 46 | 46 | 6 |
+| 6 | `hero_ui` Hero windows: the Heads panel, hero screen (stats, skills, paper doll), item shops | 3 | - | 46 | 46 | 1 |
+| 7 | `menus` Start menu, new-game and options screens, in-game menu entries | 4 | - | 46 | 46 | 5 |
+| 8 | `save` Save / load: the game%d.sav writer and reader | 4 | - | 46 | 46 | 7 |
+| 9 | `campaign` Campaign flow: world map, towns, hero recruit, roster carry-over, the Scenario.dll variables | 8 | - | 46 | 46 | 4 |
 
 <!-- coverage:end -->
 
@@ -257,6 +255,8 @@ drawing, sound and shell.
 | K8 | `use_more`: signpost messages, wells, King's graves, altars (research each class) | 2 | gameplay only (33 maps touch a usable structure) | 46 |
 | K9 | `draw`: status effects of units, arrows of shooters | 2 | polish only (46 maps) | 46 |
 | then | `sound`, `hero_ui`, `menus`, `save`, `campaign` | 5 + 3 + 4 + 4 + 8 | none: no map needs them to be completed | 46 |
+
+**K5 done (2026-11-09):** the pickup click and the pack-based script items are built ([items](engine/items.md)); the regenerated block above reads 41 of 46 maps without a blocker (12 playable now), as predicted.
 
 K5, K6 and K7 together unblock all 12 blocked maps; K5 and K7 are one small step each, K6 is the only research-heavy blocker (the use order and the
 switch class are only partly read: command `0x24` in [click-to-move-research](engine/click-to-move-research.md), state `0xf` in [unit-struct](engine/unit-struct.md)).

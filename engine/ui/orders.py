@@ -4,7 +4,7 @@ clicks, hotkeys and minimap clicks into commands.  The pending target mode is `v
 A left release with a click on a non-empty selection dispatches on the cursor chosen at the release (R 1.2);
 the pending mode is reset after every such dispatch, also when nothing was ordered."""
 
-from engine.sim import AttackUnit, CastScroll, CastSpell, Guard, MoveUnits, Retreat, SelectUnits, SetAutoSpell, SetFormation, StandStill, Stop, Swarm
+from engine.sim import AttackUnit, CastScroll, CastSpell, Guard, MoveUnits, PickUp, Retreat, SelectUnits, SetAutoSpell, SetFormation, StandStill, Stop, Swarm
 from allods2.text import decode_text
 
 from . import spellbook
@@ -222,7 +222,9 @@ class OrderInput:
             if (self.spell and self.state_fn() == "own" and sel and isinstance(hover_unit, int) and not isinstance(hover_unit, bool)
                     and self._slot_allows(self.spell)):
                 cmd = CastSpell(self.player_id, sel, self.spell, hover_unit)
-        # patrol, defend, pickup, town: phases J/K, no order yet
+        elif cursor is S.PICKUP and movable:        # cmd 0x21 at the cell under the pointer (FUN_004180c6 flag 0x40); the sim ignores a cell without a sack
+            cmd = PickUp(self.player_id, sel[-1:], cell)
+        # patrol, defend, town: no order yet
         self.pending = 0
         return "order", cmd
 

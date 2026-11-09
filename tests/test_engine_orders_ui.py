@@ -105,7 +105,7 @@ def make(sel=(10, 11), state="own", formation=1):
 @pytest.mark.parametrize("cursor,hover_unit,cmd", [
     (S.MOVE, False, True), (S.MOVE, True, True),                     # alt over an enemy unit walks
     (S.ATTACK, False, True), (S.ATTACK, True, False),                # attack over ground / structure = move
-    (S.PATROL, False, False), (S.DEFEND, True, False), (S.PICKUP, False, False),
+    (S.PATROL, False, False), (S.DEFEND, True, False),
     (S.TOWN, False, False), (S.CAST, False, False), (S.DEFAULT, False, False), (S.ARROW_N, False, False),
 ])
 def test_release_dispatch(cursor, hover_unit, cmd):
@@ -115,6 +115,16 @@ def test_release_dispatch(cursor, hover_unit, cmd):
     assert what == "order"
     assert got == (MoveUnits(ME, (10, 11), (20, 30)) if cmd else None)
     assert oi.pending == 0                                           # reset after every dispatch
+
+
+def test_pickup_cursor_orders_the_last_selected_unit_to_the_cell():
+    from engine.sim import PickUp
+    oi, box = make()
+    oi.pending = 0
+    assert oi.release(S.PICKUP, (20, 30), False) == ("order", PickUp(ME, (11,), (20, 30)))
+    box["state"] = "enemy"
+    assert oi.release(S.PICKUP, (20, 30), False) == ("order", None)
+    assert oi.release(S.PICKUP, None, False) == ("order", None)
 
 
 def test_swarm_cursor_orders_a_swarm_at_the_cell_even_over_a_unit():
