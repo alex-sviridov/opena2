@@ -74,7 +74,7 @@ def parse_chunks(b):
     return out
 
 
-def _decode_msadpcm(blob, channels, block_align, spb, coefs, total):
+def _decode_msadpcm_numpy(blob, channels, block_align, spb, coefs):
     """Vectorised over blocks: every block starts with predictors, deltas and
     two raw samples per channel, then 4-bit codes (high nibble first,
     channels interleaved)."""
@@ -130,6 +130,34 @@ def _decode_msadpcm(blob, channels, block_align, spb, coefs, total):
         run([nfull], last_spb, rem)
     frames = np.concatenate([out[:nfull].reshape(-1, channels),
                              out[nfull, :last_spb] if rem else out[:0, 0]])
+    return frames.astype(np.int16)
+
+
+def _decode_msadpcm_native(lib, blob, channels, block_align, spb, coefs):
+    nfull, rem = divmod(len(blob), block_align)
+    cap = nfull * spb + (2 + (rem - 7 * channels) * 2 // channels if rem >= 7 * channels else 0)
+    out = np.empty((cap, channels), np.int16)
+    co = np.ascontiguousarray(coefs, np.int16)
+    src = np.frombuffer(blob, np.uint8)
+    n = lib.a2_msadpcm(src.ctypes.data, len(blob), channels, block_align, spb, co.ctypes.data, len(co),
+                       out.ctypes.data, cap)
+    if n == -1:
+        raise SoundError("predictor index out of range")
+    if n == -2:
+        raise SoundError("final block is shorter than its header")
+    if n < 0:
+        raise SoundError("samples per block does not fit the block size")
+    return out[:n]
+
+
+def _decode_msadpcm(blob, channels, block_align, spb, coefs, total):
+    """Native decoder when available (ALLODS2_NATIVE, allods2/native), else numpy; both bit-identical."""
+    from .. import native
+    lib = native.adpcm()
+    if lib is not None and len(blob):
+        frames = _decode_msadpcm_native(lib, blob, channels, block_align, spb, coefs)
+    else:
+        frames = _decode_msadpcm_numpy(blob, channels, block_align, spb, coefs)
     if total is not None:
         # fact = the true length: it trims a padded final block (52 files) and
         # is one frame longer than a partial final block can hold in ~500
@@ -138,7 +166,7 @@ def _decode_msadpcm(blob, channels, block_align, spb, coefs, total):
             frames = frames[:total]
         elif total - len(frames) not in (0, 1):
             raise SoundError("fact says %d frames, decoded %d" % (total, len(frames)))
-    return frames.astype(np.int16)
+    return frames
 
 
 def decode(b):

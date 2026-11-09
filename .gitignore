@@ -36,3 +36,7 @@ Thumbs.db
 /engine/native/*.dylib
 /engine/native/*.dll
 /engine/native/*.tmp
+/allods2/native/*.so
+/allods2/native/*.dylib
+/allods2/native/*.dll
+/allods2/native/*.tmp

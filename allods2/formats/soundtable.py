@@ -72,7 +72,7 @@ BANKS = ("aldor", "sagita", "hildarius", "galinel", "igles", "dina",
 VOICE_DIRS = ("select", "attack", "move", "swarm")        # numbered 1..4, probed
 VOICE_SINGLE = ("retreat", "pickup", "defend")            # <dir>/1.wav
 VOICE_FILES = ("easy", "hard", "dead")                    # <bank>/<name>.wav
-SLOTS = ("attack", "hit_material", "easy", "hard", "dead")   # units.reg Sound list
+SLOTS = ("attack", "blow", "easy", "hard", "dead")   # units.reg Sound list
 PLAYLIST_MISSION = tuple("music/b%02d.wav" % i for i in range(17))
 MUSIC_SCREENS = {"menu": "music/menu.wav", "map": "music/map.wav",
                  "chrgen": "music/chrgen.wav", "credit": "music/credit.wav",

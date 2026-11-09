@@ -261,3 +261,81 @@ def test_purpose_classifier():
     assert T.purpose("speech/talk/0001t000p01.wav") == "speech: dialogue"
     assert T.purpose("sfx/characters/aldor/dead.wav") == "hero / class voice"
     assert T.purpose("sfx/click00.wav") == "UI / misc"
+
+
+# ---- native decoder (allods2/native/adpcm.c) vs the numpy reference ----------
+
+def _both(wav, monkeypatch):
+    from allods2 import native
+    monkeypatch.setenv("ALLODS2_NATIVE", "0")
+    ref = S.load(wav)
+    monkeypatch.setenv("ALLODS2_NATIVE", "")
+    lib = native.adpcm()
+    return ref, S.load(wav), lib
+
+
+def _stereo_wav(nblocks, tail_bytes, seed):
+    rng = np.random.default_rng(seed)
+    blocks = b""
+    for size in [512] * nblocks + ([tail_bytes] if tail_bytes else []):
+        hdr = bytes([1, 4]) + struct.pack("<hhhhhh", 20, 40, 100, -50, 90, 30)
+        codes = rng.choice([0x00, 0x11, 0x0F, 0xF0, 0x01, 0x10, 0x22, 0xEE, 0x13, 0xFE], size - len(hdr))
+        blocks += hdr + bytes(codes.astype(np.uint8))
+    fmt = b"fmt ", adpcm_fmt(2, 22050, 512, 500)[1]
+    return riff(fmt, (b"data", blocks))
+
+
+@pytest.mark.parametrize("tail", [0, 21, 14])
+def test_native_equals_numpy_stereo_and_partial(tail, monkeypatch):
+    ref, got, lib = _both(_stereo_wav(3, tail, tail), monkeypatch)
+    if lib is None:
+        pytest.skip("no C compiler")
+    assert got.channels == 2 and got.frames == ref.frames == 3 * 500 + (2 + (tail - 14) * 2 // 2 if tail else 0)
+    assert got.samples.tolist() == ref.samples.tolist()
+    # the scalar reference of the first block (stereo) as a third opinion
+    first = _stereo_wav(1, 0, tail)
+    blk = first[first.index(b"data") + 8:][:512]
+    assert ref_adpcm(blk, 2)[:, 0].tolist()[:500] == S.load(first).samples[:500, 0].tolist()
+
+
+def test_native_equals_numpy_mono_edge_cases(monkeypatch):
+    rng = np.random.default_rng(7)
+    for tail in (0, 7, 8, 9, 300, 511):
+        data = b""
+        for size in [512, 512] + ([tail] if tail else []):
+            hdr = bytes([rng.integers(0, 7)]) + struct.pack("<hhh", int(rng.integers(16, 2000)), int(rng.integers(-3000, 3000)),
+                                                          int(rng.integers(-3000, 3000)))
+            codes = rng.choice([0x00, 0x11, 0x0F, 0xF0, 0x01, 0x10, 0x22, 0xEE, 0x77], size - len(hdr))
+            data += hdr + bytes(codes.astype(np.uint8))
+        wav = riff(adpcm_fmt(), (b"data", data))
+        ref, got, lib = _both(wav, monkeypatch)
+        if lib is None:
+            pytest.skip("no C compiler")
+        assert got.samples.tolist() == ref.samples.tolist(), tail
+
+
+def test_native_errors_match_numpy(monkeypatch):
+    bad_pred = bytes([9]) + struct.pack("<hhh", 16, 0, 0) + bytes(505)
+    short = bytes([1]) + struct.pack("<hh", 16, 0)                       # shorter than the 7-byte header
+    for data in (bad_pred, bytes(512) + short):
+        wav = riff(adpcm_fmt(), (b"data", data))
+        for env in ("0", ""):
+            monkeypatch.setenv("ALLODS2_NATIVE", env)
+            with pytest.raises(S.SoundError):
+                S.load(wav)
+
+
+@needs_sfx
+def test_native_equals_numpy_on_the_install(monkeypatch):
+    from allods2 import native
+    monkeypatch.setenv("ALLODS2_NATIVE", "")
+    if native.adpcm() is None:
+        pytest.skip("no C compiler")
+    files = [p for p in wavs() if "/characters/" in p or p.startswith("speech/talk/00")][:60]
+    for p in files:
+        raw = bytes(GFS.read(p))
+        monkeypatch.setenv("ALLODS2_NATIVE", "")
+        a = S.load(raw)
+        monkeypatch.setenv("ALLODS2_NATIVE", "0")
+        b = S.load(raw)
+        assert a.samples.tolist() == b.samples.tolist(), p
