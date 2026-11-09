@@ -15,7 +15,6 @@ from typing import NamedTuple
 import numpy as np
 
 from allods2.anim.lens import LENS_SIZE
-from allods2.anim.projectiles import direction16
 from allods2.anim.scene import piece_cells
 from allods2.anim.structures import BridgeSet
 from allods2.formats import objects as fobj
@@ -589,67 +588,6 @@ MISSILE_Z = 0               # CONFIRMED `FUN_0046707e` / `FUN_00466e18` / `FUN_0
                             # screen position is the world position / 8 and the sprite is only lifted by the ground relief: the "height" is the ShootOffset point
 
 
-def missile_position(c, target, age):
-    """Position (x, y) in 1/256 cell of the missile of carrier `c` after `age` ticks: the straight line from the release position to the target's
-    CURRENT position (a projectile steers at its target each tick, animation.md 4.4); `age >= flight` is the target itself.  `target` None: the
-    position the target had at the release."""
-    tx, ty = c.aim if target is None else target
-    n = max(c.flight, 1)
-    k = min(age, c.flight) if c.flight else 1
-    sx, sy = c.start
-    return (sx + _trunc((tx - sx) * k / n), sy + _trunc((ty - sy) * k / n))
-
-
-def missile_facing(dx, dy):
-    """The 16-direction facing (0 north, 4 east, `ProjectileSet.frame_at`) of the vector (dx, dy): `FUN_004608de`, CONFIRMED (`direction16`)."""
-    return direction16(dx, dy)
-
-
-class _Carrier:
-    """The `ent` of a carrier's draw items: only an id."""
-
-    def __init__(self, c):
-        self.id = c.uid
-
-
-def _carriers(ctx):
-    """P6: the missile of every missile carrier and its smoke trail (`FUN_0046cb7b`, trail 0x46cf31-0x46d062): the 6 previous positions as frames 0..5 of
-    the trail file, oldest first and drawn after the missile body (CONFIRMED order of the draw routine), the missile frame by facing and age (`ProjectileSet.frame_at`, age0 -1)."""
-    w = ctx.world
-    for c in w.carriers:
-        if c.kind != "missile" or c.spell in (10, 11) or c.target is not None:
-            continue            # Lightning / Spray: the client draws the bolt (`_bolts`); a unit-target flight is a client `Arrow` made by the cast action (`_arrows`)
-        pset = ctx.assets.projectile_set(c.spell * 2 + 8)
-        if pset is None:
-            ctx.items.missing += 1
-            continue
-        t = w.find_unit(c.target)
-        tpos = None if t is None else ((t.x << 8) | t.sub_x, (t.y << 8) | t.sub_y)
-        age = max(ctx.tick - c.born, 0)
-        pos = missile_position(c, tpos, age)
-        cx, cy = pos[0] >> 8, pos[1] >> 8
-        if not in_window(ctx.win, cx, cy):
-            ctx.items.culled += 1
-            continue
-        end = tpos or c.aim
-        prev = missile_position(c, tpos, max(min(age, c.flight) - 1, 0))      # `FUN_0046c1d0`: the facing is taken from the position before the step
-        facing = missile_facing(end[0] - prev[0], end[1] - prev[1]) if prev != end else missile_facing(end[0] - c.start[0], end[1] - c.start[1])
-        ent = _Carrier(c)
-        rec = pset.rec
-        a16 = bool(rec["A16"])
-        if pset.has_trail:
-            points = [missile_position(c, tpos, k) for k in range(max(age - 6, 0), age)]
-        ref = pset.frame_at("flight", facing, age, age0=-1)
-        dep = (PASS_PROJECTILE, cy, -cx, 0, c.uid)      # one object: the whole draw call of `FUN_0046cb7b` sorts at the missile's cell
-        _projectile_item(ctx, ent, c, pset, ref, pos, dep + (0, 0), "alpha" if a16 else "opaque", "main")
-        if not a16 and rec["Palette"]:                  # the b.256 smoothing overlay at 50 % (animation.md 4.4)
-            _projectile_item(ctx, ent, c, pset, ref, pos, dep + (1, 0), "half", "main_b")
-        if pset.has_trail:                              # after the body (the trail loop at 0x46cf31 follows the body draws)
-            points = [missile_position(c, tpos, k) for k in range(max(age - 6, 0), age)]
-            for i, (tref, _) in enumerate(pset.trail([((y << 16) | x) & 0xFFFFFFFF for x, y in points])):
-                _projectile_item(ctx, ent, c, pset, tref, points[i], dep + (2 + i, 0), "alpha", "trail")
-
-
 class _Fx:
     """The `ent` of a client effect object's draw items."""
     id = -1
@@ -660,8 +598,8 @@ def _flashes(ctx):
     target's footprint centre), the generic projectile path (`.16a` alpha, altitude 0, no shadow, no direction)."""
     w = ctx.world
     for f in w.flashes:
-        age = ctx.tick - f.born
-        if age < 0 or age >= f.life:
+        age = ctx.tick - f.born                         # the exe age `obj+0x9c`: made in step `born`, ticked once in it, drawn after it (`world.tick` is already `born + 1`)
+        if age < 1 or age > f.life:
             continue
         pos = f.pos
         if pos is None:
@@ -678,7 +616,7 @@ def _flashes(ctx):
         if pset is None:
             ctx.items.missing += 1
             continue
-        ref = pset.frame_at("effect", 0, age, age0=0)
+        ref = pset.frame_at("effect", 0, age, age0=-1)          # Teleport: phase age - 1 (frame 0 at age 1); Drain Life: phase age
         a16 = bool(pset.rec["A16"])
         dep = (PASS_PROJECTILE, cy, -cx, 0, (1 << 24) + f.born, f.pid, int(pos[0]))
         _projectile_item(ctx, _Fx, None, pset, ref, pos, dep + (0, 0), "alpha" if a16 else "opaque", "main", z0=0)
@@ -988,7 +926,6 @@ def build_draw_list(world, camera, tick, assets, options=None, debug=None, selec
         for u in world.units.values():
             if id(u) not in lost:
                 _unit(ctx, u)
-        _carriers(ctx)
         _explosions(ctx)
         _bolts(ctx)
         _arrows(ctx)

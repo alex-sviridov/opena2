@@ -871,20 +871,36 @@ FLASH = {23: 0x36, 26: 0x3c}        # spell number -> projectile id of the one-s
 FLASH_LIFE = {0x36: 21, 0x3c: 1}
 
 
-def spawn_cast_fx(world, caster, number, target, cell):
-    """The client side of a cast message for the spells whose projectile lives longer than 0 steps without being a flight: Teleport (made at tick 0
-    of the cast action: two objects, the caster's own point and the destination, age `phase = age - 1`, 21 steps) and Drain Life (at the
-    ShootDelay tick, on the target's footprint centre, 1 step, `phase = age`).  A hidden caster (type word 0) has no view: nothing."""
+def spawn_cast_fx(world, caster, number, target, cell, flight=0):
+    """The client side of a cast message for the spells whose projectile lives longer than 0 steps (CONFIRMED `FUN_005041d6` / `FUN_005042ba`: a caster
+    whose type word `+0xe` is 0 sends `0x8b`, every other `0x86`; the `0x86` handler starts the caster's cast action, which makes the projectile on its
+    ShootDelay tick, a unit target by id `+0x8e`, a cell target by `+0x90 / +0x94 = cell * 256 + 0x80`, chosen by the spell's target kind):
+    - the flights (Fire Arrow 10, Fire Ball 12, Ice Missile 18, Diamond Dust 40): `Arrow(spell=True)` at the ShootDelay tick, lifetime `dist / speed`;
+    - the hidden caster's `0x8b` form: the projectile at once at the caster's cell centre, age -1, lifetime = the message's flight ticks (`flight`),
+      no view of the caster needed (a script trap's missile is drawn);
+    - Teleport (`0x36`, tick 0, two objects) and Drain Life (`0x3c`, ShootDelay, one step): `Flash`es, cast action only (a `0x8b` Teleport has lifetime 0)."""
     from engine.world import Arrow, Flash
     pid = FLASH.get(number)
-    if caster.type_id == 0:
-        return
-    if 2 * number + 8 in FLIGHT:                    # the spell flights: a client projectile made at the ShootDelay tick (`FUN_0046707e`, lifetime `dist / speed`)
+    if 2 * number + 8 in FLIGHT:
+        pid = 2 * number + 8
+        if caster.type_id == 0:                     # the `0x8b` form: made by the message loop, stepped by the projectile list in the same view step
+            if flight <= 0:
+                return
+            t = target
+            a = Arrow(pid, caster.id, t.id if t is not None else None, world.tick, live=True, x=caster.x * 256 + 128, y=caster.y * 256 + 128,
+                      steps=flight, age=-1, spell=True, cell=None if t is not None else cell)
+            if t is None:
+                a.tx, a.ty = cell[0] * 256 + 128, cell[1] * 256 + 128
+            else:
+                a.tx, a.ty = _target_centre(world, t)
+            world.arrows.append(a)
+            return
         delay = shoot_delay(world, caster)
-        if delay is not None and target is not None:
-            world.arrows.append(Arrow(2 * number + 8, caster.id, target.id, world.tick + delay, spell=True, speed=FLIGHT[2 * number + 8]))
+        if delay is not None and (target is not None or cell is not None):
+            world.arrows.append(Arrow(pid, caster.id, target.id if target is not None else None, world.tick + delay, spell=True, speed=FLIGHT[pid],
+                                      cell=None if target is not None else cell))
         return
-    if pid is None:
+    if pid is None or caster.type_id == 0:
         return
     if pid == 0x36:
         if cell is None:
@@ -986,12 +1002,13 @@ def arrow_system(world, commands=()):
             if world.tick < a.born:
                 keep.append(a)
                 continue
-            u, t = world.find_unit(a.shooter), _target_object(world, a.target)
-            if u is None or t is None:
+            u = world.find_unit(a.shooter)
+            t = _target_object(world, a.target) if a.target is not None else None
+            if u is None or (t is None and a.cell is None):
                 continue
             if a.spell:                                 # `FUN_0046707e`: start at the footprint centre, distance to the target's centre `+0x5c / +0x60`
                 ox, oy = shoot_origin(world, u)
-                tx, ty = _target_centre(world, t)
+                tx, ty = _target_centre(world, t) if t is not None else (a.cell[0] * 256 + 128, a.cell[1] * 256 + 128)
             else:                                       # `FUN_00466e18`: start at `+8 / +0xc`, distance to the target's `+8 / +0xc`
                 ox, oy = arrow_origin(world, u)
                 tx, ty = _target_pos(t)
@@ -1002,9 +1019,11 @@ def arrow_system(world, commands=()):
             a.live, a.x, a.y, a.steps, a.age = True, ox, oy, steps, 0
         elif a.steps <= 0:
             continue
-        t = _target_object(world, a.target)
+        t = _target_object(world, a.target) if a.target is not None else None
         if t is not None:
             a.tx, a.ty = _target_centre(world, t)
+        elif a.target is None and a.cell is not None:      # a cell target: `+0x90 / +0x94`, fixed
+            a.tx, a.ty = a.cell[0] * 256 + 128, a.cell[1] * 256 + 128
         a.facing = direction16(a.tx - a.x, a.ty - a.y)
         if a.pid in TRAIL_IDS:                          # `FUN_0046c1d0` after the switch: drop the oldest beyond 6, add the position before the move
             if len(a.trail) > 5:

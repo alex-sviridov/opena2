@@ -30,13 +30,6 @@ def light_map(world, assets, tick):
             light = lt.projectile_light(a.pid)
             if light is not None:
                 _stamp(out, a.x >> 8, a.y >> 8, *light)
-    for c in getattr(world, "carriers", ()):
-        if c.kind != "missile" or c.spell * 2 + 8 not in MISSILE_IDS or c.target is not None:
-            continue
-        light = lt.projectile_light(c.spell * 2 + 8)
-        cell = missile_cell(world, c, tick)
-        if light is not None and cell is not None:
-            _stamp(out, cell[0], cell[1], *light)
     for b in getattr(world, "bolts", ()):                          # projectiles 28 / 30: `phase * 10` over each segment point's 2 x 2 vertices
         age = bolt_age(b, tick)
         if age is not None:
@@ -85,14 +78,6 @@ def burns(world, assets, x, y):
             aset = assets.object_set(ent.type_id)
             return aset is not None and aset.rec["DeadObject"] != -1
     return False
-
-
-def missile_cell(world, c, tick):
-    from .drawlist import missile_position      # the same position the sprite is drawn at
-    t = world.find_unit(c.target)
-    tpos = None if t is None else ((t.x << 8) | t.sub_x, (t.y << 8) | t.sub_y)
-    pos = missile_position(c, tpos, max(tick - c.born, 0))
-    return pos[0] >> 8, pos[1] >> 8
 
 
 def bolt_age(b, tick):

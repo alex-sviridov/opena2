@@ -36,19 +36,55 @@ def test_other_spells_make_no_flight():
         assert not w.arrows, spell
 
 
-def test_no_flight_for_a_hidden_caster_a_missing_delay_or_a_cell_cast():
+def test_a_cell_cast_makes_the_flight_through_the_cast_action_too():
+    """The `0x86` handler picks the target by the spell's kind: a cell target is `+0x90 / +0x94 = cell * 256 + 0x80` (`0x415370`); `0x8b` is the hidden caster's."""
+    w = world()
+    w.assets = FakeAssets(FakeSet(delay=3))
+    c = caster(w)
+    w.tick = 10
+    effects.spawn_cast_fx(w, c, FIRE_ARROW, None, (27, 20))
+    (a,) = w.arrows
+    assert (a.target, a.cell, a.born, a.spell) == (None, (27, 20), 13, True)
+    run(w, 3)
+    assert a.live and a.age == 1
+    run(w, a.steps)
+    assert (a.x, a.y) == (27 * C + 128, 20 * C + 128) and a.steps == 0
+
+
+def test_the_hidden_casters_0x8b_form_is_made_at_once_with_age_minus_one():
     w = world()
     w.assets = FakeAssets(FakeSet(delay=3))
     c = caster(w)
     c.type_id = 0
-    effects.spawn_cast_fx(w, c, FIRE_ARROW, foe(w, 2, 27, 20), None)
-    assert not w.arrows                                      # the view has no hidden caster: the message finds no caster view
+    t = foe(w, 2, 27, 20)
+    w.tick = 10
+    effects.spawn_cast_fx(w, c, FIRE_ARROW, t, None, 8)                  # the message's flight ticks
+    (a,) = w.arrows
+    assert (a.live, a.age, a.steps, a.born) == (True, -1, 8, 10) and (a.x, a.y) == (c.x * C + 128, c.y * C + 128)
+    effects.arrow_system(w)                                              # the same view step: the projectile list ticks it once
+    assert (a.age, a.steps) == (0, 7)
+    for _ in range(7):
+        effects.arrow_system(w)
+    assert (a.x, a.y) == (t.x * C + t.sub_x, t.y * C + t.sub_y) and a.steps == 0
+    effects.spawn_cast_fx(w, c, FIRE_ARROW, t, None, 0)
+    assert len(w.arrows) == 1                                            # a flight of 0 ticks is never seen
     c.type_id = 1
-    effects.spawn_cast_fx(w, c, FIRE_ARROW, None, (27, 20))
-    assert not w.arrows                                      # a cell cast is the message-made form, not the cast action's
+    effects.spawn_cast_fx(w, c, 20, t, None, 8)
+    assert len(w.arrows) == 1                                            # Bless: no flight at all
+
+
+def test_no_flight_for_a_missing_delay_or_a_vanished_target():
+    w = world()
     w.assets = FakeAssets(FakeSet(delay=12, n=12))
+    c = caster(w)
     effects.spawn_cast_fx(w, c, FIRE_ARROW, foe(w, 3, 27, 20), None)
-    assert not w.arrows                                      # ShootDelay past the sequence never fires
+    assert not w.arrows                                                  # ShootDelay past the sequence never fires
+    w.assets = FakeAssets(FakeSet(delay=1))
+    t = foe(w, 4, 27, 20)
+    effects.spawn_cast_fx(w, c, FIRE_ARROW, t, None)
+    del w.units[t.id]
+    run(w, 3)
+    assert not w.arrows                                                  # `FUN_0046707e` returns when the target lookup fails
 
 
 def run(w, ticks):

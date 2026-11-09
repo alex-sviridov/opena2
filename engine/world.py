@@ -334,6 +334,7 @@ class Arrow:
     steps: int = 0                  # +0xa8: steps left
     age: int = 0                    # +0x9c: steps made (the first drawn age is 1)
     facing: int = 0                 # +0x70
+    cell: tuple = None              # a cell-target cast: the fixed target (x, y) cell; `target` is None (`+0x8e == 0`, aim `+0x90 / +0x94` = cell centre)
     spell: bool = False             # made by the cast action (`FUN_0046707e`: start at the footprint centre, distance to the target's centre) rather than the shoot action
     speed: int = 200                # lifetime = trunc(distance) / speed (0x180 for the Fire Ball)
     trail: list = field(default_factory=list)       # ids 10 / 12: the last 6 pre-move positions (x, y), oldest first (`view +0x11c` list)

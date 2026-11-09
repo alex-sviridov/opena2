@@ -203,15 +203,25 @@ def test_teleport_and_drain_life_sprites_live_their_exe_lifetimes():
 
 
 def test_flash_draws_on_its_ticks_only_with_the_exes_phase():
+    """Made in step `born` and ticked once in it (server step -> message loop -> view tick, `FUN_00488aa1`), the object is drawn after that step, when
+    `world.tick` is `born + 1`: exe age 1 = Teleport's frame 0, up to age 21 = frame 20."""
     w, s, t = fight()
     w.assets.psets = {0x36: projectile(0x36, sprites={"main": sprite_file(21)}, Phases=21, RotationPhases=1, A16=1, Width=96, Height=96)}
     w.flashes[:] = [Flash(0x36, 5, 21, (12 * C + 128, 12 * C + 128))]
     frames = []
-    for tick in range(4, 28):
+    for tick in range(4, 29):
         got = pitems(build_draw_list(w, cam(), tick, w.assets, DrawOptions(shadows=False)))
         frames.append((tick, [i.frame for i in got]))
-    assert [f for tk, f in frames if tk < 5 or tk > 25] == [[], [], []]
-    assert [f[0] for tk, f in frames if 5 <= tk <= 25] == list(range(21))                  # phase = age - 1, first drawn age 1
+    assert all(f == [] for tk, f in frames if tk <= 5 or tk >= 27)
+    assert [f[0] for tk, f in frames if 6 <= tk <= 26] == list(range(21))                  # phase = age - 1, first drawn age 1
+
+
+def test_drain_life_is_drawn_once_with_frame_one():
+    w, s, t = fight()
+    w.assets.psets = {0x3c: projectile(0x3c, sprites={"main": sprite_file(9)}, Phases=9, RotationPhases=1, A16=1, Width=12, Height=12)}
+    w.flashes[:] = [Flash(0x3c, 5, 1, None, t.id)]
+    got = {tick: [i.frame for i in pitems(build_draw_list(w, cam(), tick, w.assets, DrawOptions(shadows=False)))] for tick in range(4, 9)}
+    assert got == {4: [], 5: [], 6: [1], 7: [], 8: []}
 
 
 # --- status effects: only Invisibility (12) and Stone Curse (18) change the picture (FUN_00460d4b has no other reader) -------------------------

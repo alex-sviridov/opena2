@@ -431,12 +431,13 @@ def cast_start(world, u, c, st):
             stub_release(world, u, spell.number)    # a cell-form Spray has no valid exe path (CONFIRMED: FUN_00519c04 with a null target faults, effects.md 11): counted no-op
         else:
             c.chain = spray_chain(world, u, c, st, spell, t)
-    log(world, CastStarted(world.tick, u.id, t.id if t is not None else None, c.spell, client_flight_ticks(spell, bx - ax, by - ay)))
+    flight = client_flight_ticks(spell, bx - ax, by - ay)
+    log(world, CastStarted(world.tick, u.id, t.id if t is not None else None, c.spell, flight))
     if spell.number in (LIGHTNING, PRISMATIC_SPRAY) and t is not None:      # the client message starts action 8; its ShootDelay tick makes the bolt
         from . import effects
         effects.spawn_bolt(world, u, 28 if spell.number == LIGHTNING else 30, (t.id,) if spell.number == LIGHTNING else (c.chain or ()))
     from . import effects
-    effects.spawn_cast_fx(world, u, spell.number, t, c.cell)       # Teleport / Drain Life: the one-shot client sprites (the other flights are carriers)
+    effects.spawn_cast_fx(world, u, spell.number, t, c.cell, flight)       # Teleport / Drain Life: the one-shot client sprites (the other flights are carriers)
     u.step_end = world.tick         # the client message `FUN_005041d6` stores the server tick in unit +0x138
     u.action, u.action_start_tick = mv.ATTACK, world.tick      # client action 8 plays the shared attack block (animation.md 2.4)
     return True
