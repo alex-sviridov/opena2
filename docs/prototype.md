@@ -121,8 +121,8 @@ Headless: yes, fully. Commit.
 **L2 - The campaign in one window (shell, minimal).**
 Goal: play the campaign from the first map without a command line.
 Context: L1, docs/engine/ui-layout.md §11.4 / §11.6, the open question on the main-menu chain to state `0x425`.
-1. REA: the PreCreate details L0 left open (name field, captions, confirm panel `0x48f3f0`), the character screen `FUN_0049183e` (layout, widgets, the attribute budget); spec with CONFIRMED / INFERRED marks. The main menu, the state chain to `0x425` and the options windows are done in L0 ([shell.md](engine/shell.md)).
-2. Build: character creation (name, four attributes, school) replacing the L0 new-game placeholder, the remaining options widgets (Tips, AutoCast, formation, retreat), the in-game menu's Game / Sound Options entries, the mission-complete / defeat dialogs wired to the L1 chain; between missions a plain list of the available locations and the party's stats stands in for the town until `town`.
+1. REA: the character generator panel `+0x36c` (shell.md 3.3: what follows PreCreate; its child rects, the attribute-roll rules `FUN_004f254b`, the labels; `0x49183e` is only the creation call) and `0x40d480`; spec with CONFIRMED / INFERRED marks. The main menu, the state chain to `0x425` and the options windows are done in L0 ([shell.md](engine/shell.md)).
+2. Build: the character generator panel replacing the L0 OK shortcut (the PreCreate screen itself is built in L0), the remaining options widgets (Tips, AutoCast, formation, retreat), the in-game menu's Game / Sound Options entries, the mission-complete / defeat dialogs wired to the L1 chain; between missions a plain list of the available locations and the party's stats stands in for the town until `town`.
 3. Headless: widget, layout and golden-screenshot tests, a scripted menu run through the first three missions with the objective oracle. Then **your play-test** of the menus and the chain (what to check goes into prototype.md).
 Commit.
 

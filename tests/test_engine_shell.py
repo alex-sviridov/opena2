@@ -180,21 +180,144 @@ def test_menu_is_centred_in_a_bigger_screen():
 
 # -- new game and the game screen ---------------------------------------------------------------------------------------------------------
 
-@needs_graphics
-def test_new_game_needs_a_hero_then_starts_the_game_screen():
-    sh, rec = make_shell(GFS)
+def to_newgame(sh=None):
+    sh, rec = (sh, None) if sh is not None else make_shell(GFS)
     to_menu(sh)
     click(sh, button_centre(sh, 0))
-    ok, mask = None, sh.current.mask
-    click(sh, mask_centre(sh, mask, 180))
-    assert sh.name == "newgame" and rec.starts == []                  # OK is dead until a hero is chosen
-    click(sh, mask_centre(sh, mask, 100))                             # hero 2
-    click(sh, mask_centre(sh, mask, 60))                              # Hard
-    click(sh, mask_centre(sh, mask, 180))
-    assert sh.name == "game" and rec.starts == [{"map": "10", "difficulty": 3, "hero": 1, "name": "Master Oberic"}]
+    assert sh.name == "newgame"
+    return sh
+
+
+def press(sh, value):
+    p = mask_centre(sh, sh.current.mask, value)
+    sh.handle(Move(*p))
+    sh.handle(Press(*p))
+    return p
+
+
+@needs_graphics
+def test_new_game_starts_with_hero_zero_and_the_original_defaults():
+    sh, rec = make_shell(GFS)
+    to_newgame(sh)
+    rec.sounds.clear()                                                # the menu's own click
+    ng = sh.current
+    assert (ng.hero, ng.level, ng.name_text) == (0, 0, "Master Oberic")             # hero 0 selected by the show routine, level 0 (INFERRED), the ctor's name
+    press(sh, 180)                                                    # OK acts on the PRESS (`0x436d48`)
+    assert sh.name == "game" and rec.starts == [{"map": "10", "difficulty": 1, "hero": 0, "hero_code": 0, "name": "Master Oberic"}]
+    assert rec.sounds == ["sfx/chrgen/ok.wav"]
     assert sh.current.driven
     assert sh.apply(sh.current.run()) is None and sh.name == "menu"    # the session ended "menu"
     assert sh.screens["game"].session is None
+
+
+@needs_graphics
+def test_press_selects_levels_and_heroes_with_their_sounds_and_a_drag_selects_too():
+    sh, rec = make_shell(GFS)
+    to_newgame(sh)
+    rec.sounds.clear()
+    ng = sh.current
+    press(sh, 60)
+    assert ng.level == 2 and rec.sounds[-1] == "sfx/chrgen/level3.wav"
+    press(sh, 100)
+    assert ng.hero == 1 and rec.sounds[-1] == "sfx/chrgen/char.wav"
+    sh.handle(Move(*mask_centre(sh, ng.mask, 120)))                   # the button is still held: the move selects hero 2 (`0x434f15`)
+    assert ng.hero == 2
+    sh.handle(Release(*mask_centre(sh, ng.mask, 120)))
+    sh.handle(Move(*mask_centre(sh, ng.mask, 140)))                   # not held: only hover
+    assert ng.hero == 2
+    press(sh, 40)
+    assert ng.level == 1 and rec.sounds[-1] == "sfx/chrgen/level2.wav"
+
+
+@needs_graphics
+def test_hero_codes_and_names():
+    from engine.shell.newgame import HERO_CODE, HERO_NAMES
+    assert [c & 0x40 != 0 for c in HERO_CODE] == [False, False, True, True]          # bit 0x40 = mage: fighters, fighters, mages
+    assert [c & 0x80 != 0 for c in HERO_CODE] == [False, True, True, False]          # bit 0x80 = female: Aldor m, Sagita f, Galinel f, Gildarius m
+    sh, rec = make_shell(GFS)
+    to_newgame(sh)
+    ng = sh.current
+    sh.handle(Key("x", char="x"))
+    assert ng.name_text == "Master Oberic"                            # the initial text is 13 characters: nothing is added (the limit is 10, `0x4323e1`)
+    # a typed (non-default) name is kept when the hero changes; a default name follows the hero
+    press(sh, 140)
+    assert ng.name_text == "Master Oberic"
+    ng.name_text = "Sagita"
+    press(sh, 120)
+    assert ng.name_text == HERO_NAMES[2]
+    press(sh, 120)
+    ng.name_text = "Unnamed"
+    press(sh, 140)
+    assert ng.name_text == HERO_NAMES[3]
+
+
+@needs_graphics
+def test_name_field_rules():
+    sh, rec = make_shell(GFS)
+    to_newgame(sh)
+    rec.sounds.clear()
+    ng = sh.current
+    for _ in range(len("Master Oberic")):
+        sh.handle(Key("backspace"))
+    assert ng.name_text == "" and rec.sounds.count("sfx/letter2.wav") == 13
+    sh.handle(Key("return"))                                          # an empty name does nothing: no sound, no OK
+    press(sh, 180)
+    assert sh.name == "newgame" and rec.starts == [] and "sfx/chrgen/ok.wav" not in rec.sounds
+    sh.handle(Key("backspace"))                                       # nothing to delete: no sound
+    n = rec.sounds.count("sfx/letter2.wav")
+    assert n == 13
+    for ch in "Elfric the Brave and more":                            # printable only, ten at most, spaces and punctuation allowed
+        sh.handle(Key(ch.lower() if ch != " " else "space", char=ch))
+    assert ng.name_text == "Elfric the"
+    sh.handle(Key("x", char="\x07"))                                  # a control character is not text (the backend drops it; the screen would too)
+    assert ng.name_text == "Elfric the"
+    sh.handle(Key("return"))
+    assert sh.name == "game" and rec.starts[0]["name"] == "Elfric the"
+
+
+@needs_graphics
+def test_escape_and_cancel_leave_with_the_ok_sound():
+    sh, rec = make_shell(GFS)
+    to_newgame(sh)
+    rec.sounds.clear()
+    sh.handle(Key("escape"))
+    assert sh.name == "menu" and rec.sounds == ["sfx/chrgen/ok.wav"]
+    to_newgame(sh)
+    press(sh, 160)
+    assert sh.name == "menu" and rec.starts == []
+
+
+@needs_graphics
+def test_name_caret_blinks_every_500_ms_and_typing_restarts_it():
+    sh, _ = make_shell(GFS)
+    to_newgame(sh)
+    ng = sh.current
+    ng.name_text = "Elf"
+    shown = lambda: [o for o in sh.scene().ops if hasattr(o, "text")][0].text
+    assert shown().endswith("|")
+    sh.update(300)
+    assert shown().endswith("|")
+    sh.update(300)                                                    # 600 ms > 500: off
+    assert not shown().endswith("|")
+    sh.handle(Key("a", char="a"))
+    assert shown().endswith("|") and ng.blink_ms == 0
+
+
+@needs_graphics
+def test_tablet_and_portrait_states():
+    sh, _ = make_shell(GFS)
+    to_newgame(sh)
+    ng = sh.current
+    names = lambda: [o.path.rsplit("/", 1)[1] for o in sh.scene().ops if hasattr(o, "path")]
+    assert "h1sel.bmp" in names() and "level0on.bmp" in names()       # selected: the big portrait and the `on` tablet
+    sh.handle(Move(*mask_centre(sh, ng.mask, 20)))
+    assert "level0lon.bmp" in names()                                 # selected and hovered
+    sh.handle(Move(*mask_centre(sh, ng.mask, 40)))
+    assert "level1l.bmp" in names() and "level0on.bmp" in names()     # hover only: `l`
+    sh.handle(Move(*mask_centre(sh, ng.mask, 100)))                   # the partner pane is lit: the variant with it
+    assert "h1sel2.bmp" in names() and "h1sel.bmp" not in names()
+    sh.handle(Move(*mask_centre(sh, ng.mask, 120)))
+    assert "h3on.bmp" in names() and "h1sel.bmp" in names()
 
 
 @needs_graphics

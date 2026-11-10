@@ -78,13 +78,47 @@ in a mission: ESC 0x416 menu -> Game Options 0x41b / Sound Options 0x422 / End Q
 CONFIRMED in `FUN_004891d8` (cases `+0x374`, `+0x36c`, `+0x13c`, `+0x11c`, `+0x130`, `+0x3c0`). The NEW GAME handler (case `0x425` of `FUN_004852d8`) loads `main\text\town.txt`, sets `+0x5d4 := 1`, the server
 kind 2 (`0x48c0e2`) and shows the PreCreate panel with music `chrgen` (`0x48f4e2`).
 
-**PreCreate screen** (ctor `0x43270d`, 0x220 bytes, resource `0x466`; bitmaps in `graphics.res`, `graphics\interface\chrgen\PreCreate\`): `MainArea.bmp` (640x480 stained-glass hall) and the hit mask `Mask.bmp`
-(24-bit, red channel): `0x14` / `0x28` / `0x3c` = difficulty 0 / 1 / 2 (Easy / Medium / Hard, written to `+0x20c`), `0x50` / `0x64` / `0x78` / `0x8c` = the four heroes, `0xa0` Cancel, `0xb4` OK, `0xc8` the name
-plate; bitmaps `Heroes\h<1..4>on.bmp` (64x244 hover), `h<n>sel.bmp` / `h1sel2`, `h2sel1`, `h3sel4`, `h4sel3` (268x340 chosen portrait), `Levels\level<0..2>{on,l,lon}.bmp` (48x72, torch animations
-`torch1`, `torch2`, 15 frames), `cancell.bmp` 64x76, `Okl.bmp` 80x76, `tablol.bmp` 312x84; default name `Master Oberic` (`0x5efba8`); sound `SFX\ChrGen\Ok.wav`. **INFERRED** by template matching the bitmaps
-against `MainArea.bmp` (best-match error < 3 for the levels; the placement of the others by position): Cancel (16, 400), OK (548, 400), name plate (172, 396), levels at x 8 / 296 / 580, y 0, heroes at x 116 / 180 / 392 /
-456, y 44, chosen portraits at x 112 (heroes 1-2) / 260 (heroes 3-4), y 44; suffix meaning (`on` = the idle picture, `l` = hover, `lon` = chosen) is INFERRED from those matches.
-Not decoded: the name field's rect and edit rules, the caption lines, which hero is which, the confirm panel, the character screen `FUN_0049183e`.
+**PreCreate screen** (ctor `0x43270d`, 0x220 bytes, resource `0x466`, class vtable `0x5cb998`: paint `0x43541e`, message `0x436c1d`, mouse move `0x436d10`, mouse down `0x436d48`, key `0x436cc3`, show `0x4334df` /
+reset routine `0x433520-0x43389d`; bitmaps in `graphics.res`, `graphics\interface\chrgen\PreCreate\`). **CONFIRMED rects (ctor `0x432cd5-0x433174`):** levels 48x72 at (8, 0), (296, 0), (580, 0); heroes 64x244 at
+(116, 44), (180, 44), (392, 44), (456, 44); Cancel (16, 400); OK (548, 400). Bitmaps: `MainArea.bmp` (640x480 stained-glass hall), the hit mask `Mask.bmp` (24-bit, red channel): `0x14` / `0x28` / `0x3c` = level 0 / 1 / 2
+(boxes (9,2)-(51,68), (298,5)-(340,71), (583,4)-(625,70)), `0x50` / `0x64` / `0x78` / `0x8c` = hero 0..3 ((118,59), (183,67), (398,67), (458,59) ...), `0xa0` Cancel, `0xb4` OK, `0xc8` the name plate; `Heroes\h<1..4>on.bmp`
+(64x244), `h<n>sel.bmp` / `h1sel2`, `h2sel1`, `h3sel4`, `h4sel3` (268x340), `Levels\level<0..2>{on,l,lon}.bmp` (48x72), `torch1\t1%04d.bmp` / `torch2\t2%04d.bmp` (15 frames each), `cancell.bmp` 64x76, `Okl.bmp` 80x76,
+`tablol.bmp` 312x84; music `chrgen`.
+
+- **Acts on the mouse PRESS** (`0x436d48`): a press selects a level or hero, presses Cancel or OK; a move with the button held selects too (`0x434f15`). Flag arrays: heroes `this+0x134`, levels `+0x148`; bit 1 selected, bit 2 hovered
+  (`0x434df5-0x434ecd`). Sounds: `SFX\ChrGen\Level1/2/3.wav` per level, `Char.wav` per hero, `Ok.wav` for OK and for Cancel (the loader `0x437690` lists nine sounds; the second `ChrGen\Ok.wav` is the Cancel sound).
+- **Heroes (CONFIRMED)**: value 0 **Aldor** = male fighter (`h1`, x 116), 1 **Sagita** = female fighter (`h2`), 2 **Galinel** = female mage (`h3`), 3 **Gildarius** = male mage (`h4`) (pixel match of `h<n>on` against `MainArea.bmp`); table `0x5cdd60`
+  `{0, 2, 3, 1}`, `window+0x484 = code << 6`: bit `0x40` = mage, bit `0x80` = female. The show routine selects **hero 0** (`+0x208 := 0`, `0x4335d6-0x4335fb`). Big portrait of the selected hero: `h<n>sel`, or
+  `h<n>sel<partner>` while the partner pane is lit (pairs (h1, h2) and (h4, h3)); the small `h<n>on` window highlight draws for a hovered hero. Names (`npcnames.txt` 0x17..0x1a: Aldor, Sagita, Gildarius, Galinel; the exe's
+  file order puts Gildarius before Galinel, the engine pairs the names with the hero identities above, INFERRED).
+- **Levels**: `+0x20c` 0 / 1 / 2 = Easy / Medium / Hard; paint (`0x43541e`, `0x435650-0x43584c`): state 1 selected -> `level<n>on`, 2 hover -> `level<n>l`, 3 both -> `level<n>lon`, 0 nothing extra. The window's `+0x20c` is never set
+  before the first show (the exe's own selector `game+0x598 := 1` = Medium, `0x493b60` at `0x48631b`, is overwritten by the window's level at OK): **INFERRED default highlight level 0 (Easy)**, so an OK without a click starts Easy.
+- **Name field** (edit class vtable `0x5cb920`, ctor `0x4320b0`, draw `0x43240a`): single player adds only `+0x1ec`, rect (300, 433)-(464, 449); font4 text at (left, bottom - glyph height), a `|` appended while focused and blinking
+  every 500 ms (restarted by a typed key). Text in the widget CString (`+0x60`), committed to `this+0x1fc` (`0x493ca0`). WM_CHAR `0x4323cf`: accepted when the length is **< 10** and the character >= 0x20 (`0x4321e9`; punctuation and
+  spaces allowed; `0x474c85` remaps >= 0x80 when the char map is on); Backspace (`0x432397` -> `0x432234`) deletes the last character; no Delete / arrows, the caret stays at the end; each accepted key plays `Letter<n>.wav`
+  (`0x437985`, object `+0x1dc + 4 * +0x1e8`; `+0x1e8` is never written, so INFERRED always `SFX\Letter2.wav`). **Enter** (`0x437829`) = OK when the name is non-empty (plays Ok.wav, sends `0x445`), **ESC** (`0x437955`) = Cancel (sends `0x446`);
+  **an empty name does nothing**; the mouse OK / Cancel call the same two routines. Initial text "Master Oberic" (`0x5efba8`, 13 characters: the field accepts nothing more until it is shortened). `0x437d90(name)`: true when the name equals one
+  of the four hero names or "Unnamed" (`_stricmp`); the show routine resets a default name to `npcnames` 0x14 "Aldor" (`0x433628-0x433650`); clicking another hero replaces the name by that hero's default only while the field holds a
+  default name (`0x436ebb-0x4371a0`). Tooltips of the edit widgets: `main.txt` 0x16d "Name:" (id `0x464`), 0x16e "Clan:" (id `0x465`, not shown in single player).
+- **Tips** (TipsMode `0x622774` on, the default): a static text widget id `0x467` (`0x4dec24`, args `0xe8, 0x30, 0x280, 0xb8`, gold font2) with `town.txt` `#tips8` "Select the class and the sex of your character by clicking on the
+  appropriate portrait.", stored in `+0x1f8`, removed by message `0x45a` (posted by the tips window itself) and at close. **Not built** (the engine has no TipsMode option; the rect's meaning is open).
+- **Torches**: `torch1` / `torch2`, 15 frames of 48x72 each, a global frame timer (`0x61adcc`, advance when `GetTickCount - last > 67 ms`, random start offsets, `0x436222-0x43632d`); the screen position is open. **Not built.**
+- **After OK** (`FUN_004891d8`, case `+0x374`): the name -> `game+0x460`, `game+0x598 := level`, `game+0x484 := code << 6`, `strncpy(client+0x3f6c+0xec, name, 12)`, then **`0x48f3f0` shows the panel `+0x36c`**.
+- **Panel `+0x36c` is the real character generator** (class ctor `0x42d39d`, resource `0x456`; children `0x457..0x45a`; not a confirm dialog and not `0x49183e`): `0x457` (`0x428521`) stat +/- buttons (`main\graphics\chrgen\leftup.bmp`,
+  `chrgen\buttons\{pl,pnl,ml,mnl}{on,off}.bmp`, `pdisable.bmp`, `mdisable.bmp`; strings `"%s = %d"`, `"%+d"`), `0x458` (`FullStatsL.bmp`), `0x459` (`Inn\button{1,2,3}{on,off}.bmp`, `ButtonsArea.bmp`: the bottom buttons, the third
+  = Accept), `0x45a` (`RollStatsR.bmp`, `FullStatsR.bmp`, `Inn\RUOver.bmp`, the class columns `chrgen\fighter\{mask,column}.bmp` + weapon icons sword / axe / mace / pike / bow, or `chrgen\mag\...` fire / water / air / earth / astral,
+  skill sounds `SFX\ChrGen\Skill\*.wav`), dice `chrgen\cube\sprites.16a`, `chrgen\loader\LeftUp.bmp`; sounds `SFX\ChrGen\+_-.wav`, `SFX\Click_Ok.wav`, `SFX\Sbros.wav`, `SFX\Back.wav`; hint widget `0x467`: `town.txt` `#tips5`
+  (fighter: "This screen allows you to create your own character. If you are playing for the first time, you may skip it by clicking <Accept>. ... an initial skill of 20 for that weapon type") or `#tips6` (mage: five element spheres)
+  at (0x118, 0x138). The player re-allocates the attribute budget (`FUN_004f254b`, [ai](ai.md)) and picks the weapon class or sphere; **Accept without changes keeps the starting template**. **Back (`0x446`)** returns to PreCreate
+  (`0x48f4e2`, chrgen music restarts). **OK**, single player: `0x40d480` (resets the client / world state), **`0x49183e` = a creation call only, no window** (it waits for the server object, picks the template by `window+0x484`:
+  `0x00` `Start_MF`, `0x40` `Start_MM`, `0x80` `Start_FF`, `0xc0` `Start_FM`, creates the unit with `0x5143e4(name, 1, 0)`, copies the four stats from the generator's template `0x4699d2`), then Scenario `SetVar(0x308, is_mage)`,
+  `SetVar(0x30d, is_female)`, difficulty `0x493d80(selector + 1)`, post `0x42e` (town). Handed on: name, hero code, level, the stats. The generator's rects, attribute-roll rules and texts are open (L2).
+- **Engine (DECISION)**: `engine/shell/newgame.py` builds all of the above that is CONFIRMED; OK starts the first campaign map (`10`) with `difficulty = level + 1`, the hero value and code and the name until L2 builds the
+  generator panel and the campaign chain. The hover pictures of Cancel / OK (`cancell`, `okl`) and the portrait placement (x 112 for heroes 0-1, 260 for 2-3, y 44) are INFERRED by template matching.
+
+**Credits and the hall of fame (CONFIRMED `FUN_00493da0`, `0x493da3-0x493db9`):** it returns `Scenario.GetVar(0x300) >= 0x78`, the "campaign finished" test (the chapter counter reaches 120 when mission 110 is completed;
+only Scenario.dll writes it, [triggers §11](triggers.md)); users: closing the credits (`0x493da0() == 0` -> `0x421`, else `0x429` the hall of fame) and the ending path of message `0x41d` (`>= 0x78` -> `0x428` credits). So the credits
+lead on to the hall of fame only after the campaign has been finished in this session or a loaded save.
 
 ## 4. The engine's state machine (`engine/shell/`)
 
@@ -109,7 +143,7 @@ is never called before the game screen).
 |---|---|---|---|
 | `startup` | the three video placeholders (§2), then `menu` | - | black |
 | `menu` | §3.1, from `MenuMask.bmp`, hover / held / disabled, click on release; no key handling, no options entry (as the original) | `menu` | DECISION: MULTI PLAYER, CUT SCENES, CREDITS, SERVER, HALL OF FAME and LOAD GAME are disabled in the original's own way (no highlight, no action) until their step; only NEW GAME and EXIT act |
-| `newgame` | §3.3 PreCreate: heroes, difficulty, Cancel, OK (needs a hero) | `chrgen` | OK starts the first campaign map (`10`) with the difficulty (`selector + 1`, `ai.md 10.1`); L2 replaces this by the confirm panel, the character screen and the campaign chain |
+| `newgame` | §3.3 PreCreate: heroes (hero 0 selected), levels, the name field, Cancel, OK; acts on the press | `chrgen` | OK (a non-empty name) starts the first campaign map (`10`) with the difficulty (`level + 1`, `ai.md 10.1`); L2 replaces this by the character generator panel and the campaign chain |
 | `load` | in the graph, bounces to `menu` | - | the button is disabled until the Save / load step |
 | `game` | the in-game screen | the mission's | the loop of J1-J3 |
 
@@ -218,7 +252,7 @@ through a real mission (ESC -> Game Options OK, Sound Options Stop, End Quest) a
 
 ## Open questions
 
-- PreCreate: the name field's rect and edit rules, the caption lines (`main.txt`), the hero identities behind the four windows, the confirm panel `0x48f3f0`, `FUN_00493da0` (the flag that sends the credits on to the hall of fame).
+- PreCreate: the initial level highlight (INFERRED Easy), the torches' screen position and the hover cross-fade `0x4364f7`, the tips rect, the order of the hero vectors against the screen order, `h<n>sel` vs `sel<partner>` while hovering; the character generator panel's child rects, attribute-roll rules and labels (L2), what `0x40d480` resets.
 - Fade routine `0x4c4840` (the maths) and the `SmackOpen` flag word `0xff000`.
 - Game Options / Sound Options: the disabled look of widgets, the frame map of `scrlbars.256`, the sound index of each text-button event. (OK / Cancel rects and ESC answered.)
 - Whether the GOG build passes the CD check `0x62282c` (the menu would then have four disabled buttons), and the keyboard behaviour of the menu (INFERRED from the absent key handling, never run).

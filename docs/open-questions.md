@@ -51,7 +51,7 @@ from both places when answered).
 
 ## Interface
 
-- Shell (L0): the PreCreate name field / captions / confirm panel / `FUN_00493da0`, the fade routine `0x4c4840`, the `scrlbars.256` frame map. [shell](engine/shell.md#open-questions)
+- Shell (L0): the PreCreate level default / torches / hover fade / generator panel layout, the fade routine `0x4c4840`, the `scrlbars.256` frame map. [shell](engine/shell.md#open-questions)
 - Chat input line (built, [ui-layout](engine/ui-layout.md#open-questions)): the cheat byte `+0xa78` origin (`FUN_0053dd90`, gate of `#show map` in `FUN_004f3d68`), the chat row's text composition (`0x413814`); capture `ClipCursor` rect with an open bar; info-panel quest markers (`main` `0x159`-`0x15e`, `FUN_004180c6`); squad voice samples. Start at `FUN_0040b2b8`, `FUN_004175c7`.
 - Spell book window leftovers: colour key of SpellBook / SpellBack / caps, rounding of the level-4 veil `FUN_004565cd`, `view+0x14` at 800x600, map-row recompute `FUN_0041b121`, the left release's cell cast `FUN_0041918e` (table `0x5f1810`). [ui-layout 11.12](engine/ui-layout.md#1112-spell-book-window-bottom-bar-id-3-class-fun_004c61e7-vtable-0x5cf918-confirmed-unless-marked)
 - Heads / hero arrows: receivers of messages `0x414` / `0x415` (the hero windows `FUN_0049a428` / `FUN_0049bd95` / `FUN_0049e187`?) and the hero list `FUN_00472460` flags. [ui-layout](engine/ui-layout.md#open-questions)

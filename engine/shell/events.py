@@ -28,6 +28,7 @@ class Key:
     """`name`: 'escape', 'return', 'tab', 'left', 'right', 'up', 'down', a lower-case letter or digit; `ctrl` for Ctrl+key."""
     name: str
     ctrl: bool = False
+    char: str = ""                  # the typed character (text input: the name field), "" for a key without one
 
 
 @dataclass(frozen=True)

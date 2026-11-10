@@ -21,7 +21,10 @@ KEY_NAMES = {pygame.K_ESCAPE: "escape", pygame.K_RETURN: "return", pygame.K_KP_E
 def key_event(ev):
     """pygame KEYDOWN -> `Key`; None for a key the shell has no name for."""
     name = KEY_NAMES.get(ev.key) or (chr(ev.key) if 32 < ev.key < 127 else "")
-    return Key(name, bool(ev.mod & pygame.KMOD_CTRL)) if name else None
+    char = getattr(ev, "unicode", "") or ""
+    if char and (ord(char[0]) < 32 or ord(char[0]) == 127):
+        char = ""
+    return Key(name, bool(ev.mod & pygame.KMOD_CTRL), char[:1]) if (name or char) else None
 
 
 def to_shell_event(ev):
