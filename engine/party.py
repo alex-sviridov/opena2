@@ -120,7 +120,24 @@ def on_map(world, unit):
 
 BUDGET = 0x8C                       # FUN_004f254b: the creation point budget; cost(v) = trunc(0.349 * (v - 1) ^ 1.15 + 0.5) (FUN_004f250e)
 SCHOOL_WEAPONS = {1: "Iron Long Sword", 2: "Iron Axe", 3: "Iron Mace", 4: "Iron Pike", 5: "Uncommon Wood Long Bow"}
-SCHOOL_STAFFS = {1: "Fire Arrow", 2: "Ice Missile", 3: "Lightning", 4: "Diamond Dust", 5: "Drain Life"}
+SCHOOL_STAFFS = {1: "Fire_Arrow", 2: "Ice_Missile", 3: "Lightning", 4: "Diamond_Dust", 5: "Drain_Life"}   # `FUN_00514f59` strings 0x5fe400..0x5fe434
+
+
+def school_skills(school, base0=0, level=20):
+    """The skill words `+0xa8 + 2 i` after `FUN_00514f59(unit, school, level)` (CONFIRMED): indices 1..5 cleared, `skill[school] = level`, THEN `skill[5]` (+0xb2,
+    shooting) `= level // 2`, so school 5 ends with 10, not 20; index 0 stays (`base0`; school 0 would overwrite it with `level`)."""
+    sk = [level if school == 0 else base0, 0, 0, 0, 0, 0]
+    sk[school] = level
+    sk[5] = level // 2
+    return tuple(sk)
+
+
+def school_equipment_text(school, mage, female=False):
+    """The weapon string of `FUN_00514f59` (CONFIRMED): a fighter (`+0x4c & 4` clear) gets `SCHOOL_WEAPONS[school]`; a mage gets `[Uncommon ]Wood Staff {castSpell=<spell>:20}`
+    ('Uncommon ' only when the unit type `+0xe` is 0x22 / 0x24 = female, `FUN_0053a5c0`; 20 charges, the suffix `:20}` at 0x5fe440 / 0x5fe460)."""
+    if not mage:
+        return SCHOOL_WEAPONS[school]
+    return "%sWood Staff {castSpell=%s:20}" % ("Uncommon " if female else "", SCHOOL_STAFFS[school])
 # the unit fields a hero keeps from mission to mission (saves.md section 4: level / XP / skills / pools / items / spells / name / hero number)
 CARRY = ("server_id", "type_id", "human", "move_type", "face", "stats", "skills", "xp", "xp_total", "best_school", "mana_max", "hp_max", "spellbook",
          "name", "equipment", "pack", "pack_index", "carried", "carried_mods", "skill_bonus", "attr_bonus", "gear_speed", "kill_list", "speed_mod",
@@ -193,7 +210,7 @@ def restore(world, u, state):
 
 def apply_spec(world, u, spec):
     """A fresh hero of the creation call (`FUN_004f254b`, triggers.md 9.3): attributes when the budget holds (else 25 each), the school skill 20 and
-    the shooting skill 10 (`FUN_00514f59`; INFERRED: school 5 = the bow keeps 20), the pools, the best school and the school's weapon / staff."""
+    the shooting skill 10 (`FUN_00514f59`, CONFIRMED: shooting is written after the school, so school 5 ends with 10), the pools, the best school and the school's weapon / staff."""
     if spec.name:
         u.name = spec.name
     if spec.attributes is not None:
@@ -204,10 +221,7 @@ def apply_spec(world, u, spec):
         fields.update(zip(ATTRS, attrs))
         u.stats = replace(u.stats, fields=fields)
     if spec.school is not None:
-        sk = [u.skills[0], 0, 0, 0, 0, 0]
-        sk[5] = 10
-        sk[spec.school] = 20
-        u.skills = tuple(sk)
+        u.skills = school_skills(spec.school, u.skills[0])
         u.xp, u.xp_total = prog.start_pools(u.skills)
         u.best_school = spec.school
     if world.item_table is not None:
@@ -215,7 +229,7 @@ def apply_spec(world, u, spec):
         gear.ensure_loadout(world, u)
         if spec.school is not None:
             mage = gear.is_mage(u)
-            text = SCHOOL_WEAPONS[spec.school] if not mage else "Uncommon Wood Staff {castSpell=%s:1}" % SCHOOL_STAFFS[spec.school]
+            text = school_equipment_text(spec.school, mage, bool(u.stats is not None and u.stats.fields.get("gender") == 1))
             r = world.item_table.parse_equipment(text, 0)
             item = world.item_table.resolve(*r) if r else None
             if item is not None:

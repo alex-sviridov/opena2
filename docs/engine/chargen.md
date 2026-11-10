@@ -164,7 +164,7 @@ passed on to the base handler. A click outside the four columns is ignored (pass
 then `0x4919ff` builds a fresh temporary unit of the template (`req+0x34 & 0xc0` = the code: `0x00` Start_MF, `0x40` Start_MM, `0x80` Start_FF, `0xc0` Start_FM, creation `0x5143e4`),
 writes the four `+0x84, +0x86, +0x88, +0x8a` when `req+0x4c != 0` (no budget check here), recomputes (vslot `0x58`), sets `+0x4b`, applies the school with
 `FUN_00514f59(unit, school, 20)` (school 0 -> the unit's best school `+0x23c`), copies the result into the displayed preview unit (`0x4699d2`) and reads the attribute bytes back
-into the request. So the preview shows what `FUN_004f254b` will build (skill 20 in that school; [triggers 9.3](triggers.md#93-a-fresh-character-fun_004f254bplayer-str-dex-mind-spirit-school-flags-confirmed)).
+into the request. So the preview shows what `FUN_004f254b` will build (skill 20 in that school, shooting 10; the generator offers only schools 1..4; the unit-type check and the order of writes: [triggers 9.3](triggers.md#93-a-fresh-character-fun_004f254bplayer-str-dex-mind-spirit-school-flags-confirmed)).
 
 ### 2.5 Accept and Back
 

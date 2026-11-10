@@ -330,10 +330,14 @@ Only when `player+0x38 == 0`. `flags & 0x40` clear/set and `flags & 0x80` clear/
 (clear, set) `Start_FF`, (set, clear) `Start_MM`, (set, set) `Start_FM` (the same map as the loader `0x4ea6ab`: `byte(+0x2c) & 0xc0` =
 0 / 0x80 / 0x40 / 0xc0 -> MF / FF / MM / FM); `flags & 0x3f` is the name index (`FUN_00439eb0`). The four attributes `+0x84, +0x86, +0x88, +0x8a`
 (body, reaction, mind, spirit) are the arguments when the point budget holds: `0x8c - sum(cost(v)) >= 0` with
-`cost(v) = trunc(0.349 * (v - 1) ^ 1.15 + 0.5)` (`FUN_004f250e`, constants `0x5d0820`, `0x5d0828`), else all four are 25 (`0x19`). `FUN_00514f59(school, 20)`
-then clears the five school skills, sets skill[school] = 20 and the shooting skill `+0xb2` = 10, recomputes the pools (`FUN_00513497`), sets the
-best school `+0x23c` and replaces the weapon: school 1 Iron Long Sword, 2 Iron Axe, 3 Iron Mace, 4 Iron Pike, 5 Uncommon Wood Long Bow;
-a mage gets a "Wood Staff" / "Uncommon Wood Staff" `{castSpell=<Fire Arrow | Ice Missile | Lightning | Diamond Dust | Drain Life>:1}`.
+`cost(v) = trunc(0.349 * (v - 1) ^ 1.15 + 0.5)` (`FUN_004f250e`, constants `0x5d0820`, `0x5d0828`), else all four are 25 (`0x19`). `FUN_00514f59(unit, school, 20)`
+in this order (CONFIRMED): free the old weapon, clear the skill words 1..5 (`+0xa8 + 2i`), `skill[school] = 20`, **then** the shooting skill `+0xb2` (= index 5) `= 20 / 2 = 10`
+(so school 5, the bow, ends with 10, not 20; index 0 is only written by school 0), recompute the pools (`FUN_00513497`: pool[i] from skill i, 1..5), `+0x23c := school`, then the weapon by `+0x4c & 4`:
+fighter (flag clear) school 1 Iron Long Sword, 2 Iron Axe, 3 Iron Mace, 4 Iron Pike, 5 Uncommon Wood Long Bow; mage (flag set) `[Uncommon ]Wood Staff {castSpell=<spell>:20}`
+with the spell string (underscored, as data.bin) 1 Fire_Arrow, 2 Ice_Missile, 3 Lightning, 4 Diamond_Dust, 5 Drain_Life (all one staff, 20 charges); "Uncommon " only when the
+unit type `+0xe` is 0x22 / 0x24 (`FUN_0053a5c0`: female; type = 0x21 / 0x23 + 1 for 'f', `0x514bc7`), a male mage gets the plain "Wood Staff". The preview `0x4919ff` calls the same
+routine with level `0x14` (school 0 is first replaced by the template's own `+0x23c`, so the routine never sees 0); it differs from `FUN_004f254b` only in the setup: attributes are
+written unchecked (no budget test, no 25 fallback) on a temporary `Start_*` unit.
 HP and mana start at the maxima; `unit+4` = a free network id (`FUN_004f8d90`, lowest free bit of the table `0x6c9628`), `unit+0x14` = the
 player, a new command group (`FUN_0052ae43`), `player+0x38 := unit`, and **in single player (`game+0x74 == 0`) `+0x14c := 0x15`**, which makes it
 scenario hero **10001**. `Fighter_Hero` / `Mage_Hero` (10002 / 10003) get `0x16` / `0x17` from their templates' reduced server id (units.md).

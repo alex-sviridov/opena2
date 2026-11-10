@@ -401,6 +401,17 @@ def test_fresh_hero_spec_budget_and_school():
     assert u.skills[3] == 20 and u.skills[5] == 10 and u.skills[1] == 0 and u.best_school == 3 and u.hp == u.hp_max
 
 
+def test_creation_call_skill_order_and_staff_text():
+    """FUN_00514f59 (CONFIRMED): school skill 20, then shooting 10 (index 5), so school 5 ends with 10; the staff string."""
+    assert PT.school_skills(3, 7) == (7, 0, 0, 20, 0, 10)
+    assert PT.school_skills(5) == (0, 0, 0, 0, 0, 10)
+    assert PT.school_skills(0, 7) == (20, 0, 0, 0, 0, 10)
+    assert PT.school_equipment_text(2, False) == "Iron Axe"
+    assert PT.school_equipment_text(5, False) == "Uncommon Wood Long Bow"
+    assert PT.school_equipment_text(1, True) == "Wood Staff {castSpell=Fire_Arrow:20}"
+    assert PT.school_equipment_text(4, True, True) == "Uncommon Wood Staff {castSpell=Diamond_Dust:20}"
+
+
 # --- the real maps ---------------------------------------------------------------------------------------------------------------------
 
 @needs_data
@@ -461,3 +472,17 @@ def test_maps_70_and_80_read_the_campaign_variables():
             assert fired[0] != fired[1], n
     finally:
         logging.disable(logging.NOTSET)
+
+
+@needs_data
+def test_female_mage_staff_is_uncommon_and_male_is_plain():
+    """`FUN_00514f59` (triggers 9.3): 'Uncommon ' only for the female mage templates (gender 1); 20 charges."""
+    from allods2.assets import AssetCache
+    codes = {}
+    for key in ("MM", "FM"):
+        g = CG.CampaignGame(GFS, assets=AssetCache(GFS))
+        g.new_game(CG.HeroChoice(key, None, 5, "X"))
+        world, _ = g.start_mission(10)
+        hero = next(u for u in world.units.values() if u.human and u.owner == 1 and PT.hero_number(u) == 0x15)
+        codes[key] = hero.equipment[0]
+    assert codes["MM"].code != codes["FM"].code and codes["MM"].mods == codes["FM"].mods == ((41, 26, 20),)

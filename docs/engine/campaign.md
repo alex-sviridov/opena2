@@ -54,8 +54,8 @@ the death flag do not exist in the state. `Unit.hero_no` (new field, not dumped)
 7. **Death hook** = `death_hook(world, camp)`: unit or corpse with a hero number 1..20 at HP <= -11 sets `Var(0x213 + n) := 0` (no owner test); `CampaignGame.death_hook`
    also marks a hired mercenary that is neither in `units` nor in `corpses` (its body decayed). A body still fresher than -11 at the mission end is not dead (INFERRED, 11.4).
    The UI of L2 should call `death_hook` from its per-tick step.
-8. **Fresh hero** (`HeroSpec`): attributes when `0x8c - sum(cost) >= 0` else 25 each (CONFIRMED 9.3); a school sets skills (school 20, shooting 10, others 0: school 5 keeps
-   20, INFERRED), recomputes the pools / best school, and replaces the weapon (school 1-5 weapon, mage: `Uncommon Wood Staff {castSpell=<spell>:1}`). The default
+8. **Fresh hero** (`HeroSpec`): attributes when `0x8c - sum(cost) >= 0` else 25 each (CONFIRMED 9.3); a school sets skills (school 20, then shooting 10, others 0: school 5 ends with 10,
+   CONFIRMED `FUN_00514f59`), recomputes the pools / best school, and replaces the weapon (school 1-5 weapon, mage: `[Uncommon ]Wood Staff {castSpell=<spell>:20}`, CONFIRMED, triggers 9.3). The default
    (`MF`, no spec fields) is the `Start_MF` template, exactly what `place_party` builds today.
 9. `Var(0x308)` / `Var(0x30d)` (mage / female) are set from the template key at `new_game` (the creation screen's writes, exe `0x4896dc` / `0x489700`).
 10. The gold of a mission start is the carried gold; the section 5 `money` of the map is not added (it was not before either).
@@ -86,5 +86,4 @@ oracle's pickups (pack stacks 1 -> 6).
 
 ## 4. Open questions
 
-* The creation call `FUN_00514f59(school, level)` for school 5 (does shooting 10 overwrite 20) and the staff spell of the mage schools (INFERRED from 9.3).
 * XP in the headless chain: a fight-crediting oracle (or a play-through) is needed before the carried levels mean anything; the idle-lost maps depend on it.
