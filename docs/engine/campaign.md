@@ -84,6 +84,10 @@ oracle's pickups (pack stacks 1 -> 6).
   the script's references; before chapter 30 the roster has only the main hero (maps 10, 20, 21) as a fresh party did.
 * **Unreachable**: 51 and 83 only (plus the other classes' slot maps). Map 21 needs `Var(0x304)` (the optional trigger of map 20), map 52 `Var(0x30c)` (map 50).
 
+### 3.1 The fight-crediting phase (`--grind TICKS`, L1 question answered)
+
+`objective.run(grind=N)` / `python -m engine campaign --grind N` / `run_chain(grind=)`: for the first `N` ticks of every mission the oracle makes **no edits**; every hero of the human player whose last target is gone attacks the nearest living unit of a player at war with it (relation bit 1) within 24 cells (`AttackUnit`, so the real swing / `take_hit` / kill-credit / level-up code runs), the party is kept at 300 HP as before; then the normal edit rounds end the mission. Default 0 = the idle oracle (hashes unchanged). `--grind 1500`: all 34 missions are completed, the carried hero reaches skill 100 (`L100` in the party column) by mission 70, one miss, **map 71** (`GRIND_MISS`): the fight phase kills the squirrels (player 5 is at war with the party), which fails the mission, a peace a player keeps. **The idle-lost maps (43, 60, 70, 92, 102, 110) are still lost** by a standing leveled party (probe at each mission start, 1600 ticks): they need the player's orders, not levels; so the fresh-party decision of the coverage report does not change them. Test `test_grind_phase_gives_the_carried_hero_xp_and_stays_deterministic`.
+
 ## 4. Open questions
 
-* XP in the headless chain: a fight-crediting oracle (or a play-through) is needed before the carried levels mean anything; the idle-lost maps depend on it.
+* Whether the XP the grind phase earns is what a player earns: it runs the real combat / XP code, but the heroes are kept at 300 HP by the oracle and clear everything within 24 cells, so it is an upper bound (the heroes reach skill 100 by mission 70).

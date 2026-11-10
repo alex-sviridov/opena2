@@ -207,7 +207,7 @@ Steps the maps do not need to be completed but a finished game does; each touche
 - no crashes.
 - script kinds the engine does not know (`not implemented`): none.
 - script no-ops the engine counted (`Script.unbuilt`): none; unbuilt spell releases: none.
-- the idle party (nothing ordered) is **lost** within 1600 ticks on maps 43, 60, 70, 92, 102, 110: a fresh level-1 party standing still; not checked against the original, not a blocker.
+- the idle party (nothing ordered) is **lost** within 1600 ticks on maps 43, 60, 70, 92, 102, 110: a fresh level-1 party standing still; not checked against the original, not a blocker. A party levelled by the campaign's grind phase (`campaign --grind`, campaign.md 3.1) standing still is lost there too.
 
 ### Proposed step order
 

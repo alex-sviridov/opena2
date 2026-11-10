@@ -486,3 +486,14 @@ def test_female_mage_staff_is_uncommon_and_male_is_plain():
         hero = next(u for u in world.units.values() if u.human and u.owner == 1 and PT.hero_number(u) == 0x15)
         codes[key] = hero.equipment[0]
     assert codes["MM"].code != codes["FM"].code and codes["MM"].mods == codes["FM"].mods == ((41, 26, 20),)
+
+
+@needs_data
+def test_grind_phase_gives_the_carried_hero_xp_and_stays_deterministic():
+    """`objective.run(grind=)` / `--grind`: the heroes fight the nearest war-hostile units first, the edits wait; the XP comes from the real combat code."""
+    runs = [CG.run_chain(GFS, through=20, grind=900, log=lambda *a: None) for _ in range(2)]
+    assert runs[0]["played"] == [10, 20] and not runs[0]["failed"] and runs[0]["hash"] == runs[1]["hash"]
+    hero = runs[0]["game"].roster[0].state
+    idle = CG.run_chain(GFS, through=20, log=lambda *a: None)["game"].roster[0].state
+    assert sum(hero.xp) > sum(idle.xp) == 0 or max(hero.skills[1:]) > max(idle.skills[1:])
+    assert runs[0]["hash"] != CG.run_chain(GFS, through=20, log=lambda *a: None)["hash"]       # the idle chain is untouched by the option (default 0)

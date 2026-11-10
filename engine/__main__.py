@@ -146,14 +146,14 @@ def campaign_cmd(a):
     reachable is not."""
     from engine import campaign
     side = () if a.no_side else campaign.SIDE_VARS
-    r = campaign.run_chain(a.install, a.through, a.hero, a.seed, side)
+    r = campaign.run_chain(a.install, a.through, a.hero, a.seed, side, grind=a.grind)
     print("played %d missions: %s" % (len(r["played"]), " ".join(str(n) for n in r["played"])))
     exp = campaign.NEVER_OFFERED
     print("not played: %s%s" % (" ".join(str(n) for n in r["unreachable"]) or "none",
                                 "  (never offered by the campaign: %s; class slots of the other heroes: %s)" % (
                                     " ".join(map(str, exp)), " ".join(map(str, sorted(campaign.class_alternatives(a.hero)))))))
     for n, res, crash in r["failed"]:
-        print("mission %d: %s%s%s" % (n, res, " " + crash if crash else "", "  (known oracle miss)" if n in campaign.ORACLE_MISS else ""))
+        print("mission %d: %s%s%s" % (n, res, " " + crash if crash else "", "  (known oracle miss)" if n in campaign.ORACLE_MISS or (a.grind and n in campaign.GRIND_MISS) else ""))
     if r["unexpected"]:
         print("UNEXPECTED unreachable maps: %s" % " ".join(str(n) for n in r["unexpected"]))
     print("chain hash %s" % r["hash"])
@@ -562,6 +562,7 @@ def build_parser():
     ca.add_argument("--hero", default="MF", choices=("MF", "FF", "MM", "FM"), help="the hero's template: gender + class (default MF); decides the class-slot missions")
     ca.add_argument("--seed", type=int, default=1)
     ca.add_argument("--no-side", action="store_true", help="do not take the optional goals that add missions 21 and 52")
+    ca.add_argument("--grind", type=int, default=0, metavar="TICKS", help="the heroes fight the nearest hostile units for this many ticks at the start of every mission (the party gains XP); default 0 = the idle oracle")
     ca.add_argument("--install")
     rp = sub.add_parser("replay", help="run a recorded session again, headless")
     rp.add_argument("session", help="a session directory or its session.json")

@@ -20,6 +20,7 @@ ROUND = 16                      # ticks per round = one script pass and one miss
 MAX_ROUNDS = 160                # 2560 ticks, 160 s of game time
 QUIET_ROUNDS = 40               # rounds without an edit before the run is called stuck (counters that climb with the passes need time)
 HERO_HP = 300
+GRIND_REACH = 24               # cells: how far a hero is sent after a foe in the grind phase
 VAR_CHECKS = (19, 23, 24)       # fed by a script variable: follow it to the triggers that write it
 WRITES = {3: 19, 8: 19, 35: 23, 36: 24}      # instant kind -> the check kind that reads what it writes
 HANDLED = (1, 2, 3, 5, 6, 7, 8, 12, 14, 15, 16, 17, 21, 27)
@@ -248,8 +249,36 @@ def _round(world, sim, side=()):
     return [], stuck
 
 
-def run(name, install=None, seed=1, world=None, side=()):
-    """One objective run (`side`: campaign variables whose writer triggers are tried before the win; on `world` when given: a campaign mission built by `CampaignGame.start_mission`, else the map as `play` builds it).  Returns `{"result": "won" | "lost" | "stuck" | "timeout" | "crash", "tick", "edits", "stuck", "triggers"}`."""
+def at_war(world, a, b):
+    """Relation bit 1 of player `a` towards `b` (map section 5): a unit the human may attack without breaking a peace the mission script cares about."""
+    p = world.players.get(a)
+    return p is not None and len(p.relations) >= b and bool(p.relations[b - 1] & 1)
+
+
+def grind_commands(world, assigned, reach=GRIND_REACH):
+    """The orders of the fight-crediting phase: a hero of the human player whose last target is gone (`assigned`: hero id -> target id, kept by the caller)
+    attacks the nearest living hostile unit within `reach` cells (Chebyshev), so the carried XP comes from real blows, kills and the kill credit of
+    `sim.xp`; the oracle keeps the party's HP up."""
+    from engine.sim import AttackUnit
+    from engine.sim import xp as XP
+    cmds = []
+    for h in world.units.values():
+        if h.owner != 1 or h.hp <= 0 or not XP.is_hero(h):
+            continue
+        t = world.units.get(assigned.get(h.id))
+        if t is not None and t.hp > 0:
+            continue
+        foes = [(max(abs(u.x - h.x), abs(u.y - h.y)), u.id) for u in world.units.values()
+                if u.hp > 0 and u.owner != h.owner and at_war(world, h.owner, u.owner)]
+        foes = [f for f in foes if f[0] <= reach]
+        if foes:
+            assigned[h.id] = min(foes)[1]
+            cmds.append(AttackUnit(h.owner, (h.id,), assigned[h.id]))
+    return cmds
+
+
+def run(name, install=None, seed=1, world=None, side=(), grind=0):
+    """One objective run (`grind`: ticks at the start in which the party's heroes fight the nearest hostile units, so the run earns XP like a player who clears the map; 0 = none; `side`: campaign variables whose writer triggers are tried before the win; on `world` when given: a campaign mission built by `CampaignGame.start_mission`, else the map as `play` builds it).  Returns `{"result": "won" | "lost" | "stuck" | "timeout" | "crash", "tick", "edits", "stuck", "triggers"}`."""
     from engine.session import build_game
     out = {"map": name, "result": "timeout", "tick": 0, "edits": [], "stuck": [], "wins": 0}
     logging.disable(logging.WARNING)
@@ -263,17 +292,21 @@ def run(name, install=None, seed=1, world=None, side=()):
             out["result"] = "stuck"
             out["stuck"] = [("no trigger runs instant 4", 0)]
             return out
-        quiet, guarded = 0, _protected(script)
+        quiet, guarded, assigned = 0, _protected(script), {}
         for _ in range(MAX_ROUNDS):
+            fight = grind_commands(world, assigned) if world.tick < grind else []
             for _ in range(ROUND):
                 for u in list(world.units.values()) + guarded:
                     if (u.owner == 1 or u in guarded) and u.hp > 0:
                         u.hp = HERO_HP
-                sim.step([])
+                sim.step(fight)
+                fight = []
             r = T.result(world)
             if r:
                 out["result"], out["tick"] = r, world.tick
                 return out
+            if world.tick < grind:                         # the fight phase: no edits yet, the heroes earn their XP first
+                continue
             edits, stuck = _round(world, sim, side)
             out["edits"] += [(world.tick,) + e for e in edits]
             out["stuck"] = stuck

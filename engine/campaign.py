@@ -284,6 +284,7 @@ class CampaignGame:
 
 SIDE_VARS = (0x304, 0x30C)          # the optional goals that add missions: map 20 "Get mission 21", map 50 "Give 52 mission" (triggers.md 11.1)
 ORACLE_MISS = {77: "its escort dies to the leader's squad: a fight the oracle cannot make (docs/coverage.md)"}
+GRIND_MISS = {71: "the fight phase kills the squirrels (player 5, at war with the party), which fails the mission: a peace the player keeps"}
 NEVER_OFFERED = (51, 83)            # named by no completion case and no dialogue word (triggers.md 11.2)
 
 
@@ -296,12 +297,12 @@ def class_alternatives(start):
     return out
 
 
-def run_chain(install=None, through=None, hero="MF", seed=1, side=SIDE_VARS, log=print, hire=None, prefer=(), probe=None):
+def run_chain(install=None, through=None, hero="MF", seed=1, side=SIDE_VARS, log=print, hire=None, prefer=(), probe=None, grind=0):
     """Chain the missions in unlock order with the objective run as the driver: start the mission from the carried roster, make its win conditions
     true (`engine.objective.run` on the world `start_mission` built, so the maps read the campaign's variables), end it (`leave_mission`).  A mission the
     oracle does not win (`ORACLE_MISS`: map 77) is completed anyway so the order goes on (DECISION: the chain tests the campaign state machine, not the
     fight).  `through`: stop after that mission is finished; `prefer`: missions to play first whenever they are available (the player's choice in the world
-    map: map 80 before 70); `probe(n, game, world)`: called on a fresh start of each mission before the oracle runs (the report's idle runs).  Returns a dict (`played`, `failed`, `unreachable`, `unexpected`, `hash`, `game`)."""
+    map: map 80 before 70); `grind`: ticks of the fight-crediting phase at the start of each mission (`objective.run(grind=)`: the heroes fight, the party gains XP; 0 = the idle oracle); `probe(n, game, world)`: called on a fresh start of each mission before the oracle runs (the report's idle runs).  Returns a dict (`played`, `failed`, `unreachable`, `unexpected`, `hash`, `game`)."""
     import hashlib
     from allods2.cli import campaign_maps
     from engine import objective
@@ -317,7 +318,7 @@ def run_chain(install=None, through=None, hero="MF", seed=1, side=SIDE_VARS, log
         if probe is not None:
             probe(n, game, game.start_mission(n)[0])
         world, _ = game.start_mission(n)
-        r = objective.run(str(n), install, seed=seed, world=world, side=side)
+        r = objective.run(str(n), install, seed=seed, world=world, side=side, grind=grind)
         won = r["result"] == "won"
         if not won:
             failed.append((n, r["result"], r.get("crash", "")))
@@ -335,4 +336,4 @@ def run_chain(install=None, through=None, hero="MF", seed=1, side=SIDE_VARS, log
     expected = set(NEVER_OFFERED) | class_alternatives(hero)
     unexpected = [m for m in unreachable if m not in expected] if through is None else []
     return {"played": played, "failed": failed, "unreachable": unreachable, "unexpected": unexpected, "hash": h.hexdigest(), "game": game,
-            "hard_failed": [f for f in failed if f[0] not in ORACLE_MISS]}
+            "hard_failed": [f for f in failed if f[0] not in ORACLE_MISS and not (grind and f[0] in GRIND_MISS)]}
