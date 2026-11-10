@@ -27,7 +27,7 @@ from both places when answered).
 
 ## Campaign
 
-- L1 ([campaign](engine/campaign.md#4-open-questions), starting routines `0x1000286b`, `0x1000192f`, `0x49b8a6`, `FUN_00514f59`): the hire window's `TalkTo` call for a re-offered mercenary and the price; the school-5 skill order of the creation call; XP in the headless chain (a fight-crediting oracle).
+- L1 ([campaign](engine/campaign.md#4-open-questions), starting routines `0x1000286b`, `0x1000192f`, `0x49b8a6`, `FUN_00514f59`): the school-5 skill order of the creation call; XP in the headless chain (a fight-crediting oracle).
 
 ## AI
 
@@ -45,7 +45,7 @@ from both places when answered).
 
 ## Triggers and scenario
 
-- [Triggers](engine/triggers.md#open-questions): the word `window+0x160` of the three shop windows (`TalkTo` at `0x4b9117` / `0x4bec83` / `0x4c0995`) and the town-screen readers of Var(0x301) / Var(0x302) (`0x4cad3c`, `0x4cdd0a`, `0x4bf096`); whether a mercenary's hire price is charged anywhere (`0x49b8a6`); the purpose of Var(0x307). Instants 29 / 30 stay documented no-ops (the effect system exists now: [effects](engine/effects.md)).
+- [Triggers](engine/triggers.md#open-questions): the word `window+0x160` of the three shop windows (`TalkTo` at `0x4b9117` / `0x4bec83` / `0x4c0995`) and the town-screen readers of Var(0x301) / Var(0x302) (`0x4cad3c`, `0x4cdd0a`, `0x4bf096`); (the hire price: none, answered); the purpose of Var(0x307). Instants 29 / 30 stay documented no-ops (the effect system exists now: [effects](engine/effects.md)).
 - Scenario event classes: unit `behaviour` bits 1, 2, 4 and the three scenario booleans `+0x194` / `+0x198` / `+0x19c` (`FUN_005303ed`). [map](formats/map.md#open-questions), [unit-struct](engine/unit-struct.md#open-questions)
 
 ## Movement and orders

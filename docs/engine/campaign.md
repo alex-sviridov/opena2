@@ -40,9 +40,9 @@ the death flag do not exist in the state. `Unit.hero_no` (new field, not dumped)
    (a map unit's id is `0x6000 + uid`, never in the table).
 2. **Carried = hero number 0x15..0x1e owned by the human** (the exe tests `+0xe` in 0x21..0x3f, which the hero constructor flag gives exactly these). Every
    other unit of the human (summons, mercenaries, units a script gave him) is deleted; a hero not in the world (dead, removed) is gone and its id freed.
-3. **Visit policy** (11.5 item 4): accept every offer (`TalkTo` of every type 0 / 3 word), no mercenary hired. A town is visited after every mission end while it is in
+3. **Visit policy** (11.5 item 4): accept every offer (`TalkTo` of every type 0 / 3 word), no mercenary hired by default; the `hire` policy can hire type 1 offers only (CONFIRMED `0x49b812`: the Accept click of a type 2 word shows the reject text and makes no `TalkTo`; a hire has no price, no gold is read or written: `0x49b812`, `0x49b989` hold no gold access). A town is visited after every mission end while it is in
    the available list; the visit order is the list order. INFERRED: the order of the blocks inside `EnterInn` after the chapter jump table (chapter rows, town-3 rows,
-   town-2 rows, mercenaries) and that the window hires with a type 1 word also for a type 2 offer: the order of the available list follows it, nothing else does.
+   town-2 rows, mercenaries) (the "type 2 hired with a type 1 word" guess was wrong, see above): the order of the available list follows it, nothing else does.
 4. **Mission order** = the first mission of the available list, i.e. unlock order. CONFIRMED (triggers 11.2 "The available list"): the list is the DLL's, appended at the tail in the
    order of the events (completion unlocks, `TalkTo` type 3), never sorted; the real world map places the missions at fixed positions and the player clicks one, so the list order
    decides only the no-town start (`0x486d4f`, the head) and the screen's initial focus. The player chooses on the world map; `run_chain(prefer=(80,))` plays map 80
@@ -86,6 +86,5 @@ oracle's pickups (pack stacks 1 -> 6).
 
 ## 4. Open questions
 
-* The hire window's `TalkTo` call for a type 2 (re-offered) mercenary, and the price (`0x49b8a6`, `0x49b989`; also an open question of triggers 11).
 * The creation call `FUN_00514f59(school, level)` for school 5 (does shooting 10 overwrite 20) and the staff spell of the mage schools (INFERRED from 9.3).
 * XP in the headless chain: a fight-crediting oracle (or a play-through) is needed before the carried levels mean anything; the idle-lost maps depend on it.

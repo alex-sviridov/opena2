@@ -333,6 +333,20 @@ def test_mercenary_hire_policy_and_flags():
     assert g2.hired() == []                                         # no hire by default
 
 
+def test_a_re_offered_mercenary_cannot_be_hired_and_a_hire_costs_nothing():
+    g = CG.CampaignGame(hire=lambda words, camp: [w & 0xFFFF for w in words])
+    g.new_game(visit=False)
+    g.camp.vars.update({0x300: 30})
+    g.camp.offer_mercenary(1, 2)
+    g.camp.offer_mercenary(2, 2)
+    g.camp.vars[0x215] = 2                                          # mercenary 2 is re-offered (marker 2)
+    g.camp.available = [(C.TOWN, 2)]
+    g.gold = 7
+    g.visit_towns()
+    assert g.camp.get(0x200) == 1 and g.camp.get(0x201) == 0       # type 1 hired, type 2 refused (0x49b812)
+    assert g.gold == 7                                              # no price in the exe
+
+
 def test_mercenary_template_by_chapter():
     t = Mercs()
     assert CG.mercenary_template(t, 2, 50) == (10023, True)         # the worked example of 11.3: knight at C = 50

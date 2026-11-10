@@ -59,7 +59,7 @@ def is_hero(u, human_player):
 
 class CampaignGame:
     """One single-player campaign.  `hire(words, camp)` = the mercenary hire policy of the town stand-in: returns the mercenary numbers to hire from
-    the offered words (default: none; the price of a hire is an open question)."""
+    the offered words (default: none; a hire has no price, a type 2 offer cannot be hired)."""
 
     def __init__(self, install=None, hire=None, seed=1, difficulty=DEFAULT_DIFFICULTY, assets=None):
         self.install = install
@@ -133,7 +133,7 @@ class CampaignGame:
     def visit_towns(self):
         """What the player does in the towns after a mission, as a stand-in (11.5 item 4): every town in the available list is entered; the story
         heroes among the offered words are created (the inn handler `0x48ba81`); every type 0 / 3 word is accepted by `TalkTo` (DECISION: the
-        outcome only adds missions and sets markers); mercenary words are hired as the `hire` policy says (`TalkTo` of a type 1 word); the town is
+        outcome only adds missions and sets markers); mercenary words are hired as the `hire` policy says (`TalkTo` of a type 1 word; a type 2 word is refused, as the Accept click does); the town is
         left (town 1 leaves the list, `ScenarioLeaveLocation`)."""
         camp = self.camp
         for kind, town in [loc for loc in camp.available if loc[0] == C.TOWN]:
@@ -147,7 +147,9 @@ class CampaignGame:
                     camp.talk_to(w)
             offers = [w for w in words if (w >> 28) & 7 in (1, 2)]
             for n in self.hire(offers, camp):
-                if any((w & 0xFFFF) == n for w in offers) and not camp.get(C.MERC_HIRED + n - 1):
+                # the Accept click (0x49b812, CONFIRMED): only a type 1 word hires (TalkTo); a type 2 word (re-offered) shows the reject text, no TalkTo.
+                # No price exists in the exe: no gold is checked or deducted.
+                if any((w & 0xFFFF) == n and (w >> 28) & 7 == 1 for w in offers) and not camp.get(C.MERC_HIRED + n - 1):
                     camp.talk_to((1 << 28) | n)
             self.log.append("town %d: %s" % (town, ", ".join("%08x" % w for w in words)))
             camp.leave()
