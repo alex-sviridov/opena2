@@ -11,7 +11,8 @@ from .mix import mb_to_percent, percent_to_mb
 
 DEFAULT_PERCENT = 74            # about the exe's -700 mB default (`percent_to_mb(74)` = -676)
 ENV = "ALLODS2_SETTINGS"
-BOOLS = ("mute", "music_enabled", "day_night", "smoothing", "shadows", "lighting", "animation", "show_health", "flying_damage")
+BOOLS = ("mute", "music_enabled", "day_night", "smoothing", "shadows", "lighting", "animation", "show_health", "flying_damage", "tips", "message_colours")
+RANGES = {"formation": 2, "retreat": 2, "autocasting": 0x3F}       # the party options: formation 0 off / 1 auto / 2 on, retreat mode 0 never / 1 low / 2 medium, the auto-cast byte
 
 
 @dataclass
@@ -29,6 +30,11 @@ class Settings:
     animation: bool = True              # `0x5f17ec`: off forces lighting off (`0x442fb7`)
     show_health: bool = False           # ShowAllHitPoints (client `+0xab8`)
     flying_damage: bool = True          # ShowFlyingHP (client `+0xabc`)
+    tips: bool = True                   # TipsMode `0x622774` (default 1); stored, nothing reads it until the tips windows are built (shell.md 5.3)
+    message_colours: bool = False       # MessageColors `0x622818` (the Game Options check "Join", Ctrl+C): the alternative colour tables are not built
+    formation: int = 1                  # Formation Mode `0x62275c`: 0 off, 1 auto (default), 2 on
+    retreat: int = 0                    # Retreat Mode `0x622760`: 0 never (INFERRED default), 1 low health, 2 medium
+    autocasting: int = 0x19             # AutoCasting `0x62277c`, default 0x19 (CONFIRMED): 8 heal, 0x10 / 0x20 buff levels, 1 / 2 / 4 own / allies / neutral
 
     def bus_mb(self, bus):
         """mB offset of a bus (`sfx`, `speech`, `music`)."""
@@ -64,6 +70,10 @@ def _clean(d):
     for k in BOOLS:
         if isinstance(d.get(k), bool):
             setattr(s, k, d[k])
+    for k, hi in RANGES.items():
+        v = d.get(k)
+        if isinstance(v, int) and not isinstance(v, bool):
+            setattr(s, k, max(0, min(hi, v)))
     return s
 
 

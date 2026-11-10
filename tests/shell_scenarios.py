@@ -96,6 +96,18 @@ def shell_golden(install):
     shot("newgame_hero_hard")
     sh.handle(Move(*mask_centre(sh, mask, 180)))
     shot("newgame_ok_hover")
+    sh.go("chargen", difficulty=2, hero=0, hero_code=0, name="Aldor")
+    shot("chargen")
+    for who, i in (("minus", 0), ("plus", 3), ("minus", 1)):
+        click(sh, chargen_centre(sh, who, i))
+    sh.handle(Move(*chargen_centre(sh, "plus", 2)))
+    shot("chargen_changed")
+    sh.go("newgame")
+    sh.go("chargen", difficulty=2, hero=3, hero_code=0x40, name="Gildarius")
+    sh.handle(Move(*chargen_centre(sh, "class", 2)))
+    click(sh, chargen_centre(sh, "class", 2))
+    shot("chargen_mage_air")
+    sh.go("newgame")
     sh.go("menu")
     from engine.audio.settings import Settings
     from engine.shell.options import OptionsPages, load_texts
@@ -114,6 +126,16 @@ def shell_golden(install):
     sh2.handle(Move(*button_centre(sh2, 3)))
     out["menu_800_hover_credits"] = hash_rgb(backend.screenshot(sh2, art))
     return out
+
+
+def chargen_centre(shell, kind, i):
+    """A screen point on the character generator's stat button (`plus` / `minus`, row i) or on class column i."""
+    from engine.shell import chargen as cg
+    ox, oy = shell.current.origin
+    if kind == "class":
+        return ox + cg.MASK[shell.current.kind][i][1] + 20, oy + cg.MASK[shell.current.kind][i][2] + 12
+    x = cg.PLUS_X if kind == "plus" else cg.MINUS_X
+    return ox + x + 10, oy + cg.ROW_Y + 32 * i + 10
 
 
 def opt_centre(pages, key):

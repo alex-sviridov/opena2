@@ -12,6 +12,7 @@ class Image:
     path: str
     x: int
     y: int
+    key: bool = False               # black (0, 0, 0) is transparent: the overlays of the character generator's class pictures
 
 
 @dataclass(frozen=True)

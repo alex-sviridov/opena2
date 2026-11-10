@@ -186,15 +186,19 @@ def _setup(a):
     from allods2.cli import open_map
     from engine.view import Camera, DrawOptions, TerrainView
     from engine.ui import DebugFlags
-    assets = AssetCache(a.install)
-    seed = getattr(a, "seed", None)
-    if seed is None:
-        seed = time.time_ns() & 0xFFFFFFFF if a.cmd == "run" else DEFAULT_SEED      # the exe seeds from the clock (simulation.md 10)
-    m = open_map(a.map, a.install)
-    world = World.from_map(m, assets, seed=seed, difficulty=getattr(a, "difficulty", DEFAULT_DIFFICULTY))
-    if getattr(a, "triggers", False):                   # the map script (docs/engine/triggers.md); implies the AI
-        from engine.sim import triggers
-        triggers.enable(world, m, assets=assets, party=getattr(a, "party", 0))
+    prebuilt = getattr(a, "prebuilt", None)             # (world, assets) of a campaign mission (`CampaignGame.start_mission`: script, party and AI done)
+    if prebuilt is not None:
+        world, assets = prebuilt
+    else:
+        assets = AssetCache(a.install)
+        seed = getattr(a, "seed", None)
+        if seed is None:
+            seed = time.time_ns() & 0xFFFFFFFF if a.cmd == "run" else DEFAULT_SEED      # the exe seeds from the clock (simulation.md 10)
+        m = open_map(a.map, a.install)
+        world = World.from_map(m, assets, seed=seed, difficulty=getattr(a, "difficulty", DEFAULT_DIFFICULTY))
+        if getattr(a, "triggers", False):               # the map script (docs/engine/triggers.md); implies the AI
+            from engine.sim import triggers
+            triggers.enable(world, m, assets=assets, party=getattr(a, "party", 0))
     tv = TerrainView(world, assets.tileset())
     w, h = a.size
     opts = DrawOptions(shadows=not a.no_shadows, lit=not a.no_light,

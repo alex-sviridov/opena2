@@ -12,9 +12,11 @@ from allods2.common import as_fs
 GRAPH = {
     "startup": {"menu"},
     "menu": {"newgame", "load", "quit"},
-    "newgame": {"menu", "game"},
+    "newgame": {"menu", "chargen"},
+    "chargen": {"newgame", "locations"},
+    "locations": {"game", "menu"},
     "load": {"menu", "game"},
-    "game": {"menu"},
+    "game": {"menu", "locations"},
     "quit": set(),
 }
 START = "startup"
@@ -51,13 +53,16 @@ class Shell:
         self.history = []
         self.screens = {}
         self.params = {}
+        self.campaign = None                    # the running single-player campaign (`engine.campaign.CampaignGame`), made by `chargen`
         if screens is None:
+            from .chargen import CharGen
             from .game import GameScreen
             from .loadgame import LoadGame
+            from .locations import Locations
             from .mainmenu import MainMenu
             from .newgame import NewGame
             from .startup import Startup
-            screens = (Startup, MainMenu, NewGame, LoadGame, GameScreen)
+            screens = (Startup, MainMenu, NewGame, CharGen, Locations, LoadGame, GameScreen)
         for cls in screens:
             self.screens[cls.name] = cls(self)
 

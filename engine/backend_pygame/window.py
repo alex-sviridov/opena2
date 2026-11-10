@@ -5,7 +5,7 @@ import gc
 
 import pygame
 
-from engine.sim import DEFAULT_SPEED, CommandQueue, SetRetreatMode, Simulation, TickClock, tick_period_ms
+from engine.sim import DEFAULT_SPEED, CommandQueue, SetAutoCast, SetFormation, SetRetreatMode, Simulation, TickClock, tick_period_ms
 from engine.sim import ai as ai_mod
 from engine.sim import spells as spell_mod
 from engine.ui import (CursorInput, CursorState, DebugFlags, Layout, MinimapPanel, OrderInput, ScrollInput,
@@ -230,6 +230,19 @@ def game_options(opts, s):
                                health_bars=s.show_health, flying_damage=s.flying_damage)
 
 
+def party_option_commands(player_id, s, formation, retreat, autocast):
+    """The party options of the settings that differ from what the game has now: `SetFormation` / `SetRetreatMode` / `SetAutoCast` (messages `0x46`
+    sub 2 / 1 / 3, `FUN_0041a617`, `0x41a4ef`, `0x41a5b9`); an equal value sends nothing (a fresh mission keeps the template thresholds at Never)."""
+    out = []
+    if s.formation != formation:
+        out.append(SetFormation(player_id, s.formation))
+    if s.retreat != retreat:
+        out.append(SetRetreatMode(player_id, s.retreat))
+    if s.autocasting != autocast:
+        out.append(SetAutoCast(player_id, s.autocasting))
+    return out
+
+
 def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Allods 2", max_frames=None,
         assets=None, options=None, debug=None, minimap=None, player_id=PLAYER_ID, commands=(), ai=True,
         trace=False, hero_name="Hero", mission_id=None, frame_hook=None, sim_hook=None, audio=None, music_zones=(), in_shell=False,
@@ -276,6 +289,9 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     for cmd in commands:
         queue.put(cmd)
     player = world.players[player_id]
+    if settings is not None:                                # the party options of the Game Options (the client sends them at the game's start, ai.md 12.8)
+        for cmd in party_option_commands(player_id, settings, player.formation, 0, player.autocast):
+            queue.put(cmd)
     items = build_draw_list(world, camera, world.tick, assets, options, debug, player.selection, ai_info=ai_overlay(world, debug, player.selection))
     selecting = SelectionInput(player_id, layout.screen.w, lambda: items.hover_picks,
                                lambda e: world.units[e].owner if e in world.units else None,
@@ -286,6 +302,8 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
                           lambda: selection_item_mask(world, player.selection) if selection_state(world, player_id) == "own" else 0,
                           lambda uid: uid in world.units and is_hero(world.units[uid]))
     ordering.book = ui.book
+    if settings is not None:
+        ordering.formation, ui.toggles.retreat, ui.toggles.autocast = settings.formation, settings.retreat, settings.autocasting
     caches = Caches(SurfaceCache(terrain_view), SpriteCache(assets))
     ticks = TickClock(tick_period_ms(speed), pygame.time.get_ticks())
     was_frozen = False
@@ -349,6 +367,8 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
             elif ev.type == pygame.KEYDOWN and ev.key in OPTION_KEYS and ev.mod & pygame.KMOD_CTRL:
                 if ui.option_key(OPTION_KEYS[ev.key], pygame.time.get_ticks()) and ev.key == pygame.K_w:
                     queue.put(SetRetreatMode(player_id, ui.toggles.retreat))       # FUN_0041a4ef: message 0x46 sub 1
+                elif ev.key == pygame.K_u:
+                    queue.put(SetAutoCast(player_id, ui.toggles.autocast))         # FUN_0041a5b9: message 0x46 sub 3
             elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_f and ev.mod & pygame.KMOD_CTRL:
                 cmd, mode = ordering.key("f", ctrl=True)
                 queue.put(cmd)
@@ -540,6 +560,9 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
                 running = False
             if result == "ok":                              # Game Options applied (`0x442e8b`): draw options, day / night, the speed re-bases the tick clock
                 options = game_options(options, settings)
+                for cmd in party_option_commands(player_id, settings, ordering.formation, ui.toggles.retreat, ui.toggles.autocast):
+                    queue.put(cmd)
+                ordering.formation, ui.toggles.retreat, ui.toggles.autocast = settings.formation, settings.retreat, settings.autocasting
                 terrain_view.set_time_flow(settings.day_night, world.tick)
                 if settings.game_speed != before.game_speed:
                     ticks = TickClock(tick_period_ms(settings.game_speed), pygame.time.get_ticks())

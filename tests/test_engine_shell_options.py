@@ -58,12 +58,12 @@ def drag_to(pg, key, value, release=True):
 def test_frames_follow_the_dialog_size_rule_and_are_centred():
     g, _ = make("game")
     s, _ = make("sound")
-    assert (g.frame().w, g.frame().h) == (584, 360) and (g.frame().x, g.frame().y) == (28, 60)
+    assert (g.frame().w, g.frame().h) == (584, 424) and (g.frame().x, g.frame().y) == (28, 28)
     assert (s.frame().w, s.frame().h) == (488, 360) and (s.frame().x, s.frame().y) == (76, 60)
     from engine.shell.options import snap
     assert snap(600, 480) == (584, 424) and snap(540, 420) == (488, 360)       # the exe's constructor sizes (0x4417c3, 0x43cacb)
     big, _ = make("game", size=(1024, 768))
-    assert (big.frame().x, big.frame().y) == (220, 204)
+    assert (big.frame().x, big.frame().y) == (220, 172)
 
 
 def test_game_options_apply_on_ok_only():
@@ -224,7 +224,43 @@ def test_checked_and_unchecked_boxes_look_different():
     assert (on[:r.y] == off[:r.y]).all()                                        # nothing else changed
 
 
-def test_the_widgets_not_built_are_the_ones_listed():
+def test_every_widget_of_the_original_is_built():
     pg, _ = make("game")
     keys = {w.key for w in pg.widgets() if w.key}
-    assert not keys & set(NOT_BUILT) and {"game_speed", "shadows", "ok", "cancel"} <= keys
+    assert NOT_BUILT == () and {"game_speed", "shadows", "tips", "message_colours", "autocast_own", "autocast_allies", "autocast_neutral",
+                                "formation", "retreat", "autocast_mode", "ok", "cancel"} <= keys
+    assert sum(1 for w in pg.widgets() if w.kind == "radio") == 9           # three groups of three
+
+
+def radio(pg, key, i):
+    w = next(w for w in pg.widgets() if w.key == key and w.kind == "radio" and w.maximum == i)
+    r = pg.screen_rect(w)
+    return r.x + 30, r.y + r.h // 2
+
+
+def test_party_options_start_at_the_registry_defaults_and_apply_on_ok():
+    pg, rec = make("game")
+    s = pg.settings
+    assert (s.formation, s.retreat, s.autocasting, s.tips) == (1, 0, 0x19, True)       # Auto, Never, AutoCasting 0x19, Tips on
+    assert pg.value(widget(pg, "autocast_own")) and not pg.value(widget(pg, "autocast_allies"))
+    assert [pg.value(w) for w in pg.widgets() if w.key == "formation" and w.kind == "radio"] == [False, True, False]
+    assert [pg.value(w) for w in pg.widgets() if w.key == "autocast_mode" and w.kind == "radio"] == [False, True, False]   # 0x19 has 0x10: Average
+    click(pg, radio(pg, "formation", 2))
+    click(pg, radio(pg, "retreat", 1))
+    click(pg, radio(pg, "autocast_mode", 2))
+    click(pg, centre(pg, "autocast_neutral"))
+    click(pg, centre(pg, "tips"))
+    assert (s.formation, s.retreat, s.autocasting, s.tips) == (1, 0, 0x19, True)         # a draft until OK
+    click(pg, centre(pg, "ok"))
+    assert (s.formation, s.retreat, s.autocasting, s.tips) == (2, 1, 0x3D, False)         # 8 | 0x30 | own | neutral
+    assert rec.saved and rec.saved[-1]["autocasting"] == 0x3D
+
+
+def test_party_options_persist_and_are_clamped(tmp_path):
+    p = str(tmp_path / "s.json")
+    s = S.Settings(formation=2, retreat=1, autocasting=0x2D, tips=False)
+    S.save(s, p)
+    assert S.load(p) == s
+    open(p, "w").write('{"formation": 9, "retreat": -3, "autocasting": 999, "tips": "no"}')
+    t = S.load(p)
+    assert (t.formation, t.retreat, t.autocasting, t.tips) == (2, 0, 0x3F, True)

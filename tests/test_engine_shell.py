@@ -52,6 +52,8 @@ def test_graph_edges_stay_inside_the_graph():
     for a, targets in GRAPH.items():
         assert a in GRAPH and targets <= set(GRAPH)
     assert GRAPH["startup"] == {"menu"} and GRAPH["menu"] == {"newgame", "load", "quit"} and "options" not in GRAPH
+    assert GRAPH["newgame"] == {"menu", "chargen"} and GRAPH["chargen"] == {"newgame", "locations"}                    # L2: the campaign in one window
+    assert GRAPH["locations"] == {"game", "menu"} and GRAPH["game"] == {"menu", "locations"}
 
 
 def test_every_legal_edge_works_and_every_other_raises():
@@ -83,7 +85,7 @@ def test_close_window_quits_from_every_screen():
 
 def test_params_reach_enter():
     sh = dummy_shell()
-    sh.start("newgame")
+    sh.start("locations")
     sh.go("game", map="10", difficulty=2)
     assert sh.screens["game"].log == [("enter", {"map": "10", "difficulty": 2})]
 
@@ -203,11 +205,9 @@ def test_new_game_starts_with_hero_zero_and_the_original_defaults():
     ng = sh.current
     assert (ng.hero, ng.level, ng.name_text) == (0, 0, "Master Oberic")             # hero 0 selected by the show routine, level 0 (INFERRED), the ctor's name
     press(sh, 180)                                                    # OK acts on the PRESS (`0x436d48`)
-    assert sh.name == "game" and rec.starts == [{"map": "10", "difficulty": 1, "hero": 0, "hero_code": 0, "name": "Master Oberic"}]
+    assert sh.name == "chargen" and rec.starts == []                  # OK goes on to the character generator (L2), not into a map
+    assert sh.params == {"difficulty": 1, "hero": 0, "hero_code": 0, "name": "Master Oberic"}
     assert rec.sounds == ["sfx/chrgen/ok.wav"]
-    assert sh.current.driven
-    assert sh.apply(sh.current.run()) is None and sh.name == "menu"    # the session ended "menu"
-    assert sh.screens["game"].session is None
 
 
 @needs_graphics
@@ -272,7 +272,7 @@ def test_name_field_rules():
     sh.handle(Key("x", char="\x07"))                                  # a control character is not text (the backend drops it; the screen would too)
     assert ng.name_text == "Elfric the"
     sh.handle(Key("return"))
-    assert sh.name == "game" and rec.starts[0]["name"] == "Elfric the"
+    assert sh.name == "chargen" and sh.params["name"] == "Elfric the"
 
 
 @needs_graphics
@@ -382,6 +382,9 @@ def test_game_screen_owns_the_world_only_while_playing():
     sh, _ = make_shell(GFS, rec=rec)
     to_menu(sh)
     sh.go("newgame")
+    sh.go("chargen", hero_code=0, name="Aldor", difficulty=2)
+    sh.screens["locations"].enter = lambda **k: None                  # no campaign here: only the game screen's World ownership is tested
+    sh.go("locations")
     sh.go("game", map="10", difficulty=2)
     assert isinstance(sh.screens["game"].world, World)
     sh.apply(sh.current.run())

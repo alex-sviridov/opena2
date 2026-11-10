@@ -64,6 +64,7 @@ from both places when answered).
 - Info-panel knowledge table: character-file load / write-back (`Knowledge(blob)` / `to_blob`) and the exact engine mapping of client relation bit 8 (`FUN_0041e860`). [ui-layout](engine/ui-layout.md#open-questions) (`FUN_004ea6ab`, `0x4141fa`)
 - Info panel: whether the new-game name field accepts `|`. [ui-layout open questions](engine/ui-layout.md#open-questions)
 - Message list: quest-event lines (multiplayer only, no work), alternative message colour tables `0x61fb08` / `0x61fba8`. [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages)
+- Character generator ([chargen](engine/chargen.md#open-questions)): the fifth class (bow / astral) is unpickable (`0x42d1a3`, `0x42b220`); what the lower-right quadrant shows (`0x42e1ed`); the hint window's rect and TipsMode check box (`0x4deca4`, `0x42dba8`); the idle shimmer (`0x42b406`); tooltip placement of slot 5 (`0x429b01`); child `0x458`'s 4 px rect (`0x42a0f1`); Esc at shell level (`FUN_004852d8`); Reset pool 100 reaching 45 x4 (verify in play).
 
 ## Rendering and engine
 
@@ -90,3 +91,6 @@ from both places when answered).
 ## Structures
 
 - Using a structure ([structures](engine/structures.md#open-questions)): verify in game the use-walk stop cells, a far use click failing (structures 2.1, answered in the exe) and that the hovered well's panel redraws as the charges fall (8.1); the "Saving Place" branch (`FUN_0044fff0(0x68f628) == 4`, `FUN_0050155f`). `FUN_0050f12c` case `0xf`.
+
+- Campaign missions in the shell: `replay SESSION --verify` rebuilds a fresh party, so a recorded campaign mission after the first does not verify; the sessions would need the roster (docs/engine/shell.md 3.4).
+- Game Options radios / AutoCast mode: the radio picture (`radiob.256` frames 4 / 5) and the Minimum / Average / Maximum bit encoding (`0` / `0x10` / `0x30`) are INFERRED (docs/engine/shell.md 5.3); the Retreat default Never is INFERRED.

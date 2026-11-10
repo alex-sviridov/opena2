@@ -13,7 +13,7 @@ INFERRED: the initial level is 0 (Easy: the window's `+0x20c` is never initialis
 the focus sits on the name field from the start, the position of the big portraits (template matching: x 112 for heroes 0-1, 260 for 2-3, y 44), Cancel plays `ChrGen\\Ok.wav`.
 Torches: `torch1` / `torch2` are 15-frame flame animations (48x72) on the two braziers, at **(4, 200)** and **(589, 200)** (CONFIRMED by pixel identity: the frames' static pixels equal `MainArea.bmp` there with error
 0), advanced by a global 67 ms timer (`0x436222`; the exe starts each torch at a random frame, here 0 and 7).
-Not built: the hover cross-fade `0x4364f7`, the tips window `#tips8` (the TipsMode option is not built; the tips window is a framed dialog with an OK button, class `0x4dec24`), the character generator panel `+0x36c` that follows OK (shell.md 3.3: L2); OK here starts the first campaign map (`10`) with the level and the hero's code."""
+Not built: the hover cross-fade `0x4364f7`, the tips window `#tips8` (the TipsMode option is not built; the tips window is a framed dialog with an OK button, class `0x4dec24`), OK goes on to the character generator panel `+0x36c` (`chargen.py`, L2: `0x4891d8` copies name, level `+ 1` and the hero code, then shows the panel)."""
 
 import numpy as np
 
@@ -39,7 +39,6 @@ HERO_NAMES = ("Aldor", "Sagita", "Galinel", "Gildarius")      # male fighter, fe
 HERO_CODE = (0x00, 0x80, 0xC0, 0x40)                    # `window+0x484 >> 0` per hero value: bit 0x40 mage, bit 0x80 female (`4891d8`, table `0x5cdd60`)
 UNNAMED = "Unnamed"
 INITIAL_NAME = "Master Oberic"                          # 0x5efba8
-FIRST_MAP = "10"                                        # DECISION: the campaign's first mission until L2 builds the chain
 DEFAULT_LEVEL = 0                                       # INFERRED (see the module doc)
 BLINK_MS = 500
 TORCH_AT = ((4, 200), (589, 200))                       # CONFIRMED by pixel identity of the static part of the frames against `MainArea.bmp`
@@ -92,8 +91,7 @@ class NewGame(Screen):
         if not self.name_text:
             return None                                       # `0x437829`: an empty name does nothing
         self.shell.play(OK_SOUND)
-        return "game", {"map": FIRST_MAP, "difficulty": self.level + 1, "hero": self.hero, "hero_code": HERO_CODE[self.hero],
-                        "name": self.name_text}
+        return "chargen", {"difficulty": self.level + 1, "hero": self.hero, "hero_code": HERO_CODE[self.hero], "name": self.name_text}
 
     def _cancel(self):
         self.shell.play(OK_SOUND)                            # `0x437955` plays the Cancel sound (the second `ChrGen\Ok.wav`)

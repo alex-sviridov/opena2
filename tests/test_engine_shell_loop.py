@@ -51,7 +51,9 @@ def test_script_through_a_real_mission_and_back(tmp_path, monkeypatch):
     end_quest, endq = button_rect(menu, 5), widget_rect(lay, "endquest.frame")
     exit_to_menu = button_rect(endq, 1)
     centre = lambda r: (r.x + r.w // 2, r.y + r.h // 2)
-    script = [[], click(new_game), click(hero), click(ok)]       # frames 0..3 of the shell; the game's loop takes over after the OK
+    accept = (484 + 70, 44 + 23)                                   # the character generator's Accept button
+    mission = (80 + 24 + 212, 44 + 130 + 12)                       # the first mission button of the `locations` screen (frame at (80, 44), rows from +130)
+    script = [[], click(new_game), click(hero), click(ok), [], click(accept), [], click(mission)]       # frames of the shell; the game's loop takes over after the mission button
     from allods2.common import as_fs
     from engine.shell.options import OptionsPages, load_texts
     from shell_scenarios import Recorder
@@ -91,7 +93,7 @@ def test_script_through_a_real_mission_and_back(tmp_path, monkeypatch):
     assert cli.shell_cmd(a, p) == 0
     saved = S.load()
     assert saved.day_night is False and saved.music_enabled is False        # both windows ran inside the mission and wrote the file
-    assert went == ["newgame", "game", "menu", "quit"] and fallback == []     # left through the in-game menu and the Exit button, not by closing the window
+    assert went == ["newgame", "chargen", "locations", "game", "menu", "quit"] and fallback == []     # left through the in-game menu and the Exit button, not by closing the window
     assert seen and seen[0]                                        # the world existed while the game screen ran
     final = json.load(open(tmp_path / "session" / "final.json"))
     assert final["result"] is None or final["result"] in ("won", "lost") or "tick" in final

@@ -49,6 +49,15 @@ class Painter:
         self.fs = fs
         self._files, self._frames = {}, {}
 
+    def keyed(self, path, img):
+        """`img` with black as the colour key (cached per path)."""
+        k = ("key", path)
+        if k not in self._frames:
+            c = img.copy()
+            c.set_colorkey((0, 0, 0))
+            self._frames[k] = c
+        return self._frames[k]
+
     def sprite(self, path, frame, shadow=0):
         key = (path, frame, shadow)
         if key not in self._frames:
@@ -70,6 +79,8 @@ def render_scene(surface, scene, painter, clear=True):
         if isinstance(op, Image):
             img = painter.art.get(op.path)
             if img is not None:
+                if op.key:
+                    img = painter.keyed(op.path, img)
                 surface.blit(img, (op.x, op.y))
         elif isinstance(op, Fill):
             surface.fill(op.rgb, (op.x, op.y, op.w, op.h))

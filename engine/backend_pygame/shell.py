@@ -75,7 +75,9 @@ class ShellGame:
             play.finish()
             if self.audio is not None:
                 self.audio.end_mission()
-        return "quit" if play.exit in (None, "windows") else "menu"
+        if play.exit in (None, "windows"):
+            return "quit"
+        return play.exit if play.exit in ("victory", "defeat") else "menu"
 
 
 def run(a, parser, PlaySession, make_audio, audio_settings):
@@ -97,8 +99,14 @@ def run(a, parser, PlaySession, make_audio, audio_settings):
 
     def start_game(params):
         ns = argparse.Namespace(**vars(a))
-        ns.map, ns.difficulty = params["map"], params["difficulty"]
-        ns.hero_name = params.get("name") or a.hero_name
+        camp = params.get("campaign")
+        if camp is not None:                                # a campaign mission: the carried party, the campaign's variables (campaign.md)
+            ns.map, ns.difficulty, ns.seed = str(params["mission"]), camp.difficulty, camp.seed
+            ns.hero_name = camp.roster[0].spec.name if camp.roster and camp.roster[0].spec and camp.roster[0].spec.name else a.hero_name
+            ns.prebuilt = camp.start_mission(params["mission"])
+        else:
+            ns.map, ns.difficulty = params["map"], params["difficulty"]
+            ns.hero_name = params.get("name") or a.hero_name
         ns.speed, ns.settings = a.speed, stored             # None = the settings file's game speed
         play = PlaySession(ns, parser, assets, audio, in_shell=True)
         play.option_services = services

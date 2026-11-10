@@ -107,29 +107,32 @@ reset routine `0x433520-0x43389d`; bitmaps in `graphics.res`, `graphics\interfac
   `0x436222-0x43632d`; the engine uses 0 and 7). **Built.** The same paint function runs a second effect (`0x4361ae-0x43632d`): an animation that idles for 500 + rand % 65 ms (`0x61adc0`), then appears at a random point inside a
   random one of five rects (the three level rects, OK and Cancel: list `+0x80`, built `0x4331d3-0x4332f2`) and plays its frames at 63 ms (`0x61ade4`, `+0x70` / `+0x74`); which bitmap vector it plays is **open** (not built).
 - **After OK** (`FUN_004891d8`, case `+0x374`): the name -> `game+0x460`, `game+0x598 := level`, `game+0x484 := code << 6`, `strncpy(client+0x3f6c+0xec, name, 12)`, then **`0x48f3f0` shows the panel `+0x36c`**.
-- **Panel `+0x36c` is the real character generator** (class ctor `0x42d39d`, resource `0x456`; children `0x457..0x45a`; not a confirm dialog and not `0x49183e`): `0x457` (`0x428521`) stat +/- buttons (`main\graphics\chrgen\leftup.bmp`,
-  `chrgen\buttons\{pl,pnl,ml,mnl}{on,off}.bmp`, `pdisable.bmp`, `mdisable.bmp`; strings `"%s = %d"`, `"%+d"`), `0x458` (`FullStatsL.bmp`), `0x459` (`Inn\button{1,2,3}{on,off}.bmp`, `ButtonsArea.bmp`: the bottom buttons, the third
-  = Accept), `0x45a` (`RollStatsR.bmp`, `FullStatsR.bmp`, `Inn\RUOver.bmp`, the class columns `chrgen\fighter\{mask,column}.bmp` + weapon icons sword / axe / mace / pike / bow, or `chrgen\mag\...` fire / water / air / earth / astral,
-  skill sounds `SFX\ChrGen\Skill\*.wav`), dice `chrgen\cube\sprites.16a`, `chrgen\loader\LeftUp.bmp`; sounds `SFX\ChrGen\+_-.wav`, `SFX\Click_Ok.wav`, `SFX\Sbros.wav`, `SFX\Back.wav`; hint widget `0x467`: `town.txt` `#tips5`
-  (fighter: "This screen allows you to create your own character. If you are playing for the first time, you may skip it by clicking <Accept>. ... an initial skill of 20 for that weapon type") or `#tips6` (mage: five element spheres)
-  at (0x118, 0x138). The player re-allocates the attribute budget (`FUN_004f254b`, [ai](ai.md)) and picks the weapon class or sphere; **Accept without changes keeps the starting template**. **Back (`0x446`)** returns to PreCreate
-  (`0x48f4e2`, chrgen music restarts). **OK**, single player: `0x40d480` (resets the client / world state), **`0x49183e` = a creation call only, no window** (it waits for the server object, picks the template by `window+0x484`:
-  `0x00` `Start_MF`, `0x40` `Start_MM`, `0x80` `Start_FF`, `0xc0` `Start_FM`, creates the unit with `0x5143e4(name, 1, 0)`, copies the four stats from the generator's template `0x4699d2`), then Scenario `SetVar(0x308, is_mage)`,
-  `SetVar(0x30d, is_female)`, difficulty `0x493d80(selector + 1)`, post `0x42e` (town). Handed on: name, hero code, level, the stats. The generator's rects, attribute-roll rules and texts are open (L2).
-- **Engine (DECISION)**: `engine/shell/newgame.py` builds all of the above that is CONFIRMED; OK starts the first campaign map (`10`) with `difficulty = level + 1`, the hero value and code and the name until L2 builds the
-  generator panel and the campaign chain. The hover pictures of Cancel / OK (`cancell`, `okl`) and the portrait placement (x 112 for heroes 0-1, 260 for 2-3, y 44) are INFERRED by template matching.
+- **Panel `+0x36c` is the real character generator** (class ctor `0x42d39d`, resource `0x456`; children `0x457..0x45a`; not a confirm dialog and not `0x49183e`): decoded in [chargen.md](chargen.md) (L2 step 1): layout and rects, **Accept / Reset / Back** buttons (no dice; `chrgen\cube` is the loading screen), the +/- attribute rules (15..45, marginal `FUN_004f250e` cost, pool 0 at start, Reset = 25 x4 + pool 100), the four clickable classes, the `#tips5` / `#tips6` hint, sounds, and the message `0x48` that Accept sends. **OK**, single player: `0x40d480` (resets the client / world state), **`0x49183e` = a creation call only, no window** (it waits for the server object, builds message `0x48` from the generator's request `game+0x450`: attributes, school, code `window+0x484`: `0x00` `Start_MF`, `0x40` `Start_MM`, `0x80` `Start_FF`, `0xc0` `Start_FM`, creates the unit with `0x5143e4(name, 1, 0)`, then Scenario `SetVar(0x308, is_mage)`, `SetVar(0x30d, is_female)`, difficulty `0x493d80(selector + 1)`, post `0x42e` (town)). **Back (`0x446`)** returns to PreCreate (`0x48f4e2`, chrgen music restarts).
+- **Engine (DECISION)**: `engine/shell/newgame.py` builds all of the above that is CONFIRMED; OK goes on to the character generator `engine/shell/chargen.py` (L2, [chargen.md](chargen.md)) with `difficulty = level + 1`, the hero value and code and the name. The hover pictures of Cancel / OK (`cancell`, `okl`) and the portrait placement (x 112 for heroes 0-1, 260 for 2-3, y 44) are INFERRED by template matching.
 
 **Credits and the hall of fame (CONFIRMED `FUN_00493da0`, `0x493da3-0x493db9`):** it returns `Scenario.GetVar(0x300) >= 0x78`, the "campaign finished" test (the chapter counter reaches 120 when mission 110 is completed;
 only Scenario.dll writes it, [triggers §11](triggers.md)); users: closing the credits (`0x493da0() == 0` -> `0x421`, else `0x429` the hall of fame) and the ending path of message `0x41d` (`>= 0x78` -> `0x428` credits). So the credits
 lead on to the hall of fame only after the campaign has been finished in this session or a loaded save.
 
+### 3.4 Between the missions (L2 stand-in, DECISION)
+
+The original shows its town / world map here (the `town` step builds them). `engine/shell/locations.py` is a plain framed dialog: the party's heroes (`CampaignGame.summary()`), the gold, one text button per mission of the
+available list in unlock order (`Mission N: <map name>`, up to 8) and **Main Menu** (ESC; Enter = the first mission). A dialog text button acts on the release over the pressed one (ui-layout 11.4). The campaign flow:
+`GameScreen` with `params["campaign"]` asks `services.start_game` for a session whose World is `CampaignGame.start_mission(n)` (carried roster, the script on the campaign's variables; the backend's `PlaySession` takes it as
+`a.prebuilt`); the mission loop returns `victory` -> `leave_mission(world, "won")` (carry-over, Scenario.dll completion, recruit, the town stand-in `visit_towns`) -> `locations`; `defeat`, End Quest / Exit to Main Menu -> `leave_mission`
+without carry-over -> `menu` (the original ends the game: `0x41e`, `0x431`); the last mission's ending (`Outcome.kind == "ending"`) -> `menu` (credits not built). The session files of a campaign mission record the campaign's seed
+and the map; `replay` rebuilds a *fresh* party, so a recorded campaign mission after the first does not verify (open). The death hook runs once at the mission end (`CampaignGame.death_hook`), not per tick.
+
 ## 4. The engine's state machine (`engine/shell/`)
 
 ```
 startup -> menu
-             \-> newgame -> game -> menu          every screen -> quit (the window's close box; the menu's EXIT)
+             \-> newgame <-> chargen -> locations <-> game     every screen -> quit (the window's close box; the menu's EXIT)
+             \                    \-> menu               locations -> menu (Main Menu); game -> menu (defeat, End Quest, the last mission's ending)
              \-> load -> game | menu              (load is in the graph, its button is disabled)
 ```
+`chargen` = the character generator panel `+0x36c` (chargen.md; Accept builds the `CampaignGame` and stores it as `Shell.campaign`, Back = `newgame`); `locations` = the **stand-in for the town / world
+map** (3.4); `game` with `params["campaign"]` / `params["mission"]` plays a campaign mission (below).
 `machine.GRAPH` is the spec: `Shell.go(name)` raises `ShellError` for an edge outside it and runs `exit()` / `enter(**params)` / the screen's music request around every move. A screen is a
 `Screen` (UI layer object): `enter`, `exit`, `event(ev)` (a shell input event: `Move`, `Press`, `Release`, `Key`, `Wheel`; positions in screen pixels), `update(dt_ms)`, `scene()` (a list of draw ops:
 `Image`, `Text`, `Fill`, `Frame`, `Button`, `Sprite`), `music`; `event` / `update` return the next screen (`"menu"` or `("game", {params})`) or None. Screens never import pygame, the world, the simulation or
@@ -213,8 +216,8 @@ SoundMusPos, SoundSfxPos, SoundSpeechPos, MusicEnabled, SoundRandom ([sound §5]
 
 The settings file is the K11 file (`~/.config/allods2-engine/settings.json`, `$ALLODS2_SETTINGS`; [audio §6](audio.md)), now with the options the engine applies. The windows open **from the in-game menu** (ESC ->
 Game Options / Sound Options, enabled since L0; `GameUi.options_request`, then `window.run` runs `backend_pygame/optionsview.run_options` as a modal sub-loop over the frozen frame; one-to-one with the exe, so the shell has no
-options screen and no key for them). `engine/shell/options.py` `OptionsPages` is the component: the original's rects for the widgets built; frames 584x360 (the original's 584x424 holds more widgets) and 488x360.
-Game Options OK also takes effect in the running game at once (draw options, day / night, a changed speed re-bases the tick clock `0x48bfaa`); the sound sliders are live.
+options screen and no key for them). `engine/shell/options.py` `OptionsPages` is the component: the original's rects for the widgets built; frames 584x424 and 488x360 (L2 built every widget of the original's Game Options).
+The radio look (`radiob.256` frames 4 / 5, rows of 16 px under a caption row) is INFERRED. Game Options OK also takes effect in the running game at once (draw options, day / night, a changed speed re-bases the tick clock `0x48bfaa`); the sound sliders are live.
 
 | field | widget | reaches |
 |---|---|---|
@@ -223,9 +226,10 @@ Game Options OK also takes effect in the running game at once (draw options, day
 | `smoothing`, `shadows`, `animation`, `lighting`, `show_health`, `flying_damage` | the checks | `DrawOptions` (`engine.__main__.game_options`; Animation off forces Lighting off, as `0x442fb7`) |
 | `sfx`, `music`, `speech` 0..100 | the three sliders, **live**, the file is written when the page is left; the SFX release plays `sfx[100]` | the buses (`Audio.apply_settings`) |
 | `music_enabled` | Play / Stop | `Audio.set_music_enabled`; Play restarts the menu playlist |
+| `formation` 0..2 (1), `retreat` 0..2 (0), `autocasting` (`0x19`) | the three radio groups (Formation Off / Auto / On, Retreat Never / Low / Medium, AutoCast mode Minimum / Average / Maximum = `0` / `0x10` / `0x30`, INFERRED) and the three AutoCast checks (bits 1 / 2 / 4) | `window.run` sends `SetFormation` / `SetRetreatMode` / `SetAutoCast` (messages `0x46` sub 2 / 1 / 3) at the start for the values that differ from the game's and after Game Options OK; Ctrl+W / Ctrl+U now send theirs too |
+| `tips` (on), `message_colours` (off) | Tips, "Join" (MessageColors) | stored only: the tips windows of a mission (`tips:` messages) and the alternative colour tables are not built |
 
-Game Options **apply on OK** (the draft is a copy; Cancel, ESC and leaving discard it), OK saves the file. Not built (`options.NOT_BUILT`): Tips, the AutoCast / formation / retreat groups and the "Join" check (they need the in-game party options, `ai §12.8` /
-`simulation 8.3a`, wired to the file), the track list and Acknowledgments check, the in-game menu's Save, Load and Quest Objectives entries (they stay disabled, [ui-layout 11.9](ui-layout.md)). A game started from the shell reads the file at its start; a change
+Game Options **apply on OK** (the draft is a copy; Cancel, ESC and leaving discard it), OK saves the file. Not built: the track list and Acknowledgments check, the in-game menu's Save, Load and Quest Objectives entries (they stay disabled, [ui-layout 11.9](ui-layout.md)). A game started from the shell reads the file at its start; a change
 made later affects the next game.
 
 ## 6. Videos (CONFIRMED: headers read from `video.res`; `movies.res` holds only shop / inn bitmap animations)
@@ -258,11 +262,15 @@ release over the same button, a release elsewhere does nothing, centring at 800x
 before the game screen** (`World.__init__` counted) and the game screen dropping it on exit, the golden screenshots per screen (`golden.json["shell"]`: startup, menu idle / hover / held / disabled / exit, new game idle /
 hero hover / chosen / OK hover, the options pages game / hover / sound over black, the menu at 800x600). `test_engine_shell_options.py` (`OptionsPages` driven by events): frame sizes, OK / Cancel / ESC / Enter, Animation forcing Lighting, the slider range, live sound sliders, the SFX test
 sound, Play / Stop, **persistence across a restart** through the real file, the options reaching `DrawOptions`, checked vs unchecked boxes. `test_engine_shell_loop.py`: the real pygame loop headless with scripted events
-through a real mission (ESC -> Game Options OK, Sound Options Stop, End Quest) and back (display, fonts and loop survive the hand-over; the session files are written). The game screen's own goldens are `golden.json["interface"]` and `["ui"]`.
+through the whole shell (new game -> character generator Accept -> locations -> a real campaign mission: ESC -> Game Options OK, Sound Options Stop, End Quest) and back (display, fonts and loop survive the hand-over; the session files are written). The game screen's own goldens are `golden.json["interface"]` and `["ui"]`.
+
+`test_engine_shell_campaign.py` (L2): the character generator's rules (cost table, template start values, the worked example of chargen.md 2.6, limits, free steps, the unpickable fifth class, point conservation), its screen (stat buttons and classes
+act on the press with their sounds, text buttons on the release over the same button, Esc ignored, Enter = Accept, Accept without changes = school 1, the hint and `#tips7`, TipsMode off), `locations`, a scripted menu -> three missions run with the
+objective oracle as the player (history `newgame, chargen, locations, (game, locations) x3`), a defeat = menu without carry-over, the ending = menu. Goldens `chargen`, `chargen_changed`, `chargen_mage_air`.
 
 ## Open questions
 
-- PreCreate: the initial level highlight (INFERRED Easy), the second animation of the paint function (random point over the five widget rects, bitmap vector unknown), the hover cross-fade `0x4364f7`, the tips window layout (`0x4deca4`), the order of the hero vectors against the screen order; the character generator panel's child rects, attribute-roll rules and labels (L2), what `0x40d480` resets.
+- PreCreate: the initial level highlight (INFERRED Easy), the second animation of the paint function (random point over the five widget rects, bitmap vector unknown), the hover cross-fade `0x4364f7`, the tips window layout (`0x4deca4`), the order of the hero vectors against the screen order; what `0x40d480` resets (the character generator is [chargen.md](chargen.md)).
 - The `SmackOpen` flag word `0xff000` is INFERRED (RAD's header from memory; `smackw32.dll` is packed).
 - Game Options / Sound Options: the sound index of each text-button event (the slider and check-box looks, the OK / Cancel rects and ESC are answered).
 - Whether the GOG build passes the CD check `0x62282c` (the menu would then have four disabled buttons), and the keyboard behaviour of the menu (INFERRED from the absent key handling, never run).

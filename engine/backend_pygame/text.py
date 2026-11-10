@@ -24,7 +24,7 @@ CACHE_SIZE = 512
 # Colour tables of palettes.md section 6 by role -> code-table address (code_ramps16).
 TABLES = {"normal": 0x620928, "highlight": 0x61fa80, "label": 0x620d90, "value": 0x620d70,
           "header": 0x620d50, "tooltip": 0x6200e0, "red": 0x620ea0, "yellow": 0x620e10,
-          "green": 0x620508}
+          "green": 0x620508, "gold": 0x620ec0}
 
 _fonts = {}
 _surfaces = OrderedDict()

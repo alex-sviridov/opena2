@@ -2,13 +2,13 @@
 `0x422`; CONFIRMED `FUN_004852d8` `0x485cc4`: Game Options only while `game+0x404 == 1`, Sound Options in a mission or a running game in town (`0x485bf3`): the main
 menu has no way to them, so the shell has no options screen).  `OptionsPages` is the component: one page at a time, `game` or `sound`, no screen of its own.
 
-* Game Options (`FUN_004417fa`): the widgets of the original whose option the engine applies, at the original's dialog-relative rects; **OK applies** (and saves),
+* Game Options (`FUN_004417fa`): every widget of the original at its dialog-relative rect (L2 added Tips, Join, the AutoCast checks and the three radio groups); **OK applies** (and saves),
   Cancel / ESC discards (`FUN_00442e8b`);
 * Sound Options (`FUN_0043cacb`): the three volume sliders, Play / Stop for the music and the original's rects; the sliders act **live and are not reverted** by leaving
   (CONFIRMED), the file is written when the page is left; releasing the SFX slider plays the test sound `sfx[100]`.
 
 Frame sizes follow `FUN_004dc4fc` (`w' = ((w - 8) / 0x60) * 0x60 + 8`, `h' = ((h - 0x68) / 0x40) * 0x40 + 0x68`, centred on the real screen).
-Not built (listed in shell.md 5.3): the widgets in `NOT_BUILT`, the track list and Acknowledgments check, the Random Order widget (the exe never builds it), and the volume
+Not built (listed in shell.md 5.3): the track list and Acknowledgments check, the Random Order widget (the exe never builds it), and the volume
 ranges of the exe (the engine's sliders are the K11 percent scale)."""
 
 import copy
@@ -32,9 +32,12 @@ SHADOW = 4                                      # the darken level of every widg
 BTN = 24                                        # the width of the end frames
 CHECK_CAPTION_DX = 30                           # `0x4d757c`: the caption at left + 6 + the width of frame 0 (24), top + 5
 GAME, SOUND = "game", "sound"
-GAME_SIZE, SOUND_SIZE = (584, 360), (488, 360)        # snapped; the original's Game Options is 584x424 (more widgets)
-# the Game Options widgets of the original that are not built (shell.md 5.3): Tips, "Join", AutoCast for units (Own / Allies / Neutral), Formation / Retreat / AutoCast mode radios
-NOT_BUILT = ("tips", "join", "autocast_own", "autocast_allies", "autocast_neutral", "formation", "retreat", "autocast_mode")
+GAME_SIZE, SOUND_SIZE = (584, 424), (488, 360)        # snapped (`FUN_004dc4fc`): 600x480 -> 584x424
+RADIO_OFF, RADIO_ON = 4, 5                      # `radiob.256` frames 4 / 5 = the 16x16 variants (shell.md 5), which fit the group's 72 px (a caption row + 3 rows); INFERRED which is which
+RADIO_ROW, RADIO_TOP = 16, 20                   # INFERRED look of the radio group `0x44efe0`: the caption on the group's first row, the options one row each below
+BITS = {"autocast_own": 1, "autocast_allies": 2, "autocast_neutral": 4}     # `0x62277c` bits of the "AutoCast for units" checks
+MODE_BITS = (0, 0x10, 0x30)                     # the AutoCast-mode radio: Minimum / Average / Maximum; INFERRED encoding (ai.md 12.8: 0x10 Bless + Haste, 0x20 the protections; the U key's 0x38 reads as the maximum)
+NOT_BUILT = ()                                  # every Game Options widget of the original is built since L2 (Tips and Join are stored only, shell.md 5.3)
 SPEED_MAX = 8
 PERCENT = 100
 
@@ -100,8 +103,17 @@ class OptionsPages:
                   W("check", (0x28, 0xCC, 0xC0, 0x18), self.p(0x35), "lighting"),
                   W("check", (0x28, 0xE8, 0xC0, 0x18), self.p(0x36), "animation"),
                   W("check", (0x118, 0x29, 0xD8, 0x18), self.d(0x39), "show_health"),
-                  W("check", (0x118, 0x45, 0xD8, 0x18), self.d(0x4E), "flying_damage")]
-            y = 0x108
+                  W("check", (0x118, 0x45, 0xD8, 0x18), self.d(0x4E), "flying_damage"),
+                  W("check", (0x118, 0x61, 0xD8, 0x18), self.d(0x9C), "tips"),
+                  W("check", (0x118, 0x7D, 0xD8, 0x18), self.d(0x57), "message_colours"),
+                  W("label", (0x118, 0x9A, 0xD8, 0x14), self.d(0xA6)),
+                  W("check", (0x118, 0xB0, 0xD8, 0x18), self.d(0xA7), "autocast_own"),
+                  W("check", (0x118, 0xCC, 0xD8, 0x18), self.d(0xA8), "autocast_allies"),
+                  W("check", (0x118, 0xE8, 0xD8, 0x18), self.d(0xA9), "autocast_neutral")]
+            for (l, r, cap, first, key) in ((0x28, 0xD0, 0x3A, 0x3C, "formation"), (0xD0, 0x178, 0x3F, 0x41, "retreat"), (0x178, 0x220, 0xAA, 0xAB, "autocast_mode")):
+                ws.append(W("label", (l, 0x120, r - l, 0x14), self.d(cap)))
+                ws += [W("radio", (l, 0x120 + RADIO_TOP + RADIO_ROW * i, r - l - 8, RADIO_ROW), self.d(first + i), key, i) for i in range(3)]
+            y = 0x170
             ws += [W("button", (bw // 7, y, 2 * bw // 7, 0x18), self.d(0), "ok"),
                    W("button", (4 * bw // 7, y, 2 * bw // 7, 0x18), self.d(1), "cancel")]
             return ws
@@ -124,7 +136,7 @@ class OptionsPages:
 
     def at(self, x, y):
         for w in self.widgets():
-            if w.kind in ("button", "check", "slider") and self.screen_rect(w).contains(x, y):
+            if w.kind in ("button", "check", "slider", "radio") and self.screen_rect(w).contains(x, y):
                 return w
         return None
 
@@ -134,11 +146,23 @@ class OptionsPages:
         return self.draft if self.page == GAME else self.settings
 
     def value(self, w):
-        return getattr(self.current(), w.key)
+        s = self.current()
+        if w.key in BITS:
+            return bool(s.autocasting & BITS[w.key])
+        if w.key == "autocast_mode":
+            v = 2 if s.autocasting & 0x20 else 1 if s.autocasting & 0x10 else 0
+        else:
+            v = getattr(s, w.key)
+        return v == w.maximum if w.kind == "radio" else v
 
     def set_value(self, w, v):
         s = self.current()
-        setattr(s, w.key, v)
+        if w.key in BITS:
+            s.autocasting = (s.autocasting & ~BITS[w.key]) | (BITS[w.key] if v else 0)
+        elif w.key == "autocast_mode":
+            s.autocasting = (s.autocasting & ~0x30) | MODE_BITS[v]
+        else:
+            setattr(s, w.key, v)
         if w.key in ("music", "sfx", "speech"):
             self.services.apply_settings(s)
 
@@ -224,6 +248,8 @@ class OptionsPages:
     def activate(self, w):
         if w.kind == "check":
             self.set_value(w, not self.value(w))
+        elif w.kind == "radio":
+            self.set_value(w, w.maximum)
         elif w.key in ("ok", "cancel", "return"):
             self.close(w.key)
         elif w.key in ("play", "stop"):
@@ -245,6 +271,11 @@ class OptionsPages:
             elif w.kind == "button":
                 pressed = self.pressed is not None and self.pressed.rect == w.rect and hot
                 ops.append(Button(r.x, r.y, r.w, r.h, w.text, True, hot, pressed))
+            elif w.kind == "radio":
+                on = RADIO_ON if self.value(w) else RADIO_OFF
+                ops.append(Sprite(RADIOB, on, r.x + 4, r.y + 3, SHADOW))
+                ops.append(Sprite(RADIOB, on, r.x, r.y))
+                ops.append(Text(w.text, r.x + 22, r.y + 1, 1, "label" if hot else "normal", 0, 1))
             elif w.kind == "check":
                 ops.append(Sprite(RADIOB, BOX_ON if self.value(w) else BOX_OFF, r.x + 5, r.y + 4, SHADOW))
                 ops.append(Sprite(RADIOB, BOX_ON if self.value(w) else BOX_OFF, r.x + 1, r.y))

@@ -20,6 +20,7 @@ The recreated game, built on the core library (`allods2/`, `a2res/`).
 
 | [campaign.md](campaign.md) | L1: the headless campaign (roster carry-over, recruits, town stand-in, mission chain, `python -m engine campaign`), DECISIONs, the chain result | L1 done, CONFIRMED / INFERRED per fact |
 | [shell.md](shell.md) | L0: startup (logos, videos), the main menu (mask, buttons, states), the screen graph, PreCreate (new game), the options windows and the settings file, video format, the shell state machine | L0 done, CONFIRMED / INFERRED per fact |
+| [chargen.md](chargen.md) | L2 step 1: the character generator panel after PreCreate: layout / rects, attribute rules and costs, Reset, class pick, hint, sounds, the creation message `0x48` | decoded, CONFIRMED / INFERRED per fact |
 
 Audio (K11): [audio.md](audio.md).
 
