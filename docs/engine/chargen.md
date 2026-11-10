@@ -31,7 +31,7 @@ Panel `+0x36c`: ctor `0x42d39d` (vtable `0x5cb6a8`), builder `0x42d4b0`; childre
 | 4 | `0x45a` class column | `0x42b052` (`0x5cb630`), init `0x42b890` | (160, 0, 480, 480) | `chrgen\fighter\column.bmp` or `chrgen\mag\column.bmp` 320x480 at (160, 0) (NOT `CenterArea.bmp`) | `0x42b220` |
 | 5 | `0x467` hint | tips window `0x4dec24` (child of 4) | (0, 0x118, 0x138, 0x1e0) = (0, 280, 312, 480), INFERRED reading | none: text box + Close button (`0x45a`) + check box | built `0x42dba8` |
 
-Nothing covers (480..640, 238..480) (INFERRED: the pixels of the previous screen stay; open 2). The screen is 640x480 only (the constants are absolute).
+Nothing covers (480..640, 238..480): **CONFIRMED the previous screen's pixels stay**. The root window (`+0xcc`, class vtable `0x5cfcd8`) paints nothing of its own (slot `0x30` = `0x41e790` is an empty `ret`; slot `0x34` `0x4d4468` runs slot `0x2c` = `0x4d43e0`, the children, then slot `0x38` `0x4d44a3` -> `0x4535e4`, which blits the dirty rect from the persistent off-screen buffer to the DirectDraw primary, no fill / clear anywhere); the closing PreCreate panel `+0x374` is only removed from the child list (`0x4d3a89` at the top of `FUN_004891d8`, owner `+0x30 := 0`), never erased or hidden by a paint; `0x48f3f0` just adds `+0x36c` (`0x4d3a64`), resets the cursor sprite (`0x47b8f5`) and redraws. So the quadrant keeps the last PreCreate frame: `MainArea.bmp`, the right torch (`torch2`, frozen at its random frame at the click, covers y 238..272) and the OK button as left at the click (mouse: hover `okl`; Enter: normal). No other child (hint `0x467`, tips) extends there (rects above). Engine: `chargen.py` draws `MainArea` + `torch2` frame 7 + `okl` (DECISION for the unknowable frame / hover state). The screen is 640x480 only (the constants are absolute).
 
 ### 1.1 Stat rows (child 1; rects from `0x42864f`, point + size, absolute pixels)
 
@@ -203,14 +203,13 @@ Free steps (`up = 0`, e.g. 16 -> 17) work with an empty pool. Click mace: school
 1. A pure model `engine/shell/chargen.py` (no pygame): `ChargenState(start)` with `values`, `pool`, `school`, `plus(i)`, `minus(i)`, `reset()`, `pick(k)`, `choice()` -> `HeroChoice`;
    rules exactly as 2.2 / 2.3 (min 15, max 45, marginal costs, pool 0, Reset 25 x4 + pool 100, school default 1, columns 0..3 only). The view draws 1 (rects of the tables above, pictures, texts).
 2. Keep the quirks (4 columns, free steps, Reset pool 100): the exe's behaviour is the spec; list them in the in-game notes only.
-3. The right-bottom quadrant: draw the PreCreate `MainArea.bmp` (static, no torches) behind the panel (INFERRED, open 2).
+3. The right-bottom quadrant: the frozen last PreCreate pixels (CONFIRMED, section 1): `MainArea.bmp` + `torch2` frame 7 + `okl` behind the panel.
 4. The preview (child 2) uses the engine's info panel text mode (`engine/ui/info.py`) on a throw-away hero built by `party.apply_spec` with the current values and school.
 5. Hint: show `#tips5` / `#tips6` in the bottom-left rect when TipsMode is on (engine has no TipsMode: show once), change to `#tips7` after the first class click; Close removes it.
 6. Sounds on press (Accept / Reset / Back, class k) and on every successful +/-, via the engine sound table keyed by the paths above; no music change.
 
 ## Open questions
 
-1. What the lower-right quadrant (480..640, 238..480) shows (nothing draws it; previous screen?). `0x42e1ed`, `0x48f3f0`.
 2. The tips window layout and the rect (0, 280, 312, 480) (INFERRED reading of the CRect args), whether the check box writes TipsMode. `0x4deca4`, `0x42dba8`.
 3. Exact rules of the idle shimmer. `0x42b406`.
 4. How the shared tooltip window places and styles the text of slot 5. `0x429b01`.

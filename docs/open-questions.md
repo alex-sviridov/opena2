@@ -64,7 +64,7 @@ from both places when answered).
 - Info-panel knowledge table: character-file load / write-back (`Knowledge(blob)` / `to_blob`) and the exact engine mapping of client relation bit 8 (`FUN_0041e860`). [ui-layout](engine/ui-layout.md#open-questions) (`FUN_004ea6ab`, `0x4141fa`)
 - Info panel: whether the new-game name field accepts `|`. [ui-layout open questions](engine/ui-layout.md#open-questions)
 - Message list: quest-event lines (multiplayer only, no work), alternative message colour tables `0x61fb08` / `0x61fba8`. [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages)
-- Character generator ([chargen](engine/chargen.md#open-questions)): what the lower-right quadrant shows (`0x42e1ed`); the hint window's rect and TipsMode check box (`0x4deca4`, `0x42dba8`); the idle shimmer (`0x42b406`); tooltip placement of slot 5 (`0x429b01`); child `0x458`'s 4 px rect (`0x42a0f1`); Esc at shell level (`FUN_004852d8`); Reset pool 100 reaching 45 x4 (verify in play).
+- Character generator ([chargen](engine/chargen.md#open-questions)): the hint window's rect and TipsMode check box (`0x4deca4`, `0x42dba8`); the idle shimmer (`0x42b406`); tooltip placement of slot 5 (`0x429b01`); child `0x458`'s 4 px rect (`0x42a0f1`); Esc at shell level (`FUN_004852d8`); Reset pool 100 reaching 45 x4 (verify in play).
 
 ## Rendering and engine
 

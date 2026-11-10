@@ -7,7 +7,7 @@ front, stat buttons and class columns that act on the **press**, text buttons th
 of chargen.md 1).  Accept builds the campaign (`CampaignGame.new_game` with the chosen `HeroChoice`; the creation call `0x49183e` + the town stand-in) and goes on
 to `locations`.
 
-DECISIONs: the quadrant (480..640, 238..480) that nothing draws in the original shows the PreCreate picture `MainArea.bmp` (INFERRED); the hint window (tips
+DECISIONs: the quadrant (480..640, 238..480) that nothing draws in the original keeps the last PreCreate pixels (CONFIRMED mechanism, chargen.md 1): `MainArea.bmp`, the right torch (a frozen frame, here 7) and the hovered OK button `okl`; the hint window (tips
 `#tips5` / `#tips6`, `#tips7` after the first class click; the Close button removes it) is a framed dialog at the bottom of the class column, since the exe's rect
 would cover the preview; the preview (child 2) lists Life / Mana (`progression.derived_vitals` of the template with the current attributes) and the attributes;
 the idle shimmer, the tooltips of slot 5 and the Esc key (the panel ignores it) are not built."""
@@ -23,7 +23,8 @@ from .screen import Screen
 BASE = "graphics/interface/chrgen/"
 INN = "graphics/interface/inn/"
 LEFTUP = "main/graphics/chrgen/leftup.bmp"
-PRECREATE = BASE + "precreate/mainarea.bmp"
+PRECREATE_DIR = BASE + "precreate/"
+PRECREATE = PRECREATE_DIR + "mainarea.bmp"
 STAT_FONT, TEXT_FONT = 4, 2
 MIN_ATTR, MAX_ATTR, RESET_POOL, RESET_VALUE = 15, 45, 100, 25
 ATTR_NAMES = ("Body", "Agility", "Mind", "Spirit")
@@ -253,7 +254,8 @@ class CharGen(Screen):
     def scene(self):
         ox, oy = self.origin
         s, k = self.state, self.kind
-        ops = [Image(PRECREATE, ox, oy), Image(LEFTUP, ox, oy), Image(BASE + "fullstatsl.bmp", ox, oy + 238), Image(INN + "buttonsarea.bmp", ox + 480, oy),
+        ops = [Image(PRECREATE, ox, oy), Image(PRECREATE_DIR + "torch2/t20007.bmp", ox + 589, oy + 200), Image(PRECREATE_DIR + "okl.bmp", ox + 548, oy + 400),
+               Image(LEFTUP, ox, oy), Image(BASE + "fullstatsl.bmp", ox, oy + 238), Image(INN + "buttonsarea.bmp", ox + 480, oy),
                Image(BASE + k + "/column.bmp", ox + COLUMN_AT[0], oy + COLUMN_AT[1])]
         for i in range(4):
             y = ROW_Y + 32 * i
