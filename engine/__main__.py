@@ -14,6 +14,7 @@ reports and crash traceback; docs/superpowers/specs/2026-11-05-prototype-j4-desi
    python -m engine maps [--install DIR]           (the campaign maps: number, size, players, name)
    python -m engine coverage [GAME_DIR] [--ticks N] [--csv PATH] [--docs PATH|-] [--maps 10,32]
                                                    (map coverage report, phase K0: out/coverage.csv + docs/coverage.md)
+   python -m engine objective [MAP ...] [--install DIR]   (the objective run, phase K12: does the script of the map reach "Mission Complete"?)
 
 MAP as for `python -m allods2 map` (10, scenario/10.alm, or a file).  X, Y =
 the viewport's top-left in world pixels (x = 32*col, y = 32*row - height).
@@ -120,6 +121,21 @@ def coverage_cmd(a):
     docs = None if a.docs == "-" or only else (a.docs or os.path.join(ROOT, "docs", "coverage.md"))
     coverage.run(a.game_dir, a.ticks, a.csv, docs, only)
     return 0
+
+
+def objective_cmd(a):
+    """The objective run (engine/objective.py): one line per map and the world edits it needed."""
+    from allods2.cli import campaign_maps
+    from engine import objective
+    names = a.maps or [os.path.basename(p).rsplit(".", 1)[0] for p in campaign_maps(a.install)]
+    bad = 0
+    for n in names:
+        r = objective.run(n, a.install)
+        bad += r["result"] != "won"
+        print("map %-4s %-8s tick %-5d %d edits%s" % (n, r["result"], r["tick"], len(r["edits"]), "  " + r["crash"] if r.get("crash") else ""))
+        for e in r["edits"]:
+            print("    tick %-5d trigger %-3d check %-3d %s" % e)
+    return 1 if bad else 0
 
 
 def minimap_cmd(a):
@@ -452,6 +468,9 @@ def build_parser():
     cv.add_argument("--csv", help="output csv (default out/coverage.csv)")
     cv.add_argument("--docs", help="docs page whose generated block is rewritten (default docs/coverage.md; '-' = skip)")
     cv.add_argument("--maps", help="comma list of map numbers (partial run: writes the csv only)")
+    ob = sub.add_parser("objective", help="the objective run: does the script of each campaign map reach Mission Complete (world edits stand in for the player)?")
+    ob.add_argument("maps", nargs="*", help="map numbers (default: all campaign maps)")
+    ob.add_argument("--install")
     rp = sub.add_parser("replay", help="run a recorded session again, headless")
     rp.add_argument("session", help="a session directory or its session.json")
     rp.add_argument("--verify", action="store_true", help="exit 1 when the world hash differs from final.json")
@@ -480,6 +499,8 @@ def _dispatch(a, p):
         return replay_cmd(a)
     if a.cmd == "coverage":
         return coverage_cmd(a)
+    if a.cmd == "objective":
+        return objective_cmd(a)
     if a.cmd == "play":
         return play_cmd(a, p)
     if a.cmd == "minimap":

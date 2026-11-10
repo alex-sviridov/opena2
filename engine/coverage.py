@@ -56,10 +56,12 @@ STEPS = {s.id: s for s in (
     Step("use_more", "Use a structure, the rest: signpost messages, wells, King's graves, altars (research of each class)", 2),
     Step("tilefx", "Cell effects for scripts: check 25 reads the cell layers, instants 29 / 30 set spell durations", 1, backlog=3),
     Step("draw", "Draw what is simulated: status effects of units, arrows of shooters", 2, backlog=2),
-    Step("hero_ui", "Hero windows: the Heads panel, hero screen (stats, skills, paper doll), item shops", 3, glob=True, backlog=1),
-    Step("campaign", "Campaign flow: world map, towns, hero recruit, roster carry-over, the Scenario.dll variables", 8, glob=True, backlog=4),
-    Step("menus", "Start menu, new-game and options screens, in-game menu entries", 4, glob=True, backlog=5),
-    Step("save", "Save / load: the game%d.sav writer and reader", 4, glob=True, backlog=7),
+    # the global steps, in the order docs/prototype.md argues for (dependencies, not cost): each later one needs the state the earlier one builds
+    Step("campaign", "Campaign spine (headless): new-game state, mission chain, roster carry-over, hero recruit, the Scenario.dll variables", 4, glob=True, backlog=6),
+    Step("shell", "Shell: start menu, character creation, options, in-game menu entries, the campaign in one window", 4, glob=True, backlog=4),
+    Step("town", "Town mode: world map, town scenes, hero screen (stats, skills, paper doll), item shops, inn", 6, glob=True, backlog=4),
+    Step("save", "Save / load: game%d.sav (or an own format, a decision) and the Save / Load / Delete windows", 3, glob=True, backlog=5),
+    Step("cutscenes", "Cutscenes: a Smacker decoder and the five scenario codes (intro, chapter ends)", 3, glob=True, backlog=4),
 )}
 
 # Features that are not script kinds.  Per-map counts come from `scan`.
@@ -322,6 +324,7 @@ def collect(install, ticks=SMOKE_TICKS, only=None):
     from allods2.assets import AssetCache
     from allods2.cli import campaign_maps, open_map
     from engine.session import build_game
+    from engine import objective
     assets = AssetCache(install)
     rows, feats = [], dict(FEATURES)
     for path in campaign_maps(install):
@@ -341,7 +344,7 @@ def collect(install, ticks=SMOKE_TICKS, only=None):
                                      "never written by the exe (triggers.md 2.3)")
         h = m.header
         rows.append({"map": name, "title": h.name, "size": "%dx%d" % (h.width, h.height), "players": h.player_count, "units": len(m.units),
-                     "counts": counts, "smoke": smoke(name, install, ticks)})
+                     "counts": counts, "smoke": smoke(name, install, ticks), "objective": objective.run(name, install)})
     return rows, feats
 
 
@@ -409,7 +412,7 @@ def proposed_order(rows, feats):
     while left:
         best = max(left, key=lambda st: (len(gain(st)) / STEPS[st].effort, -worst.get(st, 3) if not gain(st) else 1, len(touched[st]) / STEPS[st].effort))
         if not gain(best):
-            best = min((st for st in left), key=lambda st: (worst.get(st, 3), -len(touched[st]) / STEPS[st].effort, STEPS[st].effort))
+            best = min((st for st in left), key=lambda st: (worst.get(st, 3), 0 if STEPS[st].glob else -len(touched[st]) / STEPS[st].effort, list(STEPS).index(st)))
         g = gain(best)
         free |= g
         done.add(best)
@@ -442,6 +445,29 @@ def _tidy(items, key=lambda x: x):
     return ", ".join(str(key(i)) for i in items)
 
 
+def _objective_cell(r):
+    o = r.get("objective")
+    if not o:
+        return "-"
+    return "won, tick %d" % o["tick"] if o["result"] == "won" else "%s, tick %d" % (o["result"], o["tick"])
+
+
+def _levels(rows, ver):
+    """The three levels of the verdict, strongest first (engine/objective.py for the first)."""
+    won = [r["map"] for r in rows if r.get("objective", {}).get("result") == "won"]
+    ran = any("objective" in r for r in rows)
+    free = [m for m, v in ver.items() if v != "blocked"]
+    out = ["**Three levels** (each contains the next): "]
+    if ran:
+        out[0] += "**%d** maps reach \"Mission Complete\" in the objective run (`python -m engine objective`: a script-level oracle, not a play-through); " % len(won)
+    out[0] += "**%d** have no known blocker; **%d** are blocked." % (len(free), len(ver) - len(free))
+    if ran:
+        miss = [r for r in rows if r["map"] not in won]
+        out += ["", "Objective run misses: %s." % ("; ".join("map %s %s%s" % (r["map"], r["objective"]["result"], " (%s)" % r["objective"]["crash"] if r["objective"].get("crash") else "")
+                                                         for r in miss) or "none")]
+    return out + [""]
+
+
 def render(rows, feats):
     """The generated block of docs/coverage.md."""
     n = len(rows)
@@ -455,11 +481,12 @@ def render(rows, feats):
          "", "- **blocker**: the mission cannot be completed as designed (a script variable that gates the goal is fed by an action the engine cannot do).",
          "- **gameplay gap**: content the engine ignores but the goal does not depend on (a usable well, a spell duration).",
          "- **polish**: simulated but not drawn or played (arrows, status effects, music).", "",
-         "### Per map", "", "| Map | Name | Verdict | Blockers | Gameplay gaps | Smoke |", "|---|---|---|---|---|---|"]
+         ] + _levels(rows, ver) + [
+         "### Per map", "", "| Map | Name | Verdict | Win by script | Blockers | Gameplay gaps | Smoke |", "|---|---|---|---|---|---|---|"]
     for r in rows:
         g = [x for x in gaps(r, feats) if feats[x].impact == GAMEPLAY]
         sm = r["smoke"]
-        L.append("| %s | %s | %s | %s | %s | %s |" % (r["map"], r["title"] or "", ver[r["map"]], ", ".join(blockers(r, feats)),
+        L.append("| %s | %s | %s | %s | %s | %s | %s |" % (r["map"], r["title"] or "", ver[r["map"]], _objective_cell(r), ", ".join(blockers(r, feats)),
                                                       ", ".join("%s x%d" % (x, r["counts"][x]) for x in g), "crash" if sm["crash"] else (sm["result"] or "ok")))
     L += ["", "### Per feature the engine does not fully have", "",
           "`Unblocks alone` = maps whose only blocker it is. Every map has `music.zones`, so polish features touch nearly all maps.", "",
@@ -506,7 +533,7 @@ def render(rows, feats):
           "not a blocker." % (rows[0]["smoke"]["tick"] if rows else 0, _tidy([m for m, v in odd if v == "lost"]))] if odd else []
     L += ["", "### Proposed step order", "",
           "First the steps that unblock maps (greedy: the next one completes the most blocker lists per unit of effort), then the steps whose features "
-          "the maps contain (gameplay before polish, by maps touched per unit of effort), last the global steps no map data asks for (cheapest first). "
+          "the maps contain (gameplay before polish, by maps touched per unit of effort), last the global steps no map data asks for (in the declared order, which follows dependencies). "
           "Effort is the author's estimate in relative units (`STEPS` in `engine/coverage.py`: 1 = a small spec-and-build step like J3).", "",
           "| # | Step | Effort | Maps newly playable | Playable after | Maps touched | Backlog item |", "|---|---|---|---|---|---|---|"]
     total = ok

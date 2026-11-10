@@ -55,7 +55,7 @@ def test_step_order_unblocks_first_then_gameplay_then_global():
     names = [o[0] for o in order]
     assert names[2] == "use_more"                                            # the map with a usable well: a gameplay step before any global one
     rest = names[3:]
-    assert rest == sorted(rest, key=lambda st: C.STEPS[st].effort) and all(C.STEPS[st].glob for st in rest)
+    assert rest == [st for st in C.STEPS if C.STEPS[st].glob] and all(C.STEPS[st].glob for st in rest)      # declared order: dependencies, not cost
 
 
 def test_docs_block_is_replaced_and_the_rest_kept(tmp_path):

@@ -28,56 +28,60 @@ Scanned 46 campaign maps; smoke run 1600 ticks of the map script and the AI with
 - **gameplay gap**: content the engine ignores but the goal does not depend on (a usable well, a spell duration).
 - **polish**: simulated but not drawn or played (arrows, status effects, music).
 
+**Three levels** (each contains the next): **45** maps reach "Mission Complete" in the objective run (`python -m engine objective`: a script-level oracle, not a play-through); **46** have no known blocker; **0** are blocked.
+
+Objective run misses: map 77 lost.
+
 ### Per map
 
-| Map | Name | Verdict | Blockers | Gameplay gaps | Smoke |
-|---|---|---|---|---|---|
-| 10 |  | playable now |  |  | ok |
-| 20 |  | playable now |  |  | ok |
-| 21 |  | playable now |  |  | ok |
-| 30 |  | playable now |  |  | ok |
-| 31 | Adamantium mines | playable now |  |  | ok |
-| 32 | Get Sword | playable now |  |  | ok |
-| 40 |  | playable now |  |  | ok |
-| 41 |  | playable now |  |  | ok |
-| 42 | Mad dragon | playable now |  |  | ok |
-| 43 | Dirty work | playable now |  |  | lost |
-| 50 |  | playable now |  |  | ok |
-| 51 |  | playable now |  |  | ok |
-| 52 | Waterfall | playable now |  |  | ok |
-| 53 | Guard Traveller | playable now |  |  | ok |
-| 60 |  | playable now |  |  | lost |
-| 61 |  | playable now |  |  | ok |
-| 62 | Escapers | playable now |  |  | ok |
-| 63 | Magicianess | playable now |  |  | ok |
-| 70 |  | playable now |  |  | lost |
-| 71 |  | playable now |  |  | ok |
-| 72 | Lost Caravans | playable now |  |  | ok |
-| 73 | Revolted Castle | playable now |  |  | ok |
-| 74 | SmartShaman | playable now |  |  | ok |
-| 75 | Old Warrior | playable now |  |  | ok |
-| 76 | DangerousForest | playable now |  |  | ok |
-| 77 | MageGhost | playable now |  |  | ok |
-| 80 |  | playable now |  |  | ok |
-| 81 |  | playable now |  |  | ok |
-| 82 |  | playable now |  |  | ok |
-| 83 |  | playable now |  |  | ok |
-| 84 | Orakul | playable now |  |  | ok |
-| 85 | StoryMan | playable now |  |  | ok |
-| 86 | SwampMage | playable now |  |  | ok |
-| 87 |  | playable now |  |  | ok |
-| 90 |  | playable now |  |  | ok |
-| 91 |  | playable now |  |  | ok |
-| 92 | Great warrior's grave | playable now |  |  | lost |
-| 93 |  | playable now |  |  | ok |
-| 94 |  | playable now |  |  | ok |
-| 95 |  | playable now |  |  | ok |
-| 96 |  | playable now |  |  | ok |
-| 100 |  | playable now |  |  | ok |
-| 101 |  | playable now |  |  | ok |
-| 102 |  | playable now |  |  | lost |
-| 103 | Find the magic Oracle | playable now |  |  | ok |
-| 110 |  | playable now |  |  | lost |
+| Map | Name | Verdict | Win by script | Blockers | Gameplay gaps | Smoke |
+|---|---|---|---|---|---|---|
+| 10 |  | playable now | won, tick 32 |  |  | ok |
+| 20 |  | playable now | won, tick 32 |  |  | ok |
+| 21 |  | playable now | won, tick 32 |  |  | ok |
+| 30 |  | playable now | won, tick 128 |  |  | ok |
+| 31 | Adamantium mines | playable now | won, tick 64 |  |  | ok |
+| 32 | Get Sword | playable now | won, tick 48 |  |  | ok |
+| 40 |  | playable now | won, tick 64 |  |  | ok |
+| 41 |  | playable now | won, tick 48 |  |  | ok |
+| 42 | Mad dragon | playable now | won, tick 80 |  |  | ok |
+| 43 | Dirty work | playable now | won, tick 48 |  |  | lost |
+| 50 |  | playable now | won, tick 112 |  |  | ok |
+| 51 |  | playable now | won, tick 144 |  |  | ok |
+| 52 | Waterfall | playable now | won, tick 32 |  |  | ok |
+| 53 | Guard Traveller | playable now | won, tick 32 |  |  | ok |
+| 60 |  | playable now | won, tick 80 |  |  | lost |
+| 61 |  | playable now | won, tick 48 |  |  | ok |
+| 62 | Escapers | playable now | won, tick 48 |  |  | ok |
+| 63 | Magicianess | playable now | won, tick 128 |  |  | ok |
+| 70 |  | playable now | won, tick 128 |  |  | lost |
+| 71 |  | playable now | won, tick 208 |  |  | ok |
+| 72 | Lost Caravans | playable now | won, tick 128 |  |  | ok |
+| 73 | Revolted Castle | playable now | won, tick 48 |  |  | ok |
+| 74 | SmartShaman | playable now | won, tick 64 |  |  | ok |
+| 75 | Old Warrior | playable now | won, tick 64 |  |  | ok |
+| 76 | DangerousForest | playable now | won, tick 32 |  |  | ok |
+| 77 | MageGhost | playable now | lost, tick 240 |  |  | ok |
+| 80 |  | playable now | won, tick 48 |  |  | ok |
+| 81 |  | playable now | won, tick 96 |  |  | ok |
+| 82 |  | playable now | won, tick 96 |  |  | ok |
+| 83 |  | playable now | won, tick 48 |  |  | ok |
+| 84 | Orakul | playable now | won, tick 48 |  |  | ok |
+| 85 | StoryMan | playable now | won, tick 48 |  |  | ok |
+| 86 | SwampMage | playable now | won, tick 80 |  |  | ok |
+| 87 |  | playable now | won, tick 112 |  |  | ok |
+| 90 |  | playable now | won, tick 112 |  |  | ok |
+| 91 |  | playable now | won, tick 48 |  |  | ok |
+| 92 | Great warrior's grave | playable now | won, tick 48 |  |  | lost |
+| 93 |  | playable now | won, tick 80 |  |  | ok |
+| 94 |  | playable now | won, tick 80 |  |  | ok |
+| 95 |  | playable now | won, tick 80 |  |  | ok |
+| 96 |  | playable now | won, tick 80 |  |  | ok |
+| 100 |  | playable now | won, tick 80 |  |  | ok |
+| 101 |  | playable now | won, tick 96 |  |  | ok |
+| 102 |  | playable now | won, tick 48 |  |  | lost |
+| 103 | Find the magic Oracle | playable now | won, tick 48 |  |  | ok |
+| 110 |  | playable now | won, tick 48 |  |  | lost |
 
 ### Per feature the engine does not fully have
 
@@ -193,10 +197,11 @@ Steps the maps do not need to be completed but a finished game does; each touche
 
 | Step | Effort | Backlog item |
 |---|---|---|
-| `hero_ui` Hero windows: the Heads panel, hero screen (stats, skills, paper doll), item shops | 3 | 1 |
-| `campaign` Campaign flow: world map, towns, hero recruit, roster carry-over, the Scenario.dll variables | 8 | 4 |
-| `menus` Start menu, new-game and options screens, in-game menu entries | 4 | 5 |
-| `save` Save / load: the game%d.sav writer and reader | 4 | 7 |
+| `campaign` Campaign spine (headless): new-game state, mission chain, roster carry-over, hero recruit, the Scenario.dll variables | 4 | 6 |
+| `shell` Shell: start menu, character creation, options, in-game menu entries, the campaign in one window | 4 | 4 |
+| `town` Town mode: world map, town scenes, hero screen (stats, skills, paper doll), item shops, inn | 6 | 4 |
+| `save` Save / load: game%d.sav (or an own format, a decision) and the Save / Load / Delete windows | 3 | 5 |
+| `cutscenes` Cutscenes: a Smacker decoder and the five scenario codes (intro, chapter ends) | 3 | 4 |
 
 ### Smoke observations
 
@@ -207,16 +212,86 @@ Steps the maps do not need to be completed but a finished game does; each touche
 
 ### Proposed step order
 
-First the steps that unblock maps (greedy: the next one completes the most blocker lists per unit of effort), then the steps whose features the maps contain (gameplay before polish, by maps touched per unit of effort), last the global steps no map data asks for (cheapest first). Effort is the author's estimate in relative units (`STEPS` in `engine/coverage.py`: 1 = a small spec-and-build step like J3).
+First the steps that unblock maps (greedy: the next one completes the most blocker lists per unit of effort), then the steps whose features the maps contain (gameplay before polish, by maps touched per unit of effort), last the global steps no map data asks for (in the declared order, which follows dependencies). Effort is the author's estimate in relative units (`STEPS` in `engine/coverage.py`: 1 = a small spec-and-build step like J3).
 
 | # | Step | Effort | Maps newly playable | Playable after | Maps touched | Backlog item |
 |---|---|---|---|---|---|---|
-| 1 | `hero_ui` Hero windows: the Heads panel, hero screen (stats, skills, paper doll), item shops | 3 | - | 46 | 46 | 1 |
-| 2 | `menus` Start menu, new-game and options screens, in-game menu entries | 4 | - | 46 | 46 | 5 |
-| 3 | `save` Save / load: the game%d.sav writer and reader | 4 | - | 46 | 46 | 7 |
-| 4 | `campaign` Campaign flow: world map, towns, hero recruit, roster carry-over, the Scenario.dll variables | 8 | - | 46 | 46 | 4 |
+| 1 | `campaign` Campaign spine (headless): new-game state, mission chain, roster carry-over, hero recruit, the Scenario.dll variables | 4 | - | 46 | 46 | 6 |
+| 2 | `shell` Shell: start menu, character creation, options, in-game menu entries, the campaign in one window | 4 | - | 46 | 46 | 4 |
+| 3 | `town` Town mode: world map, town scenes, hero screen (stats, skills, paper doll), item shops, inn | 6 | - | 46 | 46 | 4 |
+| 4 | `save` Save / load: game%d.sav (or an own format, a decision) and the Save / Load / Delete windows | 3 | - | 46 | 46 | 5 |
+| 5 | `cutscenes` Cutscenes: a Smacker decoder and the five scenario codes (intro, chapter ends) | 3 | - | 46 | 46 | 4 |
 
 <!-- coverage:end -->
+
+## Re-plan with the objective run (K12, 2026-11-10)
+
+Every blocker of K0 is gone (K5-K8), so the order of the rest of phase K cannot come from blockers any more. It comes from what the data and the docs say is still
+missing, counted per map. Everything marked *guess* is an estimate.
+
+### 1. The three levels
+
+| Level | Maps | How it is known |
+|---|---|---|
+| **win reachable by script** | **45 of 46** (all but 77) | `python -m engine objective` ([engine/objective.py](../engine/objective.py), `tests/test_engine_objective.py`): a headless oracle works back from the triggers that run instant 4 and makes their conditions true by world edits (kill a group / unit, bring the hero next to a unit or point, put the quest item in the pack, empty the sack, set a switch's HP); script variables are followed to the triggers that write them, one edit per round; the real trigger pass decides. 73 ticks on average (32 to 208). |
+| **no known blocker** | **46 of 46** | the scan of K0 plus the smoke run; unchanged by this re-run (0 crashes, 0 `not implemented`, 0 unbuilt script kinds or casts, 0 script errors) |
+| **blocked** | **0** | |
+
+**What the first level does not prove.** The oracle *teleports* and *kills*; it shows that the script side of a mission can end (every instant and check on the path
+exists and behaves), not that a player can do what the oracle did. In particular it wins maps 93-96 and 103 without their puzzle (it walks past the fire walls
+by teleporting; the real solutions are tested in K6 / K7 by scripted uses and casts) and it never fights. Map 77 (MageGhost) is the one miss: its escorted unit is killed
+by the leader's squad at tick ~208 (a trigger changes that group's owner at tick 182) and a player has to win that fight; the oracle refills hit points once per tick
+but the volleys take more than the 300 it refills. The oracle's own bugs found on the way (one edit per round for counter chains, phased-out units as position
+markers, defeat triggers' units protected) are pinned by tests. **A play-through is still the only real proof**; map 32 is prepared for it (prototype.md).
+
+The idle party (nothing ordered) is still lost within 1600 ticks on maps 43, 60, 70, 92, 102 and 110 (see the smoke observations above): not a gap, not checked against the original.
+
+### 2. What the engine still ignores or approximates, per backlog feature
+
+Evidence: the generated tables above (script kinds, spells, unit classes), the smoke run, the open-questions list, and four scans made for K12 (script messages, campaign
+variables, named heroes, drop locations). "Maps" = maps whose data contains the thing; "share" = how much of the map it is.
+
+| Backlog | Still missing or approximated | Maps | Share of the map |
+|---|---|---|---|
+| 1 Inventory | Pack, equipment, use, pickup, drop, wells, scrolls: built (K5, K5b, K8). **Missing: the hero screen, the shops, the inn.** They exist only in the town modes (`client+0x404 & 0x226`): the mission-mode Heads panel is a bare picture (CONFIRMED, [ui-layout 11.10](engine/ui-layout.md)); no mission has a shop (section 11 shop and inn fields are multiplayer only). | 0 in a mission; all 46 through the campaign | none inside a mission |
+| 2 Ranged, spells, caster AI | Built (K1-K3, K9; the Prismatic Spray chain too, [effects §11](engine/effects.md); the "left" list in CLAUDE.md was stale). Left: a caster still busy in an earlier client action gets no cast animation; the lens border pixels; structures as spell targets (no map or AI needs them). | casters 42, shooters 36, flyers 37, ghosts 29 | polish only, no mission goal depends on it |
+| 3 Full triggers and dialogs | 55 of 55 script kinds the maps use are built; 0 counted no-ops, 0 unknown kinds; 444 of 448 message instants find their `#event<n>` story section (4 unused numbers: map 30 n 20, map 71 n 10-12); no map uses the tips window or a variable reference or a unit name >= 11001. | 0 | none |
+| 4 Full UI | **The shell**: start menu, new-game / character screen, options, in-game menu entries: the only way into a map today is `python -m engine play MAP`. **Cutscenes**: scenario codes after maps 10, 30, 70, 80 and 110 (+ intro, logos: Smacker `.smk`, no decoder). Town screens belong to the campaign. | all 46 (shell); 5 (cutscene after the map) | the whole game around the map; no map content |
+| 5 Save / load | `game%d.sav` writer and reader, the Save / Load / Delete windows, the mission-start auto-save. The server stream's object serialisers are not decoded ([saves §6](formats/saves.md)). | all 46 | no map content |
+| 6 Campaign | The party of a map is placed **fresh** (level 1, [triggers §9](engine/triggers.md#9-the-party-at-map-start-fun_004f2c83)); in the game 45 maps start with the carried roster. Scripts name heroes 2 / 3 (the knight, Dina): 3 heroes on 26 maps, heroes 1 and 3 on 1 (map 60), 1 and 2 on 5 (30, 40-43), only the main hero on 8 (10, 20, 21, 31, 93-96), none on 6 (32, 61, 81-83, 110). The scripts of **maps 70 (Var 0x30a, 6 reads) and 80 (Var 0x309, 6 reads) read campaign variables that no map script writes** (Scenario.dll's TalkTo in the towns must: not decoded); maps 20, 50, 110 write 0x304 / 0x30c / 0x30b. The recruit at a mission end (`FUN_004f312a`) is not decoded. | all 46 (party, difficulty); 2 (variables) | the party's strength on every map; the branch of maps 70 and 80 |
+| 7 Multiplayer | out of scope | - | - |
+| (sound) | Done in K11; **nothing listened to yet** (VERIFY BY EAR list in [audio.md](engine/audio.md)); town speech needs towns. | all 46 | by ear, user |
+
+**Reading of the table.** Inside a mission the engine has no known gap that the data shows; what stands between the 46 maps and a finished game is everything around them
+(the campaign state, the shell, the town screens, save / load, cutscenes), which is global. The one thing that changes the *content* of the maps is the roster
+carry-over: a fresh level-1 party on map 100 is not what the designers balanced, and the idle-lost maps may change with it.
+
+### 3. Effort (guess, same unit as K0: 1 = a small spec-and-build step like J3)
+
+| Step | Effort | Reused code | REA / research still needed | Screens | Headless? |
+|---|---|---|---|---|---|
+| `campaign` spine | 4 | `sim/campaign.py` (flow, `Outcome`, unlock table, `new_game_vars`), `party.place_party` / `apply_record`, [saves §4](formats/saves.md) carry-over (decoded), shop tables [items §13](data/items.md), the objective run as the mission driver | the recruit `FUN_004f312a`; the writers of Var 0x309 / 0x30a (Scenario.dll TalkTo); check `FUN_004ebd5f` against the engine; the hero-death variables | none (text driver) | **fully** |
+| `shell` | 4 | modal windows and the widget table (ui-layout 11.4, 11.6), fonts, `Layout`, the campaign dialogs | the main-menu chain to state `0x425` (open), the character screen `FUN_0049183e` (layout; the attribute budget `FUN_004f254b` is decoded), options | start menu, character creation, options, load list (4-5) | build and screenshots headless; **feel needs your play-test** |
+| `town` | 6 | pack window, paper doll, info rows, `gear.move_item`, town-scene animation ([animation §4.11](formats/animation.md), resolved), price rules ([items §4, §12](data/items.md)) | hero screen windows (`FUN_0049a428`, `FUN_0049bd95`, `FUN_0049e187`), the world-map screen `FUN_0048b419`, shop and inn windows, hero arrows `0x414` / `0x415`, the town and shop speech | world map, 3 town scenes, hero screen, shop, inn (6-7) | research and layout goldens headless; **needs play-test** |
+| `save` | 3 with an own format (a decision, below); 8 with `game%d.sav` compatibility | sessions and `replay --verify` (a save could be seed + commands), `World.dump`, [saves §6.1](formats/saves.md) container and byte layer | with compatibility: the server stream serialisers (6 routines, open) | Save / Load / Delete (3) | logic headless; windows with the shell |
+| `cutscenes` | 3 | the audio backend, fonts | none for the format (standard Smacker); the scenario codes are decoded | none (a video player) | decoder headless; **look needs play-test** |
+
+### 4. Order, with reasons
+
+1. **`campaign` spine first.** It is the only step that changes what is *inside* the maps (the party, its items, the recruits, the two variable-gated branches), it is fully
+   headless, the objective run is its test driver (chain all missions in unlock order, report the party's level and the result per map), and every later step needs its state:
+   the shell starts it, the town screens edit it, a save serialises it. It also answers whether the fresh-party decision matters (the six idle-lost maps).
+2. **`shell` second.** With the spine the campaign can be played from the first map in one window; this is the first step after which you can play more than map 32 without a command line.
+3. **`town` third.** The loop between missions (world map, hero screen, shops) is the largest and most REA-heavy piece; it needs the spine's state and the shell's windows.
+4. **`save` fourth.** It is only useful once there is something worth saving (the campaign and its town state); the format is a decision for you (below).
+5. **`cutscenes` last.** Independent of everything, no map and no state depends on it.
+- In parallel, and not a step: your play-through of map 32 and the playability check of the maps, then the VERIFY BY EAR list (audio.md). They produce the only evidence the engine cannot give itself.
+
+**Decision for you (not blocking K13-K15):** `save` as an own format (replay-based or a world dump: cheap, our files only) or as the original `game%d.sav` (compatible, needs the open server-stream research).
+
+### 5. The next steps (prompts, numbered from K13)
+
+These are written out in [prototype.md](prototype.md#next-steps-k13-k15).
 
 ## Proposal and comparison with docs/prototype.md (K0, 2026-11-09)
 
