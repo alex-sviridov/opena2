@@ -27,7 +27,7 @@ from both places when answered).
 
 ## Campaign
 
-- L1 ([campaign](engine/campaign.md#4-open-questions), starting routines `0x1000286b`, `0x1000192f`, `0x49b8a6`, `FUN_00514f59`): the order of the `EnterInn` blocks and of the available list; the hire window's `TalkTo` call for a re-offered mercenary and the price; the school-5 skill order of the creation call; XP in the headless chain (a fight-crediting oracle).
+- L1 ([campaign](engine/campaign.md#4-open-questions), starting routines `0x1000286b`, `0x1000192f`, `0x49b8a6`, `FUN_00514f59`): the hire window's `TalkTo` call for a re-offered mercenary and the price; the school-5 skill order of the creation call; XP in the headless chain (a fight-crediting oracle).
 
 ## AI
 
