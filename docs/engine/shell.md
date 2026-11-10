@@ -38,7 +38,7 @@ engine choices are **DECISION**. Message ids of the exe double as screen-state i
 
 Resources (`main\graphics\MainMenu\`, all 24-bit, 640x480 unless stated): `menu_.bmp` the background (a stone tablet with eight carved buttons), `MenuMask.bmp` the hit
 mask (never drawn; red channel = value), `button<n>p.bmp` (hover image), `button<n>.bmp` (held image), `text<n>.bmp` (180x80 caption), n = 1..8. Click sound `SFX\ChrGen\Ok.wav` (`0x4a840e`,
-`0x4a815f`). `graphics\interface\sprites.16a` is also drawn at (480, 360) on every paint: **which sprite is open** (the engine does not draw it).
+`0x4a815f`). `graphics\interface\sprites.16a` is also drawn at (480, 360) on every paint (`0x4a7c85-0x4a7cb5`: slot `+0x18` = `FUN_00427ef0` alpha, args `(x, y, 0, 0, 0)` = frame 0, the sprite's own table, not mirrored). **CONFIRMED: it draws nothing.** The file (1,042 bytes) holds one 160x120 frame whose data is the single word `0x4078` = "skip 120 rows" ([sprites](../formats/sprites.md)), so no pixel is covered; the engine's omission is exact (a leftover slot for a corner decoration at the bottom right, 160x120 ending at (640, 480)).
 
 | n | button | image rect (x, y, w, h) | mask value | message | opens |
 |---|---|---|---|---|---|
@@ -218,7 +218,6 @@ through a real mission (ESC -> Game Options OK, Sound Options Stop, End Quest) a
 
 ## Open questions
 
-- The main menu's decoration: which sprite of `graphics\interface\sprites.16a` is drawn at (480, 360) on every paint (`0x4a7b3f`).
 - PreCreate: the name field's rect and edit rules, the caption lines (`main.txt`), the hero identities behind the four windows, the confirm panel `0x48f3f0`, `FUN_00493da0` (the flag that sends the credits on to the hall of fame).
 - Fade routine `0x4c4840` (the maths) and the `SmackOpen` flag word `0xff000`.
 - Game Options / Sound Options: the disabled look of widgets, the frame map of `scrlbars.256`, the sound index of each text-button event. (OK / Cancel rects and ESC answered.)
