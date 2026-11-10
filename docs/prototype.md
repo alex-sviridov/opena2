@@ -97,17 +97,19 @@ blocker, 0 are blocked, no in-mission gap is known. What is left is around the m
 | 1 | Inventory | pack, equip, use, pickup, wells, scrolls built (K5, K5b, K8); **hero screen, shops, inn missing: town modes only** (a mission's Heads panel is a bare picture) | 0 in a mission, 46 via the campaign | in `town` | 3 |
 | 2 | Ranged, spells, caster AI | built (K1-K3, K9, the Prismatic Spray chain included); left: busy-caster animation, lens border | casters 42, shooters 36: polish | - | done |
 | 3 | Full triggers and dialogs | 55 of 55 kinds built, 444 of 448 message sections found; unused: variable references, unit names >= 11001, the tips window | 0 | - | done |
-| 4 | Full UI | shell (start menu, character creation, options, in-game menu): `shell`; town screens: `town`; cutscenes (5 codes + intro, Smacker): `cutscenes` | all 46 (shell); 5 (cutscene) | 4 + 6 + 3 | 2, 3, 5 |
+| 4 | Full UI | shell: **start menu, options, new-game screen (placeholder start) built in L0** ([shell](engine/shell.md)); character creation, in-game menu entries, the campaign in one window: `shell`; town screens: `town`; cutscenes (5 codes + intro, Smacker): `cutscenes` | all 46 (shell); 5 (cutscene) | 4 + 6 + 3 | 2, 3, 5 |
 | 5 | Save / load | `save`: `game%d.sav` or an own format (your decision); server stream serialisers open | all 46 | 3 (own) / 8 (.sav) | 4 |
 | 6 | Campaign | `campaign` spine: carry-over, recruit, Scenario.dll variables (maps 70 and 80 read variables no map writes); the party of every map is fresh today | all 46; 2 for the variables | 4 | **1** |
 | 7 | Multiplayer | out of scope | - | - | - |
 | - | Sound | done (K11); **VERIFY BY EAR** pending | all 46 | - | your session |
 
-## Next steps (K13-K15)
+## Next steps (L1-L3)
+
+**L0 - The shell (done).** `python -m engine` starts as the original does: the three logo / intro videos (placeholders that log `video skipped: <name>`), the main menu from the original's bitmaps and hit mask, the new-game (PreCreate) screen, options (the original's Game Options and Sound Options windows over the menu, settings file), quit; one state machine (`engine/shell/`), no World until the game screen. [docs/engine/shell.md](engine/shell.md). **Your play-test of the shell** (what to check): the menu hover / held / disabled look and the click sound, the new-game screen (heroes, difficulty, Cancel / OK), `O` for the options, the checks and sliders, that a game started from the menu returns to the menu through ESC -> End Quest -> Exit to Main Menu, and the volume sliders by ear.
 
 Prompt-sized, in the style of K5-K11. Headless = I can finish and verify it without you; play-test = it needs your session.
 
-**K13 - Campaign spine (headless).**
+**L1 - Campaign spine (headless).**
 Goal: a campaign object that carries the party from mission to mission, so a map starts as the game starts it.
 Context: read CLAUDE.md, docs/coverage.md (K12), docs/engine/triggers.md §9 and §11, docs/formats/saves.md §4, docs/data/items.md §13, `engine/sim/campaign.py`, `engine/party.py`, `engine/objective.py`.
 1. REA (mark CONFIRMED / INFERRED): `FUN_004f312a` (the recruit of Var(0x305)), `FUN_004ebd5f` (the carry-over, against saves §4), the writers of Var(0x309) / Var(0x30a) in Scenario.dll (TalkTo), the hero-death variables (0x213 + id).
@@ -116,20 +118,20 @@ Context: read CLAUDE.md, docs/coverage.md (K12), docs/engine/triggers.md §9 and
 4. Report: which maps change with the carried party (the six idle-lost maps, the branches of maps 70 and 80), and whether any map is unreachable in the campaign order. Tests: unlock order, carry-over round trip, recruit, deterministic chain hash. Regenerate the coverage report; update docs and CLAUDE.md.
 Headless: yes, fully. Commit.
 
-**K14 - The campaign in one window (shell, minimal).**
+**L2 - The campaign in one window (shell, minimal).**
 Goal: play the campaign from the first map without a command line.
-Context: K13, docs/engine/ui-layout.md §11.4 / §11.6, the open question on the main-menu chain to state `0x425`.
-1. REA: the main menu and the state chain to the new-game screen, the character screen `FUN_0049183e` (layout, widgets, the attribute budget), the options screen; spec with CONFIRMED / INFERRED marks.
-2. Build: start menu, character creation (name, four attributes, school), options (the audio flags, speed), the mission-complete / defeat dialogs wired to the K13 chain; between missions a plain list of the available locations and the party's stats stands in for the town until `town`.
+Context: L1, docs/engine/ui-layout.md §11.4 / §11.6, the open question on the main-menu chain to state `0x425`.
+1. REA: the PreCreate details L0 left open (name field, captions, confirm panel `0x48f3f0`), the character screen `FUN_0049183e` (layout, widgets, the attribute budget); spec with CONFIRMED / INFERRED marks. The main menu, the state chain to `0x425` and the options windows are done in L0 ([shell.md](engine/shell.md)).
+2. Build: character creation (name, four attributes, school) replacing the L0 new-game placeholder, the remaining options widgets (Tips, AutoCast, formation, retreat), the in-game menu's Game / Sound Options entries, the mission-complete / defeat dialogs wired to the L1 chain; between missions a plain list of the available locations and the party's stats stands in for the town until `town`.
 3. Headless: widget, layout and golden-screenshot tests, a scripted menu run through the first three missions with the objective oracle. Then **your play-test** of the menus and the chain (what to check goes into prototype.md).
 Commit.
 
-**K15 - Town mode spec (research, headless).**
+**L3 - Town mode spec (research, headless).**
 Goal: everything needed to build the town screens, decided before any drawing.
-Context: K13, K14, docs/engine/ui-layout.md §11.10, docs/formats/animation.md §4.11, docs/data/items.md §4, §12, §13.
+Context: L1, L2, docs/engine/ui-layout.md §11.10, docs/formats/animation.md §4.11, docs/data/items.md §4, §12, §13.
 1. REA of the town / hero-screen mode (`client+0x404 & 0x226`): the world-map screen `FUN_0048b419`, the hero screen windows (`FUN_0049a428`, `FUN_0049bd95`, `FUN_0049e187`), the shop and inn windows, the hero arrows (`0x414` / `0x415`), the town and shop speech triggers. Per window: layout per resolution, widgets, messages, the data it reads.
-2. Spec `docs/engine/town.md`: windows, state machine (enter town, talk, shop, inn, world map, leave), what the headless side can test, a list of what only your eyes can judge; refine the effort of `town` and split it into build steps (K16...).
+2. Spec `docs/engine/town.md`: windows, state machine (enter town, talk, shop, inn, world map, leave), what the headless side can test, a list of what only your eyes can judge; refine the effort of `town` and split it into build steps (L4...).
 Headless: yes (research and layout goldens); the build steps after it need a play-test. Commit.
 
-After K15: `save` (needs your format decision), then `cutscenes`.
+After L3: `save` (needs your format decision), then `cutscenes`.
 

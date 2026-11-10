@@ -1,5 +1,6 @@
-"""Audio settings file (docs/engine/audio.md 6).  `~/.config/allods2-engine/settings.json` (`$XDG_CONFIG_HOME`; `ALLODS2_SETTINGS` overrides), never in the repo.
-No pygame."""
+"""Settings file (docs/engine/audio.md 6, docs/engine/shell.md 5): the volumes of K11 and the game options the shell's options screens edit (the exe keeps
+them in the registry, written at exit `0x440cd2`).  `~/.config/allods2-engine/settings.json` (`$XDG_CONFIG_HOME`; `ALLODS2_SETTINGS` overrides), never in the
+repo.  No pygame."""
 
 import json
 import os
@@ -10,6 +11,7 @@ from .mix import mb_to_percent, percent_to_mb
 
 DEFAULT_PERCENT = 74            # about the exe's -700 mB default (`percent_to_mb(74)` = -676)
 ENV = "ALLODS2_SETTINGS"
+BOOLS = ("mute", "music_enabled", "day_night", "smoothing", "shadows", "lighting", "animation", "show_health", "flying_damage")
 
 
 @dataclass
@@ -19,6 +21,14 @@ class Settings:
     music: int = DEFAULT_PERCENT
     mute: bool = False
     music_enabled: bool = True
+    game_speed: int = 4                 # `game+0x41c`, 0..8, default 4 (CONFIRMED `0x48bfaa`, ctor `0x4822c5`)
+    day_night: bool = True              # ShowTimeFlow `0x622770` (default 1)
+    smoothing: bool = True              # `0x622768`
+    shadows: bool = True                # `0x5f17e8`
+    lighting: bool = True               # `0x5f17f0`
+    animation: bool = True              # `0x5f17ec`: off forces lighting off (`0x442fb7`)
+    show_health: bool = False           # ShowAllHitPoints (client `+0xab8`)
+    flying_damage: bool = True          # ShowFlyingHP (client `+0xabc`)
 
     def bus_mb(self, bus):
         """mB offset of a bus (`sfx`, `speech`, `music`)."""
@@ -48,7 +58,10 @@ def _clean(d):
         v = d.get(k)
         if isinstance(v, (int, float)) and not isinstance(v, bool):
             setattr(s, k, max(0, min(100, int(v))))
-    for k in ("mute", "music_enabled"):
+    v = d.get("game_speed")
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        s.game_speed = max(0, min(8, int(v)))
+    for k in BOOLS:
         if isinstance(d.get(k), bool):
             setattr(s, k, d[k])
     return s

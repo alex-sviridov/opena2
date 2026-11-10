@@ -116,6 +116,15 @@ class NullAudio:
     def stop_music(self):
         self._decide(self.director.music.stop())
 
+    def end_mission(self):
+        """The mission was left for a menu: every voice and loop stops (the shell keeps the device open)."""
+        self.director.mixer.stop_all()
+        self.director.loops.clear()
+        self._silence()
+
+    def _silence(self):
+        pass
+
     def set_music_enabled(self, on):
         self._decide(self.director.music.set_enabled(on))
 
@@ -255,6 +264,18 @@ class Audio(NullAudio):
     def _music(self, decision):
         if self.ok and self.music is not None:
             self.music.apply(decision)
+
+    def _silence(self):
+        if self.ok:
+            self.pg.mixer.stop()
+
+    def apply_settings(self, s):
+        """New stored values (the options screen): the buses, the music volume and its on / off take effect at once."""
+        for k in ("sfx", "speech", "music", "mute", "music_enabled"):
+            setattr(self.settings, k, getattr(s, k))
+        self.set_music_enabled(s.music_enabled)
+        if self.ok and self.music is not None:
+            self.music.set_volume()
 
     def handle_event(self, ev):
         return self.music is not None and self.music.handle_event(ev)

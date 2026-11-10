@@ -158,8 +158,8 @@ off screen is only attenuated (-41 dB at 30 cells). VERIFY BY EAR.
 | options: music off (`0x478`) | fade 2000 ms (`0x459d68(2000, 8000)`) if playing; music on (`0x477`) starts the current playlist |
 
 No crossfade and no silence gap between tracks; the only fade is the music-off one. Mission playlist order is the B00..B16 table `0x5f3bc8`; a theme id **is the index** into it.
-`MusicEnabled` 0 or `-nomusic` = never started. The engine has no menu / map / town screens yet: the player exposes `set_playlist(name)` for them and
-the mission rules above are the ones wired.
+`MusicEnabled` 0 or `-nomusic` = never started. The shell ([shell.md](shell.md)) requests `menu` (main menu, options) and `chrgen` (new game) through `set_playlist(name)`, the game screen starts the mission playlist and leaving a mission
+calls `Audio.end_mission()`; there are no map / town / credits screens yet.
 
 Engine: `engine/audio/music.py` `MusicState` (pure: `start_mission(zones)`, `tick(tick, view_cell)`, `track_ended()`, `stop()`, `set_enabled`), returning `Track(index | name)` decisions;
 `backend_pygame/audio.py` `MusicPlayer` streams the `.wav` through `pygame.mixer.music` (PCM stereo 22,050, no decode needed) and calls `track_ended()` on the end event.

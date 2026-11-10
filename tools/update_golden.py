@@ -347,6 +347,14 @@ def sound_hashes(install):
     return {p: hashlib.sha256(sound.load(p, fs).pcm_bytes()).hexdigest() for p in SOUNDS}
 
 
+def shell_hashes(install=None):
+    """{screen: sha256 of the RGB bytes} of the shell screens: startup, menu (idle, hover, held, disabled hover), new game (idle, hero hover, hero chosen), options."""
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    sys.path.insert(0, os.path.join(ROOT, "tests"))
+    from shell_scenarios import shell_golden
+    return shell_golden(install)
+
+
 def main(argv):
     only = None
     if len(argv) > 2 and argv[1] == "--only":                 # `--only interface,ui [INSTALL]`: refresh just these keys, keep the others
@@ -356,7 +364,7 @@ def main(argv):
     if only is not None:
         with open(GOLDEN, encoding="ascii") as f:
             out = json.load(f)
-        makers = {"interface": interface_hash, "ui": ui_hashes, "fog": fog_hashes, "minimaps": minimap_hashes, "arrows": arrows_hashes, "sound": sound_hashes, "audio": lambda install: audio_hashes()}
+        makers = {"interface": interface_hash, "ui": ui_hashes, "fog": fog_hashes, "minimaps": minimap_hashes, "arrows": arrows_hashes, "sound": sound_hashes, "shell": shell_hashes, "audio": lambda install: audio_hashes()}
         for k in only:
             out[k] = makers[k](install)
         _write(out)
@@ -376,6 +384,7 @@ def main(argv):
     out["fog"] = fog_hashes(install)
     out["arrows"] = arrows_hashes(install)
     out["sound"] = sound_hashes(install)
+    out["shell"] = shell_hashes(install)
     out["audio"] = audio_hashes()
     _write(out)
 

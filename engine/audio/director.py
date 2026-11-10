@@ -53,6 +53,8 @@ class Director:
 
     # -- resolution -------------------------------------------------------
     def path_of(self, sound):
+        if isinstance(sound, str):
+            return sound                                # a literal game path (the shell's `SFX\\ChrGen\\Ok.wav`)
         if isinstance(sound, tuple):
             return voice_path(sound)
         return self.table.path(sound) if self.table is not None else None

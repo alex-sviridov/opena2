@@ -225,7 +225,7 @@ def key_name(ev):
 
 def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Allods 2", max_frames=None,
         assets=None, options=None, debug=None, minimap=None, player_id=PLAYER_ID, commands=(), ai=True,
-        trace=False, hero_name="Hero", mission_id=None, frame_hook=None, sim_hook=None, audio=None, music_zones=()):
+        trace=False, hero_name="Hero", mission_id=None, frame_hook=None, sim_hook=None, audio=None, music_zones=(), in_shell=False):
     """Accumulator main loop: fixed-step sim, variable-rate drawing.  Returns the `Simulation` when the window
     closes (or after `max_frames`, for tests).  `layout`: `Layout` of the window size (the camera is built from
     `layout.viewport`).  `ai`: the monsters think (docs/engine/ai.md; `--no-ai` of the CLI).  F1-F3 and Shift+F4/F5 toggle the debug overlays, F4-F12 are the spell shortcuts, Ctrl+H the health bars, Ctrl+F cycles the formation.
@@ -241,7 +241,9 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     `frame_hook(frame, ui, world)` runs at the start of every frame (a test hook); `sim_hook(sim)` gets the `Simulation` once built
     (the session recorder of `play`).  `audio`: a `backend_pygame.audio.Audio` (None = silent run; docs/engine/audio.md): the loop drains `World.sound_events`
     with the real camera and fog, feeds the issued commands to its Director, plays the UI sounds `GameUi` queues, starts the mission playlist (`music_zones` =
-    `Map.music()` zones) and stops the music on victory."""
+    `Map.music()` zones) and stops the music on victory.  `in_shell`: the loop was started by the shell (docs/engine/shell.md): the display and the
+    audio device stay open for the next screen (no `pygame.quit()`, no `audio.close()`); the reason the loop ended is `sim.ui.quit`
+    (`menu`, `windows`, `victory`, `defeat`; None = the window was closed)."""
     options, debug = options or DrawOptions(), debug or DebugFlags()
     layout = layout or Layout.for_size(camera.view_w + 160, camera.view_h)
     screen = ensure_display(*layout.size)
@@ -520,6 +522,8 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     if audio is not None:
         if ui.quit == "victory":
             audio.stop_music()                                  # `0x48da92`: victory tears the mission down, the music stops hard
-        audio.close()
-    pygame.quit()
+        if not in_shell:
+            audio.close()
+    if not in_shell:
+        pygame.quit()
     return sim

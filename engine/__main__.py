@@ -8,6 +8,7 @@ reports and crash traceback; docs/superpowers/specs/2026-11-05-prototype-j4-desi
    python -m engine world-info MAP [--install DIR] [--strict]
    python -m engine world-dump MAP DEST.json [--install DIR]
    python -m engine minimap MAP DEST.png [--units] [--install DIR]
+   python -m engine [shell] [--size WxH] [--speed N] [--start menu] [audio flags]   (the shell: logos, main menu, new game, quit; docs/engine/shell.md)
    python -m engine play MAP [--out DIR] [--size WxH] [--speed N] [--difficulty 1|2|3] [--seed N] [--hero-name NAME] [--install DIR]
    python -m engine replay SESSION [--verify] [--audio-log CSV] [--install DIR]
    (run and play also take --mute, --sfx-volume N, --music-volume N, --speech-volume N (0-100, this run only; settings file: docs/engine/audio.md 6) and --no-audio)
@@ -337,53 +338,110 @@ def replay_cmd(a):
     return 0
 
 
-def play_cmd(a, parser):
-    """`play MAP`: the game's own start (map script, the map's hero, AI, fog, Medium), session files in a known place."""
-    from engine import session
-    a.cmd = "run"                                  # the run path's defaults, as a player has them
-    a.x = a.y = 256
-    a.no_shadows = a.no_light = a.no_smoothing = a.no_objects = False
-    a.debug, a.triggers, a.party, a.interface = "", True, 0, True
-    a.seed = a.seed if a.seed is not None else time.time_ns() & 0xFFFFFFFF
-    from allods2.cli import resolve_map
-    resolve_map(a.map, a.install)                  # a wrong MAP fails here, before a session directory exists
-    try:
-        directory = session.new_session_dir(a.map, a.out)
-    except OSError as e:
-        parser.error("session directory: %s" % e)
-    rec = session.Recorder(directory, a.map, a.seed, a.difficulty, a.size)
-    rec.start_logging()
-    print("session %s (seed %d)" % (directory, a.seed))
-    reason, error = "quit", None
-    try:
-        world, tv, camera, assets, opts, debug = _setup(a)
-        hero = world.units.get(world.players[1].main_hero)
+def game_options(opts, s):
+    """`DrawOptions` with the stored game options (docs/engine/shell.md 5): shadows, smoothing, object animations, lighting (animation off forces it off,
+    `0x442fb7`), health bars and flying damage numbers."""
+    import dataclasses
+    return dataclasses.replace(opts, shadows=s.shadows, smoothing=s.smoothing, animate=s.animation, lights=s.lighting and s.animation,
+                               health_bars=s.show_health, flying_damage=s.flying_damage)
+
+
+class PlaySession:
+    """One recorded play of a campaign map: the game's own start (map script, the map's hero, AI, fog) with the session files of `play`.  Used by
+    `play_cmd` (it owns the window) and by the shell's game screen (`in_shell`: display and audio stay open, `run` returns why the mission ended).
+    `start()` builds the World; `run()` plays; `finish()` writes final.json."""
+
+    def __init__(self, a, parser=None, assets=None, audio=None, in_shell=False):
+        from engine import session
+        self.a, self.assets, self.audio, self.in_shell = a, assets, audio, in_shell
+        a.cmd = "run"                                  # the run path's defaults, as a player has them
+        a.x = a.y = 256
+        a.no_shadows = a.no_light = a.no_smoothing = a.no_objects = False
+        a.debug, a.triggers, a.party, a.interface = "", True, 0, True
+        from engine.audio import settings as settings_mod
+        self.settings = getattr(a, "settings", None) or settings_mod.load()      # the options screens' file (shell.md 5): speed, shadows, lighting, ...
+        if getattr(a, "speed", None) is None:
+            a.speed = self.settings.game_speed
+        a.seed = a.seed if a.seed is not None else time.time_ns() & 0xFFFFFFFF
+        from allods2.cli import resolve_map
+        resolve_map(a.map, a.install)                  # a wrong MAP fails here, before a session directory exists
+        try:
+            self.directory = session.new_session_dir(a.map, a.out)
+        except OSError as e:
+            if parser is None:
+                raise
+            parser.error("session directory: %s" % e)
+        self.rec = session.Recorder(self.directory, a.map, a.seed, a.difficulty, a.size)
+        self.rec.start_logging()
+        print("session %s (seed %d)" % (self.directory, a.seed))
+        self.reason, self.error, self.world, self.sim = "quit", None, None, None
+        self.exit = None                               # the ui's quit reason when the loop ended (None = the window was closed)
+
+    def start(self):
+        a = self.a
+        self.world, self.tv, self.camera, assets, self.opts, self.debug = _setup(a)
+        self.assets = self.assets or assets
+        self.opts = game_options(self.opts, self.settings)
+        self.tv.set_time_flow(self.settings.day_night)
+        hero = self.world.units.get(self.world.players[1].main_hero)
         if hero is not None:                       # start with the hero in view
-            camera.move_to(hero.x * 32 - camera.view_w / 2, hero.y * 32 - camera.view_h / 2)
-        from engine.backend_pygame import window
-        from engine.sim import triggers, vision
-        vision.enable(world)
-        vision.vision_system(world, [])
+            self.camera.move_to(hero.x * 32 - self.camera.view_w / 2, hero.y * 32 - self.camera.view_h / 2)
+        from engine.sim import vision
+        vision.enable(self.world)
+        vision.vision_system(self.world, [])
         from allods2.common import as_fs
         from allods2.minimap import load_color_table, load_dot_colors, load_structure_sizes
         from engine.view import Minimap
-        mm = Minimap(world, load_color_table(as_fs(a.install)), load_dot_colors(as_fs(a.install)),
-                     load_structure_sizes(as_fs(a.install)))
+        self.mm = Minimap(self.world, load_color_table(as_fs(a.install)), load_dot_colors(as_fs(a.install)),
+                          load_structure_sizes(as_fs(a.install)))
+        return self
+
+    def run(self):
+        """Play until the loop ends; returns the recorded reason (`victory`, `defeat`, `quit`)."""
         import re
+        from engine.backend_pygame import window
+        from engine.sim import triggers
+        a, world = self.a, self.world
         mission = re.search(r"(\d+)(?:\.alm)?$", os.path.basename(a.map.rstrip("/\\")), re.I)
-        window.run(world, tv, camera, a.layout, a.speed, "Allods 2 - " + world.name, assets=assets, options=opts,
-                   debug=debug, minimap=mm, ai=True, hero_name=a.hero_name,
-                   mission_id=mission.group(1) if mission else None,
-                   frame_hook=rec.frame, sim_hook=rec.attach, audio=make_audio(a, assets), music_zones=map_music_zones(a))
-        reason = {"won": "victory", "lost": "defeat"}.get(triggers.result(world), "quit")
+        audio = self.audio if self.audio is not None else (None if self.in_shell else make_audio(a, self.assets))
+        sim = window.run(world, self.tv, self.camera, a.layout, a.speed, "Allods 2 - " + world.name, assets=self.assets, options=self.opts,
+                         debug=self.debug, minimap=self.mm, ai=True, hero_name=a.hero_name,
+                         mission_id=mission.group(1) if mission else None,
+                         frame_hook=self.rec.frame, sim_hook=self.rec.attach, audio=audio, music_zones=map_music_zones(a),
+                         in_shell=self.in_shell)
+        self.exit = sim.ui.quit if getattr(sim, "ui", None) is not None else None
+        self.reason = {"won": "victory", "lost": "defeat"}.get(triggers.result(world), "quit")
+        return self.reason
+
+    def crash(self, e):
+        from engine import session
+        self.reason = "interrupted" if isinstance(e, KeyboardInterrupt) else "crash"
+        self.error = session.crash_text()
+        print(self.error, file=sys.stderr)
+
+    def finish(self):
+        final = self.rec.finish(self.reason, self.error)
+        print("session %s: %s, tick %s" % (self.directory, self.reason, final.get("tick", "-")))
+        print("replay: python -m engine replay %s --verify" % self.directory)
+        return final
+
+
+def play_cmd(a, parser):
+    """`play MAP`: the game's own start (map script, the map's hero, AI, fog, Medium), session files in a known place; straight into the map (debug / J4)."""
+    play = PlaySession(a, parser)
+    try:
+        play.start()
+        play.run()
     except BaseException as e:                     # a crash or Ctrl+C: the session is still written
-        reason = "interrupted" if isinstance(e, KeyboardInterrupt) else "crash"
-        error = session.crash_text()
-        print(error, file=sys.stderr)
-    final = rec.finish(reason, error)
-    print("session %s: %s, tick %s" % (directory, reason, final.get("tick", "-")))
-    print("replay: python -m engine replay %s --verify" % directory)
-    return 1 if reason == "crash" else 0
+        play.crash(e)
+    play.finish()
+    return 1 if play.reason == "crash" else 0
+
+
+def shell_cmd(a, parser):
+    """No command (or `shell`): the shell, as the original starts: videos, main menu, new game, quit (docs/engine/shell.md)."""
+    from engine.backend_pygame import shell as backend
+    return backend.run(a, parser, PlaySession, make_audio, audio_settings)
 
 
 def add_audio_flags(q):
@@ -455,11 +513,20 @@ def build_parser():
     pl.add_argument("map")
     pl.add_argument("--out", help="session directory (default ~/.allods2/sessions/<map>-<time>)")
     pl.add_argument("--size", type=_size, default=(640, 480))
-    pl.add_argument("--speed", type=int, default=4, choices=range(9))
+    pl.add_argument("--speed", type=int, default=None, choices=range(9), help="game speed 0-8 (default: the settings file, 4)")
     pl.add_argument("--difficulty", type=int, choices=(1, 2, 3), default=DEFAULT_DIFFICULTY)
     pl.add_argument("--seed", type=int)
     pl.add_argument("--hero-name", default="Hero")
     pl.add_argument("--install")
+    sh = sub.add_parser("shell", help="the game as the original starts: videos, main menu, new game, quit (the default command)")
+    sh.add_argument("--size", type=_size, default=(640, 480), help="640x480 (default), 800x600 or 1024x768; the menus are centred 640x480 pictures")
+    sh.add_argument("--speed", type=int, choices=range(9), default=None, help="game speed 0-8 for this run (default: the settings file)")
+    sh.add_argument("--hero-name", default="Hero")
+    sh.add_argument("--seed", type=int)
+    sh.add_argument("--out", help="session directory of the games played (default ~/.allods2/sessions/<map>-<time>)")
+    sh.add_argument("--start", choices=("startup", "menu"), default="startup", help="first screen (default startup: the logos, then the menu)")
+    sh.add_argument("--install")
+    add_audio_flags(sh)
     mp = sub.add_parser("maps", help="list the campaign maps")
     mp.add_argument("--install")
     cv = sub.add_parser("coverage", help="what stands between each campaign map and full playability (out/coverage.csv, docs/coverage.md)")
@@ -483,6 +550,9 @@ def build_parser():
 
 def main(argv=None):
     p = build_parser()
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv or (argv[0].startswith("-") and argv[0] not in ("-h", "--help")):
+        argv = ["shell"] + argv                    # `python -m engine` starts the shell
     a = p.parse_args(argv)
     from allods2.cli import MapNotFound
     try:
@@ -503,6 +573,8 @@ def _dispatch(a, p):
         return objective_cmd(a)
     if a.cmd == "play":
         return play_cmd(a, p)
+    if a.cmd == "shell":
+        return shell_cmd(a, p)
     if a.cmd == "minimap":
         return minimap_cmd(a)
     if a.cmd == "world-info":

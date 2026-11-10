@@ -287,11 +287,11 @@ carry-over: a fresh level-1 party on map 100 is not what the designers balanced,
 5. **`cutscenes` last.** Independent of everything, no map and no state depends on it.
 - In parallel, and not a step: your play-through of map 32 and the playability check of the maps, then the VERIFY BY EAR list (audio.md). They produce the only evidence the engine cannot give itself.
 
-**Decision for you (not blocking K13-K15):** `save` as an own format (replay-based or a world dump: cheap, our files only) or as the original `game%d.sav` (compatible, needs the open server-stream research).
+**Decision for you (not blocking L1-L3):** `save` as an own format (replay-based or a world dump: cheap, our files only) or as the original `game%d.sav` (compatible, needs the open server-stream research).
 
-### 5. The next steps (prompts, numbered from K13)
+### 5. The next steps (prompts, numbered from L1)
 
-These are written out in [prototype.md](prototype.md#next-steps-k13-k15).
+These are written out in [prototype.md](prototype.md#next-steps-l1-l3).
 
 ## Proposal and comparison with docs/prototype.md (K0, 2026-11-09)
 

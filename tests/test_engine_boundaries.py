@@ -64,8 +64,13 @@ def test_audio_is_pure():
     assert hits("engine/audio", PYGAME + BACKEND + ("engine.view", "engine.ui", "engine.sim", "numpy")) == []
 
 
+def test_shell_is_pure_and_never_builds_a_world():
+    """docs/engine/shell.md 4: screens are UI-layer objects; only the backend's `start_game` service makes a World."""
+    assert hits("engine/shell", PYGAME + BACKEND + ("engine.world", "engine.sim", "engine.view")) == []
+
+
 def test_only_the_backend_imports_pygame():
-    for rel in ("engine/world.py", "engine/sim", "engine/view", "engine/ui", "engine/__init__.py", "engine/audio"):
+    for rel in ("engine/world.py", "engine/sim", "engine/view", "engine/ui", "engine/__init__.py", "engine/audio", "engine/shell"):
         assert hits(rel, PYGAME) == []
 
 

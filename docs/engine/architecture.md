@@ -19,6 +19,7 @@ Dependencies point down only (a layer imports layers with a smaller number).
 | 4 | `engine/sim/` | `Simulation.step` (+ command log), systems list (orders, selection, movement + the creature tick with the swing), `Command` / `SelectUnits` / `MoveUnits` / `AttackUnit` / `Stop` / `SetFormation` / `FollowPath` / `MoveTo` (debug), combat (`combat.py`, `combatstats.py`), `CommandQueue`, tick clock ([simulation](simulation.md), [combat](combat.md)) | 1-3 |
 | 5 | `engine/ui/` | `Layout`, `choose_cursor` / `choose_minimap_cursor`, `SelectionInput` (-> `SelectUnits`), `OrderInput` (-> `MoveUnits`, `AttackUnit`, `Stop`, `SetFormation`; pending mode, right button, minimap orders), `MessageLine` / `drain_no_way`, `ScrollInput`, `MinimapPanel`; J1: `GameUi` (panel mode, `ModalStack`, message sources, key / mouse routing), `widgets` (widget table), `info` (panel readers), `bar` (command cells), `modal` (dialogs), `messages` (`PickupWatch`) | 1-4, `engine.view` (camera, `pick`) |
 | 6 | `engine/view/` | `Camera`, coordinates, visible range, per-cell compositing, draw list, floating damage numbers (`damage.py`) | 1-3 |
+| 5b | `engine/shell/` | L0: the shell state machine (`GRAPH`, `Shell`, `Services`) and its screens (startup, main menu, options, new game, load, game) as UI-layer objects with a drawing description; pure, never imports pygame, world, sim or view | 1-2, `engine/ui`, `engine/audio` |
 | 7 | `engine/backend_pygame/` | window, surface cache, blitting, events, main loop, screenshot, `interface.py` (panels, `make_game_ui`), `panels.py` (portrait, info texts, bar overlays, dialogs), `cursor.py`, `text.py` (`draw_text`, `draw_text_exact`) | everything; the only layer that imports pygame |
 
 Rules (enforced by `tests/test_engine_boundaries.py`, an AST scan):
@@ -165,6 +166,9 @@ min/max height, because a cell can draw anywhere in
 `[32*row - Hmax, 32*(row+1) - Hmin]`. Pure over-estimate, never misses a pixel.
 
 ## 8. CLI
+
+`python -m engine [shell] [--size WxH] [--speed N] [--start menu] [audio flags]` (no subcommand) starts the shell: logos (placeholders), main menu, new game, options, quit ([shell.md](shell.md));
+`python -m engine play MAP` still jumps straight into a map (debug, J4 session files).
 
 `python -m engine run MAP [--x PX --y PX] [--speed 0..8] [--size 640x480|800x600|1024x768] [--install DIR]`
 (always the original interface, default 640x480) and `python -m engine screenshot MAP X Y DEST.png [--tick N]
