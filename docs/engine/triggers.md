@@ -404,8 +404,7 @@ section `#event<n>` of `main\text\mission<id>.txt`** (`sprintf("event%d")` at `0
 **`0x41d`** (`0x486a68`; also posted by the quit-mission confirmation `FUN_0048e764` when the player leaves a mission by the menu): game modes 1 / 3 (non-campaign) and 0 go
 elsewhere; in the campaign (mode 2): with latch `+0x3e4` clear it is "back to the main menu" (`FUN_0048f2e5` + `0x421`, no carry-over). With the latch set:
 the mission time `tick >> 4` is stored (`FUN_00493b40`, list `win+0x598`), `FUN_0041c897`, `FUN_004ebd5f` (the roster carry-over, [saves §4](../formats/saves.md)),
-`ScenarioLeaveLocation(&code)`, then if `Var(0x305) != 0` the hero of that number is recruited (`FUN_004f312a(server, Var(0x300), [Var(0x305)])`: template id `n*10 + 10000`, heroes 0x15..0x1e;
-**not decoded further**), a cutscene `code >= 0` is played (`FUN_0048f919`), and the next screen: chapter `Var(0x300) >= 0x78` -> the ending (`0x428`); else
+`ScenarioLeaveLocation(&code)`, then if `Var(0x305) != 0` the hero of that number is recruited (`FUN_004f312a(server, Var(0x300), [Var(0x305)])`, a one-element list at `0x486c9a`; decoded in [11.3](#113-recruit-routines)), a cutscene `code >= 0` is played (`FUN_0048f919`), and the next screen: chapter `Var(0x300) >= 0x78` -> the ending (`0x428`); else
 `ScenarioIsTownAvailable(0)` (any town in the available list) -> the town / world-map screen (`FUN_0048b419`); else `ScenarioEnterLocation(first available location)` and `0x468` (start it).
 `campaign.press` returns these as `Outcome(kind, cutscene, recruit, location)`; the recruit and the roster carry-over are for the shell to apply.
 
@@ -414,10 +413,163 @@ the mission time `tick >> 4` is stored (`FUN_00493b40`, list `win+0x598`), `FUN_
 locations are `(type, id)` objects (type 1 mission, 2 town; the towns 1-3 at `0x10035f60`, `0x10035f78`, `0x10037568`); `ScenarioNewGame` empties the available list (`0x10035f90`), adds town 1
 and enters it; `ScenarioEnterLocation` zeroes the 16 variables `0x2f0..0x2ff` (the sub-objectives) and stores the location. `ScenarioLeaveLocation(&code)` (`code := -1`): no location -> 0; a town
 -> leave (town 1 also leaves the available list); a mission `n` (`0x10001da5`) -> clear Var(`0x305`); the location leaves the list; `Var(0x380 + n) := 1`; unlocks (`campaign.UNLOCK`: 10 -> mission 20,
-20 -> town 2 and mission 21 when `Var(0x303)`, 31 -> 32, 40 -> missions 50 and 60 and `Var(0x305) := 0x17`, 50 -> town 3, 60 -> mission 80); cutscene codes 10 -> 1, 30 -> 2, 70 -> 3 when
+20 -> town 2 and mission 21 when `Var(0x304)` (a map-20 script variable, [11.1](#111-variable-map); an earlier draft said `0x303`), 31 -> 32, 40 -> missions 50 and 60 and `Var(0x305) := 0x17`, 50 -> town 3, 60 -> mission 80); cutscene codes 10 -> 1, 30 -> 2, 70 -> 3 when
 `Var(0x309) == 0 and Var(0x30a) != 0`, 80 -> 3 when the reverse, 110 -> 4 (`Var(0x30b) == 0`) or 5; `Var(0x300) += 10` when `n % 10 == 0`; then the shop tables
-([items §13](../data/items.md#13-campaign-town-shops-scenariodll)). Not modelled: the "new / updated" markers of the 20-word tables at `0x214` / `0x228`, the other `Var(0x30x)` flags that gate the optional unlocks, and
-the shop tables.
+([items §13](../data/items.md#13-campaign-town-shops-scenariodll)). The rest of the DLL state (variables, mercenary markers, town dialogue, the talk-offered missions) is in 11.1-11.5. Not modelled: the shop tables.
+
+### 11.1 Variable map
+
+CONFIRMED by the disassembly of `Scenario.dll` (every store to `0x10036c28`-`0x10036c5c`, the table loops over `0x10036824`-`0x100368e0`), by every immediate `push 0x2xx / 0x3xx` before `[0x62729c]` / `[0x627298]` in the exe
+(`0x41050f`, `0x444496`, `0x486c88`, `0x487e43`-`0x487e61`, `0x4896dc`, `0x489700`, `0x48ba6f`, `0x493da3`, `0x493de3`, `0x49b8af`, `0x4bf0ba`, `0x4cad3c`, `0x4cd0fb`, `0x4cdd0a`, `0x4d07e7`, `0x4d30ed`-`0x4d3183`,
+the script check / instant `0x577789` / `0x577976`), and by a scan of every instant 35 and check 23 of the 46 campaign maps. `Var(n)` is `0x10036028 + 4n`; `D(n)` = `Var(0x380 + n)` = "mission `n` completed".
+
+| Var | Meaning | Written by | Read by |
+|---|---|---|---|
+| `0x200 + k` (k = 0..19) | mercenary (hero number) `k + 1` is **hired** for the next mission | `TalkTo` type 1 toggles `Var(0x1ff + A)`; every mission completion zeroes all 20 | `EnterInn` (bit 31 of the word), exe `0x487e43` (11.3) |
+| `0x214 + k` | mercenary `k + 1`: 0 not on offer / dead, 1 on offer, 2 on offer again (hired for the last mission and still alive at its end) | completion cases (:= 1, below), `TalkTo` (below), completion loop (1 -> 2 when hired), the client's death hook (:= 0, [11.4](#114-hero-death-variables)) | `EnterInn`, exe `0x487e5a` |
+| `0x228 + k` | town (2 or 3) that offers mercenary `k + 1` | same cases | `EnterInn` (listed only in that town) |
+| `0x2f0`-`0x2ff` | sub-objectives | map scripts, zeroed by `ScenarioEnterLocation` | script check 24, exe `0x444496` |
+| `0x300` | chapter `C` (10 at start, +10 per main mission) | completion | everywhere |
+| `0x301` | 1 once `TalkTo` type 3 offered mission 10 (`B == 10`) | `TalkTo` | exe `0x4cad3c`, `0x4cd0fb`, `0x4cdd0a`: town-screen routines (UI, not decoded; INFERRED a first-mission tutorial gate) |
+| `0x302` | 1 after mission 70; 2 after `TalkTo(0x4e02a3)` | case 70, `TalkTo` | `EnterInn`; exe `0x4bf0ba` (`FUN_004bf096` returns `Var(0x302) != 0`, always 1 outside the campaign mode; a town-3 UI gate, INFERRED) |
+| `0x303` | 1 after mission 50 | case 50 | `EnterInn` (town 3: offers missions 70 and 71) |
+| `0x304` | 1 when the map-20 script instant "Get mission 21" ran | **map 20** (instant 35) | case 20 (adds mission 21) |
+| `0x305` | hero number the next mission end recruits | case 40 := `0x17`; cleared at the start of every completion | exe `0x486c8d` (11.3) |
+| `0x306` | 1 after mission 60; 2 after `TalkTo` type 0, A = 5 | case 60, `TalkTo` | `EnterInn` (town 3, C > 60: offers word `0x4f0005`) |
+| `0x307` | **never written** (exe, DLL, maps): non-zero would clear itself and rebuild the available list with about 40 towns / missions (INFERRED debug unlock) | - | DLL `0x10001dbc` |
+| `0x308` / `0x30d` | hero is a mage / is female | character creation ([shell §3.3](shell.md), exe `0x4896dc` / `0x489700`) | `EnterInn` (which of the four slot missions 74-77 / 84-87 / 93-96, 11.2) |
+| `0x309` / `0x30a` | mission 70 / mission 80 has been completed | **only** DLL cases 70 / 80 (no other store to `0x10036c4c` / `0x10036c50`; no exe push of `0x309` / `0x30a`; no instant of any map) | cases 70 / 80 (cutscene 3 when the *other* mission was done first); **map 80** check "Was in 70 mission" = `Var(0x309)`, **map 70** check "Was in 80 mission?" = `Var(0x30a)` |
+| `0x30b` | 0 knights win / 1 druids win | **map 110** instants "Set scenario: knights / druids win" | case 110: cutscene 4 (0) or 5 (1) |
+| `0x30c` | 1 = "Give 52 mission" | **map 50** instant | case 50: adds mission 52 (location `0x100373a8`, type 1, id `0x34`) |
+| `0x380 + n` | `D(n)` | completion (`0x10002140`) | `EnterInn` gating |
+
+Maps 70 / 80 use the flags for the crown: the six crown triggers of map 70 ("Hero / Knight / Dina receive crown12" vs "... crown!") and of map 80 ("Crown - hero" vs "Full crown - hero", heroes 10001-10003) are the same trigger split by
+the flag test (the first crown piece with message, versus the full crown with `Mess10-12` / `Mess5-7`); whichever of the two missions is played second finds the flag set (INFERRED reading of the trigger names; the checks and writers CONFIRMED).
+
+**Mission completion `0x10001da5(n, ...)` in order (CONFIRMED)**: (1) `Var(0x305) := 0`; (2) `Var(0x307)` block (never reached); (3) for k = 0..19: if `Var(0x214 + k) != 0` then it becomes 2 when `Var(0x200 + k) != 0` else 1, and **`Var(0x200 + k) := 0`** (every hire flag is cleared, so
+a mercenary serves one mission); (4) the current location leaves the available list, current := none; (5) `Var(0x380 + n) := 1`; (6) the per-id case below (the loop of (3) ran first, so a marker created by a case is not promoted in the same call); (7) `Var(0x300) += 10` when `n % 10 == 0`; (8) the price caps ([items §13](../data/items.md#13-campaign-town-shops-scenariodll)).
+Besides the unlocks and cutscenes already listed above, the cases write:
+
+| `n` | variables written | mercenary on offer afterwards (`Var(0x214 + k) := 1`, `Var(0x228 + k)`) |
+|---|---|---|
+| 20 | mission 21 only when `Var(0x304)` | hero 1 crossbowman, town 2 |
+| 30 | - | - |
+| 40 | `Var(0x305) := 0x17` | - |
+| 50 | `Var(0x303) := 1`; mission 52 when `Var(0x30c)` | hero 3 druid, town 3 |
+| 60 | `Var(0x306) := 1` | hero 6 mage, town 2 |
+| 70 | `Var(0x309) := 1`, `Var(0x302) := 1` | hero 4 troll, town 3 |
+| 80 | `Var(0x30a) := 1` | - |
+| 100 | - | hero 7 catapult, town 2 |
+
+Hero 2 (knight, town 2) is switched on by `TalkTo(A = 0x16, B = 30)` and hero 5 (orc, town 3) by `TalkTo` type 0, A = 5 (11.2); hero 1..7 are the only mercenaries that exist ([11.3](#113-recruit-routines)); hero numbers 8..20 have no template.
+
+### 11.2 Town dialogue: EnterInn and TalkTo
+
+The town screens are the only callers (CONFIRMED by the xrefs of `[0x62746c]` = ordinal 3 `TalkTo`: `0x49b91d`, `0x49ba0c`, `0x49bb12` (the NPC dialogue window), `0x4b9117`, `0x4bec83`, `0x4c0995` (the three shop windows, which pass the word at `window+0x160`;
+text `shop\npc31m<B>`); and of `[0x627480]` = ordinal 9 `EnterInn`: `0x48ba0f`, `0x49ae7a`, `0x49c5d5`, `0x49e6cd`). **No mission, script or in-game code calls either.** In a headless campaign the town does not exist, so the stand-in of 11.5 must call them.
+
+**A dialogue word** (u32): `A` = bits 0-15 (the NPC: a human / monster `serverID` or a hero number), `B` = bits 16-27 (the text variant, or for type 3 the mission it offers), type `T` = bits 28-30, bit 31 = "taken" (hired / opened; set by the windows, ignored by `TalkTo`).
+The window shows the text key `npc<A>talk<B>` (`0x5f43e8`), `npc<A>accept<B>` (`0x5f43c8`) / `npc<A>reject<B>` (`0x5f43d8`) for hire words; `A` of a type-3 / type-0 word also names the creature drawn in the scene (the `FUN_004f312a` call of 11.3).
+
+**`ScenarioEnterInn(words, &count)` (`0x1000286b`, CONFIRMED; reproduced by running its instructions on every chapter, town and flag state)**: `count := 0`, then by chapter `C` (jump table `0x1000322a`) and current town `T` (`ScenarioGetCurrentLocation` id)
+append, in this order (`Dk` = `D(k)`; an offer is listed only while its mission is not done):
+
+| `C` | town | words `T<type>/A:B` | gate |
+|---|---|---|---|
+| 10 | all | `T0/0xcf:9`, `T0/0x83c:8`, `T3/0x205:10` | none (mission 10 is offered at every visit) |
+| 20 | all | - | - |
+| 30 | all | `T3/0x16:30`, `T3/0x83c:31`, `T0/0x83e:39` | 31 until D31 |
+| 40 | all | `T3/0x16:40`, `T0/0x83c:48`, `T3/0x7df:41`, `T3/0x83f:42`, `T3/0x7d4:43` | 41 / 42 / 43 until their D |
+| 50 | all | `T0/0x17:49`, `T3/0x7e3:53` | 53 until D53 |
+| 60 | 2 | `T3/0x7d6:61`, `T3/0x83d:63` | 61, 63 until their D |
+| 70 | 2 | `T3/0x7d4:73`, `T3/0x83c:72` | until their D |
+| 80 | 2 | `T3/0x7d9:82` (non-mage) or `T3/0x7da:81` (mage) | until D |
+| 90 | 2 / 3 | 2: `T3/0x7d4:90`; 3: `T3/0x2a9:91`, `T3/0x7d3:92` | until D |
+| 100 | 2 / 3 | 2: `T3/0x7d6:100`, `T3/0x83d:102`, `T3/0x7d5:103` (when D91); 3: `T3/0x2a9:101` | until D |
+| 110 | 2 | `T3/0x7d6:110` | - |
+| 60-110 | 3 | `T3/0x2a8:70`, `T3/0x2a9:71` (C 60-80, when `Var(0x303)`); `T0/0x5:79` (C > 60, `Var(0x306) == 1`); `T0/0x2a3:78` (C > 60, `Var(0x302) == 1`) | 70 / 71 until D |
+| >= 60 | 2 | `T3/0x16:62` when D53 and not D62 (C >= 60); the **class slot** `T3/0x7e6:B` (below) | |
+
+Class slot (C >= 60, town 2): `B` = 74 + s while D63 and none of D74-D77; 84 + s while one of D74-D77 and none of D84-D87; 93 + s while one of D84-D87 and none of D93-D96, with `s` = 0 (not mage, not female), 1 (not mage, female), 2 (mage, female), 3 (mage, not female) (`Var(0x308)`, `Var(0x30d)`).
+Then, for every k = 0..19 with `Var(0x228 + k) == T`: `Var(0x214 + k) == 1` appends `(k + 1) | 0x10000000 | (Var(0x200 + k) > 0) << 31`, `== 2` appends `(k + 1) | 0x20000000 | ...` (the mercenary offers). Town 1 is never in a mercenary table. The table lists each row's words as the routine yields them when the row's own conditions hold and every other `Dk` / variable is 0 (the emulation sweeps of all chapters x towns x flag states confirmed no other word exists).
+
+**`ScenarioTalkTo(word)` (`0x100032c0`, CONFIRMED)**, `T = (word >> 28) & 7`:
+
+| `T` | effect |
+|---|---|
+| 0 | `A == 5`: `Var(0x218) := 1`, `Var(0x22c) := 3`, `Var(0x306) := 2` (orc on offer in town 3). `A == 0x2a3 && B == 0x4e`: `Var(0x302) := 2` and town 3 block 3 flags `|= 0x80000` (quality 4 goods, [items §13](../data/items.md#13-campaign-town-shops-scenariodll)). Any other `A`: none |
+| 1 | `Var(0x1ff + A) := (Var(0x1ff + A) == 0)`: toggles the hire flag of mercenary `A` (hire / dismiss; the window sets / clears bit 31 of its copy at `0x49b8fe` / `0x49b9cc`) |
+| 3 | the offered mission `B` joins the available list when it is a known location and not yet in it (`0x1000192f`); `B == 10` sets `Var(0x301) := 1`; `A == 0x16 && B == 30`: `Var(0x215) := 1`, `Var(0x229) := 2` (knight on offer in town 2) |
+| 2, 4-7 | none |
+
+Missions offered by a type-3 word (union over all chapters, towns and flag states, run on the routine): 10, 30, 31, 40-43, 53, 61-63, 70-77, 81, 82, 84-87, 90-96, 100-103, 110; the completion cases add 20, 21, 32, 50, 52, 60, 80 and towns 2 / 3
+([campaign.UNLOCK](#11-the-end-of-the-mission-scenariodll-and-the-client-flow)). **Missions 51 and 83 are named by no case and no word** (INFERRED unreachable in the shipped campaign; the maps exist). Type-0 words found: `B:A` = 8:0x83c, 9:0xcf, 39:0x83e, 48:0x83c, 49:0x17, 78:0x2a3, 79:0x5.
+
+### 11.3 Recruit routines
+
+Two routines build units from a list of dialogue words / hero numbers; both use the low 16 bits `n` of each element. Server object in `ECX`, chapter `C` = `Var(0x300)` on the stack.
+
+**Template choice (identical in both, CONFIRMED asm `0x4f31ca`-`0x4f3325`, `0x4f36c0`).** `H(x)` = the humans table lookup `FUN_004fd5ad(x)` (data.bin group 6 by `serverID`), `M(x)` = the monsters table `FUN_004fd62f(x)` (group 5); both return a 1-based index, 0 = none.
+1. `idx = H(10000 + 10 n)`; if 0: `idx = M(10000 + 10 n)` and the unit is a *monster* (0x208-byte class, ctor `FUN_0050dd41`), else a *human* (0x254 bytes, ctor `FUN_005143e4(record, flag, 0)`).
+2. *(only `FUN_004f312a`)* if `idx` is still 0: `idx = H(n)`, if 0: `idx = M(n)`, monster := true (a plain NPC such as `n = 0x83c`; `FUN_004f36c0` has no such fallback).
+3. If step 1 found a record: if **any** `10000 + 10 n + j`, `j = 1..9`, exists in the same table (a *variant series*), then `v = lookup(10 n + 9998 + C / 10)` (integer division) in the same table; **when `v != 0` it replaces `idx`**.
+   So the record of chapter `C` is `10000 + 10 n + (C / 10 - 2)` when it exists, else the base: `C = 10` gives `9999 + 10 n` (absent, base), `C = 20` the base itself, `C = 30` the variant `+1`. Worked example: knight (`n = 2`), `C = 50`: `20 + 9998 + 5 = 10023` = `2MercenaryKnight50` (blade 43); `C = 20`: base 10020 (blade 25).
+4. The unit gets `+0x14c := n`, `unit+0x14 := the local human player` (`FUN_0053b930` of `[0x68d2c4]`), and **no map position**.
+
+Which hero numbers exist (CONFIRMED by the data.bin records; `serverID`, variants from chapter, main skill by variant):
+
+| `n` | role | base id | variants | what they hold |
+|---|---|---|---|---|
+| 1 | crossbowman (human, type 15) | 10010 | 10011-10019 = C 30-110 | HP 90; shooting 23 (C <= 30), 32, 41, 50, 59, 68, 77, 86, 95; equipment strings per variant |
+| 2 | knight (human, type 5) | 10020 | 10021-10029 = C 30-110 | HP 50; blade 25, 34, 43, 52, 61, 70, 79, 88, 97 |
+| 3 | druid (monster, type 100) | 10030 | 10034-10039 = C 60-110 | HP 80-130, mana 350-450, five school skills; the base (C < 60) is stronger than the C 60 variant (quirk) |
+| 4 | troll (monster, 102) | 10040 | 10045-10049 = C 70-110 | HP 800-950 |
+| 5 | orc (monster, 101) | 10050 | 10054-10059 = C 60-110 | HP 200-280 |
+| 6 | mage (human, type 23) | 10060 | 10064-10069 = C 60-110 | HP 30, mana 70, bludgeon 50-95, pike 40-75, shooting 30-55, spell mask grows |
+| 7 | catapult (monster, 26) | 10070 | 10079 = C 110 | HP 250 |
+| 0x15 | the player's own hero | 10210-10213 `Start_*` | not used (see `FUN_004f254b`) | [§9.3](#93-a-fresh-character-fun_004f254bplayer-str-dex-mind-spirit-school-flags-confirmed) |
+| 0x16 | Fighter_Hero ("the knight", scripts 10002) | 10220 | none (10221-10229 absent) | blade 25, shooting 10, two-handed sword, steel armour: **the same at every chapter** |
+| 0x17 | Mage_Hero ("Dina", scripts 10003) | 10230 | none | mage, the record's spell mask and equipment, the same at every chapter |
+
+(The chapter-scaled series is a data effect only: nothing in the exe levels a recruit; the map loader's difficulty tweak, [progression §6](../data/progression.md), runs for map units and not for these.) Level, XP, equipment are those of the record:
+HP / mana start at the maximum (`FUN_00514cf2` tail `0x514c03`), the equipment strings are created by the constructor like those of a map unit.
+
+**`FUN_004f312a(server, C, list)` (the story-hero recruit and the town scene).** For every word `w` of the list (`n = w & 0xffff`):
+* `n` in `0x15..0x1e` (**story hero**): walk the local player's unit list (`player+0x24`); **if a unit with `+0x14c == n` is already there nothing happens**. Else the unit is created through the *human* ctor `FUN_005143e4(H record, flag = 1, 0)` (flag 1 = hero style: `+0xe := 0x21 + gender` / `0x23 + gender`, so it survives the carry-over; INFERRED link from the constructor's second argument to the flag tested at `0x514bac` in `FUN_00514cf2`, which CONFIRMED selects that `+0xe`, [saves §4](../formats/saves.md#4-carry-over-between-campaign-maps-single-player-confirmed)),
+  `+0x14c := n`, `unit+4 := FUN_004f8d90()` (a free network id, [§9.3](#93-a-fresh-character-fun_004f254bplayer-str-dex-mind-spirit-school-flags-confirmed)), `unit+0x14 := player`, appended to the player's unit list (`FUN_0052b22a`), a new command group made and given the unit
+  (`FUN_0052ae43`, `FUN_0053d690`, `FUN_0052af8c`), idle brain objects (`FUN_0056dba1` / `FUN_00570f2b`, which do not read their `this`: the world pointer is already 0 at that moment), and the full stat message `FUN_00502019(unit, player, -1, 0xffb)`.
+  The unit is **not on the map**; the next `FUN_004f2c83` places it ([§9.2](#92-fun_004f2c83player-confirmed-disassembly-0x4f2c83-0x4f3127)), after the main hero and the units already in the list.
+* any other `n` (a mercenary number, an NPC id): a transient creature with the same template rule (human ctor with flag 0, or the monster ctor) is built, given an id (`FUN_0052b246`), announced to the client (`FUN_00502019`), and **at the end of the call every such id is released** (`FUN_004f8d3d`): INFERRED, only the town scene (the portraits the dialogue shows); no roster effect.
+Callers (xrefs): **(a)** the mission end `0x486c9a` with the one-element list `[Var(0x305)]` when it is non-zero: only `0x17` ever (case 40), so after mission 40 `Mage_Hero` is created **only when he is not in the player's list** (CONFIRMED test); map 40 holds one `Mage_Hero`, owner 3, which a script gives to the human ([§9.5](#95-the-hero-look-up-filter-fun_00562518-confirmed-0x562518-0x562632)), so INFERRED the recruit is the safety net for the case that he is dead or was never given;
+**(b)** the inn handler `0x48ba81` (`FUN_0048b885`, game mode 2) with the whole `EnterInn` list: every `A` in `0x15..0x1e` of the list is a story hero created at the first inn visit that lists him: `0x16` Fighter_Hero at the first visit after chapter 30 begins (`T3/0x16:30`), `0x17` at C = 50 (`T0/0x17:49`).
+
+**`FUN_004f36c0(server, C, list)` (the mercenary hire, CONFIRMED asm)**: for each `n` of the list the template rule above (no step 2), always built **without** flag 1 (human: `FUN_005143e4(record, 0, 0)`, so `+0xe` stays the template's own type 15 / 5 / 23; monsters 100 / 101 / 102 / 26: all outside `0x21..0x3f`),
+`+0x14c := n`, `unit+4 := a free id`, `unit+0x14 := player`, appended to the unit list **with no duplicate test**, own command group, stat message. Caller: the **start-mission message `0x468`** (`FUN_004852d8` `0x487dea`; only when `ScenarioGetCurrentLocation` has type 1 = mission): the list
+is `k + 1` for k = 0..19 ascending **where `Var(0x200 + k) != 0 and Var(0x214 + k) != 0`** (hired and alive, `0x487e43`-`0x487e6b`); when it is not empty `FUN_004f36c0(server, Var(0x300), list)` runs, then the game starts (`FUN_0048c8a3(0)`: map load, party placement of §9). The mercenaries live for one mission:
+the carry-over deletes them (their `+0xe` is outside `0x21..0x3f`), `Var(0x200 + k)` was zeroed by the completion, and they have to be hired (and paid, if ever) again.
+
+### 11.4 Hero-death variables
+
+`Var(0x213 + id)` for `id = 1..20` is `Var(0x214 + k)`, `k = id - 1`: the "on offer / alive" marker of mercenary `id` ([11.1](#111-variable-map)).
+* **Writer (CONFIRMED, exe `0x41050f`, the client's HP update of `FUN_0040d9b2`)**: the client keeps a death stage `view+0x184` from the HP word `view+0x104`: 5 below `-600`, 4 below `-40`, 3 below `-20`, 2 below `-10`, 1 when `<= 0`, else 0. While the stage is **>= 2** (HP <= -11 as the client sees it), the view's `+0x1dc` (the unit's `+0x14c`)
+  is in `1..0x14`, `ScenarioSetVar(0x213 + +0x1dc, 0)` runs; there is **no owner test**, so any unit with such a hero number counts (only mercenaries have one: no campaign map unit has `serverID` 1..20 or `10010`-`10209` and the story heroes are above `0x14`; checked on the 4,212 units of the 46 maps).
+  INFERRED: stage 2 is reached by the corpse decay after the removal (server removal at HP <= -10, [combat §12.1](combat.md)), so the marker is cleared a few ticks after the death, and not at all when the mission ends first.
+* **Readers**: the completion loop (a 0 marker is skipped: no promotion to 2, the hire flag is cleared anyway), `EnterInn` (a 0 marker is never listed again: **a dead mercenary is gone for the campaign**), the hire list of the `0x468` handler (a hired mercenary whose marker is 0 is not created).
+  **No exe routine other than these, no map script and no Scenario.dll code reads them** (scan: the only maps that read an array variable are 20 / 50 / 70 / 80 / 110 with `0x30x` and the sub-objectives).
+* Story heroes (`0x15..0x1e`) and the main hero have no marker: when dead they have left the unit list (removal, [saves §4](../formats/saves.md#4-carry-over-between-campaign-maps-single-player-confirmed)). The recruit tests only `+0x14c == n` in the list, so a dead `Fighter_Hero` is created again (fresh base record, no XP) at the next inn visit whose
+  `EnterInn` list contains a word with `A = 0x16` (C = 30, 40 and from 60 with D53), a dead `Mage_Hero` by `Var(0x305)` at the end of mission 40 or by `T0/0x17:49` at C = 50, otherwise not.
+
+### 11.5 What a headless campaign needs (L1: built, [campaign.md](campaign.md))
+
+Engine behaviours that follow from 11.1-11.4 and [saves §4](../formats/saves.md#4-carry-over-between-campaign-maps-single-player-confirmed):
+1. **Carry-over** at a mission end: keep every unit with type `0x21..0x3f` (all human heroes: the main hero, `Fighter_Hero`, `Mage_Hero`) with level / XP / skills / pools / items / spells / name / hero number; HP, mana := max, death flag, orders, targets, applied effects cleared; delete every other unit (mercenaries, summons, monsters); gold, statistics and the variable array stay; the dead (removed) are gone; a dying unit still listed is revived; `player+0x41 := 0` so the next map places the roster again (`party.place_party` with the roster instead of fresh heroes).
+2. **Order at a mission end**: carry-over -> `ScenarioLeaveLocation` (completion order of 11.1, which also clears `0x305` and the hire flags) -> recruit `[Var(0x305)]` if non-zero -> cutscene -> next screen.
+3. **Recruit rule per chapter**: story heroes are always the base record (10220 / 10230): `Fighter_Hero` when a type-3 word `A = 0x16` is listed and he is absent (first at C = 30, again at C = 40 and from C = 60 when D53 is set and 62 not done); `Mage_Hero` at the end of mission 40 (`Var(0x305)`) and at C = 50 (`T0/0x17:49`) when absent;
+   mercenaries (hero 1-7) by the variant of 11.3 for `C` at the start of every mission for which they are hired and alive, created after the roster, in ascending hero number.
+4. **TalkTo stand-in** (the town does not exist): after the carry-over and `LeaveLocation`, **visit** the town(s) that `ScenarioIsTownAvailable` allows: `words = EnterInn(C, town, flags)` (the table of 11.2, reproduced by the rules, or the DLL routine re-implemented), create the story heroes among them (`A` in `0x15..0x1e`), then `TalkTo` every word with type 0 or 3
+   (**DECISION** for the policy: accept every offer; the outcome only adds missions and sets the markers). Type 1 / 2 words are mercenary offers: hire by `TalkTo(word)` (toggle `Var(0x1ff + A)`) according to a policy (none by default; the hire price is an open question). Without the stand-in the missions 10, 30, 31, 40-43, 53, 61-63, ... can never be reached (mission 10 needs `TalkTo(0x300a0205)` before anything is available).
+5. **Death hook**: when a unit with `+0x14c` in 1..20 reaches client HP <= -11 set `Var(0x213 + n) := 0` (the engine's corpse decay must reach it or the removal must set it directly: DECISION, the visible difference is only the tick).
+6. **Fix the unlock table**: `campaign.py` tests `Var(0x303)` for mission 21 where the DLL tests `Var(0x304)` (written by map 20); case 50 also adds mission 52 when `Var(0x30c)` and sets `Var(0x303)`, case 60 `Var(0x306)`, case 70 `Var(0x302)`; cases 20 / 50 / 60 / 70 / 100 put the mercenary markers of 11.1.
 
 ## 12. J3: win and lose on map 32
 
@@ -443,9 +595,13 @@ new-game chain (open question "Main shell"). **Unimplemented kinds** log `not im
 Tests: `tests/test_engine_mission32.py` (win by attacking the sword carrier, script loss, hero loss, replay hash, no unsupported kinds, the once-only report).
 
 **Left for phase K** (documented no-ops or absent): variable references 8000-9999 (never written in the exe), unit names `>= 11001`, instant 37 (set music) and the other unnamed kinds ("Bad instant"),
-hero recruit `FUN_004f312a`, roster carry-over, campaign variables `0x301`-`0x30d`, the start menu / new-game screen (the UI sounds of the `0xfe` / `0xfd` / `0xfa` messages are built in K11, [audio §2.5](audio.md)).
+hero recruit `FUN_004f312a` / `FUN_004f36c0` and the roster carry-over (decoded, L1), the town stand-in (11.5), the start menu / new-game screen (the UI sounds of the `0xfe` / `0xfd` / `0xfa` messages are built in K11, [audio §2.5](audio.md)).
 
 ## Open questions
 
-* The recruit of `FUN_004f312a` (hero Var(0x305) at a mission end), the roster carry-over `FUN_004ebd5f` (saves §4: per-player upkeep `FUN_004f3cad`, `FUN_004f3d14`) and the campaign variables other than `0x300` / `0x305` / `0x380+` (who writes `0x301`-`0x30d`, `0x303` for mission 21, the markers at `0x214` / `0x228`).
+* L1 open questions (order of the `EnterInn` blocks, the hire call of a re-offered mercenary): [campaign 4](campaign.md#4-open-questions).
+
+* Who sets the word `window+0x160` that the three shop windows pass to `TalkTo` (`0x4b9117`, `0x4bec83`, `0x4c0995`; text `shop\npc31m<B>`), and what the town-screen routines `0x4cad3c` / `0x4cd0ea` / `0x4cdd0a` (Var(0x301)) and `0x4bf096` (Var(0x302)) switch on. UI only; no variable is written there ([11.1](#111-variable-map)).
+* Whether the hire price of a mercenary is charged anywhere: `TalkTo` type 1 only toggles `Var(0x1ff + A)` ([11.2](#112-town-dialogue-enterinn-and-talkto)); no gold write was found in the dialogue windows' hire path (`0x49b8a6`, `0x49b989`), VERIFY IN GAME.
+* The purpose of `Var(0x307)` (reset of the available list, never written by the exe, the DLL or any map; INFERRED a debug / cheat unlock) and of the exact order of the 40 locations it adds ([11.1](#111-variable-map)).
 * The story window is decoded: [ui-layout 11.5](ui-layout.md#115-on-screen-messages); its UI sounds (table ids 16 / 14 / 14) are built ([audio.md](audio.md) 2.5).

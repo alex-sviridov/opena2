@@ -157,20 +157,39 @@ the maximum HP / mana, the speed and the combat numbers include the equipment, H
 ## 4. Carry-over between campaign maps (single player, CONFIRMED)
 
 The humans' units stay in the player's list; the server object stays. End of a mission (`FUN_004852d8` `0x486ae1` / `0x486c03`: after the result, the mission time is recorded
-(`FUN_00493b40`, tick / 16), the client calls the server's **`FUN_004ebd5f`**, then `ScenarioLeaveLocation` returns to the town / world map):
+(`FUN_00493b40`, tick / 16), the client calls the server's **`FUN_004ebd5f`**, then `ScenarioLeaveLocation` and the recruit, [triggers §11](../engine/triggers.md#11-the-end-of-the-mission-scenariodll-and-the-client-flow)).
+`FUN_004ebd5f(server)` in order (asm `0x4ebd5f`-`0x4ec3xx`; "human" = a player with `+0x2c == 0`, "has a hero" = `+0x38 != 0`):
 
-* for every human with a main hero: per-player upkeep (`FUN_004f3cad`, `FUN_004f3d14`, `FUN_0052f8e2`: not decoded); a main hero flagged dead (`+0x13c`) is rebuilt by
-  `FUN_004f254b(player, 0,0,0,0,0)` only in the network modes (`+0x74 != 0`);
-* the map objects are freed (`DAT_0066832c` path finder, `DAT_00670e48` map);
-* the list at `unit+0x20` of every unit of every human (`0x4ec159`-`0x4ec1b7`) is emptied: each element gets `+0x42 := 1`, `+0x44 := 0`, is detached via its vtable `+0x38(unit)` and removed from the list (INFERRED: the applied spell effects, the same list the item serialiser walks for modifiers);
-* for each human with a name: the ready flag `player+0x41 := 0` (so `FUN_004f2c83` places the party again on the next map); each unit whose type `+0xe` is outside `0x21..0x3f`
-  (summons, monsters) is deleted (`FUN_005161eb`); each human unit (heroes, companions) keeps its level, items and XP and gets **HP := max, mana := max, `+0x13c := 0`**,
-  orders / targets (`+0x40, +0x44, +0x5c, +0x64, +0x68`) cleared and the stand-state recompute `FUN_005105e6`; computer players' lists are cleared;
-* server `+0xd4` (scenario id) `:= 0`, loaded flag `+0x94 := 0`, both tick counters `:= 0`; then message `0xb8` and the flush.
+1. `FUN_004ed298`: housekeeping only (INFERRED: removes a temp file whose name is the CString `0x627158` when it is non-empty; logs a line in the lobby mode `[0x68f628]+0x4e0 == 3`); `server+0x8c := 1`.
+2. **Per-player upkeep** for every human with a main hero, keyed by the hero's position record `hero+0x10` (a cell): `FUN_004f3cad` = the structure standing on that cell looked up in
+   the structure table `server+0x7c` (`FUN_0052c129`) and accepted when it is of the class with RTTI `0x5f90e0`, `FUN_004f3d14` the same for the class `0x5f91b8`
+   (`__RTDynamicCast`; `FUN_004f3cad` returns `0x68ff30` at once when `server+0x1a4 != 0`, the network flag). For the first class (the shop: its `+0x6c` object holds the four 28-byte
+   stock blocks of [items §11](../data/items.md)) `FUN_005226f5(hero)` / `FUN_00522936(hero)` end the hero's open shop session; for the second class (the quest-giver of [items §14](../data/items.md#14-quests-and-the-item-upgrade-message-0x38))
+   `FUN_0052f8e2(hero, -1)` removes the hero from its visitor lists (`+0xa4` / `+0xa8`) and, in network games only (`server+0x74 != 0`), sends `FUN_005103ae`. **No persistent state**: a session cleanup for a hero
+   that ends the mission standing on a shop / quest structure (INFERRED purpose; the removals themselves CONFIRMED). Nothing the campaign needs.
+3. A main hero flagged dead (`+0x13c`) is rebuilt by `FUN_004f254b(player, 0,0,0,0,0)` and placed (`FUN_004f2c83`) **only in the network modes** (`server+0x74 != 0`). In single player the death of the main hero is the defeat ([combat §12.3a](../engine/combat.md#123a-hero-death-message-0xb4-the-dialog-and-the-game-confirmed-unless-marked-allods2exe-sha256-in-formatsreadmemd)), so the branch never runs.
+4. `FUN_004f03e9`: frees the object at `server+8` (INFERRED: the pending message list). The map objects are freed: `DAT_0066832c` (the path finder / world manager) and `DAT_00670e48` (the map) are deleted and set to 0.
+5. The list at `unit+0x20` of every unit of every human (`0x4ec159`-`0x4ec1b7`) is emptied: each element gets `+0x42 := 1`, `+0x44 := 0`, is detached via its vtable `+0x38(unit)` and removed from the list
+   (INFERRED: the applied spell effects, the list the item serialiser walks for modifiers, so **timed effects end with the mission**).
+6. For each human **with a name** (`FUN_00439e10(player+0x18) == 0`, INFERRED = the name is non-empty; any other player's unit list is cleared instead, `FUN_0053b010`): the ready flag `player+0x41 := 0` (so `FUN_004f2c83` places the party
+   again on the next map), then for **every unit of the player's list**:
+   * unit type `+0xe` outside `0x21..0x3f` -> deleted (`FUN_005161eb`): summons, monsters, **and the hired mercenaries** (their `+0xe` is the template's own type id 15 / 5 / 23 / 100-102 / 26, [triggers §11.3](../engine/triggers.md#113-recruit-routines));
+   * else (the heroes and companions, `+0xe` = `0x21..0x24`): **HP := max** (`+0x94 := +0x96`), **mana := max** (`+0x9a := +0x9c`), the death flag `+0x13c := 0`, orders / targets `+0x40, +0x44, +0x5c, +0x64, +0x68` := 0, and the
+     stand-state reset **`FUN_005105e6(unit)`** (below). Level, XP, skills, items (equipped and pack), spell book, name, `+0x14c` hero number and the group stay as they are.
+7. `server+0xb8 := 0`, `FUN_00437b90()` (a one-line wrapper, INFERRED a string reset), `+0xd4 := 0` (scenario id), `+0x94 := 0` (loaded flag), `+0 := 0`, `+4 := 0` (both tick counters); when `server+0x74 == 0` `FUN_0053b450(0)` (a one-word setter,
+   `obj+0x20 := arg`; INFERRED the current-map slot); message `0xb8` (`FUN_005052f8`) and the flush `FUN_00504bb7`.
 
-Gold (`player+0x3c`), the statistics words, the spell book and the script state are untouched, so they carry over by staying in memory. The Scenario.dll variable array
-(`ScenarioGetVar/SetVar`, [triggers](../engine/triggers.md#2-compilation-at-map-start-fun_00562745)) is a global of the DLL, not reset by this routine.
-`ScenarioNewGame` (`0x100033be`, called at `0x4862ba`) initialises it for a new campaign: all zero except Var(0x300) = 10 ([triggers §11](../engine/triggers.md#11-the-end-of-the-mission-scenariodll-and-the-client-flow)).
+**`FUN_005105e6(unit)`, the stand-state reset (CONFIRMED `0x5105e6`-`0x5106d1`)**: `FUN_00510745(unit)` (cancels a pending spell, [combat §12.1](../engine/combat.md)); then, when `+0x136 == 0` and `+0x68` holds a
+spell-effect object (kind byte `0xe`), that object and the carrier `+0x64` are deleted and both fields cleared; finally always `+0x64 := 0`, `+0x58 := 0`, **`+0x136 := 1`**, state `+0x54 := 0`, order `+0x50 := 0`. Net effect: the unit stands
+idle with no action, no pending cast and no target.
+
+**Dead units.** A unit whose HP fell to <= -10 has already been removed from the owner's list at its removal tick ([combat §12.3](../engine/combat.md)): **a dead companion is gone for good** (no resurrection, no replacement except the recruit rules of
+triggers §11.3). A unit that is dying but still in the list when the mission ends (HP <= 0, flag `+0x13c == 1`, not yet removed) **is revived** by step 6: full HP / mana, flag cleared (CONFIRMED code; the situation needs the end of the mission within `D` ticks of a death,
+[combat §12.1](../engine/combat.md)). The hero-death script variables are a separate mechanism ([triggers §11.4](../engine/triggers.md#114-hero-death-variables)).
+
+**What persists after the call (the L1 carry-over contract).** Per human player: the unit list (hero numbers `+0x14c`, level / XP / skills / pools / items / spells of each unit with `+0xe` in `0x21..0x3f`), `player+0x38` main hero, gold `player+0x3c`,
+the statistics words, the spell book; the Scenario.dll variable array. Reset: HP / mana / death flag / orders / effects of the units, `player+0x41`. Gone: every other unit of the list. 
+The Scenario.dll variable array ([triggers §2](../engine/triggers.md#2-compilation-at-map-start-fun_00562745)) is a global of the DLL, not reset by this routine; `ScenarioNewGame` (`0x100033be`, called at `0x4862ba`) initialises it for a new campaign: all zero except Var(0x300) = 10.
 
 ## 5. `famehall.dat` (CONFIRMED, the install's file decodes exactly)
 

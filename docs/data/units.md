@@ -24,7 +24,7 @@ Units, monsters and heroes are **separate tables**; a section 6 unit picks one b
 of the 46 campaign maps use 205 distinct (kind, serverID) pairs; every one has a record (no exclusions).
 Heroes have no separate stat source: a hero is a human record (`_Hero`/`Start_` names set the best-school
 field `+0x23c`, CONFIRMED `FUN_00514cf2`), levelled at run time ([progression](progression.md)). Campaign carry-over
-(saves, hero state between maps) is not read here: **UNKNOWN**, phase F saves; the party is rebuilt from the player record and placed at the map's drop cell ([triggers §9](../engine/triggers.md#9-the-party-at-map-start-fun_004f2c83)).
+(hero state between maps) is not read here: the roster stays in server memory ([saves §4](../formats/saves.md#4-carry-over-between-campaign-maps-single-player-confirmed)), the party is placed at the map's drop cell ([triggers §9](../engine/triggers.md#9-the-party-at-map-start-fun_004f2c83)); the hired mercenaries and story heroes are the `serverID` 10010-10230 records ([triggers §11.3](../engine/triggers.md#113-recruit-routines)).
 
 Records with no params are editor slots and are skipped (61 monster slots). Monster record 241 `Human`
 (`serverID` -1) is a placeholder no map uses; human `ManMage_Unarmed` (serverID 23) has `HealthMax` -1
@@ -88,7 +88,7 @@ Creature offset ([unit-struct](../engine/unit-struct.md#2-creature-layout-server
 | 6, 7 | speed, turn_rate | +0x8c, mover+0xa | CONFIRMED |
 | 8, 9 | scan_range, defence | +0xa5, +0xbe | CONFIRMED |
 | 10–15 | skill_general, skill_blade, skill_axe, skill_bludgen, skill_pike, skill_shooting | +0xa8+2k (1..5 copied to +0x116+2k) | CONFIRMED; +0xa6 (toHit) forced 0 |
-| 16 | unit_type | +0xe, but the by-name ctor overwrites it: `0x21/0x22` fighter, `0x23/0x24` mage + gender (`0x514bc7`) | CONFIRMED |
+| 16 | unit_type | +0xe, but the by-name ctor overwrites it **when its flag argument is non-zero** (map units, the player's hero, story heroes): `0x21/0x22` fighter, `0x23/0x24` mage + gender (`0x514bc7`); with flag 0 (the hired mercenaries, [triggers §11.3](../engine/triggers.md#113-recruit-routines)) the typeID stays | CONFIRMED asm; the map-unit flag value INFERRED |
 | 17 | face | +0x4b (bit 7 = female) | CONFIRMED |
 | 18 | gender | -1: derive from the name (`.f` = female); else overrides it (`0x514870`) | CONFIRMED |
 | 19, 20 | windup, recovery | +0x134, +0x135 | CONFIRMED |
