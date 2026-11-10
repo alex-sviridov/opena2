@@ -304,6 +304,36 @@ def test_name_caret_blinks_every_500_ms_and_typing_restarts_it():
 
 
 @needs_graphics
+def test_torches_burn_on_the_two_braziers_at_15_frames_per_67_ms():
+    sh, _ = make_shell(GFS)
+    to_newgame(sh)
+    torches = lambda: [(o.path.rsplit("/", 1)[1], o.x, o.y) for o in sh.scene().ops if "torch" in getattr(o, "path", "")]
+    assert torches() == [("t10000.bmp", 4, 200), ("t20007.bmp", 589, 200)]
+    sh.update(66)
+    assert torches()[0][0] == "t10000.bmp"
+    sh.update(1)
+    assert torches() == [("t10001.bmp", 4, 200), ("t20008.bmp", 589, 200)]
+    sh.update(67 * 14)
+    assert torches()[0][0] == "t10000.bmp" and torches()[1][0] == "t20007.bmp"          # 15 frames wrap
+
+
+@needs_graphics
+def test_torch_position_is_exact_in_the_art():
+    """The frames' static pixels equal MainArea at the torch positions (the evidence of the CONFIRMED position)."""
+    import numpy as np
+    from allods2.common import as_fs
+    from allods2.graphics import load_bmp
+    from engine.shell.newgame import DIR, TORCH_AT
+    fs = as_fs(GFS)
+    base = load_bmp(DIR + "mainarea.bmp", fs).rgb.astype(int)
+    for t, (x, y) in enumerate(TORCH_AT):
+        ims = [load_bmp(DIR + "torch%d/t%d%04d.bmp" % (t + 1, t + 1, i), fs).rgb.astype(int) for i in range(15)]
+        med = np.median(np.stack(ims), axis=0)
+        static = np.stack([np.abs(i - med).sum(axis=2) for i in ims]).max(axis=0) < 20
+        assert static.sum() > 1500 and np.abs(base[y:y + 72, x:x + 48] - med)[static].mean() < 0.01
+
+
+@needs_graphics
 def test_tablet_and_portrait_states():
     sh, _ = make_shell(GFS)
     to_newgame(sh)

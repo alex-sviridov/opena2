@@ -11,8 +11,9 @@ Enter = OK and ESC = Cancel, **an empty name does nothing**, typing plays `SFX\\
 "Master Oberic", a default name is reset to "Aldor" (`npcnames` 0x14) on the next show.  Font4 draws the name at (300, 433), left aligned.
 INFERRED: the initial level is 0 (Easy: the window's `+0x20c` is never initialised before the show; the exe's own selector 1 = Medium is overwritten by the window's level at OK),
 the focus sits on the name field from the start, the position of the big portraits (template matching: x 112 for heroes 0-1, 260 for 2-3, y 44), Cancel plays `ChrGen\\Ok.wav`.
-Not built: the torch animations (`torch1` / `torch2`, 15 frames at ~15 fps, screen position open), the hover cross-fade `0x4364f7`, the tips text `#tips8` (the TipsMode option is not
-built), the character generator panel `+0x36c` that follows OK (shell.md 3.3: L2); OK here starts the first campaign map (`10`) with the level and the hero's code."""
+Torches: `torch1` / `torch2` are 15-frame flame animations (48x72) on the two braziers, at **(4, 200)** and **(589, 200)** (CONFIRMED by pixel identity: the frames' static pixels equal `MainArea.bmp` there with error
+0), advanced by a global 67 ms timer (`0x436222`; the exe starts each torch at a random frame, here 0 and 7).
+Not built: the hover cross-fade `0x4364f7`, the tips window `#tips8` (the TipsMode option is not built; the tips window is a framed dialog with an OK button, class `0x4dec24`), the character generator panel `+0x36c` that follows OK (shell.md 3.3: L2); OK here starts the first campaign map (`10`) with the level and the hero's code."""
 
 import numpy as np
 
@@ -41,6 +42,8 @@ INITIAL_NAME = "Master Oberic"                          # 0x5efba8
 FIRST_MAP = "10"                                        # DECISION: the campaign's first mission until L2 builds the chain
 DEFAULT_LEVEL = 0                                       # INFERRED (see the module doc)
 BLINK_MS = 500
+TORCH_AT = ((4, 200), (589, 200))                       # CONFIRMED by pixel identity of the static part of the frames against `MainArea.bmp`
+TORCH_FRAMES, TORCH_MS, TORCH_START = 15, 67, (0, 7)     # 15 frames, the global timer's 67 ms (`0x436222`); the exe's random start frame is a DECISION here
 
 
 def is_default_name(name):
@@ -67,6 +70,7 @@ class NewGame(Screen):
         self.hero, self.level = 0, DEFAULT_LEVEL             # `+0x208 := 0`; the level as left by the window (INFERRED 0)
         self.under, self.held = 0, False
         self.blink_on, self.blink_ms = True, 0
+        self.anim_ms = 0
 
     # -- input ---------------------------------------------------------------------------------------------------------------------
     def _at(self, x, y):
@@ -136,6 +140,7 @@ class NewGame(Screen):
         self.blink_on, self.blink_ms = True, 0                # a typed key restarts the blink (`+0x70 := 1`)
 
     def update(self, dt_ms):
+        self.anim_ms += dt_ms
         self.blink_ms += dt_ms
         if self.blink_ms > BLINK_MS:
             self.blink_ms -= BLINK_MS
@@ -146,6 +151,9 @@ class NewGame(Screen):
     def scene(self):
         ox, oy = self.origin
         ops = [Image(DIR + "mainarea.bmp", ox, oy)]
+        for t, (x, y) in enumerate(TORCH_AT):
+            frame = (self.anim_ms // TORCH_MS + TORCH_START[t]) % TORCH_FRAMES
+            ops.append(Image(DIR + "torch%d/t%d%04d.bmp" % (t + 1, t + 1, frame), ox + x, oy + y))
         hover_hero = HEROES.get(self.under)
         for n, (x, y) in enumerate(LEVEL_AT):
             sel, hot = self.level == n, LEVELS.get(self.under) == n
