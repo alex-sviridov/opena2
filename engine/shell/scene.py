@@ -64,9 +64,10 @@ class Button:
 
 @dataclass(frozen=True)
 class Sprite:
-    """Frame `frame` of the `.256` sprite file `path` (keyed), top-left at (x, y); `shadow` first draws its silhouette darkened at (+5, +4) (check boxes, `0x4d757c`)."""
+    """Frame `frame` of the `.256` sprite file `path` (keyed), top-left at (x, y); `shadow` > 0 draws the frame's silhouette darkened by that level instead of the frame itself (the caller emits it first, offset by (+4, +4) / (+5, +4):
+    check boxes `0x4d757c`, sliders `0x4da80f`): `dst * (16 - level) / 16`."""
     path: str
     frame: int
     x: int
     y: int
-    shadow: bool = False
+    shadow: int = 0                 # darken level of the silhouette drawn first at (+4, +4) / (+5, +4): `dst * (16 - level) / 16` (0 = none; the widgets use 4)

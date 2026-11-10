@@ -42,9 +42,17 @@ def click(pg, pos):
     pg.event(Release(*pos))
 
 
-def slider_at(pg, key, fraction):
-    r = pg.screen_rect(widget(pg, key))
-    return r.x + 12 + int((r.w - 24) * fraction), r.y + 8
+def drag_to(pg, key, value, release=True):
+    """Press on the thumb, move to the x that `0x4da4a1` maps to `value`, release (the slider's only way to a given value)."""
+    w = widget(pg, key)
+    r = pg.screen_rect(w)
+    y = r.y + 8
+    pg.event(Press(pg.thumb_left(w) + 8, y))
+    x = r.x + 2 + 24 + -(-value * pg.usable(r) // w.maximum)             # the smallest x whose value is `value`
+    pg.event(Move(x, y))
+    assert pg.value(w) == value
+    if release:
+        pg.event(Release(x, y))
 
 
 def test_frames_follow_the_dialog_size_rule_and_are_centred():
@@ -64,8 +72,7 @@ def test_game_options_apply_on_ok_only():
     assert s.shadows and s.game_speed == 4
     click(pg, centre(pg, "shadows"))
     click(pg, centre(pg, "show_health"))
-    pg.event(Press(*slider_at(pg, "game_speed", 1.0)))
-    pg.event(Release(*slider_at(pg, "game_speed", 1.0)))
+    drag_to(pg, "game_speed", 8)
     assert (s.shadows, s.show_health, s.game_speed) == (True, False, 4) and rec.saved == [] and not pg.done      # nothing yet
     click(pg, centre(pg, "ok"))
     assert pg.done and pg.result == "ok"
@@ -103,26 +110,65 @@ def test_animation_off_forces_lighting_off():
 
 def test_game_speed_slider_range_is_zero_to_eight():
     pg, _ = make("game")
-    for f, v in ((0.0, 0), (1.0, 8), (0.5, 4), (0.26, 2)):
-        pg.event(Press(*slider_at(pg, "game_speed", f)))
-        pg.event(Release(*slider_at(pg, "game_speed", f)))
+    for v in (0, 8, 4, 2, 7):
+        drag_to(pg, "game_speed", v)
         assert pg.draft.game_speed == v
-    pg.event(Press(*slider_at(pg, "game_speed", 0.5)))                          # drag beyond the ends clamps
+    w = widget(pg, "game_speed")
+    pg.event(Press(pg.thumb_left(w) + 8, pg.screen_rect(w).y + 8))              # drag beyond the ends clamps
     pg.event(Move(0, 0))
     assert pg.draft.game_speed == 0
     pg.event(Move(639, 0))
     assert pg.draft.game_speed == 8
 
 
+def test_slider_geometry_and_clicks_beside_the_thumb_step_by_a_sixteenth():
+    pg, _ = make("sound")
+    w = widget(pg, "music")
+    r = pg.screen_rect(w)
+    assert pg.usable(r) == r.w - 52 and pg.step(w) == 6 and pg.step(widget(make("game")[0], "game_speed")) == 1       # `max >> 4`, at least 1
+    pg.settings.music = 50
+    tl = pg.thumb_left(w)
+    assert tl == r.x + 20 + (r.w - 52) * 50 // 100
+    pg.event(Press(tl - 10, r.y + 8))                                           # left of the thumb: -6
+    assert pg.settings.music == 44 and pg.side == "left"
+    pg.event(Release(tl - 10, r.y + 8))
+    pg.event(Press(pg.thumb_left(w) + 16 + 3, r.y + 8))                         # right of it: +6
+    assert pg.settings.music == 50 and pg.side == "right"
+    pg.event(Release(0, 0))
+    pg.settings.music = 3
+    pg.event(Press(r.x + 1, r.y + 8))                                           # clamps at 0
+    assert pg.settings.music == 0
+    pg.settings.music = 98
+    pg.event(Press(r.right - 2, r.y + 8))
+    assert pg.settings.music == 100
+    assert pg.slider_value(w, r.x + 26) == 0 and pg.slider_value(w, r.x + 26 + pg.usable(r)) == 100 and pg.slider_value(w, r.x) == 0
+
+
+def test_slider_drawing_uses_the_confirmed_frames_and_shadows():
+    pg, _ = make("sound")
+    w = widget(pg, "music")
+    r = pg.screen_rect(w)
+    sprites = [o for o in pg.scene().ops if hasattr(o, "frame") and r.y <= o.y <= r.y + 8 and r.x <= o.x <= r.right + 5 and o.path.endswith("scrlbars.256")]
+    plain = [o.frame for o in sprites if not o.shadow]
+    assert plain[0] == 0 and plain[-1] == 10 and set(plain[1:-1]) <= {7, 8} and plain.count(8) == 1       # left end, rail tiles, right end, the thumb last
+    assert all(o.shadow == 4 for o in sprites if o.shadow)
+    pg.event(Press(r.x + 1, r.y + 8))                                           # the held end region shows its pressed frame
+    assert 3 in [o.frame for o in pg.scene().ops if hasattr(o, "frame") and o.path.endswith("scrlbars.256") and not o.shadow]
+    pg.event(Release(r.x + 1, r.y + 8))
+    pg.event(Press(r.right - 2, r.y + 8))
+    assert 11 in [o.frame for o in pg.scene().ops if hasattr(o, "frame") and o.path.endswith("scrlbars.256") and not o.shadow]
+
+
 def test_sound_sliders_are_live_and_saved_when_the_page_is_left():
     pg, rec = make("sound")
-    pg.event(Press(*slider_at(pg, "music", 0.25)))
+    drag_to(pg, "music", 25, release=False)
     assert pg.settings.music == 25 and rec.applied[-1]["music"] == 25 and rec.saved == []      # live, nothing written yet
-    pg.event(Move(*slider_at(pg, "music", 0.5)))
-    pg.event(Release(*slider_at(pg, "music", 0.5)))
+    w = widget(pg, "music")
+    r = pg.screen_rect(w)
+    pg.event(Move(r.x + 2 + 24 + pg.usable(r) // 2, r.y + 8))
+    pg.event(Release(r.x + 2 + 24 + pg.usable(r) // 2, r.y + 8))
     assert pg.settings.music == 50 and 100 not in rec.sounds                    # no test sound for the music slider
-    pg.event(Press(*slider_at(pg, "sfx", 0.9)))
-    pg.event(Release(*slider_at(pg, "sfx", 0.9)))
+    drag_to(pg, "sfx", 90)
     assert pg.settings.sfx == 90 and rec.sounds[-1] == 100                      # `0x474`: the SFX test sample on the release
     pg.event(Key("escape"))                                                     # leaving does not revert the sliders (CONFIRMED) and writes the file
     assert pg.done and pg.settings.music == 50 and rec.saved[-1]["music"] == 50 and rec.saved[-1]["sfx"] == 90
@@ -144,12 +190,10 @@ def test_options_persist_across_restarts(tmp_path, monkeypatch):
     pg, _ = make("game", S.load(), rec)
     click(pg, centre(pg, "lighting"))
     click(pg, centre(pg, "day_night"))
-    pg.event(Press(*slider_at(pg, "game_speed", 0.0)))
-    pg.event(Release(*slider_at(pg, "game_speed", 0.0)))
+    drag_to(pg, "game_speed", 0)
     click(pg, centre(pg, "ok"))
     sd, _ = make("sound", pg.settings, rec)
-    sd.event(Press(*slider_at(sd, "speech", 0.3)))
-    sd.event(Release(*slider_at(sd, "speech", 0.3)))
+    drag_to(sd, "speech", 30)
     sd.event(Key("escape"))
     again = S.load()                                                            # a new process
     assert (again.lighting, again.day_night, again.game_speed, again.speech) == (False, False, 0, 30)

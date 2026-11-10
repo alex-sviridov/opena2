@@ -190,9 +190,16 @@ percent scale ([audio §6](audio.md)).
 **Game speed** (`0x48bfaa`, jump table `0x48c0be`): 0..8, default 4; ticks per second `{8, 10, 12, 14, 16, 20, 24, 28, 32}`, period `1000 / rate` integer ms `{125, 100, 83, 71, 62, 50, 41, 35, 31}` (the table of
 [simulation](simulation.md) section 2); the change re-bases the tick clock.
 
-**Look** (CONFIRMED sheets, INFERRED frames): `graphics\interface\scrlbars.256` (26 sprites, 24x24) for sliders and scroll bars, `radiob.256` (frames 0 / 1 radio off / on, **2 / 3 check box off / on**, 4 / 5 are 16x16)
-drawn at (l + 1, t) with a darkened copy at (+5, +4) first (`0x4d757c`, `0x4d7e04`), caption to the right in font1. Check boxes, radios and sliders play **no sound**; the text buttons do (`0x4d5c86`, priority `0xdc`).
-The engine draws a slider as the rail (frame 7, tiled) with the ball (frame 16) as the thumb: the exact frame map is **open**.
+**Look and behaviour (CONFIRMED: slider `0x4da80f` draw, `0x4da324` thumb rect, `0x4da4a1` x -> value, `0x4dade4` mouse down, vtable `0x5d00e8`; check group `0x4d757c`).**
+- **Slider** (`graphics\interface\scrlbars.256`, 26 frames of 24x24; horizontal when the rect is wider than high): the left end **frame 0** (pressed **3**) at the rect's left, the rail **frame 7** tiled every 24 px from the second tile to
+  `width / 24 - 1`, the right end **frame 8** (pressed **11**) at `right - 24`, the thumb **frame 10** (the eye) last; each frame is preceded by its own darkened silhouette at (+4, +4) (the thumb at (+5, +4), drawn 1 px right of its
+  rect), darken level **4** (`dst * 12 / 16`). The vertical bar uses frames `0x12` / `0x15` (top, pressed), `0x13` (rail), `0x14` / `0x17` (bottom, pressed), `0x16` (thumb). Thumb rect: left `= l - 4 + 24 + usable * value / max`,
+  16 wide, `usable = width - (2 * 24 - 8) - 12 = width - 52` (`max == 0`: `l - 4 + 24`). **Press** (`0x4dade4`): left of the thumb `value -= max(1, max >> 4)` (clamped at 0), right of it `+=` (clamped at `max`), on the thumb the drag starts and
+  the value follows the pointer by `0x4da4a1`: `value = clamp(max * (x - (l + 2 + 24)) / usable)` (truncated toward zero); every change posts `0x46e` (id, value); the pressed end frame shows while the side region is held. The end frames are not buttons of their own.
+- **Check box** (`radiob.256`: frame **2** off / **3** on, 24x24; frames 0 / 1 are the radio button, 4 / 5 the 16x16 variants): darkened silhouette (level 4) at (left + 5, row + 4), the frame at (left + 1, row); the caption at
+  (left + 6 + 24, row + 5) in font1, shadow 1, **gold table `0x620d90` while the widget has the focus bit 4** (the pointer-over rule of the buttons), else the normal table `0x620928`.
+- **Disabled look (CONFIRMED, every widget of the family)**: when the flag bit 1 is clear the rect expanded by 1 px is darkened by `FUN_004564df(rect, level 3)` (`dst * 13 / 16`), the same as the dialog buttons; no other change.
+- Check boxes, radios and sliders play **no sound**; the text buttons do (`0x4d5c86`, priority `0xdc`; which of the sound indices 1 / 2 / 4 each mouse event uses is open: the engine plays the dialog click, id 2, on the press).
 
 ### 5.2 Registry names (CONFIRMED `0x441372` writer, `0x4415d4` reader; HKLM `SOFTWARE\Rage of Mages 2`, DWORDs, written at exit `0x440cd2`)
 
@@ -254,5 +261,5 @@ through a real mission (ESC -> Game Options OK, Sound Options Stop, End Quest) a
 
 - PreCreate: the initial level highlight (INFERRED Easy), the torches' screen position and the hover cross-fade `0x4364f7`, the tips rect, the order of the hero vectors against the screen order, `h<n>sel` vs `sel<partner>` while hovering; the character generator panel's child rects, attribute-roll rules and labels (L2), what `0x40d480` resets.
 - The `SmackOpen` flag word `0xff000` is INFERRED (RAD's header from memory; `smackw32.dll` is packed).
-- Game Options / Sound Options: the disabled look of widgets, the frame map of `scrlbars.256`, the sound index of each text-button event. (OK / Cancel rects and ESC answered.)
+- Game Options / Sound Options: the sound index of each text-button event (the slider and check-box looks, the OK / Cancel rects and ESC are answered).
 - Whether the GOG build passes the CD check `0x62282c` (the menu would then have four disabled buttons), and the keyboard behaviour of the menu (INFERRED from the absent key handling, never run).

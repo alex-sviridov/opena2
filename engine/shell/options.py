@@ -25,9 +25,12 @@ from .scene import Button, Frame, Scene, Sprite, Text
 UI_SOUND = 2                                    # `click`: the dialog text buttons' press (audio.md 2.4)
 SLIDER_TEST = 100                               # `sfx[100]` (`0x420eb0(100)`), the slider test sample
 RADIOB = "graphics/interface/radiob.256"       # frames 2 / 3 = check box off / on (`0x4d757c`)
-SCRLBARS = "graphics/interface/scrlbars.256"   # 24x24 frames; INFERRED look of a horizontal slider: rail 7, thumb 16
-RAIL, THUMB, BOX_OFF, BOX_ON = 7, 16, 2, 3
-CHECK_CAPTION_DX = 28                           # INFERRED: the caption starts right of the 24 px box
+SCRLBARS = "graphics/interface/scrlbars.256"   # 24x24 frames (CONFIRMED draw `0x4da80f`, horizontal): left 0 (3 pressed), rail 7, right 8 (11 pressed), thumb 10
+LEFT_END, LEFT_PRESSED, RAIL, RIGHT_END, RIGHT_PRESSED, THUMB = 0, 3, 7, 8, 11, 10
+BOX_OFF, BOX_ON = 2, 3
+SHADOW = 4                                      # the darken level of every widget shadow (`0x1c(x, y, frame, 4, 0)`)
+BTN = 24                                        # the width of the end frames
+CHECK_CAPTION_DX = 30                           # `0x4d757c`: the caption at left + 6 + the width of frame 0 (24), top + 5
 GAME, SOUND = "game", "sound"
 GAME_SIZE, SOUND_SIZE = (584, 360), (488, 360)        # snapped; the original's Game Options is 584x424 (more widgets)
 # the Game Options widgets of the original that are not built (shell.md 5.3): Tips, "Join", AutoCast for units (Own / Allies / Neutral), Formation / Retreat / AutoCast mode radios
@@ -69,6 +72,7 @@ class OptionsPages:
         self.page = page
         self.draft = copy.copy(settings) if page == GAME else None
         self.hot = self.pressed = self.dragging = None
+        self.side = None                                # "left" / "right": the end region held down (the pressed end frames 3 / 11)
         self.done, self.result = False, None
 
     def d(self, i):
@@ -138,10 +142,40 @@ class OptionsPages:
         if w.key in ("music", "sfx", "speech"):
             self.services.apply_settings(s)
 
-    def slider_value(self, w, x):
+    # -- slider geometry (CONFIRMED `0x4da80f`, `0x4da324`, `0x4da4a1`, `0x4dade4`) ---------------------------------------------------
+    @staticmethod
+    def usable(r):
+        return r.w - (2 * BTN - 8) - 12
+
+    def thumb_left(self, w):
+        """The thumb's hit rect starts here and is 16 wide (`0x4da324`); the frame is drawn 1 px right of it."""
         r = self.screen_rect(w)
-        span = max(1, r.w - 24)
-        return max(0, min(w.maximum, round((x - r.x - 12) * w.maximum / span)))
+        return r.x - 4 + BTN + (self.usable(r) * self.value(w) // w.maximum if w.maximum else 0)
+
+    def slider_value(self, w, x):
+        """`0x4da4a1`: `max * (x - (left + 2 + 24)) / usable`, truncated toward zero, clamped to 0..max."""
+        r = self.screen_rect(w)
+        n = w.maximum * (x - (r.x + 2 + BTN))
+        v = int(n / self.usable(r)) if self.usable(r) else 0
+        return max(0, min(w.maximum, v))
+
+    @staticmethod
+    def step(w):
+        """The step of a click beside the thumb (`0x4dade4`): `max / 16`, at least 1."""
+        return max(1, w.maximum >> 4)
+
+    def slider_press(self, w, x):
+        """A press on a slider (`0x4dade4`): left of the thumb steps down, right of it up, on it starts the drag (the value follows the pointer)."""
+        tl = self.thumb_left(w)
+        if x < tl:
+            self.side = "left"
+            self.set_value(w, max(0, self.value(w) - self.step(w)))
+        elif x >= tl + 16:
+            self.side = "right"
+            self.set_value(w, min(w.maximum, self.value(w) + self.step(w)))
+        else:
+            self.dragging = w
+            self.set_value(w, self.slider_value(w, x))
 
     def close(self, result):
         """Close the window: the game page keeps its draft only on `ok` (the Animation -> Lighting rule applied, the file written); the sound page writes the file."""
@@ -165,17 +199,18 @@ class OptionsPages:
             self.hot = w = self.at(ev.x, ev.y)
             self.pressed = w
             if w is not None and w.kind == "slider":
-                self.dragging = w
-                self.set_value(w, self.slider_value(w, ev.x))
+                self.slider_press(w, ev.x)
             elif w is not None and w.kind == "button":
                 self.services.sound(UI_SOUND)
         elif isinstance(ev, Release) and ev.button == 1:
             w, self.pressed = self.pressed, None
             drag, self.dragging = self.dragging, None
+            self.side = None
             self.hot = self.at(ev.x, ev.y)
-            if drag is not None and drag.key == "sfx":
+            sfx = drag if drag is not None else (w if w is not None and w.kind == "slider" else None)
+            if sfx is not None and sfx.key == "sfx":
                 self.services.sound(SLIDER_TEST)          # `0x474`: the test sample at the new volume
-            if w is not None and w is not drag and self.screen_rect(w).contains(ev.x, ev.y):
+            if w is not None and w.kind != "slider" and self.screen_rect(w).contains(ev.x, ev.y):
                 self.activate(w)
         elif isinstance(ev, Key) and not ev.ctrl:
             self.key(ev.name)
@@ -211,11 +246,17 @@ class OptionsPages:
                 pressed = self.pressed is not None and self.pressed.rect == w.rect and hot
                 ops.append(Button(r.x, r.y, r.w, r.h, w.text, True, hot, pressed))
             elif w.kind == "check":
-                ops.append(Sprite(RADIOB, BOX_ON if self.value(w) else BOX_OFF, r.x + 1, r.y, True))
+                ops.append(Sprite(RADIOB, BOX_ON if self.value(w) else BOX_OFF, r.x + 5, r.y + 4, SHADOW))
+                ops.append(Sprite(RADIOB, BOX_ON if self.value(w) else BOX_OFF, r.x + 1, r.y))
                 ops.append(Text(w.text, r.x + CHECK_CAPTION_DX, r.y + 5, 1, "label" if hot else "normal", 0, 1))
             elif w.kind == "slider":
-                for x in range(r.x, r.right, 24):
-                    ops.append(Sprite(SCRLBARS, RAIL, min(x, r.right - 24), r.y))
-                pos = self.value(w)
-                ops.append(Sprite(SCRLBARS, THUMB, r.x + pos * (r.w - 24) // w.maximum, r.y))
+                held = self.pressed is not None and self.pressed.rect == w.rect
+                left = LEFT_PRESSED if held and self.side == "left" else LEFT_END
+                right = RIGHT_PRESSED if held and self.side == "right" else RIGHT_END
+                ops += [Sprite(SCRLBARS, left, r.x + 4, r.y + 4, SHADOW), Sprite(SCRLBARS, left, r.x, r.y)]
+                for k in range(1, r.w // BTN):
+                    ops += [Sprite(SCRLBARS, RAIL, r.x + k * BTN + 4, r.y + 4, SHADOW), Sprite(SCRLBARS, RAIL, r.x + k * BTN, r.y)]
+                tl = self.thumb_left(w)
+                ops += [Sprite(SCRLBARS, THUMB, tl + 5, r.y + 4, SHADOW), Sprite(SCRLBARS, right, r.right - BTN + 4, r.y + 4, SHADOW),
+                        Sprite(SCRLBARS, right, r.right - BTN, r.y), Sprite(SCRLBARS, THUMB, tl + 1, r.y)]
         return Scene(ops, cursor=True)

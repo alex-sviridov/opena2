@@ -43,15 +43,13 @@ def to_shell_event(ev):
 class Painter:
     """Everything `render_scene` draws with: the bitmaps (`InterfaceArt`), the dialog frames and buttons (`Panels`), `.256` sprite frames as surfaces."""
 
-    SHADOW_ALPHA = 128
-
     def __init__(self, fs):
         self.art = InterfaceArt(fs)
         self.panels = Panels(fs, None)
         self.fs = fs
         self._files, self._frames = {}, {}
 
-    def sprite(self, path, frame, shadow=False):
+    def sprite(self, path, frame, shadow=0):
         key = (path, frame, shadow)
         if key not in self._frames:
             if path not in self._files:
@@ -59,7 +57,7 @@ class Painter:
             rgba = np.array(self._files[path].to_rgba(frame))
             if shadow:
                 rgba[..., :3] = 0
-                rgba[..., 3] = rgba[..., 3] // 2
+                rgba[..., 3] = (rgba[..., 3].astype(np.int32) * shadow // 16).astype(np.uint8)       # black at `level / 16` = the darken blit's `dst * (16 - level) / 16`
             self._frames[key] = surface_from_rgba(rgba)
         return self._frames[key]
 
@@ -82,6 +80,4 @@ def render_scene(surface, scene, painter, clear=True):
         elif isinstance(op, Button):
             painter.panels.draw_button(surface, DButton(Rect(op.x, op.y, op.w, op.h), op.label, op.enabled, ("noop",)), op.hover, op.pressed)
         elif isinstance(op, Sprite):
-            if op.shadow:
-                surface.blit(painter.sprite(op.path, op.frame, True), (op.x + 5, op.y + 4))
-            surface.blit(painter.sprite(op.path, op.frame), (op.x, op.y))
+            surface.blit(painter.sprite(op.path, op.frame, op.shadow), (op.x, op.y))

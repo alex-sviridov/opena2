@@ -391,9 +391,9 @@
   "newgame_hero_hard": "662ceeb1aabe2690ad2afd1131e0b09afcdac5f2daa01df49b433f1df5e8e50c",
   "newgame_hero_hover": "adbeba8e86990af0670750a859f01eeba31ca56c55ebddfd766f556f3dd240e6",
   "newgame_ok_hover": "41f1cacab913f88e8f74c5caf42abdc1d3c63b63b94a68b8d3cdece6170583c4",
-  "options_game": "314b45ad5554692844167675167516877f650f58e6493f1291a73a9d12bd396a",
-  "options_game_hover": "b5633b59964fbaae692e8f0434c57eabd98d5cdd905bfd0da524c997d6c97c74",
-  "options_sound": "130d40bb5e16debae8f3148e8b43b9708fe370c5581b82d414e94c3db0c46aa4",
+  "options_game": "d915b668ee3a07aae35dc2f2279172912726ca9c93cf9f78f61b8ed5ec1832bd",
+  "options_game_hover": "6596eab967da6de43c8fb5978f3215d0279419fe6a808939579fc14557aa618f",
+  "options_sound": "4d3324f8bf4f88c8fb3b9c663825a4e643fd5f0be15116731ff38555801bc7fe",
   "startup": "0b150fd32588b1daca5569992ebe559c0102c837306b1af4c44d35128ec58366"
  },
  "sound": {
