@@ -225,8 +225,7 @@ Built (slice 1, no device): `engine/audio/{events,mix,mixer,voices,music,ambienc
   cast message) at the caster's position, `500 + 2n + 8` (the projectile id of every `0x86` / `0x8b` / `0x8c`; the sprite-less buffs still send it), and `effects.spawn_explosion` (message `0x86`, projectile 13 at the
   cell centre: `sfx[513]`); id 23 is skipped. Other area / field impacts send no `0x86` of their own in the engine. `blizzard`: `effects.field_tick` when `world.tick - c.born == 8` (our step 8; exact tick, a missile-delivered
   Blizzard would miss it), at the carrier's centre cell. `hurt`: `combat.log` for every `Damage` entry on a unit (all message-`0x73` sources: blows, spells, poison, Drain Life) and every `Healed` with amount > 0
-  (an amount-0 heal sends nothing, INFERRED), old HP = `hp + amount` / `hp - amount`, kind by `events.hurt_kind`. **`hurt_kind` follows the old `view/damage.hit_sound_kind` (new HP below half, none at new HP <= -10);
-  sound.md 4.1 and §2.1 above say "old HP"; not re-read in the exe: VERIFY.** `death`: `death.dying_tick` at the first dying tick. `skillup`: `xp.level_up` (the Director plays it for the viewer's own heroes only; the
+  (an amount-0 heal sends nothing, INFERRED), old HP = `hp + amount` / `hp - amount`, kind by `events.hurt_kind`. **`hurt_kind` decides by the view's OLD HP (CONFIRMED K11 REA `0x412a77`-`0x412aa4`; the new HP is stored only at `0x412ace`), so the §2.1 row is right.** `death`: `death.dying_tick` at the first dying tick. `skillup`: `xp.level_up` (the Director plays it for the viewer's own heroes only; the
   option word `client+0x404 & 1` is not modelled). `sound_events` is not dumped; `Simulation` clears it at the start of each step unless `keep_sound_events=True` (then the consumer clears it: `Director.drain`).
 * **Sound sets.** `units.reg Sound` through `world.assets.unit_types()` (Parent inheritance already applied), cached in `World.sound_sets`; a world with no assets emits no unit-slot events. Slots <= 0 are empty.
 * **Voice bank (`voices.bank_of`).** Reduced server id (`10210 -> 21`, unit-struct `+0x14c`): 1-6 = xbow, knight, druid, troll, orc, mage; 22 (`Fighter_Hero`) = igles; 23 (`Mage_Hero`) = dina; 21 (`Start_*`)
@@ -284,6 +283,5 @@ Files: `engine/backend_pygame/audio.py` (`NullAudio`, `Audio`, `MusicPlayer`, `w
 - Which object defs count as n44 / n34 / n58 in the ambience scan, and the exact `rand` of its first draw.
 - The town windows `0x4b978f`, `0x4be6b0`, `0x4c03c2` and the speech-test sample of the options dialog.
 - Pickup / retreat / swarm bank offsets (INFERRED from the layout).
-- Hurt kind: [combat §12.7](combat.md) / `view/damage.hit_sound_kind` pick k from the **new** HP (`0x412a58`-`0x412acb`), sound.md §4.1 and §2.1 above say the old view HP; the engine follows the former. Re-read `0x467e42` / `0x467f60` to settle it.
 - Gapless track change at a track end (the next track is loaded on the end event); whether `Channel.set_volume(l, r)` of SDL_mixer reproduces DirectSound's pan law at the screen edge.
 - The remaining `message` (id 15) sites (`0x93`, `0xb9`, sub-types 5-8 / `0x10` of `0x92`): they need message sources the engine does not have (quests, trade).

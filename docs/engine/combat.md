@@ -759,7 +759,7 @@ Tests: `tests/test_engine_combat_pins.py`.
 ### 16.1 Client reaction on message `0x73` (`FUN_0040d9b2` case at `0x412826`-`0x412b49`)
 
 After the optional floating number (section 8) the handler does exactly three things; there is **no pain animation, no flash, no effect sprite**:
-1. **Sound** through the view unit's vtable `+0x74` = `FUN_00467e42(k)`: `HP_new == HP_old` -> `k = 0`; else `HP_new <= -10` -> nothing; else `HP_new < max / 2`
+1. **Sound** through the view unit's vtable `+0x74` = `FUN_00467e42(k)`: `HP_new == HP_old` -> `k = 0`; else the view's **old** HP (`+0x104`, overwritten only afterwards, `0x412ace`; CONFIRMED K11) `<= -10` -> nothing; else old HP `< max / 2`
    (`+0x108`, truncating halving) -> `k = 2`, otherwise `k = 1` (any change counts, a heal too). `k = 1, 2` are dropped when the unit played one less than 1500 ms ago
    (`timeGetTime() - unit+0x1bc < 0x5dc`). Sound set entries: section 12.7. Engine: `engine/audio/events.hurt_kind` (`engine/view/damage.hit_sound_kind` delegates), the sim emits the wound events, the 1500 ms throttle is `Director` ([audio.md](audio.md) 2.1).
 2. The new HP is stored (`unit+0x104`); when the unit is the one shown in the panel (`view+0x138`) two panel widgets get the refresh message `0x408`.

@@ -31,10 +31,11 @@ class SoundEvent:
 
 
 def hurt_kind(old_hp, new_hp, hp_max):
-    """The wound kind after message `0x73` (`0x412a58`-`0x412acb`, CONFIRMED K10): 0 when the HP did not change, None when the new HP is -10 or less,
-    else 2 below half of the maximum (`hp_max / 2` truncating) and 1 otherwise; any change counts, a heal too."""
+    """The wound kind after message `0x73` (`0x412a58`-`0x412ade`, CONFIRMED K11 REA): 0 when the HP did not change; else decided by the view's **old** HP
+    (still in `view+0x104` until `0x412ace` overwrites it): None when it is -10 or less, 2 below half of the maximum (`hp_max / 2` truncating), else 1;
+    any change counts, a heal too.  The new HP only decides the unchanged case."""
     if new_hp == old_hp:
         return 0
-    if new_hp <= -10:
+    if old_hp <= -10:
         return None
-    return 2 if new_hp < int(hp_max / 2) else 1
+    return 2 if old_hp < int(hp_max / 2) else 1

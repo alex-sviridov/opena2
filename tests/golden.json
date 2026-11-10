@@ -15,11 +15,11 @@
   },
   "hero_melee": {
    "count": 11,
-   "sha256": "c27c4930cb9485fecac36771a58527e8db4c1dc57c7902b73423269afff3b93e"
+   "sha256": "23bf77b52de86a3dc31f25444c8260570fc13c77f7d69ddf2063ed0e6550da20"
   },
   "melee": {
    "count": 19,
-   "sha256": "c7c98cf5605cfdd323ea19bd3c767eff2f6878cbafb99a8d3fff025cc0cc8929"
+   "sha256": "6d9a47a15e119853f9f805dad58cb173912381e43e5adfa05edf1c54299eb82f"
   },
   "pickup": {
    "count": 0,

@@ -27,7 +27,8 @@ def test_melee_sequence():
     sw = [e for e in evs if e.kind == ev.SWING]
     assert sw[0].sound == 100 and sw[0].bus == ev.SFX and sw[0].tick == 11 and sw[0].owner == 1
     hurts = [e for e in evs if e.kind == ev.HURT]
-    assert [e.k for e in hurts[:3]] == [1, 1, 1] and hurts[3].k == 2            # easy while the new HP is at least half, then hard
+    ks = [e.k for e in hurts]
+    assert ks[0] == 1 and ks[-1] == 2 and ks == sorted(ks)                      # easy while the OLD HP is at least half, then hard (0x412a89)
     assert {e.sound for e in hurts} == {220, 221} and all(e.bus == ev.SPEECH and not e.hero for e in hurts)
     deaths = [e for e in evs if e.kind == ev.DEATH]
     assert len(deaths) == 1 and deaths[0].sound == 240 and deaths[0].k == 3     # once, at the start of the dying animation
@@ -37,7 +38,7 @@ def test_melee_sequence():
 def test_hero_victim_uses_the_voice_bank_on_the_speech_bus():
     evs = SCENARIOS["hero_melee"]()
     voices = [e for e in evs if e.kind in (ev.HURT, ev.DEATH)]
-    assert [e.sound for e in voices[:2]] == [("hero", "aldor", "easy"), ("hero", "aldor", "hard")]
+    assert voices[0].sound == ("hero", "aldor", "easy") and ("hero", "aldor", "hard") in [e.sound for e in voices]
     assert voices[-1].sound == ("hero", "aldor", "dead") and all(e.hero and e.bus == ev.SPEECH for e in voices)
 
 
@@ -55,13 +56,15 @@ def test_blow_without_hp_change_plays_the_blow_slot_never_throttled_kind():
     assert (e.kind, e.k, e.sound, e.bus) == (ev.HURT, 0, 200, ev.SFX)
 
 
-def test_no_hurt_sound_when_the_new_hp_is_minus_10_or_less_and_the_heal_counts():
+def test_no_hurt_sound_when_the_old_hp_is_minus_10_or_less_and_the_heal_counts():
     w = world()
     u = fighter(w, 1, 10, 10, 1)
+    sounds.hurt(w, u, -10, -20)
+    assert w.sound_events == []                         # decided by the OLD HP (0x412a77)
     sounds.hurt(w, u, 5, -10)
-    assert w.sound_events == []
+    assert w.sound_events[0].k == 2                     # a blow that kills still sounds when the unit was alive before
     sounds.hurt(w, u, 5, 30)
-    assert w.sound_events[0].k == 1
+    assert w.sound_events[1].k == 2                     # a heal too, kind from the old HP (5 < half)
 
 
 def test_spell_object_skips_id_23_and_the_blizzard_is_id_523():

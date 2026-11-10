@@ -86,13 +86,16 @@ def test_hero_delay_is_clamped_to_twelve():
 # --- 1. message 0x73: sound rule ------------------------------------------------------------------------
 
 def test_hit_sound_kinds():
+    # the kind comes from the view's OLD HP (0x412a77-0x412aa4; the new HP is stored only afterwards at 0x412ace)
     assert hit_sound_kind(50, 50, 100) == 0                 # a blow that did not change the HP
-    assert hit_sound_kind(100, 60, 100) == 1                # at least half left
-    assert hit_sound_kind(100, 49, 100) == 2                # below half (`hp_max / 2` = 50)
+    assert hit_sound_kind(100, 60, 100) == 1                # at least half left before the blow
+    assert hit_sound_kind(100, 49, 100) == 1                # old HP decides: a big blow from full health is still "easy"
+    assert hit_sound_kind(49, 40, 100) == 2                 # old HP below half (`hp_max / 2` = 50)
     assert hit_sound_kind(10, -9, 100) == 2
-    assert hit_sound_kind(10, -10, 100) is None             # dead enough: silent
-    assert hit_sound_kind(40, 60, 100) == 1                 # a heal also plays
-    assert hit_sound_kind(10, 5, 5) == 1 and hit_sound_kind(10, 2, 5) == 1 and hit_sound_kind(10, 1, 5) == 2
+    assert hit_sound_kind(-10, -20, 100) is None            # old HP -10 or less: silent
+    assert hit_sound_kind(10, -10, 100) == 2
+    assert hit_sound_kind(40, 60, 100) == 2                 # a heal also plays, kind from the old HP
+    assert hit_sound_kind(10, 5, 5) == 1 and hit_sound_kind(10, 2, 5) == 1 and hit_sound_kind(1, 0, 5) == 2
 
 
 def test_hit_sound_gate_throttles_kinds_1_and_2_per_unit():
