@@ -139,18 +139,18 @@ unless `patch`):
 | check | (0x118, 0x7d) | `[0x57]` "Join" (the registry name is MessageColors) | `0x622818` |
 | label + 3 checks | (0x118, 0x9a), (0x118, 0xb0 / 0xcc / 0xe8) | `[0xa6]` AutoCast for units: `[0xa7..0xa9]` Own / Allies / Neutral | bits 1 / 2 / 4 of `0x62277c` |
 | 3 radio groups | (0x28, 0x120)-(0xd0, 0x168), (0xd0, ..)-(0x178, ..), (0x178, ..)-(0x220, ..) | Formation Mode `[0x3a]` Off / Auto / On; Retreat Mode `[0x3f]` Never / Low / Medium; AutoCast mode `[0xaa]` Minimum / Average / Maximum | `0x62275c`, `0x622760`, bits `0x10` / `0x20` of `0x62277c` |
-| buttons | y = last bottom + 8; OK W/7..3W/7, Cancel 4W/7..6W/7 (INFERRED, `0x442c8b-0x442d1d` partly read) | `[0]` Ok (`0x445`, default), `[1]` Cancel (`0x446`) | |
+| buttons | **CONFIRMED `0x442c7e-0x442d18`**: top = bottom of the last widget (the AutoCast-mode radio, id `0x8d`: `0x168`) + 8 = `0x170`, height `0x18`; OK x `W/7 .. 3W/7`, Cancel `4W/7 .. 6W/7`, W = the dialog width (584: 83..250, 333..500); `0x4d55cb` buttons, font1, ids `0xa` / `0xb` | `[0]` Ok (`0x445`, flag `0x10` = default, `0x442db6`), `[1]` Cancel (`0x446`) | |
 
 **Apply on OK only** (`0x442e8b`): each widget is read (`+0x3c`) into its variable, GameSpeed through `0x48bfaa`; **Animation off forces Lighting off** (`0x442fb7`); AutoCasting is rebuilt as
-`8 | 0x10 / 0x20 (mode radio) | 1 / 2 / 4`; then `0x41a617(Formation)`, `0x41a4ef(Retreat)`, `0x41a5b9(AutoCast)` push to the client. **Cancel closes without applying.** Defaults: Smoothing 1, ShowTimeFlow 1, TipsMode 1,
+`8 | 0x10 / 0x20 (mode radio) | 1 / 2 / 4`; then `0x41a617(Formation)`, `0x41a4ef(Retreat)`, `0x41a5b9(AutoCast)` push to the client. **Cancel closes without applying.** **ESC = Cancel (CONFIRMED):** the class vtable `0x5cc200` has `FUN_004dc595` in slot `0x6c` (the same key handler as the pause / failed windows: ESC sends message `0x446` to slot `0x48`) and `FUN_00442e8b` in slot `0x48`. Defaults: Smoothing 1, ShowTimeFlow 1, TipsMode 1,
 AutoCasting `0x19`, Shadows / Lighting / Animation 1, GameSpeed 4. The window is opened by `0x48b33b` (modal).
 
 **Sound Options** (message `0x422`, `0x43cacb(1, 100, 0x1e, 0x280, 0x1c2, ...)` = 540x420 -> **488x360** at (76, 60), handler `0x43d8a7`, opens only when a sound device exists): title `[7]`; track list (id 3, `w' - 0x40` wide,
 (0x28, 0x50)-(.., 0xaa), `tunes.txt` titles) with a scroll bar; check `[0xa5]` Acknowledgments (0x28, 0xbe); buttons Play `[0xd]` (0x28, 0x100)-(0x8c, 0x118) = message `0x477` (`MusicEnabled := 1`, plays the
 selected track), Stop `[0xf]` (0x96, 0x100)-(0xfc, 0x118) = `0x478` (stops, `MusicEnabled := 0`), Return `[8]` (0x28, 0x122)-(0xfc, 0x13a) = `0x476`; right column x 0x102 .. `w' - 0x28`: label `[0x10]` Music volume (y 0xaf) +
 slider id 6 (y 0xbe..0xd6), `[0x11]` SFX volume (0xe0) + slider 7 (0xf0..0x108), `[0x12]` Speech volume (0x113) + slider 8 (0x122..0x13a). The "Random Order" widget `[9]` is handled but never built.
-**Sliders act live** (message `0x46e`: id 6 sets the music volume, 7 `0x622698`, 8 `0x6226a0`) and **Cancel does not revert them** (there is no Cancel button); releasing a slider sends `0x474`, which plays `sfx[100]`
-at the SFX volume (id 7; the speech slider plays a speech sample). Slider position -> mB: `mB = trunc(-R * ((pos - R) / R)^2)` (`0x45b3a3`), inverse `pos = trunc(R - R * sqrt(-mB / R))` (`0x45b36e`); the engine keeps the K11
+**Sliders act live** (message `0x46e`: id 6 sets the music volume, 7 `0x622698`, 8 `0x6226a0`) and **Cancel does not revert them** (there is no Cancel button); releasing a slider sends `0x474`: id 7 selects `sfx[100]` (`0x420eb0(100)`) and plays it at the SFX volume (`0x45aa2f`, priority `0xdc`), id 8 plays **whatever sample is current** at the speech volume without selecting one
+(CONFIRMED `0x43d8a4`; so after an SFX test it is the same sword sample, INFERRED; the engine plays nothing for the speech release). **ESC** (slot `0x6c` `FUN_004dc595`, vtable `0x5cbcb0`, handler `0x43d8a4`) falls to the default `FUN_004dc2b0(0x446)` = close; the Return button (`0x476`) first stores the Acknowledgments check and then closes with `0x445`; Play (`0x477`) sets `MusicEnabled`, plays the selected track and Stop (`0x478`) stops (fade 2000 / 8000 on device kind 1). Slider position -> mB: `mB = trunc(-R * ((pos - R) / R)^2)` (`0x45b3a3`), inverse `pos = trunc(R - R * sqrt(-mB / R))` (`0x45b36e`); the engine keeps the K11
 percent scale ([audio §6](audio.md)).
 
 **Game speed** (`0x48bfaa`, jump table `0x48c0be`): 0..8, default 4; ticks per second `{8, 10, 12, 14, 16, 20, 24, 28, 32}`, period `1000 / rate` integer ms `{125, 100, 83, 71, 62, 50, 41, 35, 31}` (the table of
@@ -221,5 +221,5 @@ through a real mission (ESC -> Game Options OK, Sound Options Stop, End Quest) a
 - The main menu's decoration: which sprite of `graphics\interface\sprites.16a` is drawn at (480, 360) on every paint (`0x4a7b3f`).
 - PreCreate: the name field's rect and edit rules, the caption lines (`main.txt`), the hero identities behind the four windows, the confirm panel `0x48f3f0`, `FUN_00493da0` (the flag that sends the credits on to the hall of fame).
 - Fade routine `0x4c4840` (the maths) and the `SmackOpen` flag word `0xff000`.
-- Game Options: the exact OK / Cancel rects, whether ESC closes it (the class vtable `0x5cc200` against the `0x4dc595` users), the disabled look of widgets, the frame map of `scrlbars.256`, the sound index of each text-button event.
+- Game Options / Sound Options: the disabled look of widgets, the frame map of `scrlbars.256`, the sound index of each text-button event. (OK / Cancel rects and ESC answered.)
 - Whether the GOG build passes the CD check `0x62282c` (the menu would then have four disabled buttons), and the keyboard behaviour of the menu (INFERRED from the absent key handling, never run).
