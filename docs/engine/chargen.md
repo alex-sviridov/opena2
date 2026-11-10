@@ -11,8 +11,10 @@ The creation call that Accept leads to is [triggers 9.3](triggers.md#93-a-fresh-
   class of `FUN_0042ee73`, built from `0x431b4b`), not to this panel.
 - The attributes **start at the template hero's** (Start_MF / FF / MM / FM) with a **free pool of 0** (`0x42dd7d`-`0x42dd8b` in `0x42d8dc`: `+0x1f0 := 0` after the load). The panel only
   **re-distributes** points between the four attributes at marginal cost; **Reset** sets 25 / 25 / 25 / 25 and a pool of **100** (`0x42dfee`).
-- Only **four** of the five class icons are clickable (hit loops `< 4`: `0x42d1a3`, paint `0x42b220`): sword / axe / mace / pike, resp. fire / water / air / earth.
-  Bow and astral (index 5) are in the picture but cannot be picked.
+- Only **four** of the five class icons are clickable: sword / axe / mace / pike, resp. fire / water / air / earth. Bow and astral (index 5) are **fully built but
+  unpickable**, the removal is **deliberate at the hit level** (CONFIRMED, [1.3](#13-class-column-child-4)): the ctor and the loader (`0x42b052`, `0x42b147`, `0x42b890`) size / init / load
+  **5 entries** (pictures `on` / `shine_off` / `shine_on`, rects, mask index, flag word, sound), but the hit test `0x42d1a3` and the press `0x42b736` (rejects `iVar1 > 3`) and the
+  paint `0x42b220` loop `< 4`; only the hover clear `0x42b691` loops `< 5`. No path in single player gives school 5 ([1.3](#13-class-column-child-4), INFERRED reason: a cut feature). The engine keeps four pickable (DECISION).
 - The hero shown in the bottom-left panel is a **live preview unit** rebuilt after every change (`0x491988` -> `0x4919ff`); Accept sends message `0x48`
   (`0x41c5f5`) = the arguments of `FUN_004f254b`.
 
@@ -91,11 +93,15 @@ the BMP is stored bottom-up, rows counted from the bottom). Hit indices (CONFIRM
 | 3 | pike (4) | `0x7f` | (244, 225) 148x28 | earth (4) | `0x98` | (300, 228) 48x38 |
 | (4) | bow (5), **not pickable** | `0x66` | (248, 250) 140x40 | astral (5), **not pickable** | `0xbf` | (296, 158) 48x45 |
 
+The fifth entry is complete in the exe (CONFIRMED `0x42b890`: pictures, rect, size, mask byte `+0x108`; state / sound slot 4 initialised by `0x42b147` (`< 5`); `0x42d027` loads `FBow.wav` / `MAstral.wav`, both present, 17794 / 38626 bytes). The mask pictures **do** contain the fifth region (CONFIRMED, read from the install): fighter `0x66` 3807 px, x 243..383, y 257..283; mage `0xbf` 2968 px, x 292..347, y 154..206 (mage mask also has stray `0x67 / 0x8a / 0x99`, 24 px, never tested). So the hit test would find it with `< 5`; `< 4` makes it return -1 (clicks pass on). Paint, press and idle shimmer never touch slot 4 (paint of slot 4 would be a no-op; `0x42b220` does `state[4] |= 1` through `+0x11c`, INFERRED side effect of the shared flag word, unobservable).
+
+School 5 elsewhere (CONFIRMED by callers): `FUN_00514f59` (callers `0x4919ff` preview and `0x4f254b` creation only) handles schools 1..5 (loop `< 6`, `Uncommon Wood Long Bow` for the fighter, `Drain_Life` + staff for the mage), because the unit has five school skills; the school argument of `0x491988` is only fed from the column index + 1 (`0x42b736`, `0x429e3e` and its minus twin `0x429f41` pass the selected column `+0x134` + 1 = 1..4) or the template's best school (1 for all four templates, [2.1](#21-show-0x42d8dc-vtable-slot-32-confirmed)). `0x4f254b` (callers `0x4ebd5f`, `0x4f515d`, `0x4f856a`) takes the school from message `0x48`. So school 5 is dead code in single player; INFERRED: the five-school code serves a cut or multiplayer path, not a hidden single-player option.
+
 Pictures per column (`...\<name>\on.bmp`, `shine_off.bmp`, `shine_on.bmp`, all the size above; names `sword axe Mace Pike Bow`, `fire water air earth astral`):
 flag bit 0 = selected, bit 1 = hovered (`+0x10c + 4 k`); paint `0x42b220` draws, at the position, **selected only: `on`; hovered only: `shine_off`;
 both: `shine_on`**; none: nothing (the column picture already shows the engraved icons). Hover bit: set on the hit column by `0x42b691`, cleared on all others every move.
 Also an idle shimmer (`0x42b406`): after 500 ms (`0x1f4`) without hover or click, one column per 300 ms (`0x12c`) cycling k = 0..3 draws `shine_on` (selected) or
-`shine_off` (not); it only runs after the first click or while the hint is shown (INFERRED reading; open 4).
+`shine_off` (not); it only runs after the first click or while the hint is shown (INFERRED reading; open 3).
 Loaded but never drawn (INFERRED, no use found): `chrgen\RollStatsR.bmp`, `chrgen\FullStatsR.bmp`, `Inn\RUOver.bmp`.
 
 ### 1.4 Full stats (child 2)
@@ -204,11 +210,10 @@ Free steps (`up = 0`, e.g. 16 -> 17) work with an empty pool. Click mace: school
 
 ## Open questions
 
-1. Fifth class (bow / astral): the loops are `< 4`, the pictures exist: is it a deliberate removal? Starting routine `0x42d1a3`, `0x42b220`; verify in play.
-2. What the lower-right quadrant (480..640, 238..480) shows (nothing draws it; previous screen?). `0x42e1ed`, `0x48f3f0`.
-3. The tips window layout and the rect (0, 280, 312, 480) (INFERRED reading of the CRect args), whether the check box writes TipsMode. `0x4deca4`, `0x42dba8`.
-4. Exact rules of the idle shimmer. `0x42b406`.
-5. How the shared tooltip window places and styles the text of slot 5. `0x429b01`.
-6. Child `0x458` is built with the rect (0, 238, 160, 242) (a 4 px band): do its mouse events / tooltip (`0x42a34b`) ever reach it? `0x42a0f1`, `0x42d4b0`.
-7. Esc in this state at the shell window level (`FUN_004852d8` key path); the panel itself ignores it.
-8. Verify in play: Reset + pool 100 allows 45 / 45 / 45 / 45; the unreachable server budget check.
+1. What the lower-right quadrant (480..640, 238..480) shows (nothing draws it; previous screen?). `0x42e1ed`, `0x48f3f0`.
+2. The tips window layout and the rect (0, 280, 312, 480) (INFERRED reading of the CRect args), whether the check box writes TipsMode. `0x4deca4`, `0x42dba8`.
+3. Exact rules of the idle shimmer. `0x42b406`.
+4. How the shared tooltip window places and styles the text of slot 5. `0x429b01`.
+5. Child `0x458` is built with the rect (0, 238, 160, 242) (a 4 px band): do its mouse events / tooltip (`0x42a34b`) ever reach it? `0x42a0f1`, `0x42d4b0`.
+6. Esc in this state at the shell window level (`FUN_004852d8` key path); the panel itself ignores it.
+7. Verify in play: Reset + pool 100 allows 45 / 45 / 45 / 45; the unreachable server budget check.
