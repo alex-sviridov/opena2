@@ -18,6 +18,7 @@ The recreated game, built on the core library (`allods2/`, `a2res/`).
 | [items.md](items.md) | phase K5: picking up an item by click (cursor, command `0x21`, approach, the whole-pile take), what scripts see (checks 12 / 16 / 17, instants 11-13, 20, 28, 38), the seven quest-item maps | CONFIRMED / INFERRED |
 | [unit-struct.md](unit-struct.md) | runtime unit struct of the exe: classes, sizes, allocation sites, field table, per-tick behaviour, client mirror | CONFIRMED / INFERRED / UNKNOWN per field |
 
+| [campaign.md](campaign.md) | L1: the headless campaign (roster carry-over, recruits, town stand-in, mission chain, `python -m engine campaign`), DECISIONs, the chain result | L1 done, CONFIRMED / INFERRED per fact |
 | [shell.md](shell.md) | L0: startup (logos, videos), the main menu (mask, buttons, states), the screen graph, PreCreate (new game), the options windows and the settings file, video format, the shell state machine | L0 done, CONFIRMED / INFERRED per fact |
 
 Audio (K11): [audio.md](audio.md).

@@ -78,7 +78,7 @@ Objective run misses: map 77 lost.
 | 95 |  | playable now | won, tick 80 |  |  | ok |
 | 96 |  | playable now | won, tick 80 |  |  | ok |
 | 100 |  | playable now | won, tick 80 |  |  | ok |
-| 101 |  | playable now | won, tick 96 |  |  | ok |
+| 101 |  | playable now | won, tick 80 |  |  | ok |
 | 102 |  | playable now | won, tick 48 |  |  | lost |
 | 103 | Find the magic Oracle | playable now | won, tick 48 |  |  | ok |
 | 110 |  | playable now | won, tick 48 |  |  | lost |
@@ -197,7 +197,6 @@ Steps the maps do not need to be completed but a finished game does; each touche
 
 | Step | Effort | Backlog item |
 |---|---|---|
-| `campaign` Campaign spine (headless): new-game state, mission chain, roster carry-over, hero recruit, the Scenario.dll variables | 4 | 6 |
 | `shell` Shell: start menu, character creation, options, in-game menu entries, the campaign in one window | 4 | 4 |
 | `town` Town mode: world map, town scenes, hero screen (stats, skills, paper doll), item shops, inn | 6 | 4 |
 | `save` Save / load: game%d.sav (or an own format, a decision) and the Save / Load / Delete windows | 3 | 5 |
@@ -216,11 +215,10 @@ First the steps that unblock maps (greedy: the next one completes the most block
 
 | # | Step | Effort | Maps newly playable | Playable after | Maps touched | Backlog item |
 |---|---|---|---|---|---|---|
-| 1 | `campaign` Campaign spine (headless): new-game state, mission chain, roster carry-over, hero recruit, the Scenario.dll variables | 4 | - | 46 | 46 | 6 |
-| 2 | `shell` Shell: start menu, character creation, options, in-game menu entries, the campaign in one window | 4 | - | 46 | 46 | 4 |
-| 3 | `town` Town mode: world map, town scenes, hero screen (stats, skills, paper doll), item shops, inn | 6 | - | 46 | 46 | 4 |
-| 4 | `save` Save / load: game%d.sav (or an own format, a decision) and the Save / Load / Delete windows | 3 | - | 46 | 46 | 5 |
-| 5 | `cutscenes` Cutscenes: a Smacker decoder and the five scenario codes (intro, chapter ends) | 3 | - | 46 | 46 | 4 |
+| 1 | `shell` Shell: start menu, character creation, options, in-game menu entries, the campaign in one window | 4 | - | 46 | 46 | 4 |
+| 2 | `town` Town mode: world map, town scenes, hero screen (stats, skills, paper doll), item shops, inn | 6 | - | 46 | 46 | 4 |
+| 3 | `save` Save / load: game%d.sav (or an own format, a decision) and the Save / Load / Delete windows | 3 | - | 46 | 46 | 5 |
+| 4 | `cutscenes` Cutscenes: a Smacker decoder and the five scenario codes (intro, chapter ends) | 3 | - | 46 | 46 | 4 |
 
 <!-- coverage:end -->
 

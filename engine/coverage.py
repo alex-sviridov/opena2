@@ -57,7 +57,7 @@ STEPS = {s.id: s for s in (
     Step("tilefx", "Cell effects for scripts: check 25 reads the cell layers, instants 29 / 30 set spell durations", 1, backlog=3),
     Step("draw", "Draw what is simulated: status effects of units, arrows of shooters", 2, backlog=2),
     # the global steps, in the order docs/prototype.md argues for (dependencies, not cost): each later one needs the state the earlier one builds
-    Step("campaign", "Campaign spine (headless): new-game state, mission chain, roster carry-over, hero recruit, the Scenario.dll variables", 4, glob=True, backlog=6),
+    # "campaign" (L1: new-game state, mission chain, roster carry-over, hero recruit, the Scenario.dll variables) is built: `engine/campaign.py`, FEATURES["campaign.spine"]
     Step("shell", "Shell: start menu, character creation, options, in-game menu entries, the campaign in one window", 4, glob=True, backlog=4),
     Step("town", "Town mode: world map, town scenes, hero screen (stats, skills, paper doll), item shops, inn", 6, glob=True, backlog=4),
     Step("save", "Save / load: game%d.sav (or an own format, a decision) and the Save / Load / Delete windows", 3, glob=True, backlog=5),
@@ -87,6 +87,8 @@ FEATURES = {f.id: f for f in (
             "K11: the mission playlist, the zone roll every 16 ticks and the gapless theme switch at the track end (audio.md 4, 9; the music `Decision`s are tested, the sound is VERIFY BY EAR)"),
     Feature("unit.caster", "units with a spell book or a special-attack slot", BUILT, POLISH, "", "AI casting K1, effects K2"),
     Feature("unit.flyer", "flying units (movement type 3)", BUILT, POLISH, "", "movement and combat rows, combat.md 2"),
+    Feature("campaign.spine", "campaign spine (L1): roster carry-over, recruits, Scenario.dll variables, mission chain (`python -m engine campaign`)", BUILT, GAMEPLAY, "",
+            "L1: 34 missions chained in unlock order, the oracle wins all (docs/engine/campaign.md)"),
     Feature("unit.ghost", "ghosts and bees (movement type 2)", BUILT, POLISH, "", ""),
 )}
 

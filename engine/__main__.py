@@ -16,6 +16,8 @@ reports and crash traceback; docs/superpowers/specs/2026-11-05-prototype-j4-desi
    python -m engine coverage [GAME_DIR] [--ticks N] [--csv PATH] [--docs PATH|-] [--maps 10,32]
                                                    (map coverage report, phase K0: out/coverage.csv + docs/coverage.md)
    python -m engine objective [MAP ...] [--install DIR]   (the objective run, phase K12: does the script of the map reach "Mission Complete"?)
+   python -m engine campaign [--through N] [--hero MF|FF|MM|FM] [--seed N] [--no-side] [--install DIR]
+                                                   (phase L1: the missions chained in unlock order with the carried party; the objective run is the driver)
 
 MAP as for `python -m allods2 map` (10, scenario/10.alm, or a file).  X, Y =
 the viewport's top-left in world pixels (x = 32*col, y = 32*row - height).
@@ -137,6 +139,25 @@ def objective_cmd(a):
         for e in r["edits"]:
             print("    tick %-5d trigger %-3d check %-3d %s" % e)
     return 1 if bad else 0
+
+
+def campaign_cmd(a):
+    """The campaign spine (engine/campaign.py): one line per mission, then the maps never reached; exit 1 when a mission fails or a map that should be
+    reachable is not."""
+    from engine import campaign
+    side = () if a.no_side else campaign.SIDE_VARS
+    r = campaign.run_chain(a.install, a.through, a.hero, a.seed, side)
+    print("played %d missions: %s" % (len(r["played"]), " ".join(str(n) for n in r["played"])))
+    exp = campaign.NEVER_OFFERED
+    print("not played: %s%s" % (" ".join(str(n) for n in r["unreachable"]) or "none",
+                                "  (never offered by the campaign: %s; class slots of the other heroes: %s)" % (
+                                    " ".join(map(str, exp)), " ".join(map(str, sorted(campaign.class_alternatives(a.hero)))))))
+    for n, res, crash in r["failed"]:
+        print("mission %d: %s%s%s" % (n, res, " " + crash if crash else "", "  (known oracle miss)" if n in campaign.ORACLE_MISS else ""))
+    if r["unexpected"]:
+        print("UNEXPECTED unreachable maps: %s" % " ".join(str(n) for n in r["unexpected"]))
+    print("chain hash %s" % r["hash"])
+    return 1 if r["hard_failed"] or r["unexpected"] else 0
 
 
 def minimap_cmd(a):
@@ -532,6 +553,12 @@ def build_parser():
     ob = sub.add_parser("objective", help="the objective run: does the script of each campaign map reach Mission Complete (world edits stand in for the player)?")
     ob.add_argument("maps", nargs="*", help="map numbers (default: all campaign maps)")
     ob.add_argument("--install")
+    ca = sub.add_parser("campaign", help="the campaign spine: chain the missions in unlock order with the carried party (the objective run drives each map)")
+    ca.add_argument("--through", type=int, help="stop after this mission is finished (default: until the ending)")
+    ca.add_argument("--hero", default="MF", choices=("MF", "FF", "MM", "FM"), help="the hero's template: gender + class (default MF); decides the class-slot missions")
+    ca.add_argument("--seed", type=int, default=1)
+    ca.add_argument("--no-side", action="store_true", help="do not take the optional goals that add missions 21 and 52")
+    ca.add_argument("--install")
     rp = sub.add_parser("replay", help="run a recorded session again, headless")
     rp.add_argument("session", help="a session directory or its session.json")
     rp.add_argument("--verify", action="store_true", help="exit 1 when the world hash differs from final.json")
@@ -565,6 +592,8 @@ def _dispatch(a, p):
         return coverage_cmd(a)
     if a.cmd == "objective":
         return objective_cmd(a)
+    if a.cmd == "campaign":
+        return campaign_cmd(a)
     if a.cmd == "play":
         return play_cmd(a, p)
     if a.cmd == "shell":

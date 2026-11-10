@@ -23,7 +23,7 @@ from allods2.formats import progression as prog
 from allods2.formats.objects import MapObject as PlacedObject
 
 from .cellslots import CellSlots, pack
-from .netids import NetIds
+from .netids import LIMIT as NET_LIMIT, NetIds
 from .rng import DEFAULT_SEED, Rng
 
 STRUCTURE_ID_BASE = 0x6000      # spec decision 2: runtime object id = 0x6000 + uid (CONFIRMED map.md part 4)
@@ -572,6 +572,7 @@ class Unit:
     cast_cell: tuple = None         # brain+0x3c target cell (x, y) of the cell cast order 0xe / mode 9
     name: str = ""                  # +0x80 CString: set only for heroes (hero name setters 0x4ead6b, 0x4f2b4c); the by-name hero look-up reads it (triggers.md 9.5); not dumped
     net_id: int = 0                 # +0x04 the exe object id of a unit made at run time (`engine/netids.py`: a hero, a summoned minion); 0 = a map unit (id `0x6000 + uid`)
+    hero_no: int = 0                # +0x14c when it is not the reduced server id: the hero number a recruit / mercenary hire writes (engine/campaign.py); 0 = derived (engine.party.hero_number); not dumped
     master: int = 0                 # +0x148 the summoner's id (Summon spell; 0 = none): the minion cap job reads it (sim/spells.py `minion_job`)
     # follow / patrol orders and Brain mode 4 (docs/engine/ai.md 14.2; sim/follow.py)
     leader: int = None              # brain+0x10 the object being followed / defended (orders 8, 0x11)
@@ -1161,15 +1162,17 @@ class World:
     # --- loading -------------------------------------------------------------------
 
     @classmethod
-    def from_map(cls, m, assets, facing=None, seed=DEFAULT_SEED, difficulty=DEFAULT_DIFFICULTY):
+    def from_map(cls, m, assets, facing=None, seed=DEFAULT_SEED, difficulty=DEFAULT_DIFFICULTY, reserve_ids=()):
         """From an `allods2.formats.Map` and an `AssetCache` (spec "World").
         Structures first in record order, then section 3 cells row-major;
         bulk-added, then one full block build; then players, units and ground piles in
         record order.  `facing`: None gives each unit the exe's start angle 0x40 + [0, 128)
         (the exe's rand, here a fixed hash of the uid so a map always loads the same);
         an int puts every unit at that angle byte (0x80 = front view, as `map render`).
-        `difficulty`: the game option `[0x6044c4+0xd8]` (1 easy, 2 normal = the ctor default of `0x4e97bf`, 3 hard); see `_load_units`."""
+        `difficulty`: the game option `[0x6044c4+0xd8]` (1 easy, 2 normal = the ctor default of `0x4e97bf`, 3 hard); see `_load_units`.
+        `reserve_ids`: free-id bits already held (the campaign's heroes and mercenaries exist before the map is loaded, so the piles take later ids)."""
         w = cls(m.runtime_terrain(), m.heights_i8, m.name, terrain=m.terrain, seed=seed)
+        w.net_ids.used.update(i for i in reserve_ids if 0 < i < NET_LIMIT)
         if hasattr(assets, "map_reg"):                  # test doubles keep the defaults
             costs, w.speed_multiplier = assets.map_reg()
             w.set_costs(costs)

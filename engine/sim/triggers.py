@@ -334,14 +334,14 @@ def compile_scenario(world, scenario):
     return script
 
 
-def enable(world, m, strict=False, assets=None, party=0):
+def enable(world, m, strict=False, assets=None, party=0, roster=None):
     """Compile `m.scenario` (an `allods2.formats.Map`) into `world.script`; enables the AI first (the squads and their map-start
     orders are part of the compiler, T§2.1).  `strict`: unimplemented kinds raise NotImplementedError instead of being counted.
 
     With `assets`, a map that has "Drop Location" cells and a human player without a main hero gets a fresh campaign party
     (`engine.party.place_party`, T§9: `party` heroes, the main hero first; 0 = as many as the script names, 1..3, DECISION: the save
     that would carry the recruited heroes is not read) before the script is compiled, so the hero references resolve; a world
-    that already holds the main hero is left alone."""
+    that already holds the main hero is left alone.  `roster` (an `engine.party.Roster`, the campaign): the carried party replaces the fresh one."""
     scenario = m.scenario if hasattr(m, "scenario") else m
     if assets is not None:
         drops = [(r.values[0] & 0xFF, r.values[1] & 0xFF) for r in scenario.instants if r.type == S.CONSTANT]
@@ -349,7 +349,7 @@ def enable(world, m, strict=False, assets=None, party=0):
             from engine.party import place_party
             named = [v - S.HERO_BASE + 1 for r in list(scenario.instants) + list(scenario.checks) for k, v in r.args()
                      if k == S.K_UNIT and S.HERO_BASE <= v < S.NAMED_BASE]
-            place_party(world, assets, drops, count=party or min(3, max(named + [1])))
+            place_party(world, assets, drops, count=party or min(3, max(named + [1])), roster=roster)
     if not world.ai_on:
         ai.enable(world)
     world.script = compile_scenario(world, scenario)

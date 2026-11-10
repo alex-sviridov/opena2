@@ -51,16 +51,17 @@ def decode_command(d):
     return cls(**{k: _tupled(v) for k, v in d.items()})
 
 
-def build_game(map_arg, install=None, seed=None, difficulty=DEFAULT_DIFFICULTY, vision=False):
+def build_game(map_arg, install=None, seed=None, difficulty=DEFAULT_DIFFICULTY, vision=False, roster=None, reserve_ids=(), assets=None):
     """The world of a campaign map as the game starts it: the map script, the party at the drop cell, the AI.
-    Returns `(world, assets)`; both `play` and `replay` come through here."""
+    Returns `(world, assets)`; both `play` and `replay` come through here.  `roster` (`engine.party.Roster`) + `reserve_ids`: the campaign's carried
+    party instead of the fresh one (`engine.campaign.CampaignGame.start_mission`)."""
     from allods2.assets import AssetCache
     from allods2.cli import open_map
     from engine.sim import triggers
-    assets = AssetCache(install)
+    assets = assets or AssetCache(install)
     m = open_map(map_arg, install)
-    world = World.from_map(m, assets, seed=seed, difficulty=difficulty)
-    triggers.enable(world, m, assets=assets)
+    world = World.from_map(m, assets, seed=seed, difficulty=difficulty, reserve_ids=reserve_ids)
+    triggers.enable(world, m, assets=assets, roster=roster)
     if vision:
         from engine.sim import vision as vision_mod
         vision_mod.enable(world)

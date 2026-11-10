@@ -7,12 +7,14 @@ and places it exactly like the exe: one drop cell drawn at random, the main hero
 others in the radius `max(5, trunc(sqrt(n) + 4))` of it, every search by `FUN_00510089` (`engine.sim.place.find_place`).
 """
 
+import copy
 import math
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from types import SimpleNamespace
 
 from allods2.formats import entities as E
 from allods2.formats import progression as prog
+from allods2.formats import unitstats as U
 
 from .sim.place import find_place
 
@@ -114,14 +116,130 @@ def on_map(world, unit):
     return world.slots.occ[0].get(pack(unit.x, unit.y)) == unit.id
 
 
-def place_party(world, assets, drops, count=1, start="MF", owner=None, record=None):
+# --- the carried roster (docs/engine/campaign.md; docs/formats/saves.md section 4) -----------------------------------------------------------
+
+BUDGET = 0x8C                       # FUN_004f254b: the creation point budget; cost(v) = trunc(0.349 * (v - 1) ^ 1.15 + 0.5) (FUN_004f250e)
+SCHOOL_WEAPONS = {1: "Iron Long Sword", 2: "Iron Axe", 3: "Iron Mace", 4: "Iron Pike", 5: "Uncommon Wood Long Bow"}
+SCHOOL_STAFFS = {1: "Fire Arrow", 2: "Ice Missile", 3: "Lightning", 4: "Diamond Dust", 5: "Drain Life"}
+# the unit fields a hero keeps from mission to mission (saves.md section 4: level / XP / skills / pools / items / spells / name / hero number)
+CARRY = ("server_id", "type_id", "human", "move_type", "face", "stats", "skills", "xp", "xp_total", "best_school", "mana_max", "hp_max", "spellbook",
+         "name", "equipment", "pack", "pack_index", "carried", "carried_mods", "skill_bonus", "attr_bonus", "gear_speed", "kill_list", "speed_mod",
+         "auto_spell", "wimpy_hp", "withdraw_hp", "hero_no")
+
+
+def attribute_cost(v):
+    return int(0.349 * (v - 1) ** 1.15 + 0.5)
+
+
+@dataclass
+class HeroSpec:
+    """The arguments of `FUN_004f254b` for a hero that does not exist yet: `attributes` (body, reaction, mind, spirit; all 25 when the point budget
+    does not hold), `school` 1..5 (None = the template's own), `name`."""
+    attributes: tuple = None
+    school: int = None
+    name: str = ""
+
+
+@dataclass
+class RosterEntry:
+    """One unit of the human's list that is not a map unit: `number` = `+0x14c`, `server_id` = the data.bin template, `net_id` = `unit+4`, `state` = the
+    carried fields of the unit (`CARRY`, a `SimpleNamespace`) or None while the hero was never in a world (then `spec` builds it)."""
+    number: int
+    server_id: int
+    human: bool = True
+    net_id: int = 0
+    state: object = None
+    spec: HeroSpec = None
+
+
+@dataclass
+class Roster:
+    """What a campaign map starts with instead of a fresh party: the entries in list order (main hero first, the carried heroes, then the hired
+    mercenaries), the player's gold and statistics."""
+    entries: list
+    gold: int = 0
+    hero_deaths: int = 0
+    kills_monsters: int = 0
+    kills_players: int = 0
+
+
+def hero_number(u):
+    """`+0x14c`: the number a recruit / hire wrote (`Unit.hero_no`), else a human's server id above 10000 reduced to `(id / 10) % 1000` (units.md)."""
+    v = u.server_id
+    return u.hero_no or ((v // 10) % 1000 if u.human and v > 10000 else v)
+
+
+def _dup(v):
+    """A copy of a carried value; the template (`stats`, replaced never mutated) is shared."""
+    return v if isinstance(v, U.UnitType) else copy.deepcopy(v)
+
+
+def capture(u):
+    """The carried state of a unit: a deep copy of the `CARRY` fields (HP / mana are not part of it: the carry-over sets them to the maxima)."""
+    return SimpleNamespace(**{k: _dup(getattr(u, k)) for k in CARRY})
+
+
+def restore(world, u, state):
+    """Put a carried state on a freshly created unit of the same template; HP and mana at the maxima (FUN_004ebd5f step 6), effects, orders and targets
+    clear as the new unit has them."""
+    for k in CARRY:
+        setattr(u, k, _dup(getattr(state, k)))
+    u.combat = None
+    if world.item_table is not None and u.human and u.stats is not None:
+        from .sim import gear
+        gear.recompute(world, u)
+    u.hp, u.mana = u.hp_max, u.mana_max
+
+
+def apply_spec(world, u, spec):
+    """A fresh hero of the creation call (`FUN_004f254b`, triggers.md 9.3): attributes when the budget holds (else 25 each), the school skill 20 and
+    the shooting skill 10 (`FUN_00514f59`; INFERRED: school 5 = the bow keeps 20), the pools, the best school and the school's weapon / staff."""
+    if spec.name:
+        u.name = spec.name
+    if spec.attributes is not None:
+        attrs = tuple(spec.attributes)
+        if sum(attribute_cost(v) for v in attrs) > BUDGET:
+            attrs = (25, 25, 25, 25)
+        fields = dict(u.stats.fields)
+        fields.update(zip(ATTRS, attrs))
+        u.stats = replace(u.stats, fields=fields)
+    if spec.school is not None:
+        sk = [u.skills[0], 0, 0, 0, 0, 0]
+        sk[5] = 10
+        sk[spec.school] = 20
+        u.skills = tuple(sk)
+        u.xp, u.xp_total = prog.start_pools(u.skills)
+        u.best_school = spec.school
+    if world.item_table is not None:
+        from .sim import combatstats as cs, gear
+        gear.ensure_loadout(world, u)
+        if spec.school is not None:
+            mage = gear.is_mage(u)
+            text = SCHOOL_WEAPONS[spec.school] if not mage else "Uncommon Wood Staff {castSpell=%s:1}" % SCHOOL_STAFFS[spec.school]
+            r = world.item_table.parse_equipment(text, 0)
+            item = world.item_table.resolve(*r) if r else None
+            if item is not None:
+                gear.take_slot(world, u, 1)
+                gear.put_and_file(world, u, gear.make_item(world.item_table, cs.item_code(item), item.effects))
+                gear.sync_carried(u)
+        gear.recompute(world, u)
+    if world.item_table is None and u.stats is not None and u.skills:
+        u.hp_max, u.mana_max = prog.derived_vitals(u.stats, u.skills, total=u.xp_total)
+    u.hp, u.mana = u.hp_max, u.mana_max
+
+
+def place_party(world, assets, drops, count=1, start="MF", owner=None, record=None, roster=None):
     """Create the party of the human player and place it at the drop cells; returns the list of placed units (main hero first).
 
     `record` (a `saves.Character`): the main hero is built from the character record instead of the fresh start template
     (template from the record's flags, `apply_record`); the other members stay the recruitable heroes.
 
     Does nothing (returns []) when the player already has a main hero.  Sets `Player.main_hero`.  The exe's unit uid is a free
-    network id; here `max(unit / structure uid) + 1 + k` (DECISION), the scenario hero number comes from the template (+0x14c)."""
+    network id; here `max(unit / structure uid) + 1 + k` (DECISION), the scenario hero number comes from the template (+0x14c).
+
+    `roster` (a `Roster`, the campaign): the entries replace the fresh party, in list order, each from its template (`server_id`, human or monster), then
+    its carried `state` (`restore`) or its `spec` (`apply_spec`); the first entry is the main hero; the player's gold and statistics come from the
+    roster.  Placement, the radius and the draws are those of the fresh party."""
     if owner is None:
         owner = next((p for _, p in sorted(world.players.items()) if p.human), None)
     if owner is None or owner.main_hero:
@@ -129,30 +247,43 @@ def place_party(world, assets, drops, count=1, start="MF", owner=None, record=No
     types = assets.unit_stats()
     if record is not None:
         start = start_key(record)
-    ids = party_ids(count, start)
+    if roster is not None:
+        plan = [(e.server_id, e.human, e) for e in roster.entries]
+    else:
+        plan = [(sid, True, None) for sid in party_ids(count, start)]
+    ids = plan
     uid0 = 1 + max([u.uid for u in world.units.values()] + [o.uid for o in world.objects.values()] + [0])
     n = len([u for u in world.units.values() if u.owner == owner.id]) + len(ids)
     x, y = drop_cell(world, drops)
     r = spread(n)
     placed = []
-    for k, sid in enumerate(ids):
-        tpl = types.lookup(True, sid)
+    for k, (sid, human, entry) in enumerate(plan):
+        tpl = types.lookup(human, sid)
         if tpl is None:
             raise ValueError("hero template %d is not in data.bin" % sid)
         stub = SimpleNamespace(move_type=tpl.movement_type, stats=tpl)
         spot = (find_place(world, stub, x, y, 0) if k == 0 else None) or find_place(world, stub, x, y, r)
         if spot is None:
             continue                        # the exe logs "can't place unit" and goes on (FUN_004f2c83 0x4f2fb3)
-        rec = E.Unit((spot[0] << 8) + 128, (spot[1] << 8) + 128, tpl.unit_type, 0, E.HUMAN_FLAG, 0, sid, owner.id, 0, 0,
+        rec = E.Unit((spot[0] << 8) + 128, (spot[1] << 8) + 128, tpl.unit_type, 0, E.HUMAN_FLAG if human else 0, 0, sid, owner.id, 0, 0,
                      E.NO_HP, E.NO_HP, uid0 + k, 0, 0)
         keep = (world.report.units_on_blocked, world.report.units_sharing_cell)
         world._load_units(SimpleNamespace(units=[rec], item_groups=[]), assets, None)
         world.report.units_on_blocked, world.report.units_sharing_cell = keep
         u = world.units[0x6000 + uid0 + k]
-        u.net_id = world.net_ids.alloc()    # `FUN_004f254b` / `FUN_004f312a`: `unit+4` = the lowest free id (engine/netids.py)
+        u.net_id = (entry.net_id if entry is not None and entry.net_id else 0) or world.net_ids.alloc()    # `FUN_004f254b` / `FUN_004f312a`: `unit+4` = the lowest free id (engine/netids.py)
         if k == 0:
             owner.main_hero = u.id          # FUN_004f254b: owner+0x38 := the new hero
             if record is not None:
                 apply_record(u, owner, record, world)
+        if entry is not None:
+            u.hero_no = entry.number
+            if entry.state is not None:
+                restore(world, u, entry.state)
+            elif entry.spec is not None:
+                apply_spec(world, u, entry.spec)
         placed.append(u)
+    if roster is not None:
+        owner.gold, owner.hero_deaths = roster.gold, roster.hero_deaths
+        owner.kills_monsters, owner.kills_players = roster.kills_monsters, roster.kills_players
     return placed

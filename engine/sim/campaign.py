@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 # Scenario.dll variables read by the exe / the DLL (ScenarioGetVar = ordinal 1, array `0x10036028`, 1024 x i32)
 SUBOBJECTIVE_BASE = 0x2F0       # 16 sub-objectives (script instant 36, check 24); ScenarioEnterLocation zeroes 0x2f0..0x2ff
 CHAPTER = 0x300                 # starts at 10, +10 per finished main mission (the id % 10 == 0); >= 0x78 = the campaign is over
+MERC_HIRED, MERC_MARK, MERC_TOWN, MERCENARIES = 0x200, 0x214, 0x228, 20     # + k (hero number k + 1): hired for the next mission / on offer / offering town
+MERC_OFFERS = {20: ((1, 2),), 50: ((3, 3),), 60: ((6, 2),), 70: ((4, 3),), 100: ((7, 2),)}      # case n -> (mercenary number, town) put on offer (11.1)
 RECRUIT = 0x305                 # hero server number (0x15..0x1e) a mission end recruits (FUN_004f312a); set to 0x17 by mission 40
 MISSION_DONE_BASE = 0x380       # 1 + mission id: set to 1 when ScenarioLeaveLocation finishes that mission
 HERO_DEAD_BASE = 0x213          # + server id of a hero below 0x15: set to 0 by the client when it dies (combat 12)
@@ -104,16 +106,30 @@ class Campaign:
                 self.available.remove(loc)
             return -1
         self.recruit_clear()
+        for k in range(MERCENARIES):                    # step 3: a marker that is set becomes 2 when the mercenary was hired, else 1; every hire flag goes
+            if self.get(MERC_MARK + k):
+                self.vars[MERC_MARK + k] = 2 if self.get(MERC_HIRED + k) else 1
+            self.vars.pop(MERC_HIRED + k, None)
         if loc in self.available:
             self.available.remove(loc)
         self.vars[MISSION_DONE_BASE + n] = 1
         code = -1
         for k, i in UNLOCK.get(n, ()):
             self._unlock(k, i)
-        if n == 20 and self.get(0x303):
+        for hero, town in MERC_OFFERS.get(n, ()):       # the markers a case creates are not promoted in the same call (the loop ran first)
+            self.offer_mercenary(hero, town)
+        if n == 20 and self.get(0x304):
             self._unlock(MISSION, 21)
         if n == 40:
             self.vars[RECRUIT] = 0x17
+        if n == 50:
+            self.vars[0x303] = 1
+            if self.get(0x30C):
+                self._unlock(MISSION, 52)
+        if n == 60:
+            self.vars[0x306] = 1
+        if n == 70:
+            self.vars[0x302] = 1
         if n == 10:
             code = 1
         elif n == 30:
@@ -134,10 +150,115 @@ class Campaign:
         """`0x10001da5` starts with Var(0x305) = 0."""
         self.vars.pop(RECRUIT, None)
 
+    # --- Scenario.dll town dialogue (11.2: CONFIRMED by running ScenarioEnterInn / ScenarioTalkTo on every chapter, town and flag state) ---------
+
+    def offer_mercenary(self, hero, town):
+        """Mercenary `hero` (1..7) goes on offer in `town`: marker `Var(0x213 + hero)` := 1, town `Var(0x227 + hero)`."""
+        self.vars[MERC_MARK + hero - 1] = 1
+        self.vars[MERC_TOWN + hero - 1] = town
+
+    def enter_inn_words(self, town, is_mage=False, is_female=False):
+        """`ScenarioEnterInn` (`0x1000286b`): the dialogue words the inn of `town` (2 or 3; town 1 only has the chapter 10 words) offers at the
+        current chapter, in the routine's order: the chapter's rows, the town-3 rows (chapters 60-110), the town-2 rows (62 and the class slot),
+        then the mercenary offers (INFERRED: the order of the three blocks after the per-chapter jump table; only the order of the offered missions
+        in the available list depends on it)."""
+        c, d, w = self.get(CHAPTER), (lambda k: self.get(MISSION_DONE_BASE + k)), []
+
+        def add(t, a, b, gate=True):
+            if gate:
+                w.append((t << 28) | (b << 16) | a)
+
+        if c == 10:
+            add(0, 0xCF, 9)
+            add(0, 0x83C, 8)
+            add(3, 0x205, 10)
+        elif c == 30:
+            add(3, 0x16, 30)
+            add(3, 0x83C, 31, not d(31))
+            add(0, 0x83E, 39)
+        elif c == 40:
+            add(3, 0x16, 40)
+            add(0, 0x83C, 48)
+            for a, b in ((0x7DF, 41), (0x83F, 42), (0x7D4, 43)):
+                add(3, a, b, not d(b))
+        elif c == 50:
+            add(0, 0x17, 49)
+            add(3, 0x7E3, 53, not d(53))
+        elif town == 2 and c == 60:
+            add(3, 0x7D6, 61, not d(61))
+            add(3, 0x83D, 63, not d(63))
+        elif town == 2 and c == 70:
+            add(3, 0x7D4, 73, not d(73))
+            add(3, 0x83C, 72, not d(72))
+        elif town == 2 and c == 80:
+            m = 81 if is_mage else 82
+            add(3, 0x7DA if is_mage else 0x7D9, m, not d(m))
+        elif c == 90:
+            if town == 2:
+                add(3, 0x7D4, 90, not d(90))
+            elif town == 3:
+                add(3, 0x2A9, 91, not d(91))
+                add(3, 0x7D3, 92, not d(92))
+        elif c == 100:
+            if town == 2:
+                add(3, 0x7D6, 100, not d(100))
+                add(3, 0x83D, 102, not d(102))
+                add(3, 0x7D5, 103, d(91) and not d(103))
+            elif town == 3:
+                add(3, 0x2A9, 101, not d(101))
+        elif town == 2 and c == 110:
+            add(3, 0x7D6, 110)
+        if town == 3 and 60 <= c <= 110:
+            if c <= 80 and self.get(0x303):
+                add(3, 0x2A8, 70, not d(70))
+                add(3, 0x2A9, 71, not d(71))
+            add(0, 0x5, 79, c > 60 and self.get(0x306) == 1)
+            add(0, 0x2A3, 78, c > 60 and self.get(0x302) == 1)
+        if town == 2 and c >= 60:
+            add(3, 0x16, 62, d(53) and not d(62))
+            slot = (2 if is_female else 3) if is_mage else (1 if is_female else 0)
+            if d(63):
+                if not any(d(k) for k in range(74, 78)):
+                    add(3, 0x7E6, 74 + slot)
+                elif not any(d(k) for k in range(84, 88)):
+                    add(3, 0x7E6, 84 + slot)
+                elif not any(d(k) for k in range(93, 97)):
+                    add(3, 0x7E6, 93 + slot)
+        for k in range(MERCENARIES):
+            if self.get(MERC_TOWN + k) == town and self.get(MERC_MARK + k) in (1, 2):
+                w.append((k + 1) | (self.get(MERC_MARK + k) << 28) | ((self.get(MERC_HIRED + k) > 0) << 31))
+        return w
+
+    def talk_to(self, word):
+        """`ScenarioTalkTo` (`0x100032c0`): the effect of picking a dialogue word.  Type 0: A = 5 puts the orc on offer (`0x218`, town 3,
+        `0x306` := 2), A = 0x2a3 with B = 0x4e sets `0x302` := 2; type 1 toggles the hire flag of mercenary A; type 3: the offered mission B
+        joins the available list (a known location), B = 10 sets `0x301`, (A = 0x16, B = 30) puts the knight on offer in town 2."""
+        t, a, b = (word >> 28) & 7, word & 0xFFFF, (word >> 16) & 0xFFF
+        if t == 0:
+            if a == 5:
+                self.vars[0x218], self.vars[0x22C], self.vars[0x306] = 1, 3, 2
+            elif a == 0x2A3 and b == 0x4E:
+                self.vars[0x302] = 2
+        elif t == 1:
+            if 1 <= a <= MERCENARIES:
+                self.vars[MERC_HIRED + a - 1] = 0 if self.get(MERC_HIRED + a - 1) else 1
+        elif t == 3:
+            if b in KNOWN_MISSIONS:
+                self._unlock(MISSION, b)
+            if b == 10:
+                self.vars[0x301] = 1
+            if a == 0x16 and b == 30:
+                self.vars[0x215], self.vars[0x229] = 1, 2
+
     def town_available(self):
         """`ScenarioIsTownAvailable(0)` (0x10003800): any town in the available list."""
         return any(k == TOWN for k, _ in self.available)
 
+
+# Missions a type-3 word can offer (11.2: the union over every chapter, town and flag state) and the ones the completion cases add
+KNOWN_MISSIONS = frozenset((10, 20, 21, 30, 31, 32, 40, 41, 42, 43, 50, 52, 53, 60, 61, 62, 63) + tuple(range(70, 78)) + (80, 81, 82)
+                           + (84, 85, 86, 87) + tuple(range(90, 97)) + (100, 101, 102, 103, 110))
+STORY_HEROES = range(0x15, 0x1F)
 
 # Missions (and towns) a finished mission makes available (the switch of 0x10001da5; FUN_1000192f = mission, FUN_1000199f = town)
 UNLOCK = {10: ((MISSION, 20),), 20: ((TOWN, 2),), 31: ((MISSION, 32),), 40: ((MISSION, 50), (MISSION, 60)), 50: ((TOWN, 3),),
@@ -197,7 +318,13 @@ def press(world, camp, command):
         return Outcome("load")
     if command == BTN_MENU or (command == BTN_CONTINUE and not world.mission_ended):
         return Outcome("main_menu")
-    camp.times.append(world.tick >> 4)
+    return complete(camp, world.tick)
+
+
+def complete(camp, tick):
+    """The part of `0x41d` after the roster carry-over (which belongs to the caller): the mission time, `ScenarioLeaveLocation`, the recruit number
+    (`Outcome.recruit`) and the next screen."""
+    camp.times.append(tick >> 4)
     code = camp.leave()
     recruit = camp.get(RECRUIT)            # read after the leave: a mission's leave zeroes it first (0x10001da5), mission 40 sets 0x17
     if camp.get(CHAPTER) >= FINAL_CHAPTER:

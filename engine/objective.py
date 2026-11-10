@@ -139,6 +139,12 @@ def satisfy(world, script, pair, c):
                 gear.pick_up(world, hero, p)
             return "take the sack at (%d, %d)" % (n[0] & 0xFF, n[1] & 0xFF)
         return None
+    if kind == 4 and n[0] == 6:                         # "Get unit parameter" 6 = the hit points (map 50: the ogre hostage's health)
+        for hp in (1, 5, 10, 25, 50, 100, 300, 0):
+            if ok(hp):
+                u.hp = hp
+                return "unit %d hp %d" % (u.server_id, hp)
+        return None
     if kind == 5:
         if u.state != T.DEAD and ok(0):
             _kill(u)
@@ -208,33 +214,48 @@ def _plan(world, script, t, slots, seen, stuck):
     return (t, physical) if physical else None
 
 
-def _round(world, sim):
-    """One edit round: the next trigger on the way to the win and the world edits that make its conditions true."""
+def _side_writers(script, side):
+    """The compiled triggers whose instant 35 (ScenarioSetVar) writes one of the campaign variables `side` that is still 0: the optional goals
+    of a campaign mission (map 20 "Get mission 21" = Var 0x304, map 50 "Give 52 mission" = Var 0x30c), tried before the win."""
+    out = []
+    for t in script.triggers:
+        for i in t.instants:
+            if 0 <= i < len(script.instants):
+                ins = script.instants[i]
+                if ins.type == 35 and ins.nums[0] in side and not script.scenario_vars.get(ins.nums[0]):
+                    out.append(t)
+                    break
+    return out
+
+
+def _round(world, sim, side=()):
+    """One edit round: the next trigger on the way to the goal (a `side` variable's writer first, then the win) and the world edits that make its
+    conditions true."""
     script = world.script
     slots, seen, stuck = _slot_checks(script), set(), []
-    for t in script.triggers:
-        if _is_win(script, t):
-            r = _plan(world, script, t, slots, seen, stuck)
-            if r:
-                t, physical = r
-                edits = []
-                for pair, c in physical:
-                    e = satisfy(world, script, pair, c)
-                    if e:
-                        edits.append((t.position, c.type, e))
-                    else:
-                        stuck.append((t.position, c.type))
-                return edits, stuck
+    for t in _side_writers(script, side) + [t for t in script.triggers if _is_win(script, t)]:
+        r = _plan(world, script, t, slots, seen, stuck)
+        if r:
+            t, physical = r
+            edits = []
+            for pair, c in physical:
+                e = satisfy(world, script, pair, c)
+                if e:
+                    edits.append((t.position, c.type, e))
+                else:
+                    stuck.append((t.position, c.type))
+            return edits, stuck
     return [], stuck
 
 
-def run(name, install=None, seed=1):
-    """One objective run.  Returns `{"result": "won" | "lost" | "stuck" | "timeout" | "crash", "tick", "edits", "stuck", "triggers"}`."""
+def run(name, install=None, seed=1, world=None, side=()):
+    """One objective run (`side`: campaign variables whose writer triggers are tried before the win; on `world` when given: a campaign mission built by `CampaignGame.start_mission`, else the map as `play` builds it).  Returns `{"result": "won" | "lost" | "stuck" | "timeout" | "crash", "tick", "edits", "stuck", "triggers"}`."""
     from engine.session import build_game
     out = {"map": name, "result": "timeout", "tick": 0, "edits": [], "stuck": [], "wins": 0}
     logging.disable(logging.WARNING)
     try:
-        world, _ = build_game(name, install, seed=seed)
+        if world is None:
+            world, _ = build_game(name, install, seed=seed)
         sim = Simulation(world, triggers=True)
         script = world.script
         out["wins"] = sum(1 for t in script.triggers if _is_win(script, t))
@@ -253,7 +274,7 @@ def run(name, install=None, seed=1):
             if r:
                 out["result"], out["tick"] = r, world.tick
                 return out
-            edits, stuck = _round(world, sim)
+            edits, stuck = _round(world, sim, side)
             out["edits"] += [(world.tick,) + e for e in edits]
             out["stuck"] = stuck
             quiet = 0 if edits else quiet + 1

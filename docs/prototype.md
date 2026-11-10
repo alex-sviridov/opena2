@@ -99,7 +99,7 @@ blocker, 0 are blocked, no in-mission gap is known. What is left is around the m
 | 3 | Full triggers and dialogs | 55 of 55 kinds built, 444 of 448 message sections found; unused: variable references, unit names >= 11001, the tips window | 0 | - | done |
 | 4 | Full UI | shell: **start menu, options, new-game screen (placeholder start) built in L0** ([shell](engine/shell.md)); character creation, in-game menu entries, the campaign in one window: `shell`; town screens: `town`; cutscenes (5 codes + intro, Smacker): `cutscenes` | all 46 (shell); 5 (cutscene) | 4 + 6 + 3 | 2, 3, 5 |
 | 5 | Save / load | `save`: `game%d.sav` or an own format (your decision); server stream serialisers open | all 46 | 3 (own) / 8 (.sav) | 4 |
-| 6 | Campaign | `campaign` spine: carry-over, recruit, Scenario.dll variables (maps 70 and 80 read variables no map writes); the party of every map is fresh today | all 46; 2 for the variables | 4 | **1** |
+| 6 | Campaign | `campaign` spine (**L1 done**): carry-over, recruit, Scenario.dll variables, the chain over the maps; the shell, the town and a play-through still use it | all 46; 2 for the variables | 4 | **1** |
 | 7 | Multiplayer | out of scope | - | - | - |
 | - | Sound | done (K11); **VERIFY BY EAR** pending | all 46 | - | your session |
 
@@ -109,14 +109,8 @@ blocker, 0 are blocked, no in-mission gap is known. What is left is around the m
 
 Prompt-sized, in the style of K5-K11. Headless = I can finish and verify it without you; play-test = it needs your session.
 
-**L1 - Campaign spine (headless).**
-Goal: a campaign object that carries the party from mission to mission, so a map starts as the game starts it.
-Context: read CLAUDE.md, docs/coverage.md (K12), docs/engine/triggers.md §9 and §11, docs/formats/saves.md §4, docs/data/items.md §13, `engine/sim/campaign.py`, `engine/party.py`, `engine/objective.py`.
-1. REA (mark CONFIRMED / INFERRED): `FUN_004f312a` (the recruit of Var(0x305)), `FUN_004ebd5f` (the carry-over, against saves §4), the writers of Var(0x309) / Var(0x30a) in Scenario.dll (TalkTo), the hero-death variables (0x213 + id).
-2. Build `engine/campaign.py` (layer 4, no windows): new game (fresh hero from attributes and school, `FUN_004f254b`), `leave_mission(result)` = the Outcome chain of triggers §11, roster carry-over with items and levels, the recruits, `start_mission(n)` building the world from the carried roster instead of the fresh party (the DECISION in `enable(party=)` is replaced for campaign runs; `play MAP` keeps the fresh party).
-3. `python -m engine campaign [--through N]`: chains the missions in unlock order with the objective run as the driver; prints per map the party's levels and gear, the result and the ticks; fails when a mission cannot be reached from the unlock table.
-4. Report: which maps change with the carried party (the six idle-lost maps, the branches of maps 70 and 80), and whether any map is unreachable in the campaign order. Tests: unlock order, carry-over round trip, recruit, deterministic chain hash. Regenerate the coverage report; update docs and CLAUDE.md.
-Headless: yes, fully. Commit.
+**L1 - Campaign spine (headless) (done).** `engine/campaign.py` (`CampaignGame`: new game, roster carry-over, recruits, the town stand-in, `start_mission` from the carried roster, the death hook), `engine/sim/campaign.py` fixed per triggers 11.5 (mission 21 by `Var(0x304)`, cases 50 / 60 / 70, the mercenary markers and the completion loop, `EnterInn` / `TalkTo` as pure methods), `party.place_party(roster=)`, `python -m engine campaign [--through N] [--hero MF|FF|MM|FM]`. Spec and DECISIONs: [docs/engine/campaign.md](engine/campaign.md). Tests: `tests/test_engine_campaign_spine.py` (29: 25 synthetic, 4 with the install; the chain twice with equal hash, the whole campaign).
+Result (default hero, seed 1, 5 s): the chain plays **34 missions in unlock order and the oracle wins every one**, ending at chapter 120 with cutscene 4; not played: 51 and 83 (named by no case and no word: expected) and 75-77, 81, 85-87, 94-96 (the class slots of the other three classes; the default hero is a male fighter). Map 77 (oracle miss) is only offered to a male mage, `--hero MM`, and is completed anyway. Which maps change with the carried party: **none by the oracle** (result, tick and edits of all 34 maps equal the fresh-party runs) and **the six idle-lost maps stay lost** (the headless chain gains no XP, so the carried party is a level-1 party); the branches of maps 70 and 80 differ in the triggers that fire (map 70: 17, 20; map 80: 2-10 and the items) but not in the win. The mercenary path works (`hire=` policy: variants by chapter, deleted at the mission end, flags cleared). Open: [campaign 4](engine/campaign.md#4-open-questions).
 
 **L2 - The campaign in one window (shell, minimal).**
 Goal: play the campaign from the first map without a command line.

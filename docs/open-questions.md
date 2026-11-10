@@ -25,6 +25,10 @@ from both places when answered).
 - Audio K11 ([audio](engine/audio.md#open-questions), starting routines `FUN_0041da16`, `0x467e42`, `FUN_0041b311`): the callers of table ids 3-6 / 11-13 and which `message` (15) sites fire in single player; fog gating of unit sounds and the view state `+0x78 == 1`; which object defs are n44 / n34 / n58 and the first `rand` of the ambience; the town window sounds and the speech test sample; the pickup / retreat / swarm bank offsets; the hurt kind from the old or the new HP (`0x467e42` / `0x467f60`); the DirectSound pan law and the 74 % default against the real mixer (by ear); the exact gapless music switch.
 - Attack order aimed at a structure: answered (accepted, fought like a creature; [combat 5.5](engine/combat.md)); only the mage / spell-carrier branch against a structure is untraced.
 
+## Campaign
+
+- L1 ([campaign](engine/campaign.md#4-open-questions), starting routines `0x1000286b`, `0x1000192f`, `0x49b8a6`, `FUN_00514f59`): the order of the `EnterInn` blocks and of the available list; the hire window's `TalkTo` call for a re-offered mercenary and the price; the school-5 skill order of the creation call; XP in the headless chain (a fight-crediting oracle).
+
 ## AI
 
 - Retreat of a unit that can cast Teleport (`FUN_0056cb8c`, range `unit+0xa5`; engine flees on foot); the game start does not send the option messages `0x46` (`FUN_0048c8a3`). [simulation 8.3a](engine/simulation.md#83a-retreat-key-r-bar-button-8-and-the-retreat-mode-ctrl-w)
@@ -41,7 +45,7 @@ from both places when answered).
 
 ## Triggers and scenario
 
-- [Triggers](engine/triggers.md#open-questions): the hero recruit `FUN_004f312a` (Var(0x305) at a mission end), the roster carry-over `FUN_004ebd5f` and the campaign variables `0x301`-`0x30d` / the markers at `0x214`. Instants 29 / 30 stay documented no-ops (the effect system exists now: [effects](engine/effects.md)).
+- [Triggers](engine/triggers.md#open-questions): the word `window+0x160` of the three shop windows (`TalkTo` at `0x4b9117` / `0x4bec83` / `0x4c0995`) and the town-screen readers of Var(0x301) / Var(0x302) (`0x4cad3c`, `0x4cdd0a`, `0x4bf096`); whether a mercenary's hire price is charged anywhere (`0x49b8a6`); the purpose of Var(0x307). Instants 29 / 30 stay documented no-ops (the effect system exists now: [effects](engine/effects.md)).
 - Scenario event classes: unit `behaviour` bits 1, 2, 4 and the three scenario booleans `+0x194` / `+0x198` / `+0x19c` (`FUN_005303ed`). [map](formats/map.md#open-questions), [unit-struct](engine/unit-struct.md#open-questions)
 
 ## Movement and orders
