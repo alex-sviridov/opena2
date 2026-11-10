@@ -11,8 +11,7 @@ from allods2.common import as_fs
 
 GRAPH = {
     "startup": {"menu"},
-    "menu": {"options", "newgame", "load", "quit"},
-    "options": {"menu"},
+    "menu": {"newgame", "load", "quit"},
     "newgame": {"menu", "game"},
     "load": {"menu", "game"},
     "game": {"menu"},
@@ -57,9 +56,8 @@ class Shell:
             from .loadgame import LoadGame
             from .mainmenu import MainMenu
             from .newgame import NewGame
-            from .options import Options
             from .startup import Startup
-            screens = (Startup, MainMenu, Options, NewGame, LoadGame, GameScreen)
+            screens = (Startup, MainMenu, NewGame, LoadGame, GameScreen)
         for cls in screens:
             self.screens[cls.name] = cls(self)
 

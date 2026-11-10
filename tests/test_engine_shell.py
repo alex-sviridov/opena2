@@ -51,7 +51,7 @@ def dummy_shell():
 def test_graph_edges_stay_inside_the_graph():
     for a, targets in GRAPH.items():
         assert a in GRAPH and targets <= set(GRAPH)
-    assert GRAPH["startup"] == {"menu"} and GRAPH["menu"] == {"options", "newgame", "load", "quit"}
+    assert GRAPH["startup"] == {"menu"} and GRAPH["menu"] == {"newgame", "load", "quit"} and "options" not in GRAPH
 
 
 def test_every_legal_edge_works_and_every_other_raises():
@@ -107,20 +107,19 @@ def test_startup_logs_the_skipped_videos_then_shows_the_menu():
 
 
 @needs_graphics
-def test_script_menu_new_game_cancel_options_exit_follows_the_graph():
+def test_script_menu_new_game_cancel_exit_follows_the_graph():
     sh, rec = make_shell(GFS)
     to_menu(sh)
     click(sh, button_centre(sh, 0))
     assert sh.name == "newgame" and rec.music[-1] == "chrgen"
     click(sh, mask_centre(sh, sh.current.mask, 160))                 # Cancel
     assert sh.name == "menu" and rec.music[-1] == "menu"
-    sh.handle(Key("o"))
-    assert sh.name == "options"
-    sh.handle(Key("escape"))
-    assert sh.name == "menu"
+    for k in ("o", "escape", "return", "n"):                          # the menu has no key handling: no options entry (`0x485cc4`)
+        sh.handle(Key(k))
+        assert sh.name == "menu"
     click(sh, button_centre(sh, 7))
     assert sh.done
-    assert sh.history == ["startup", "menu", "newgame", "menu", "options", "menu", "quit"]
+    assert sh.history == ["startup", "menu", "newgame", "menu", "quit"]
     for a, b in zip(sh.history, sh.history[1:]):
         assert b in GRAPH[a] or b == "quit"
 
@@ -208,8 +207,6 @@ def test_no_world_exists_before_a_game_starts(monkeypatch):
     to_menu(sh)
     click(sh, button_centre(sh, 0))
     click(sh, mask_centre(sh, sh.current.mask, 160))
-    sh.handle(Key("o"))
-    sh.handle(Key("escape"))
     assert made == [] and sh.screens["game"].world is None
     for s in sh.screens.values():
         assert not any(isinstance(v, world_mod.World) for v in vars(s).values())

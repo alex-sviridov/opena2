@@ -39,10 +39,22 @@ def test_menu_entries_follow_the_exes_order_hotkeys_and_states():
                        else "~Quest Objectives" if i == 0x26 else "~End Quest" if i == 0x27 else "~Return to Game" if i == 0x28 else "?" for i in range(0x40)])
     d = modal.menu_dialog(lay, labels.line)
     assert [b.key for b in d.buttons] == ["s", "l", "o", "n", "q", "e", "r"]
-    assert [b.enabled for b in d.buttons] == [False] * 5 + [True, True]             # DECISION: the windows of phase K are disabled
+    assert [b.enabled for b in d.buttons] == [False, False, True, True, False, True, True]     # DECISION: Save, Load, Objectives are disabled; the options windows are built (shell.md 5)
     assert d.key("e") == ("open", "endquest") and d.key("s") is None and d.key("r") == modal.RETURN and d.key("escape") == modal.RETURN
+    assert d.key("o") == ("open", "gameoptions") and d.key("n") == ("open", "soundoptions")
     f = d.frame
     assert [b.rect.y - f.y for b in d.buttons] == [0x28 + 0x1E * k for k in range(7)]      # CONFIRMED start y 0x28 (`0x4400d7` rect arg)
+
+
+def test_the_options_entries_close_the_menu_and_ask_the_backend_for_their_window():
+    ui, w = make()
+    ui.open_menu()
+    ui.apply(("open", "gameoptions"))
+    assert ui.options_request == "game" and not ui.frozen            # `0x41b` needs `+0x404 == 1`: the menu is gone
+    ui.options_request = None
+    ui.open_menu()
+    ui.apply(("open", "soundoptions"))
+    assert ui.options_request == "sound" and not ui.frozen
 
 
 def test_end_quest_victory_is_disabled_until_the_mission_is_complete_and_exits_end_the_game():

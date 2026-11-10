@@ -89,7 +89,7 @@ Not decoded: the name field's rect and edit rules, the caption lines, which hero
 ## 4. The engine's state machine (`engine/shell/`)
 
 ```
-startup -> menu <-> options
+startup -> menu
              \-> newgame -> game -> menu          every screen -> quit (the window's close box; the menu's EXIT)
              \-> load -> game | menu              (load is in the graph, its button is disabled)
 ```
@@ -108,8 +108,7 @@ is never called before the game screen).
 | screen | what | music | notes |
 |---|---|---|---|
 | `startup` | the three video placeholders (§2), then `menu` | - | black |
-| `menu` | §3.1, from `MenuMask.bmp`, hover / held / disabled, click on release | `menu` | DECISION: MULTI PLAYER, CUT SCENES, CREDITS, SERVER, HALL OF FAME and LOAD GAME are disabled in the original's own way (no highlight, no action) until their step; only NEW GAME, EXIT and the key `O` act |
-| `options` | §5 | (menu keeps playing) | DECISION: key `O` on the menu (the original has no such button) |
+| `menu` | §3.1, from `MenuMask.bmp`, hover / held / disabled, click on release; no key handling, no options entry (as the original) | `menu` | DECISION: MULTI PLAYER, CUT SCENES, CREDITS, SERVER, HALL OF FAME and LOAD GAME are disabled in the original's own way (no highlight, no action) until their step; only NEW GAME and EXIT act |
 | `newgame` | §3.3 PreCreate: heroes, difficulty, Cancel, OK (needs a hero) | `chrgen` | OK starts the first campaign map (`10`) with the difficulty (`selector + 1`, `ai.md 10.1`); L2 replaces this by the confirm panel, the character screen and the campaign chain |
 | `load` | in the graph, bounces to `menu` | - | the button is disabled until the Save / load step |
 | `game` | the in-game screen | the mission's | the loop of J1-J3 |
@@ -120,7 +119,7 @@ Sounds: the click of the menu and PreCreate presses is the literal file `sfx/chr
 
 ### 5.1 The original's windows (CONFIRMED unless marked)
 
-Both are common-dialog windows (`FUN_004dc48e`): the size rule of [ui-layout 11.4](ui-layout.md) (`w' = ((w - 8) / 0x60) * 0x60 + 8`, `h' = ((h - 0x68) / 0x40) * 0x40 + 0x68`, centred on the real screen, the 8 px shadow inside), children
+**Where they open (CONFIRMED `FUN_004852d8`):** message `0x41b` builds Game Options only while `game+0x404 == 1` (a mission, `0x485cc4`); `0x422` builds Sound Options in a mission or, with a running game (`0x6044c4 != 0`), in a town screen (`0x485bf3`); the main menu (`0x80`) has no way to either, and the in-game menu's entries close the menu first (bit 8 clear). Both are common-dialog windows (`FUN_004dc48e`): the size rule of [ui-layout 11.4](ui-layout.md) (`w' = ((w - 8) / 0x60) * 0x60 + 8`, `h' = ((h - 0x68) / 0x40) * 0x40 + 0x68`, centred on the real screen, the 8 px shadow inside), children
 relative to the dialog, widgets: label `0x4d4b56`, slider `0x4da54d`, check box `0x44ee70`, radio group `0x44efe0`, text button `0x4d5470`, dialog button `0x4d55cb`, list box `0x4d82f8`.
 
 **Game Options** (message `0x41b`, `0x4417c3(1, 0x14, 0, 0x26c, 0x1e0)` = 600x480 -> **584x424**, builder `FUN_004417fa`, handler `FUN_00442e8b`). Title `dialogs[0x96]` at (0x28, 0x14), centred. Widgets (dialog-relative; `dialogs.txt`
@@ -168,9 +167,10 @@ SoundMusPos, SoundSfxPos, SoundSpeechPos, MusicEnabled, SoundRandom ([sound §5]
 
 ### 5.3 The engine's options (DECISION: the file, the subset, the reach)
 
-The settings file is the K11 file (`~/.config/allods2-engine/settings.json`, `$ALLODS2_SETTINGS`; [audio §6](audio.md)), now with the options the engine applies. The shell reaches the options from the menu with `O` (a
-menu-style dialog over the menu picture: Game Options, Sound Options, Exit to Main Menu), then the two windows with the original's rects for the widgets built; their frames are 584x360 (the original's 584x424 holds more widgets)
-and 488x360.
+The settings file is the K11 file (`~/.config/allods2-engine/settings.json`, `$ALLODS2_SETTINGS`; [audio §6](audio.md)), now with the options the engine applies. The windows open **from the in-game menu** (ESC ->
+Game Options / Sound Options, enabled since L0; `GameUi.options_request`, then `window.run` runs `backend_pygame/optionsview.run_options` as a modal sub-loop over the frozen frame; one-to-one with the exe, so the shell has no
+options screen and no key for them). `engine/shell/options.py` `OptionsPages` is the component: the original's rects for the widgets built; frames 584x360 (the original's 584x424 holds more widgets) and 488x360.
+Game Options OK also takes effect in the running game at once (draw options, day / night, a changed speed re-bases the tick clock `0x48bfaa`); the sound sliders are live.
 
 | field | widget | reaches |
 |---|---|---|
@@ -180,8 +180,8 @@ and 488x360.
 | `sfx`, `music`, `speech` 0..100 | the three sliders, **live**, the file is written when the page is left; the SFX release plays `sfx[100]` | the buses (`Audio.apply_settings`) |
 | `music_enabled` | Play / Stop | `Audio.set_music_enabled`; Play restarts the menu playlist |
 
-Game Options **apply on OK** (the draft is a copy; Cancel, ESC and leaving discard it), OK saves the file. Not built: Tips, the AutoCast / formation / retreat groups and the "Join" check (they need the in-game party options, `ai §12.8` /
-`simulation 8.3a`, wired to the file), the track list and Acknowledgments check, the in-game menu entries (they stay disabled, [ui-layout 11.9](ui-layout.md)). A game started from the shell reads the file at its start; a change
+Game Options **apply on OK** (the draft is a copy; Cancel, ESC and leaving discard it), OK saves the file. Not built (`options.NOT_BUILT`): Tips, the AutoCast / formation / retreat groups and the "Join" check (they need the in-game party options, `ai §12.8` /
+`simulation 8.3a`, wired to the file), the track list and Acknowledgments check, the in-game menu's Save, Load and Quest Objectives entries (they stay disabled, [ui-layout 11.9](ui-layout.md)). A game started from the shell reads the file at its start; a change
 made later affects the next game.
 
 ## 6. Videos (CONFIRMED: headers read from `video.res`; `movies.res` holds only shop / inn bitmap animations)
@@ -212,9 +212,9 @@ Cut Scenes list (`0x48a7fb`). **Not decoded in L0**: the engine only logs `video
 `test_engine_shell.py`: the graph (every legal edge works, every other raises, the close box quits from every screen), the main menu (mask -> button, hover / held / disabled drawing, sound on the press, action on the
 release over the same button, a release elsewhere does nothing, centring at 800x600), a scripted run menu -> new game -> cancel -> options -> back -> exit that follows the graph, new game needing a hero, **no `World`
 before the game screen** (`World.__init__` counted) and the game screen dropping it on exit, the golden screenshots per screen (`golden.json["shell"]`: startup, menu idle / hover / held / disabled / exit, new game idle /
-hero hover / chosen / OK hover, options top / game / hover / sound, the menu at 800x600). `test_engine_shell_options.py`: OK / Cancel / ESC, Animation forcing Lighting, the slider range, live sound sliders, the SFX test
+hero hover / chosen / OK hover, the options pages game / hover / sound over black, the menu at 800x600). `test_engine_shell_options.py` (`OptionsPages` driven by events): frame sizes, OK / Cancel / ESC / Enter, Animation forcing Lighting, the slider range, live sound sliders, the SFX test
 sound, Play / Stop, **persistence across a restart** through the real file, the options reaching `DrawOptions`, checked vs unchecked boxes. `test_engine_shell_loop.py`: the real pygame loop headless with scripted events
-through a real mission and back (display, fonts and loop survive the hand-over; the session files are written). The game screen's own goldens are `golden.json["interface"]` and `["ui"]`.
+through a real mission (ESC -> Game Options OK, Sound Options Stop, End Quest) and back (display, fonts and loop survive the hand-over; the session files are written). The game screen's own goldens are `golden.json["interface"]` and `["ui"]`.
 
 ## Open questions
 

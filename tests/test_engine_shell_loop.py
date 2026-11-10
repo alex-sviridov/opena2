@@ -1,5 +1,5 @@
 """The shell's window loop end to end, headless (SDL dummy drivers): scripted pygame events walk menu -> new game -> a real mission (the in-game
-screen's loop) -> ESC menu -> End Quest -> Exit to Main Menu -> Exit.  Proves that the display, the fonts and the loop survive the hand-over both ways,
+screen's loop) -> ESC menu -> Game Options (OK) -> Sound Options -> End Quest -> Exit to Main Menu -> Exit.  Proves that the display, the fonts and the loop survive the hand-over both ways,
 and that the session of the game is written."""
 
 import json
@@ -52,8 +52,20 @@ def test_script_through_a_real_mission_and_back(tmp_path, monkeypatch):
     exit_to_menu = button_rect(endq, 1)
     centre = lambda r: (r.x + r.w // 2, r.y + r.h // 2)
     script = [[], click(new_game), click(hero), click(ok)]       # frames 0..3 of the shell; the game's loop takes over after the OK
-    script += [[]] * 3 + [key(pygame.K_ESCAPE), [], click(centre(end_quest)), [], click(centre(exit_to_menu)), [], click(exit_btn)]
+    from allods2.common import as_fs
+    from engine.shell.options import OptionsPages, load_texts
+    from shell_scenarios import Recorder
+    texts = load_texts(as_fs(GFS))
+    gp = OptionsPages(texts, (640, 480), S.Settings(), Recorder().services, "game")
+    sp = OptionsPages(texts, (640, 480), S.Settings(), Recorder().services, "sound")
+    at = lambda pg, k: (lambda r: (r.x + r.w // 2, r.y + r.h // 2))(pg.screen_rect(next(w for w in pg.widgets() if w.key == k)))
+    esc = key(pygame.K_ESCAPE)
+    script += [[]] * 3 + [esc, [], click(centre(button_rect(menu, 2))), [], click(at(gp, "day_night")), [], click(at(gp, "ok")), [],       # Game Options: day / night off, OK
+                          [], esc, [], click(centre(button_rect(menu, 3))), [], click(at(sp, "stop")), [], key(pygame.K_ESCAPE), [],      # Sound Options: music off, ESC
+                          [], esc, [], click(centre(end_quest)), [], click(centre(exit_to_menu)), [], click(exit_btn)]
     feed = iter(script)
+    from engine.sim import TickClock
+    monkeypatch.setattr(TickClock, "advance", lambda self, now: 0)       # no game time passes: a story window opened by the map script would swallow the scripted keys (timing-dependent)
 
     fallback = []
 
@@ -77,6 +89,8 @@ def test_script_through_a_real_mission_and_back(tmp_path, monkeypatch):
     went, go = [], Shell.go
     monkeypatch.setattr(Shell, "go", lambda self, t, **k: (went.append(t), go(self, t, **k))[1])
     assert cli.shell_cmd(a, p) == 0
+    saved = S.load()
+    assert saved.day_night is False and saved.music_enabled is False        # both windows ran inside the mission and wrote the file
     assert went == ["newgame", "game", "menu", "quit"] and fallback == []     # left through the in-game menu and the Exit button, not by closing the window
     assert seen and seen[0]                                        # the world existed while the game screen ran
     final = json.load(open(tmp_path / "session" / "final.json"))

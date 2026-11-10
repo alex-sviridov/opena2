@@ -223,9 +223,17 @@ def key_name(ev):
     return NAMED_KEYS.get(ev.key) or KEYS.get(ev.key) in ("up", "down") and KEYS[ev.key] or (chr(ev.key) if 32 <= ev.key < 127 else "")
 
 
+def game_options(opts, s):
+    """`DrawOptions` with the stored game options (docs/engine/shell.md 5): shadows, smoothing, object animations, lighting (animation off forces it off,
+    `0x442fb7`), health bars and flying damage numbers."""
+    return dataclasses.replace(opts, shadows=s.shadows, smoothing=s.smoothing, animate=s.animation, lights=s.lighting and s.animation,
+                               health_bars=s.show_health, flying_damage=s.flying_damage)
+
+
 def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Allods 2", max_frames=None,
         assets=None, options=None, debug=None, minimap=None, player_id=PLAYER_ID, commands=(), ai=True,
-        trace=False, hero_name="Hero", mission_id=None, frame_hook=None, sim_hook=None, audio=None, music_zones=(), in_shell=False):
+        trace=False, hero_name="Hero", mission_id=None, frame_hook=None, sim_hook=None, audio=None, music_zones=(), in_shell=False,
+        settings=None, option_services=None):
     """Accumulator main loop: fixed-step sim, variable-rate drawing.  Returns the `Simulation` when the window
     closes (or after `max_frames`, for tests).  `layout`: `Layout` of the window size (the camera is built from
     `layout.viewport`).  `ai`: the monsters think (docs/engine/ai.md; `--no-ai` of the CLI).  F1-F3 and Shift+F4/F5 toggle the debug overlays, F4-F12 are the spell shortcuts, Ctrl+H the health bars, Ctrl+F cycles the formation.
@@ -243,7 +251,8 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     with the real camera and fog, feeds the issued commands to its Director, plays the UI sounds `GameUi` queues, starts the mission playlist (`music_zones` =
     `Map.music()` zones) and stops the music on victory.  `in_shell`: the loop was started by the shell (docs/engine/shell.md): the display and the
     audio device stay open for the next screen (no `pygame.quit()`, no `audio.close()`); the reason the loop ended is `sim.ui.quit`
-    (`menu`, `windows`, `victory`, `defeat`; None = the window was closed)."""
+    (`menu`, `windows`, `victory`, `defeat`; None = the window was closed).  `settings`: the stored `Settings` the in-game options windows edit (None = the file);
+    `option_services`: their `Services` (None = `optionsview.default_services(audio)`).  The menu's Game / Sound Options entries open them (`ui.options_request`)."""
     options, debug = options or DrawOptions(), debug or DebugFlags()
     layout = layout or Layout.for_size(camera.view_w + 160, camera.view_h)
     screen = ensure_display(*layout.size)
@@ -304,6 +313,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     gc.collect()
     gc.freeze()                         # the loaded world and art stay out of the collector's scans: a gen-2 pass over them paused a frame ~30 ms
     running = True
+    pending_options, backdrop = None, None
     state = CursorState.DEFAULT                 # the cursor of the previous frame (a pending mode without a cursor keeps it)
     while running:
         if frame_hook is not None:
@@ -497,6 +507,9 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
         iface.draw(screen, caches, build_terrain_items(terrain_view, camera, world.tick, items.lights), items, camera,
                    world, player_id, minimap, panel, None, lines or None, numbers, hover, ui,
                    bar.cells(sel_state, cast_enabled, ordering.pending, ui.bar.highlight(ordering.pending)), mouse, info_picture, tip, book_views, pack_view)
+        if ui.options_request:                              # the menu closed itself: this frame, without it, stays under the options window
+            pending_options, ui.options_request = ui.options_request, None
+            backdrop = screen.copy()
         if ui.frozen:
             state = CursorState.DEFAULT
         elif ui.book.contains(mouse) or ui.pack.contains(mouse):
@@ -514,6 +527,24 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
         else:
             draw_cursor(screen, cursors, state, mouse, now)
         pygame.display.flip()
+        if pending_options is not None:
+            page, pending_options = pending_options, None
+            from engine.audio import settings as settings_mod
+            from .optionsview import default_services, run_options
+            settings = settings if settings is not None else settings_mod.load()
+            services = dataclasses.replace(option_services or default_services(audio),
+                                           music=lambda name: audio.start_mission(music_zones, camera) if audio is not None else None)
+            before = dataclasses.replace(settings)
+            result, closed = run_options(page, screen, backdrop, settings, services, fs, audio=audio)
+            if closed:
+                running = False
+            if result == "ok":                              # Game Options applied (`0x442e8b`): draw options, day / night, the speed re-bases the tick clock
+                options = game_options(options, settings)
+                terrain_view.set_time_flow(settings.day_night, world.tick)
+                if settings.game_speed != before.game_speed:
+                    ticks = TickClock(tick_period_ms(settings.game_speed), pygame.time.get_ticks())
+            was_frozen = True                               # the window was a dialog: the block counter restarts at the close (11.4)
+            held.clear()
         caches.terrain.prewarm(camera, world.tick)         # the cells just outside the view, so a scroll does not build a row at once
         frames += 1
         if max_frames is not None and frames >= max_frames:

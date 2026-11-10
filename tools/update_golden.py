@@ -348,7 +348,7 @@ def sound_hashes(install):
 
 
 def shell_hashes(install=None):
-    """{screen: sha256 of the RGB bytes} of the shell screens: startup, menu (idle, hover, held, disabled hover), new game (idle, hero hover, hero chosen), options."""
+    """{screen: sha256 of the RGB bytes} of the shell screens: startup, menu (idle, hover, held, disabled hover), new game (idle, hero hover, hero chosen), the options pages."""
     os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
     sys.path.insert(0, os.path.join(ROOT, "tests"))
     from shell_scenarios import shell_golden

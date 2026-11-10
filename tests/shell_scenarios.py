@@ -97,16 +97,17 @@ def shell_golden(install):
     sh.handle(Move(*mask_centre(sh, mask, 180)))
     shot("newgame_ok_hover")
     sh.go("menu")
-    sh.go("options")
-    shot("options")
-    opt = sh.current
-    opt.open_page("game")
-    shot("options_game")
-    opt.draft.smoothing, opt.draft.game_speed = False, 7
-    sh.handle(Move(*opt_centre(sh, "lighting")))
-    shot("options_game_hover")
-    opt.open_page("sound")
-    shot("options_sound")
+    from engine.audio.settings import Settings
+    from engine.shell.options import OptionsPages, load_texts
+    texts = load_texts(sh.fs)
+    pages = OptionsPages(texts, sh.size, Settings(), rec.services, "game")
+    shotp = lambda name: out.__setitem__(name, hash_rgb(backend.scene_screenshot(pages.scene(), sh.size, art)))
+    shotp("options_game")
+    pages.draft.smoothing, pages.draft.game_speed = False, 7
+    pages.event(Move(*opt_centre(pages, "lighting")))
+    shotp("options_game_hover")
+    pages = OptionsPages(texts, sh.size, Settings(), rec.services, "sound")
+    shotp("options_sound")
     sh2, _ = make_shell(install, (800, 600))
     sh2.start()
     sh2.update(16)
@@ -115,9 +116,8 @@ def shell_golden(install):
     return out
 
 
-def opt_centre(shell, key):
-    """Centre of the options widget with settings field / action `key` on the current page."""
-    o = shell.current
-    w = next(w for w in o.widgets() if w.key == key)
-    r = o.screen_rect(w)
+def opt_centre(pages, key):
+    """Centre of the options widget with settings field / action `key` on the page shown."""
+    w = next(w for w in pages.widgets() if w.key == key)
+    r = pages.screen_rect(w)
     return r.x + r.w // 2, r.y + r.h // 2

@@ -7,11 +7,11 @@ from .game import GameScreen
 from .machine import GRAPH, Shell, ShellError, Services
 from .mainmenu import MainMenu
 from .newgame import NewGame
-from .options import Options
+from .options import OptionsPages
 from .scene import Button, Fill, Frame, Image, Scene, Sprite, Text
 from .startup import Startup
 
-__all__ = ["GRAPH", "Shell", "ShellError", "Services", "Screen", "Startup", "MainMenu", "Options", "NewGame", "GameScreen",
+__all__ = ["GRAPH", "Shell", "ShellError", "Services", "Screen", "Startup", "MainMenu", "OptionsPages", "NewGame", "GameScreen",
            "Key", "Move", "Press", "Release", "Wheel", "Scene", "Image", "Text", "Fill", "Frame", "Button", "Sprite"]
 
 from .screen import Screen  # noqa: E402

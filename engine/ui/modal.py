@@ -98,11 +98,11 @@ def _buttons(frame, entries):
 
 
 def menu_dialog(layout, dialogs):
-    """The in-game menu (message `0x416`): Save, Load, Options, Sound, Objectives, End Quest, Return.  Entries whose window is not built (phase K) are
-    disabled (DECISION: the exe enables them; they would do nothing)."""
+    """The in-game menu (message `0x416`): Save, Load, Options, Sound, Objectives, End Quest, Return.  Game Options (`0x41b`) and Sound Options (`0x422`) open the
+    shell's options windows (docs/engine/shell.md 5); the entries whose window is not built (Save, Load, Quest Objectives) are disabled (DECISION: the exe enables them)."""
     frame = widget_rect(layout, "menu.frame")
-    entries = [(dialogs(D_SAVE), False, NOOP), (dialogs(D_LOAD), False, NOOP), (dialogs(D_OPTIONS), False, NOOP),
-               (dialogs(D_SOUND), False, NOOP), (dialogs(D_OBJECTIVES), False, NOOP),
+    entries = [(dialogs(D_SAVE), False, NOOP), (dialogs(D_LOAD), False, NOOP), (dialogs(D_OPTIONS), True, ("open", "gameoptions")),
+               (dialogs(D_SOUND), True, ("open", "soundoptions")), (dialogs(D_OBJECTIVES), False, NOOP),
                (dialogs(D_ENDQUEST), True, ("open", "endquest")), (dialogs(D_RETURN), True, RETURN)]
     return Dialog("menu", frame, _buttons(frame, entries), escape=RETURN)
 

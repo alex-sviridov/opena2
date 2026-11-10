@@ -338,14 +338,6 @@ def replay_cmd(a):
     return 0
 
 
-def game_options(opts, s):
-    """`DrawOptions` with the stored game options (docs/engine/shell.md 5): shadows, smoothing, object animations, lighting (animation off forces it off,
-    `0x442fb7`), health bars and flying damage numbers."""
-    import dataclasses
-    return dataclasses.replace(opts, shadows=s.shadows, smoothing=s.smoothing, animate=s.animation, lights=s.lighting and s.animation,
-                               health_bars=s.show_health, flying_damage=s.flying_damage)
-
-
 class PlaySession:
     """One recorded play of a campaign map: the game's own start (map script, the map's hero, AI, fog) with the session files of `play`.  Used by
     `play_cmd` (it owns the window) and by the shell's game screen (`in_shell`: display and audio stay open, `run` returns why the mission ended).
@@ -375,12 +367,14 @@ class PlaySession:
         self.rec.start_logging()
         print("session %s (seed %d)" % (self.directory, a.seed))
         self.reason, self.error, self.world, self.sim = "quit", None, None, None
+        self.option_services = None                    # the shell's services for the in-game options windows (None = the defaults)
         self.exit = None                               # the ui's quit reason when the loop ended (None = the window was closed)
 
     def start(self):
         a = self.a
         self.world, self.tv, self.camera, assets, self.opts, self.debug = _setup(a)
         self.assets = self.assets or assets
+        from engine.backend_pygame.window import game_options
         self.opts = game_options(self.opts, self.settings)
         self.tv.set_time_flow(self.settings.day_night)
         hero = self.world.units.get(self.world.players[1].main_hero)
@@ -408,7 +402,7 @@ class PlaySession:
                          debug=self.debug, minimap=self.mm, ai=True, hero_name=a.hero_name,
                          mission_id=mission.group(1) if mission else None,
                          frame_hook=self.rec.frame, sim_hook=self.rec.attach, audio=audio, music_zones=map_music_zones(a),
-                         in_shell=self.in_shell)
+                         in_shell=self.in_shell, settings=self.settings, option_services=self.option_services)
         self.exit = sim.ui.quit if getattr(sim, "ui", None) is not None else None
         self.reason = {"won": "victory", "lost": "defeat"}.get(triggers.result(world), "quit")
         return self.reason

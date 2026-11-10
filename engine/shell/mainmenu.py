@@ -4,14 +4,14 @@ A 640x480 picture (`menu_.bmp`) with eight carved buttons, found under the point
 (value `0x80 + 0x10 n` = button n; `0x10..0x1e` outline pixels and 0 do nothing).  Hover draws `button<n+1>p.bmp` over the picture at the
 button's rect, a held button `button<n+1>.bmp`, and the caption `text<n+1>.bmp` (180x80) sits in the middle tablet at (232, 200).  The click sound
 plays on the mouse press of an enabled button, the action runs on the release over the same button.  A disabled button shows no highlight and
-does nothing.  The window has no child widgets, so the exe has no key handling here (INFERRED): the key `O` for the options is an engine DECISION,
-the original reaches its options only from the in-game menu."""
+does nothing.  The window has no child widgets, so the exe has no key handling here (INFERRED) and neither has the engine; there is no options entry (CONFIRMED: the
+options windows open only from the in-game menu, `0x485cc4`, `0x485bf3`)."""
 
 import numpy as np
 
 from allods2.graphics import load_bmp
 
-from .events import Key, Move, Press, Release
+from .events import Move, Press, Release
 from .scene import Image, Scene
 from .screen import Screen
 
@@ -88,8 +88,6 @@ class MainMenu(Screen):
             self.pressed = -1
             if hit >= 0 and hit == self.under and self.enabled(hit):
                 return BUTTONS[hit][2]
-        elif isinstance(ev, Key) and ev.name == "o" and not ev.ctrl and self.pressed < 0:
-            return "options"
         return None
 
     def scene(self):

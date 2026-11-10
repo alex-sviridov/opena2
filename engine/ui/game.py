@@ -47,6 +47,7 @@ class GameUi:
         self.pack = PackWindow(layout)             # the backpack window (bottom bar id 2), closed at the start (ui-layout 11.13)
         self.doll_mask = None                      # (unit) -> the 240x160 hit mask of its paper doll (ids slot + 1, 0 none); the backend supplies it
         self.quit = None                        # a QUIT_REASONS value once the player left the mission
+        self.options_request = None             # "game" / "sound": the menu asked for an options window (the backend runs it, `0x41b` / `0x422`)
         self.queue = []                         # story numbers waiting for the modal stack to empty (exe list 0x627170)
         self.bar = bar.BarWindow()              # the command bar's highlight state and press rules (11.2)
         self.pressed = None                     # (dialog, button index) under a held left button
@@ -157,6 +158,9 @@ class GameUi:
         elif kind == "open":
             if action[1] == "endquest":
                 self.modals.push(modal.endquest_dialog(self.layout, self.dialog_text, self.world.mission_complete))
+            elif action[1] in ("gameoptions", "soundoptions"):
+                self.options_request = action[1][:-7]       # the menu closes (the message arrives with bit 8 clear: `0x485cc4` needs `+0x404 == 1`)
+                self.modals.clear()
         elif kind == "quit":
             self.quit = action[1]
             self.modals.clear()
