@@ -32,8 +32,8 @@ class Settings:
     flying_damage: bool = True          # ShowFlyingHP (client `+0xabc`)
     tips: bool = True                   # TipsMode `0x622774` (default 1); stored, nothing reads it until the tips windows are built (shell.md 5.3)
     message_colours: bool = False       # MessageColors `0x622818` (the Game Options check "Join", Ctrl+C): the alternative colour tables are not built
-    formation: int = 1                  # Formation Mode `0x62275c`: 0 off, 1 auto (default), 2 on
-    retreat: int = 0                    # Retreat Mode `0x622760`: 0 never (INFERRED default), 1 low health, 2 medium
+    formation: int = 1                  # Formation Mode `0x62275c`: 0 off, 1 auto (default, CONFIRMED ctor `0x402db0` view+0xab0), 2 on
+    retreat: int = 0                    # Retreat Mode `0x622760`: 0 never (default, CONFIRMED client ctor `0x402db0` view+0xab4), 1 low health, 2 medium
     autocasting: int = 0x19             # AutoCasting `0x62277c`, default 0x19 (CONFIRMED): 8 heal, 0x10 / 0x20 buff levels, 1 / 2 / 4 own / allies / neutral
 
     def bus_mb(self, bus):

@@ -11,7 +11,9 @@ justified (`0x45da67`: the word gaps share the free width equally, x accumulates
 Only Close and the check box take mouse input (INFERRED: the text box and frame return 0, so a click elsewhere reaches the owner beneath)."""
 
 from . import dialog
-from .options import RADIO_OFF, RADIO_ON, RADIOB, SHADOW
+from .options import RADIOB, SHADOW
+
+TIPS_OFF, TIPS_ON = 4, 5                # the tips check (`0x4d7b31`) uses the 16x16 frames
 from .scene import Button, Frame, Sprite, Text
 
 TEXT_L, TEXT_R = 40, 44                                  # DECISION: skull sprites cover x 0..38 / w-44..w; the text box is inset to clear them (the exe's own box is 20 / 28)
@@ -71,7 +73,7 @@ class TipsWindow:
                 ops.append(Text(w, int(fx), ty + LINE * n, TEXT_FONT, "label", 0, 1))
                 fx += self.measure(w) + gap
         kx, ky = self.check[0] + ox, self.check[1] + oy                               # `0x4d7b31`: frame 5 (on) / 4 (off) at (x + 1, y), shadow 4 at (x + 5, y + 4), caption (x + 22, y + 3)
-        on = RADIO_ON if self.checked else RADIO_OFF
+        on = TIPS_ON if self.checked else TIPS_OFF
         ops += [Sprite(RADIOB, on, kx + 5, ky + 4, SHADOW), Sprite(RADIOB, on, kx + 1, ky),
                 Text(self.main.line(0x80), kx + 22, ky + 3, TEXT_FONT, "header" if hover == "tips" else "label", 0, 1)]
         cx, cy, cw, ch = self.close

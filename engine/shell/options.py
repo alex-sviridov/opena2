@@ -33,10 +33,11 @@ BTN = 24                                        # the width of the end frames
 CHECK_CAPTION_DX = 30                           # `0x4d757c`: the caption at left + 6 + the width of frame 0 (24), top + 5
 GAME, SOUND = "game", "sound"
 GAME_SIZE, SOUND_SIZE = (584, 424), (488, 360)        # snapped (`FUN_004dc4fc`): 600x480 -> 584x424
-RADIO_OFF, RADIO_ON = 4, 5                      # `radiob.256` frames 4 / 5 = the 16x16 variants (shell.md 5), which fit the group's 72 px (a caption row + 3 rows); INFERRED which is which
-RADIO_ROW, RADIO_TOP = 16, 20                   # INFERRED look of the radio group `0x44efe0`: the caption on the group's first row, the options one row each below
+RADIO_OFF, RADIO_ON = 0, 1                      # CONFIRMED `0x4d7e04` (the radio group paint): `radiob.256` frames 0 / 1 = off / on, 24x24
+RADIO_ROW, RADIO_TOP = 24, 0x120                # the row pitch = the height of frame 0; the group rect (l, 0x120)-(r, 0x168) = 3 rows, its caption label is the 0x18 above it (0x108)
+RADIO_CAPTION_TOP, RADIO_CAPTION_H = 0x108, 0x18
 BITS = {"autocast_own": 1, "autocast_allies": 2, "autocast_neutral": 4}     # `0x62277c` bits of the "AutoCast for units" checks
-MODE_BITS = (0, 0x10, 0x30)                     # the AutoCast-mode radio: Minimum / Average / Maximum; INFERRED encoding (ai.md 12.8: 0x10 Bless + Haste, 0x20 the protections; the U key's 0x38 reads as the maximum)
+MODE_BITS = (0, 0x10, 0x30)                     # the AutoCast-mode radio: Minimum / Average / Maximum (CONFIRMED OK handler `0x442e8b`: value 1 ORs 0x18, 2 ORs 0x38 onto the start value 8; init: 0x20 -> 2, else 0x10 -> 1)
 NOT_BUILT = ()                                  # every Game Options widget of the original is built since L2 (Tips and Join are stored only, shell.md 5.3)
 SPEED_MAX = 8
 PERCENT = 100
@@ -111,8 +112,8 @@ class OptionsPages:
                   W("check", (0x118, 0xCC, 0xD8, 0x18), self.d(0xA8), "autocast_allies"),
                   W("check", (0x118, 0xE8, 0xD8, 0x18), self.d(0xA9), "autocast_neutral")]
             for (l, r, cap, first, key) in ((0x28, 0xD0, 0x3A, 0x3C, "formation"), (0xD0, 0x178, 0x3F, 0x41, "retreat"), (0x178, 0x220, 0xAA, 0xAB, "autocast_mode")):
-                ws.append(W("label", (l, 0x120, r - l, 0x14), self.d(cap)))
-                ws += [W("radio", (l, 0x120 + RADIO_TOP + RADIO_ROW * i, r - l - 8, RADIO_ROW), self.d(first + i), key, i) for i in range(3)]
+                ws.append(W("label", (l, RADIO_CAPTION_TOP, r - l, RADIO_CAPTION_H), self.d(cap)))
+                ws += [W("radio", (l, RADIO_TOP + RADIO_ROW * i, r - l, RADIO_ROW), self.d(first + i), key, i) for i in range(3)]
             y = 0x170
             ws += [W("button", (bw // 7, y, 2 * bw // 7, 0x18), self.d(0), "ok"),
                    W("button", (4 * bw // 7, y, 2 * bw // 7, 0x18), self.d(1), "cancel")]
@@ -207,6 +208,8 @@ class OptionsPages:
             s = self.draft
             if not s.animation:
                 s.lighting = False                      # `0x442fb7`: Animation off forces Lighting off
+            mode = 2 if s.autocasting & 0x20 else 1 if s.autocasting & 0x10 else 0
+            s.autocasting = 8 | MODE_BITS[mode] | (s.autocasting & 7)       # `0x442e8b`: AutoCasting is rebuilt from 8 | mode | the three checks
             self.settings.__dict__.update(s.__dict__)
             self.services.save_settings(self.settings)
         elif self.page == SOUND:
@@ -226,6 +229,8 @@ class OptionsPages:
                 self.slider_press(w, ev.x)
             elif w is not None and w.kind == "button":
                 self.services.sound(UI_SOUND)
+            elif w is not None and w.kind in ("check", "radio"):
+                self.activate(w)                              # CONFIRMED `0x4d77e6` / `0x4d806b`: the left-button press toggles / selects (no release step)
         elif isinstance(ev, Release) and ev.button == 1:
             w, self.pressed = self.pressed, None
             drag, self.dragging = self.dragging, None
@@ -234,7 +239,7 @@ class OptionsPages:
             sfx = drag if drag is not None else (w if w is not None and w.kind == "slider" else None)
             if sfx is not None and sfx.key == "sfx":
                 self.services.sound(SLIDER_TEST)          # `0x474`: the test sample at the new volume
-            if w is not None and w.kind != "slider" and self.screen_rect(w).contains(ev.x, ev.y):
+            if w is not None and w.kind not in ("slider", "check", "radio") and self.screen_rect(w).contains(ev.x, ev.y):
                 self.activate(w)
         elif isinstance(ev, Key) and not ev.ctrl:
             self.key(ev.name)
@@ -273,9 +278,10 @@ class OptionsPages:
                 ops.append(Button(r.x, r.y, r.w, r.h, w.text, True, hot, pressed))
             elif w.kind == "radio":
                 on = RADIO_ON if self.value(w) else RADIO_OFF
-                ops.append(Sprite(RADIOB, on, r.x + 4, r.y + 3, SHADOW))
-                ops.append(Sprite(RADIOB, on, r.x, r.y))
-                ops.append(Text(w.text, r.x + 22, r.y + 1, 1, "label" if hot else "normal", 0, 1))
+                group_hot = self.hot is not None and self.hot.kind == "radio" and self.hot.key == w.key
+                ops.append(Sprite(RADIOB, on, r.x + 5, r.y + 4, SHADOW))             # `0x4d7e04`: silhouette (+5, +4), frame (+1, 0), caption (+6 + 24, +5)
+                ops.append(Sprite(RADIOB, on, r.x + 1, r.y))
+                ops.append(Text(w.text, r.x + CHECK_CAPTION_DX, r.y + 5, 1, "label" if group_hot and self.value(w) else "normal", 0, 1))   # gold only on the selected row while the group has the pointer
             elif w.kind == "check":
                 ops.append(Sprite(RADIOB, BOX_ON if self.value(w) else BOX_OFF, r.x + 5, r.y + 4, SHADOW))
                 ops.append(Sprite(RADIOB, BOX_ON if self.value(w) else BOX_OFF, r.x + 1, r.y))

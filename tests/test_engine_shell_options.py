@@ -256,6 +256,29 @@ def test_party_options_start_at_the_registry_defaults_and_apply_on_ok():
     assert rec.saved and rec.saved[-1]["autocasting"] == 0x3D
 
 
+def test_radio_group_geometry_and_press_semantics():
+    from engine.shell.options import RADIOB
+    pg, _ = make("game")
+    rows = [pg.screen_rect(next(w for w in pg.widgets() if w.key == "retreat" and w.kind == "radio" and w.maximum == i)) for i in range(3)]
+    assert [r.h for r in rows] == [24] * 3 and rows[1].y - rows[0].y == 24 and rows[2].bottom - rows[0].y == 72   # `0x4d7e04`: pitch = frame 0 height
+    f = pg.frame()
+    assert (rows[0].x - f.x, rows[0].y - f.y, rows[0].w) == (0xD0, 0x120, 0xA8)                                     # the group rect (0xd0, 0x120)-(0x178, 0x168)
+    r = rows[2]
+    pg.event(Press(r.x + r.w - 2, r.y + 20))                      # the whole row hits; a press selects, no release needed (`0x4d806b`)
+    assert pg.draft.retreat == 2
+    pg.event(Release(r.x + r.w - 2, r.y + 20))
+    assert pg.draft.retreat == 2
+    on = [o.frame for o in pg.scene().ops if getattr(o, "path", "") == RADIOB and o.x == rows[2].x + 1 and o.y == rows[2].y]
+    assert on == [1]
+
+
+def test_ok_rebuilds_autocasting_with_the_base_bit():
+    pg, _ = make("game")
+    pg.draft.autocasting = 0x20                                   # only 0x20: the radio reads Maximum (init rule `0x442e8b`), OK stores 8 | 0x30
+    click(pg, centre(pg, "ok"))
+    assert pg.settings.autocasting == 0x38
+
+
 def test_party_options_persist_and_are_clamped(tmp_path):
     p = str(tmp_path / "s.json")
     s = S.Settings(formation=2, retreat=1, autocasting=0x2D, tips=False)
