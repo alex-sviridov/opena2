@@ -191,7 +191,7 @@ def test_hint_check_box_writes_tips_mode_and_the_window_stays():
     sh, _ = make_shell(GFS)
     cur = to_chargen(sh)
     ox, oy = cur.origin
-    assert cg.HINT == (160, 280, 312, 200) and cur.tips_win.close == (160 + 192, 280 + 160, 80, 18) and cur.tips_win.checked and sh.settings.tips      # the exe's SetRect (0, 0x118, 0x138, 0x1e0) in the class column
+    assert cg.HINT == (160, 280, 312, 200) and cur.tips_win.close == (160 + 196, 280 + 154, 64, 18) and cur.tips_win.checked and sh.settings.tips      # the exe's SetRect (0, 0x118, 0x138, 0x1e0) in the class column
     x, y, w, h = cur.tips_win.check
     click(sh, (ox + x + w // 2, oy + y + h // 2))
     assert not cur.tips_win.checked and not sh.settings.tips and cur.hint                    # message 0x46e writes TipsMode; the window stays until Close

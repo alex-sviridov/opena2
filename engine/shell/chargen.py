@@ -27,6 +27,7 @@ LEFTUP = "main/graphics/chrgen/leftup.bmp"
 PRECREATE_DIR = BASE + "precreate/"
 PRECREATE = PRECREATE_DIR + "mainarea.bmp"
 STAT_FONT, TEXT_FONT = 4, 2
+PREVIEW_L, PREVIEW_R, PREVIEW_CX = 24, 144, 84       # the preview panel's interior spans x 12..155 (measured on FullStatsL.bmp, y 256..473 on the screen): labels left, values right-aligned, the name centred
 MIN_ATTR, MAX_ATTR, RESET_POOL, RESET_VALUE = 15, 45, 100, 25
 ATTR_NAMES = ("Body", "Agility", "Mind", "Spirit")
 TEMPLATE = {"MF": (40, 36, 25, 17), "FF": (37, 39, 21, 25), "MM": (28, 20, 41, 32), "FM": (19, 23, 30, 42)}      # units.md: the Start_* templates (body, reaction, mind, spirit)
@@ -277,7 +278,7 @@ class CharGen(Screen):
                Image(BASE + k + "/column.bmp", ox + COLUMN_AT[0], oy + COLUMN_AT[1])]
         for i in range(4):
             y = ROW_Y + 32 * i
-            ops.append(Text("%d" % s.values[i], ox + VALUE_X + 2, oy + y + 4, STAT_FONT, "gold", 0, 1))
+            ops.append(Text("%d" % s.values[i], ox + VALUE_X + BOX // 2, oy + y + 4, STAT_FONT, "gold", 2, 1))      # DECISION: centred in its box (the exe: left at box.x + 2)
             for kind, x, enabled, names in (("plus", PLUS_X, s.can_plus(i), ("pnloff", "ploff", "plon", "pdisable")),
                                             ("minus", MINUS_X, s.can_minus(i), ("mnloff", "mloff", "mlon", "mdisable"))):
                 mine = self.hover == (kind, i)
@@ -302,7 +303,7 @@ class CharGen(Screen):
     def preview_ops(self, ox, oy):
         """The preview panel (child 2): the hero's Life / Mana and attributes (DECISION: a small text list instead of the in-game info panel)."""
         s = self.state
-        ops = [Text(self.player.get("name") or "", ox + 14, oy + 248, TEXT_FONT, "header", 0, 1)]
+        ops = [Text(self.player.get("name") or "", ox + PREVIEW_CX, oy + 260, TEXT_FONT, "header", 2, 1)]        # DECISION: the name is centred on the panel's interior
         v = self.vitals()
         rows = []
         if v is not None:
@@ -311,6 +312,6 @@ class CharGen(Screen):
                 rows.append(("Mana", str(v[1])))
         rows += [(n, str(s.values[i])) for i, n in enumerate(ATTR_NAMES)]
         for n, (label, value) in enumerate(rows):
-            ops.append(Text(label, ox + 14, oy + 272 + 16 * n, TEXT_FONT, "label", 0, 1))
-            ops.append(Text(value, ox + 120, oy + 272 + 16 * n, TEXT_FONT, "value", 0, 1))
+            ops.append(Text(label, ox + PREVIEW_L, oy + 284 + 16 * n, TEXT_FONT, "label", 0, 1))
+            ops.append(Text(value, ox + PREVIEW_R, oy + 284 + 16 * n, TEXT_FONT, "value", 1, 1))
         return ops

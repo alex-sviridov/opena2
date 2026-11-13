@@ -8,13 +8,14 @@ mission; the dialog is centred on the screen.  The screen owns no World."""
 
 from allods2.formats import Map
 
+from . import dialog
 from .events import Key, Move, Press, Release
 from .scene import Button, Frame, Scene, Text
 from .screen import Screen
 
-W, H = 480, 392                         # the frame including the 8 px drop shadow
-PAD, ROW, GAP = 40, 24, 6
-MAX_ROWS = 8
+W, H = 480, 424                         # the frame including the 8 px drop shadow
+PAD, ROW, GAP = dialog.CORNER, 24, 6          # content starts one corner skull in from the body edge
+MAX_ROWS = 6
 MISSION = 1                             # the location type of a mission in Scenario.dll's available list (`sim.campaign.MISSION`; the shell never imports the sim)
 MENU_LABEL = "Main Menu"
 CLICK = "sfx/chrgen/ok.wav"
@@ -59,9 +60,9 @@ class Locations(Screen):
     def buttons(self):
         """`[(x, y, w, h, label, mission)]`: the mission buttons, then Main Menu at the bottom."""
         fx, fy = self.frame_at()
-        top = fy + 130
+        top = fy + 176
         out = [(fx + PAD, top + i * (ROW + GAP), W - 8 - 2 * PAD, ROW, label, n) for i, (label, n) in enumerate(zip(self.labels, self.missions))]
-        out.append((fx + PAD, fy + H - 8 - PAD - ROW, W - 8 - 2 * PAD, ROW, MENU_LABEL, None))
+        out.append((fx + PAD, fy + dialog.bottom_row_y(H, ROW), W - 8 - 2 * PAD, ROW, MENU_LABEL, None))
         return out
 
     def _at(self, x, y):
@@ -97,13 +98,14 @@ class Locations(Screen):
     def scene(self):
         fx, fy = self.frame_at()
         camp = self.campaign
+        cx = fx + dialog.centre_x(W)
         ops = [Frame(fx, fy, W, H),
-               Text("Campaign - chapter %d" % camp.camp.get(0x300), fx + PAD, fy + 24, 2, "normal", 0, 1),
-               Text("Party", fx + PAD, fy + 46, 2, "normal", 0, 1)]
+               Text("Campaign - chapter %d" % camp.camp.get(0x300), cx, fy + 24, 2, "normal", 2, 1),       # centred between the corner skulls
+               Text("Party", cx, fy + 48, 2, "normal", 2, 1)]
         for i, line in enumerate(self.party[:4]):
-            ops.append(Text(line, fx + PAD + 8, fy + 58 + 16 * i, 1, "normal", 0, 1))
-        ops.append(Text("Gold: %d" % camp.gold, fx + PAD + 8, fy + 58 + 16 * min(4, len(self.party)), 1, "normal", 0, 1))
-        ops.append(Text("Choose the next mission" if self.missions else "No mission is available", fx + PAD, fy + 110, 2, "normal", 0, 1))
+            ops.append(Text(line, cx, fy + 68 + 20 * i, 1, "normal", 2, 1))
+        ops.append(Text("Gold: %d" % camp.gold, cx, fy + 68 + 20 * min(4, len(self.party)), 1, "normal", 2, 1))
+        ops.append(Text("Choose the next mission" if self.missions else "No mission is available", cx, fy + 156, 2, "normal", 2, 1))
         for i, (x, y, w, h, label, _) in enumerate(self.buttons()):
             ops.append(Button(x, y, w, h, label, True, self.hot == i, self.pressed == i))
         return Scene(ops)

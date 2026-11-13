@@ -10,10 +10,12 @@ Text box (class `0x5cfdc8`, `0x4d4e9b`, paint `0x4d5134` -> `0x45e01d`, CONFIRME
 justified (`0x45da67`: the word gaps share the free width equally, x accumulates as a double and is truncated per word); no centring, no margin beyond the box rect.
 Only Close and the check box take mouse input (INFERRED: the text box and frame return 0, so a click elsewhere reaches the owner beneath)."""
 
+from . import dialog
 from .options import RADIO_OFF, RADIO_ON, RADIOB, SHADOW
 from .scene import Button, Frame, Sprite, Text
 
 TEXT_L, TEXT_R = 40, 44                                  # DECISION: skull sprites cover x 0..38 / w-44..w; the text box is inset to clear them (the exe's own box is 20 / 28)
+CLOSE_W = 64
 TEXT_FONT, LINE = 2, 12                                  # LINE = pitch = glyph-0 height of font2 (10) + 2 (`0x4d4e9b`, pitch argument 0)
 
 
@@ -27,9 +29,13 @@ class TipsWindow:
     def __init__(self, rect, main, wrap, measure):
         self.rect, self.main, self.wrap, self.measure = rect, main, wrap, measure
         x, y, w, h = rect
-        self.text_box = (x + TEXT_L, y + 24, w - TEXT_R - TEXT_L, h - 36 - 24)       # DECISION: the exe box (20, 24, w - 28, h - 36) runs into the 48 px corner skulls; inset in x only (chargen.md 1.5)
-        self.close = (x + w - 120, y + h - 40, 80, 18)
-        self.check = (x + 40, y + h - 40, w - 124 - 40, 16)
+        row = dialog.bottom_row_y(h, 18)                      # DECISION: the exe's bottom row (h - 40 .. h - 22) runs onto the bottom border band; moved up to clear it (`dialog.py`)
+        self.text_box = (x + TEXT_L, y + 24, w - TEXT_R - TEXT_L, row - 4 - 24)      # DECISION: the exe box (20, 24, w - 28, h - 36) runs into the 48 px corner skulls; inset in x only, and it ends above the control row (chargen.md 1.5)
+        x0, x1 = dialog.between_corners(w)                    # DECISION: the bottom row sits between the corner skulls: Close (64 wide, the exe's 80) at the right end, the check box before it
+        cx, cy, cw, ch = dialog.clamp_inside((x1 - CLOSE_W, row, CLOSE_W, 18), w, h)
+        self.close = (x + cx, y + cy, cw, ch)
+        kx, ky, kw, kh = dialog.clamp_inside((x0, row + 1, cx - 4 - x0, 16), w, h)
+        self.check = (x + kx, y + ky, kw, kh)
         self.checked = True                                   # `0x4deca4`: state 1 at build
 
     def hit(self, x, y):

@@ -212,6 +212,8 @@ Free steps (`up = 0`, e.g. 16 -> 17) work with an empty pool. Click mace: school
 5. Hint: the tips window of 1.5 at screen (160, 280, 312, 200) when TipsMode is on, `#tips5` / `#tips6`, then `#tips7` after the first class click; Close removes it; the check box writes `Settings.tips` and saves (engine `tipswin.py`, `chargen.py`).
 6. Sounds on press (Accept / Reset / Back, class k) and on every successful +/-, via the engine sound table keyed by the paths above; no music change.
 
+7. Placement DECISIONs (the exe's own text origins are left-aligned, the user asked for centred looks): the attribute digits are centred in their 20 px boxes (the exe: left at box.x + 2); the preview panel's hero name is centred on the panel interior (x 12..155 on FullStatsL.bmp), its labels left / values right-aligned inside it; the tips window's bottom row (Close 64 wide + check box) sits between the corner skulls and above the bottom border band (shared geometry `engine/shell/dialog.py`, measured on the `lm.256` sprites: border 14 / 16 px, skull square 40 px); the between-missions dialog uses the same helpers and centres its headings.
+
 ## Open questions
 
 2. Exact rules of the idle shimmer. `0x42b406`.
