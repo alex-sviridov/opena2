@@ -5,12 +5,15 @@ main.txt 0x80, built checked (`vtable+0x44(1)`).  The frame is the 11.4 dialog f
 
 The check box click sends message `0x46e` (id 0xf, state) to the window, which stores the state into TipsMode `0x622774` at once (`0x4df278`); the engine writes
 `Settings.tips` and saves it.  Close posts `0x45a`, which the owner answers by removing the window; ESC / Enter / `0x445` / `0x446` return 0 (nothing).
+
+Text box (class `0x5cfdc8`, `0x4d4e9b`, paint `0x4d5134` -> `0x45e01d`, CONFIRMED): the text is wrapped to the box width (`0x45ccbb`: a line is kept while its font2 measure is < the width), line `n` is drawn left aligned at (box left, box top + n * pitch) with pitch = glyph-0 height + 2 (font2: 12), at most height / pitch lines; a line that is not the last of its paragraph is
+justified (`0x45da67`: the word gaps share the free width equally, x accumulates as a double and is truncated per word); no centring, no margin beyond the box rect.
 Only Close and the check box take mouse input (INFERRED: the text box and frame return 0, so a click elsewhere reaches the owner beneath)."""
 
 from .options import RADIO_OFF, RADIO_ON, RADIOB, SHADOW
 from .scene import Button, Frame, Sprite, Text
 
-TEXT_FONT, LINE = 2, 14
+TEXT_FONT, LINE = 2, 12                                  # LINE = pitch = glyph-0 height of font2 (10) + 2 (`0x4d4e9b`, pitch argument 0)
 
 
 def rect_has(r, x, y):
@@ -20,8 +23,8 @@ def rect_has(r, x, y):
 class TipsWindow:
     """One tips window: `rect` = (x, y, w, h) in the owner's coordinates (the SetRect (l, t, r, b) turned into a size, made absolute through the parent's origin), `main` = `MainText`."""
 
-    def __init__(self, rect, main, wrap):
-        self.rect, self.main, self.wrap = rect, main, wrap
+    def __init__(self, rect, main, wrap, measure):
+        self.rect, self.main, self.wrap, self.measure = rect, main, wrap, measure
         x, y, w, h = rect
         self.text_box = (x + 20, y + 24, w - 28 - 20, h - 36 - 24)
         self.close = (x + w - 120, y + h - 40, 80, 18)
@@ -48,8 +51,18 @@ class TipsWindow:
         tx, ty, tw, th = self.text_box
         tx, ty = tx + ox, ty + oy
         ops = [Frame(x, y, w, h)]
-        for n, line in enumerate(self.wrap(text, tw)[:th // LINE]):
-            ops.append(Text(line, tx, ty + LINE * n, TEXT_FONT, "label", 0, 1))
+        lines = [(ln, last) for para in text.replace("\r\n", "\n").split("\n")
+                 for lines_ in [self.wrap(para, tw - 1)] for ln, last in zip(lines_, [False] * (len(lines_) - 1) + [True])]
+        for n, (line, last) in enumerate(lines[:th // LINE]):
+            words = line.split(" ")
+            if last or len(words) < 2:
+                ops.append(Text(line, tx, ty + LINE * n, TEXT_FONT, "label", 0, 1))
+                continue
+            gap = (tw - sum(self.measure(w) for w in words)) / (len(words) - 1)          # `0x45da67`
+            fx = float(tx)
+            for w in words:
+                ops.append(Text(w, int(fx), ty + LINE * n, TEXT_FONT, "label", 0, 1))
+                fx += self.measure(w) + gap
         kx, ky = self.check[0] + ox, self.check[1] + oy                               # `0x4d7b31`: frame 5 (on) / 4 (off) at (x + 1, y), shadow 4 at (x + 5, y + 4), caption (x + 22, y + 3)
         on = RADIO_ON if self.checked else RADIO_OFF
         ops += [Sprite(RADIOB, on, kx + 5, ky + 4, SHADOW), Sprite(RADIOB, on, kx + 1, ky),

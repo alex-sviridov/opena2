@@ -75,10 +75,10 @@ class NewGame(Screen):
         self.tips_win, self.tips_n, self.tips_hover, self.tips_down = None, 0, None, None
         if self.shell.settings.tips:                          # `0x43371e`: TipsMode on builds the window (`#tips8`, counter `+0x218` = 0)
             from engine.ui.orders import MainText
-            from .chargen import wrap_font2
+            from .chargen import measure_font2, wrap_font2
             self.main = getattr(self, "main", None) or MainText.load(self.shell.fs)
             self.town = getattr(self, "town", None) or decode_text(self.shell.fs.read("main/text/town.txt")).split("\r\n")
-            self.tips_win = TipsWindow(TIPS_WINDOW, self.main, lambda t, w: wrap_font2(self.shell, t, w))
+            self.tips_win = TipsWindow(TIPS_WINDOW, self.main, lambda t, w: wrap_font2(self.shell, t, w), lambda t: measure_font2(self.shell, t))
         self.blink_on, self.blink_ms = True, 0
         self.anim_ms = 0
 

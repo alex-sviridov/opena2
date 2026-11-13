@@ -49,12 +49,22 @@ HINT = (160, 280, 312, 200)                          # the tips window `0x4dec24
 TIPS_LINE = {5: 8, 6: 10, 7: 12}                     # `#tipsN` header lines of town.txt (the text is the next line)
 
 
-def wrap_font2(shell, text, width):
-    """The tips text wrapped to `width` with font2 (the lines as str)."""
+def font2(shell):
     from allods2.graphics import Font
     f = getattr(shell, "_font2", None)
     if f is None:
         f = shell._font2 = Font.load("graphics/font2/font2", shell.fs)
+    return f
+
+
+def measure_font2(shell, text):
+    from allods2.graphics.font import font_bytes
+    return font2(shell).measure(font_bytes(text))
+
+
+def wrap_font2(shell, text, width):
+    """The tips text wrapped to `width` with font2 (the lines as str)."""
+    f = font2(shell)
     return [b.decode("cp866", "replace") if isinstance(b, bytes) else b for b in f.wrap(text, width)]
 
 
@@ -151,7 +161,7 @@ class CharGen(Screen):
         self.hover = None                            # ("plus", i) / ("minus", i) / ("class", k) / ("button", i) / ("close",)
         self.pressed = None
         self.hint = self.shell.settings.tips
-        self.tips_win = TipsWindow(HINT, self.main, self.wrap)
+        self.tips_win = TipsWindow(HINT, self.main, self.wrap, lambda t: measure_font2(self.shell, t))
         self.vitals_cache = {}
 
     # -- geometry / hit testing (screen coordinates; the panel is 640x480 at `origin`) ---------------------------------------------
