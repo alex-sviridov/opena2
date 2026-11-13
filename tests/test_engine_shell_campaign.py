@@ -410,3 +410,16 @@ def test_stat_tooltip_hides_after_25500ms_and_clamps_at_the_right_edge():
     assert cur.tip_timer.tip is None
     tip = hover(sh, cur, (cur.origin[0] + cg.MINUS_X + 18, cur.origin[1] + cg.ROW_Y + 18))
     assert tip is not None and tip.right <= 640
+
+
+def test_reset_pool_allows_45_on_all_four_attributes_and_the_budget_never_fails():
+    """chargen.md 2.2: Reset = 25 x4 + pool 100; 45 x4 costs 4 * (27 - 13) = 56 <= 100, so the panel reaches 45 / 45 / 45 / 45 (pool 44 left in the model's
+    marginal accounting) and the creation call's budget 140 (`party.BUDGET`) cannot fail from the panel: 4 * cost(45) = 108."""
+    s = ChargenState("MF")
+    s.reset()
+    for i in range(4):
+        while s.plus(i):
+            pass
+    assert s.values == [45] * 4 and s.pool == 100 - 4 * (cg.cost(45) - cg.cost(25))
+    assert sum(cg.cost(v) for v in s.values) == 108 <= PT.BUDGET
+    assert s.choice("X").attributes == (45, 45, 45, 45)

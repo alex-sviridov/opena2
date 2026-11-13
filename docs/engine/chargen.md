@@ -167,7 +167,7 @@ Values 15..45: `7 8 8 9 10 10 11 12 12 13 13 14 15 15 16 17 17 18 19 19 20 21 22
 | on success | play `+_-.wav` (`0x4385b0` stop, `0x438570` play) **on each change**, then `0x491988(body, agility, mind, spirit, selected_column + 1)` (preview refresh), redraw |
 | trigger | the **press** (and the second press of a double click, slot 23 -> slot 21), not the release; **no auto-repeat** |
 
-Reset (`0x42dfee`, on release of button 1): `pool := 100`, all four values `:= 25`, `0x491988(25, 25, 25, 25, school)`, states refreshed. **Quirk (CONFIRMED by the code):**
+Reset (`0x42dfee`, on release of button 1): `pool := 100`, all four values `:= 25`, `0x491988(25, 25, 25, 25, school)`, states refreshed. **Quirk (CONFIRMED by the code; 45 x4 costs 4 x (27 - 13) = 56 <= 100 so it is reachable, tested in `test_reset_pool_allows_45_on_all_four_attributes_and_the_budget_never_fails`):**
 `4 * cost(25) = 52`, so Reset gives pool 100 + 52 = 152 cost points; with the limit 45 per attribute the most one can reach is `4 * cost(45) = 108` (all four 45, pool
 left 48), so the server budget `0x8c = 140` of `FUN_004f254b` can **never** fail from this panel (the 25-fallback only protects the network path). Reset does **not** restore the template
 (the backup `+0x1e0` is stored but no reader was found: INFERRED unused).
@@ -225,4 +225,4 @@ Free steps (`up = 0`, e.g. 16 -> 17) work with an empty pool. Click mace: school
 
 ## Open questions
 
-1. Verify in play: Reset + pool 100 allows 45 / 45 / 45 / 45; the unreachable server budget check.
+None left (L2 research closed; what only a play-through can judge is in prototype.md).
