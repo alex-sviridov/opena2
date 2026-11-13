@@ -78,7 +78,7 @@ Paint `0x42a6ee`: the button picture `off` at (480 + l, t); **`on`** instead whe
 Mouse: move `0x42abcb` (hover = the hit button when the left button is up, or when held and it is the pressed one; else none); **press** `0x42a9c9` (hit -> `+0xc0`,
 plays the sound); **release** `0x42aa58` runs the action only when the pointer is still on the pressed button; the panel clears the hover when the pointer leaves
 the button area (`0x42d85a` -> `0x42ab1b`). Enter (key `0xd`) = Accept (`0x42e113` -> `0x42e250`); the base dialog key handler `0x4dc326` only handles
-Tab / arrows (focus), so **Esc does nothing** here (INFERRED for the shell window; open 7).
+Tab / arrows (focus), so **Esc does nothing** here (CONFIRMED end to end: [shell.md 3.5](shell.md); `FUN_00484a76` forwards Esc to the window manager only for `game+0x404` neither 0 nor 1, `0x4d4769` gives it to the focused child, then `0x42e113` -> `0x4dc326` returns 0).
 
 ### 1.3 Class column (child 4)
 
@@ -225,5 +225,4 @@ Free steps (`up = 0`, e.g. 16 -> 17) work with an empty pool. Click mace: school
 
 ## Open questions
 
-1. Esc in this state at the shell window level (`FUN_004852d8` key path); the panel itself ignores it.
-2. Verify in play: Reset + pool 100 allows 45 / 45 / 45 / 45; the unreachable server budget check.
+1. Verify in play: Reset + pool 100 allows 45 / 45 / 45 / 45; the unreachable server budget check.

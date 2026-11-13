@@ -13,7 +13,15 @@ INFERRED: the initial level is 0 (Easy: the window's `+0x20c` is never initialis
 the focus sits on the name field from the start, the position of the big portraits (template matching: x 112 for heroes 0-1, 260 for 2-3, y 44), Cancel plays `ChrGen\\Ok.wav`.
 Torches: `torch1` / `torch2` are 15-frame flame animations (48x72) on the two braziers, at **(4, 200)** and **(589, 200)** (CONFIRMED by pixel identity: the frames' static pixels equal `MainArea.bmp` there with error
 0), advanced by a global 67 ms timer (`0x436222`; the exe starts each torch at a random frame, here 0 and 7).
-Not built: the hover cross-fade `0x4364f7`, the tips window `#tips8` (the TipsMode option is not built; the tips window is a framed dialog with an OK button, class `0x4dec24`), OK goes on to the character generator panel `+0x36c` (`chargen.py`, L2: `0x4891d8` copies name, level `+ 1` and the hero code, then shows the panel)."""
+Paint ticks (CONFIRMED `0x43541e`): the whole panel paints only when more than `0x43` = 67 ms passed since the last paint (`now - last > 67`); the two animations below run inside that tick.
+**Sparkle** (the second animation, `+0x70` = `PreCreate\\Blind\\sprites.16a`, 15 frames of 28x28, alpha; `+0x74` = frame, 0 = idle): idle until `now - t0 > delay` with `delay = rand() / 65 + 500` (`rand()` = 0..32767, drawn at the first paint and after every start);
+then it picks a rect `i = rand() / (0x7fff / 5)` of the five rects (`+0x80`: the three level rects 48x72, Cancel 64x76, OK 80x76), the point `rect.topleft + (rand() / (0x7fff / w), rand() / (0x7fff / h))`, new delay, frame := 1 (`t0` is not reset, so frame 1 shows for one tick);
+a running frame is drawn first, then when `now - t0 > 63` the frame becomes `(f + 1) % 15` and `t0 := now` (frame 0 = idle again).  **Hint pulse** (`0x4364f7`, called only while TipsMode is on and the tips window exists; it is not a cross-fade): for the tip step `+0x218`
+(0 heroes, 1 levels, 2 Cancel / OK, later steps nothing) it cycles the group's widgets with a 300 ms phase unless the pointer is over the group (then the 500 ms quiet timer restarts and the phase resumes after the hovered widget);
+the pulse draws the hero-0 portrait `h1sel` (or `h1sel2` in phase 1) at (112, 44) plus `h3on` / `h4on` in phases 2 / 3, the level pictures `level<n>l` (`lon` while that level is selected), or `cancell` / `okl`.  The hero vectors (`+0x94 / 0xa8 / 0xbc`) are indexed in screen order (h1, h2, h3, h4 = values 0..3).
+Not built: the OK goes on to the character generator panel `+0x36c` (`chargen.py`, L2: `0x4891d8` copies name, level `+ 1` and the hero code, then shows the panel)."""
+
+import random
 
 import numpy as np
 
@@ -21,7 +29,7 @@ from allods2.graphics import load_bmp
 from allods2.text import decode_text
 
 from .events import Key, Move, Press, Release
-from .scene import Image, Scene, Text
+from .scene import Image, Scene, Sprite, Text
 from .screen import Screen
 from .tipswin import TipsWindow
 
@@ -47,6 +55,14 @@ INITIAL_NAME = "Master Oberic"                          # 0x5efba8
 DEFAULT_LEVEL = 0                                       # INFERRED (see the module doc)
 BLINK_MS = 500
 TORCH_AT = ((4, 200), (589, 200))                       # CONFIRMED by pixel identity of the static part of the frames against `MainArea.bmp`
+PAINT_TICK_MS = 0x43                                    # CONFIRMED `0x43541e`: the panel paints (and animates) when more than 67 ms passed
+SPARK = DIR + "blind/sprites.16a"                       # CONFIRMED (`0x433c58`, stored in `+0x70`): 15 frames, 28x28, alpha
+SPARK_FRAMES, SPARK_STEP_MS = 15, 0x3f                  # a frame lasts until `now - t0 > 63`
+SPARK_RECTS = tuple((x, y, 48, 72) for x, y in LEVEL_AT) + ((16, 400, 64, 76), (548, 400, 80, 76))   # `+0x80` (ctor `0x4331c5-0x43330a`): level rects, Cancel, OK
+RAND_MAX = 0x7fff
+HINT_QUIET_MS, HINT_STEP_MS = 500, 300                  # `0x4364f7`: 500 ms since the last hover of the hinted group, then the phase advances every 300 ms
+HINT_GROUPS = ((tuple(HEROES), 4), (tuple(LEVELS), 3), ((CANCEL, OK), 2))      # per tip step: the hover values that keep the pulse quiet, the phase count
+HINT_PHASE = {20: 1, 40: 2, 60: 3, 80: 1, 100: 2, 120: 3, 140: 4, 160: 1, 180: 2}   # the phase a remembered hover value resumes at (the switch at `0x4365b3`)
 TORCH_FRAMES, TORCH_MS, TORCH_START = 15, 67, (0, 7)     # 15 frames, the global timer's 67 ms (`0x436222`); the exe's random start frame is a DECISION here
 
 
@@ -59,8 +75,14 @@ class NewGame(Screen):
     name = "newgame"
     music = "chrgen"
 
-    def __init__(self, shell):
+    def __init__(self, shell, rng=None):
         super().__init__(shell)
+        self.rng = rng or random.Random()                    # injectable for the tests (the exe uses the CRT `rand()`, 0..32767)
+        self.now = 0                                         # ms accumulated by update(); the exe's statics persist over visits, so these do not reset in enter()
+        self.paint_at, self.spark_t0, self.spark_delay, self.started = 0, 0, 0, False
+        self.spark, self.spark_pos, self.spark_draw = 0, (0, 0), None
+        self.hint_t1 = self.hint_t2 = 0
+        self.hint_last, self.hint_phase, self.hint_ops = -1, 0, []
         self.mask = None
         self.name_text = INITIAL_NAME
         self.hero, self.level = 0, DEFAULT_LEVEL
@@ -82,6 +104,7 @@ class NewGame(Screen):
             self.tips_win = TipsWindow(TIPS_WINDOW, self.main, lambda t, w: wrap_font2(self.shell, t, w), lambda t: measure_font2(self.shell, t))
         self.blink_on, self.blink_ms = True, 0
         self.anim_ms = 0
+        self.spark, self.spark_draw, self.hint_ops = 0, None, []         # the show routine `0x4334df` clears `+0x74`; the timers are the exe's statics and stay
 
     # -- input ---------------------------------------------------------------------------------------------------------------------
     def _at(self, x, y):
@@ -207,7 +230,66 @@ class NewGame(Screen):
         if self.blink_ms > BLINK_MS:
             self.blink_ms -= BLINK_MS
             self.blink_on = not self.blink_on
+        self.now += dt_ms
+        if not self.started:                                 # the first paint: the statics of `0x43541e` / `0x4364f7` are set
+            self.started = True
+            self.paint_at = self.spark_t0 = self.hint_t1 = self.hint_t2 = self.now
+            self.spark_delay = self._rand() // 65 + 500
+        if self.now - self.paint_at > PAINT_TICK_MS:
+            self.paint_at = self.now
+            self._paint_tick()
         return None
+
+    def _rand(self):
+        return self.rng.randrange(RAND_MAX + 1)
+
+    def _paint_tick(self):
+        """One paint of the panel (`0x43541e`): the hint pulse, then the sparkle; both store what they draw (the exe draws before it advances)."""
+        self.hint_ops = self._hint() if self.shell.settings.tips and self.tips_win is not None else []
+        if self.spark == 0:
+            self.spark_draw = None
+            if self.now - self.spark_t0 > self.spark_delay:
+                i = self._rand() // (RAND_MAX // len(SPARK_RECTS))
+                x0, y0, w, h = SPARK_RECTS[min(i, len(SPARK_RECTS) - 1)]       # i == 5 only for rand() == 0x7fff (an out-of-range read in the exe)
+                dx, dy = self._rand() // (RAND_MAX // w), self._rand() // (RAND_MAX // h)
+                self.spark_pos = (x0 + dx, y0 + dy)
+                self.spark_delay = self._rand() // 65 + 500
+                self.spark = 1
+        else:
+            self.spark_draw = (self.spark, self.spark_pos)
+            if self.now - self.spark_t0 > SPARK_STEP_MS:
+                self.spark = (self.spark + 1) % SPARK_FRAMES
+                self.spark_t0 = self.now
+
+    def _hint(self):
+        """`0x4364f7` (CONFIRMED): the pulse of the widgets the tip step talks about; returns (path, x, y) pictures."""
+        now, mask = self.now, self.under
+        if now - self.hint_t1 < HINT_QUIET_MS:
+            self.hint_t2 = now
+            return []
+        if self.hint_last in HINT_PHASE:
+            self.hint_phase = HINT_PHASE[self.hint_last]
+        ops, count = [], -1
+        if self.tips_n < len(HINT_GROUPS):
+            keep, count = HINT_GROUPS[self.tips_n]
+            if mask in keep:
+                self.hint_t1 = self.hint_t2 = now
+                self.hint_last = mask
+                return []
+            p = self.hint_phase = self.hint_phase % count
+            if self.tips_n == 0:
+                ops.append((DIR + "heroes/h1sel%s.bmp" % ("2" if p == 1 else ""), 112, 44))
+                if p in (2, 3):
+                    ops.append((DIR + "heroes/h%don.bmp" % (p + 1), *HERO_AT[p]))
+            elif self.tips_n == 1:
+                ops.append((DIR + "levels/level%d%s.bmp" % (p, "lon" if self.level == p else "l"), *LEVEL_AT[p]))
+            else:
+                ops.append((DIR + ("cancell.bmp" if p == 0 else "okl.bmp"), *(CANCEL_AT if p == 0 else OK_AT)))
+        self.hint_last = -1
+        if now - self.hint_t2 > HINT_STEP_MS and count != -1:
+            self.hint_phase = (self.hint_phase + 1) % count
+            self.hint_t2 = now
+        return ops
 
     # -- drawing -------------------------------------------------------------------------------------------------------------------
     def scene(self):
@@ -233,6 +315,11 @@ class NewGame(Screen):
             ops.append(Image(DIR + "cancell.bmp", ox + CANCEL_AT[0], oy + CANCEL_AT[1]))
         if self.under == OK:
             ops.append(Image(DIR + "okl.bmp", ox + OK_AT[0], oy + OK_AT[1]))
+        for path, x, y in self.hint_ops:                      # the hint pulse (`0x4364f7`) and the sparkle (the second animation) are drawn after the widgets
+            ops.append(Image(path, ox + x, oy + y))
+        if self.spark_draw is not None:
+            frame, (x, y) = self.spark_draw
+            ops.append(Sprite(SPARK, frame, ox + x, oy + y))
         ops += self.name_ops(ox, oy)
         if self.tips_win is not None:
             ops += self.tips_win.ops(self.tips_text(), self.tips_hover, self.tips_down if self.tips_down == self.tips_hover else None, ox, oy)

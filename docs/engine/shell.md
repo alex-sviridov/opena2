@@ -54,8 +54,7 @@ mask (never drawn; red channel = value), `button<n>p.bmp` (hover image), `button
 Mask values `0x10..0x1e` (even) are outline pixels and 0 the background: no action. The caption `text<n>.bmp` is drawn at **(232, 200)** (the empty middle tablet) for the index under the
 pointer. Behaviour (`0x4a7d0d`, `0x4a813c`, `0x4a81a3`): fields `+0xec` index under the pointer, `+0xf4` index pressed, `+0xf0` highlight = under the pointer unless another button is held,
 `+0xf8` disabled bit mask. Hover draws `button<n>p` at the image rect; a held button `button<n>`; a **disabled button gets no highlight and no action** (its caption still shows). The sound plays on the
-**mouse press** of an enabled button only (no hover sound); the action runs on the **release over the same button**. The window has no child widgets and no key handling (**INFERRED**, not run): the
-key router acts on ESC / F1-F3 / Pause only for `game+0x404` 0 or 1, and with the menu open keys go to the window manager, which has no children to receive them.
+**mouse press** of an enabled button only (no hover sound); the action runs on the **release over the same button**. The window has no child widgets and no key handling (**CONFIRMED**, key slot `0x6c` of the class vtable `0x5cec48` is `FUN_004dc326`: Tab / arrows only, nothing to focus; see 3.5).
 Enabled state: LOAD GAME is disabled when no `game*.sav` exists (`0x43ff4a`, mask bit `0x10`, `0x48b66f`); if the CD / registry check fails (`0x62282c`) four buttons are disabled
 (mask `0x35`, `0x4872ef-0x4873b5`; the GOG build is expected to pass, INFERRED).
 
@@ -100,6 +99,7 @@ reset routine `0x433520-0x43389d`; bitmaps in `graphics.res`, `graphics\interfac
   **an empty name does nothing**; the mouse OK / Cancel call the same two routines. Initial text "Master Oberic" (`0x5efba8`, 13 characters: the field accepts nothing more until it is shortened). `0x437d90(name)`: true when the name equals one
   of the four hero names or "Unnamed" (`_stricmp`); the show routine resets a default name to `npcnames` 0x14 "Aldor" (`0x433628-0x433650`); clicking another hero replaces the name by that hero's default only while the field holds a
   default name (`0x436ebb-0x4371a0`). Tooltips of the edit widgets: `main.txt` 0x16d "Name:" (id `0x464`), 0x16e "Clan:" (id `0x465`, not shown in single player).
+- **Paint tick and animations (CONFIRMED `0x43541e`, `0x4364f7`)**: the panel paints when `now - last > 0x43` (67 ms). Torches: one frame per tick (`+0x1b0 + 1`, `% 15`; the second torch is offset by 8). **Sparkle** (the second animation): `+0x70` = `PreCreate\Blind\sprites.16a` (`0x433c58`; 15 frames of 28x28, alpha, slot `0x18`), state `+0x74` (0 idle), position `+0x78 / +0x7c`; idle until `now - t0 > delay` (`delay = rand() / 0x41 + 500`, set at the first paint and at every start), then the rect `i = rand() / (0x7fff / 5)` of the vector `+0x80` (five rects, built at `0x4331c5-0x43330a`: the three level rects 48x72 at (8 / 296 / 580, 0), Cancel (16, 400) 64x76, OK (548, 400) 80x76), the offset `(rand() / (0x7fff / w), rand() / (0x7fff / h))` from its top-left, frame := 1; a running frame is drawn, then `now - t0 > 0x3f` (63 ms) advances `(f + 1) % 15` and sets `t0 := now` (the idle clock restarts when it wraps to 0). The statics (`0x61adac..0x61ade4`) are set once per process. **Hint pulse** (`0x4364f7`; not a cross-fade): called from the paint only while TipsMode `0x622774` is on and the tips window `+0x1f8` exists, with the mask value under the pointer (`0x434d74`); quiet while `now - 0x61adbc < 500`; the tip step `+0x218` picks the group (0 heroes mask `0x50 / 0x64 / 0x78 / 0x8c`, 1 levels `0x14 / 0x28 / 0x3c`, 2 Cancel / OK `0xa0 / 0xb4`, others none): a hover of the group restarts the quiet time and remembers the mask (phase resumes at its index + 1: `0x14`->1 .. `0x8c`->4, `0xa0`->1, `0xb4`->2), otherwise the phase `% count` (4 / 3 / 2) is drawn and advances every 300 ms. Draws: step 0 `h1sel` (phase 1: `h1sel2`) at (112, 44) plus `h3on` / `h4on` at the hero rects in phases 2 / 3; step 1 `level<p>l` (`lon` while level p is selected) at its rect; step 2 `cancell` (phase 0) or `okl` (phase 1). The hero vectors `+0x94` (on), `+0xa8` (sel), `+0xbc` (sel + partner) and the level vectors `+0xd0 / 0xe4 / 0xf8` (on / l / lon) are indexed in screen order (CONFIRMED at `0x432c01-0x433c40`: h1, h4, h2, h3 are loaded to indices 0, 3, 1, 2). **Built** in `engine/shell/newgame.py` (`update(dt_ms)`, seeded `rng`, tests `test_newgame_sparkle_*`, `test_newgame_hint_pulse_*`).
 - **Tips** (TipsMode `0x622774` on, the default): the tips window `0x4dec24(id 0x467, 0xe8, 0x30, 0x280, 0xb8, text)` = SetRect (l, t, r, b) = (232, 48)-(640, 184) relative to the PreCreate panel, 408 x 136, with `town.txt` `#tips8` "Select the class and the sex of your character by clicking on the
   appropriate portrait.", stored in `+0x1f8`, removed by message `0x45a` (Close) and at close. **Built** in L2: `engine/shell/tipswin.py` (frame, text box, Close, the "Show tips next time" check box that writes TipsMode, layout CONFIRMED in [chargen.md 1.5](chargen.md)); the same window serves the mission `tips:` message `0x45b`, not built.
 - **Torches**: `torch1` / `torch2` = 15-frame flame animations of 48x72 (opaque BMPs that include the wall behind) on the two braziers, **at (4, 200) and (589, 200)** (CONFIRMED by pixel identity: the pixels that never change over the 15
@@ -122,6 +122,21 @@ available list in unlock order (`Mission N: <map name>`, up to 8) and **Main Men
 `a.prebuilt`); the mission loop returns `victory` -> `leave_mission(world, "won")` (carry-over, Scenario.dll completion, recruit, the town stand-in `visit_towns`) -> `locations`; `defeat`, End Quest / Exit to Main Menu -> `leave_mission`
 without carry-over -> `menu` (the original ends the game: `0x41e`, `0x431`); the last mission's ending (`Outcome.kind == "ending"`) -> `menu` (credits not built). The session files of a campaign mission record the campaign's seed
 and the map; `replay` rebuilds a *fresh* party, so a recorded campaign mission after the first does not verify (open). The death hook runs once at the mission end (`CampaignGame.death_hook`), not per tick.
+
+### 3.5 Keys in the shell, Esc (CONFIRMED)
+
+Path: WM_KEYDOWN reaches `FUN_00484a76` (the game object); with `game+0x448 == 0` ESC (`0x1b`) acts only by the screen mask `game+0x404`: **1 (mission)** posts `0x416` (in-game menu); **0 (no screen open)** posts `0x41f` when the CString `0x43a170` is non-empty and the game is single player, otherwise
+forwards the key; **any other mask (every shell screen: `0x80` menu, `0x200..0x800` the new-game panels)** forwards `(0x100, 0x1b)` to the window manager `game+0xcc` (`FUN_004852d8` itself does nothing for `0x100` and only forwards `0x101`). The container dispatch `FUN_004d4769` gives it to the focused child (`+0x38`), then to every child
+in add order (`0x4d460b`) until one returns non-zero, and last to the window's own key slot `0x6c`. Per state:
+
+| state | slot `0x6c` | Esc |
+|---|---|---|
+| main menu (class `0x5cec48`) | `FUN_004dc326` (Tab / arrows) | nothing |
+| PreCreate (`+0x374`, `0x5cb998`) | `0x436cc3`: Enter -> `0x437829` (OK), `0x1b` -> `0x437955` (Cancel `0x446`) | Cancel = back to the menu, plays `Ok.wav`; the name edit maps the same two keys |
+| character generator (`+0x36c`, `0x5cb6a8`) | `0x42e113`: Enter -> `0x42e250` (Accept), else `0x4dc326` | **nothing** (does not become `0x446` Back; Back is only the button) |
+| tips window (class `0x5d0568`, slot `0x48` = `0x4df278`, slot `0x6c` = `0x4df316`) | returns 0 | the message `0x100` is not forwarded to its children (returns 0 at once), so Esc and Enter go on to the owning panel: **a shown tips window never takes keys** |
+
+The engine matches: `NewGame` Esc = Cancel and Enter = OK with or without the tips window, `Chargen` ignores Esc (Enter = Accept), the main menu has no key handling.
 
 ## 4. The engine's state machine (`engine/shell/`)
 
@@ -270,7 +285,7 @@ objective oracle as the player (history `newgame, chargen, locations, (game, loc
 
 ## Open questions
 
-- PreCreate: the initial level highlight (INFERRED Easy), the second animation of the paint function (random point over the five widget rects, bitmap vector unknown), the hover cross-fade `0x4364f7`, the tips window layout (`0x4deca4`), the order of the hero vectors against the screen order; what `0x40d480` resets (the character generator is [chargen.md](chargen.md)).
+- PreCreate: the initial level highlight stays INFERRED Easy (`+0x20c` is never written before the show routine marks `flags[+0x20c] := 1`; the window is heap-allocated, its zero fill is not provable statically). `0x40d480` (single player): clears the result code `0x622824`, resets the two global structures `0x670e50` / `0x6831a8` (`0x500a72`, `0x50101e` twice; INFERRED the client / server message queues) and checks `0x40d791`; an error opens the message window `0x49226d` with the code. The character generator is [chargen.md](chargen.md).
 - The `SmackOpen` flag word `0xff000` is INFERRED (RAD's header from memory; `smackw32.dll` is packed).
 - Game Options / Sound Options: the sound index of each text-button event (the slider and check-box looks, the OK / Cancel rects and ESC are answered).
 - Whether the GOG build passes the CD check `0x62282c` (the menu would then have four disabled buttons), and the keyboard behaviour of the menu (INFERRED from the absent key handling, never run).

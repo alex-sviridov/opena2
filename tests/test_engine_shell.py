@@ -443,3 +443,100 @@ def test_name_centred_on_plate_and_caret_does_not_shift():
         t = [o for o in ng.name_ops() if isinstance(o, Text)]
         assert t[0].text == ng.name_text and t[0].flags == 2 and t[0].x == PLATE_AT[0] + PLATE_W // 2 == 328
         assert len(t) == (2 if blink else 1)
+
+
+class Seq:
+    """A scripted `rand()`: `randrange(n)` returns the next value of the list (then repeats the last)."""
+
+    def __init__(self, *values):
+        self.values = list(values)
+
+    def randrange(self, n):
+        return self.values.pop(0) if len(self.values) > 1 else self.values[0]
+
+
+def fresh_timers(ng, rng):
+    ng.rng, ng.started, ng.now, ng.spark, ng.spark_draw, ng.hint_ops, ng.hint_last, ng.hint_phase = rng, False, 0, 0, None, [], -1, 0
+
+
+@needs_graphics
+def test_newgame_sparkle_second_animation_is_deterministic():
+    """shell.md 3.3 (CONFIRMED `0x43541e`): paint ticks > 67 ms; idle `rand() / 65 + 500` ms, then a rect of the five (levels, Cancel, OK) and a point in it, frame 1 for one tick, then
+    a frame per `> 63` ms over the 15 frames of `Blind\\sprites.16a`, then idle with a new delay."""
+    from engine.shell.newgame import SPARK, SPARK_FRAMES
+    from engine.shell.scene import Sprite
+    sh, rec = make_shell(GFS)
+    to_newgame(sh)
+    ng = sh.current
+    sh.settings.tips = False
+    ng.tips_win = None
+    fresh_timers(ng, Seq(650, 6563, 6820, 9100, 6500, 0))              # delay 510; rect 1 (296, 0, 48, 72); offset (10, 20); next delay 600
+    sprites = lambda: [o for o in ng.scene().ops if isinstance(o, Sprite)]
+    ng.update(68)                                                      # the first paint: statics set, no tick yet
+    assert ng.spark_delay == 510 and ng.spark == 0 and not sprites()
+    ng.update(443)                                                     # 443 ms since t0: still idle
+    assert ng.spark == 0
+    ng.update(68)                                                      # 511 > 510: starts (frame 1, nothing drawn yet)
+    assert ng.spark == 1 and ng.spark_pos == (306, 20) and ng.spark_delay == 600 and not sprites()
+    seen = []
+    for _ in range(SPARK_FRAMES):
+        ng.update(68)
+        seen += [(s.frame, s.x, s.y) for s in sprites()]
+    assert [f for f, _, _ in seen] == list(range(1, SPARK_FRAMES)) and all((x, y) == (306, 20) for _, x, y in seen)
+    assert ng.spark == 0 and not sprites() and sprites() == [] and SPARK.endswith("blind/sprites.16a")
+    ng.update(68 * 7)                                                  # 544 ms since the last frame change: still idle (delay 600)
+    assert ng.spark == 0
+    ng.update(68)                                                      # 612 > 600: the next one starts (rand() = 0 -> rect 0, point at its corner)
+    assert ng.spark == 1 and ng.spark_pos == (8, 0)
+
+
+@needs_graphics
+def test_newgame_hint_pulse_follows_the_tip_step():
+    """`0x4364f7` (CONFIRMED): after 500 ms without a hover of the hinted group the widgets of the tip step pulse with a 300 ms phase; hovering the group restarts the quiet time
+    and resumes after the hovered widget; the check box (TipsMode) and Close stop it."""
+    from engine.shell.newgame import DIR
+    sh, rec = make_shell(GFS)
+    to_newgame(sh)
+    ng = sh.current
+    fresh_timers(ng, Seq(0))
+    ng.under = 0
+    tick = lambda n=1: [ng.update(68) for _ in range(n)]
+    tick(1)                                                            # statics
+    tick(7)                                                            # 476 ms: quiet
+    assert ng.hint_ops == []
+    tick(1)                                                            # 544 >= 500: heroes pulse, phase 0 = the plain hero-0 portrait
+    assert ng.hint_ops == [(DIR + "heroes/h1sel.bmp", 112, 44)]
+    seen = []
+    for _ in range(20):
+        tick()
+        seen += [o[0].rsplit("/", 1)[1] for o in ng.hint_ops]
+    assert set(seen) == {"h1sel.bmp", "h1sel2.bmp", "h3on.bmp", "h4on.bmp"}
+    ng.under = 80                                                      # hover hero 0: quiet again for 500 ms, then phase 1 (h1sel2)
+    tick()
+    assert ng.hint_ops == []
+    ng.under = 0
+    tick(7)
+    assert ng.hint_ops == []
+    tick(1)
+    assert ng.hint_ops == [(DIR + "heroes/h1sel2.bmp", 112, 44)]
+    ng.tips_n = 1                                                      # levels: level<phase>l, lon over the selected level (Easy)
+    ng.level = 0
+    ng.hint_phase = 0
+    ng.hint_t2 = ng.now
+    tick()
+    assert ng.hint_ops == [(DIR + "levels/level0lon.bmp", 8, 0)]
+    ng.tips_n, ng.hint_phase, ng.hint_t2 = 2, 0, ng.now
+    tick()
+    assert ng.hint_ops == [(DIR + "cancell.bmp", 16, 400)]
+    ng.hint_t2 = ng.now - 400                                          # > 300 ms since the last phase change: OK next
+    tick()
+    ng.hint_t2 = ng.now - 400
+    tick()
+    assert ng.hint_ops == [(DIR + "okl.bmp", 548, 400)]
+    ng.tips_n = 3                                                      # after the last tip nothing pulses
+    tick()
+    assert ng.hint_ops == []
+    ng.tips_n = 0
+    sh.settings.tips = False                                           # the check box: TipsMode off stops the pulse though the window stays
+    tick(10)
+    assert ng.hint_ops == []

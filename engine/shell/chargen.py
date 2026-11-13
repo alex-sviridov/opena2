@@ -10,7 +10,7 @@ to `locations`.
 DECISIONs: the quadrant (480..640, 238..480) that nothing draws in the original keeps the last PreCreate pixels (CONFIRMED mechanism, chargen.md 1): `MainArea.bmp`, the right torch (a frozen frame, here 7) and the hovered OK button `okl`; the hint window (tips
 `#tips5` / `#tips6`, `#tips7` after the first class click) is the exe's tips window (chargen.md 1.5, CONFIRMED rects: frame, text box, Close, check box "Show tips next time"
 that writes Settings.tips at once); the preview (child 2) lists Life / Mana (`progression.derived_vitals` of the template with the current attributes) and the attributes;
-the tooltips of slot 5 (the stat rows, drawn by the shared in-game tooltip box, chargen.md 1.6) are built, the Esc key (the panel ignores it) is not."""
+the tooltips of slot 5 (the stat rows, drawn by the shared in-game tooltip box, chargen.md 1.6) are built, the Esc key is ignored like the exe (CONFIRMED, shell.md 3.5)."""
 
 from allods2.formats.progression import derived_vitals, skills_of, start_pools  # noqa: F401  (skills_of for the preview)
 from allods2.graphics import load_bmp
