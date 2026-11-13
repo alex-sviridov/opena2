@@ -304,3 +304,50 @@ def test_the_last_missions_ending_goes_to_the_menu(monkeypatch):
     monkeypatch.setattr(type(sh.campaign), "leave_mission", lambda self, world, result="won": C.Outcome("ending"))
     sh.apply(sh.current.run())
     assert sh.name == "menu"                                                  # the credits are not built
+
+
+def _lit(cur):
+    """The class pictures the scene draws, as {column: picture name} (chargen.md 1.3)."""
+    from engine.shell.scene import Image
+    return {n: op.path.rsplit("/", 1)[1][:-4] for op in cur.scene().ops if isinstance(op, Image)
+            for n in range(4) if "/%s/" % cg.CLASSES[cur.kind][n] in op.path}
+
+
+def _run(cur, ms):
+    """Frames of 1 ms (the shimmer's stamps move per frame, like the paint calls); the column lit on each frame."""
+    out = []
+    for _ in range(ms):
+        cur.update(1)
+        out.append(cur.shimmer)
+    return out
+
+
+@needs_graphics
+def test_idle_shimmer_waits_then_lights_one_column_per_step():
+    sh, _ = make_shell(GFS)
+    cur = to_chargen(sh)
+    assert cur.hint                                                           # only runs while the hint window exists
+    cur.state.school = 1
+    assert _run(cur, 499) == [None] * 499
+    cur.update(1)                                                             # 500 ms: idle (>= 0x1f4)
+    assert cur.shimmer == 0 and _lit(cur) == {0: "shine_on"}                  # the selected column uses shine_on
+    frames = _run(cur, 1500)
+    first = {c: frames.index(c) + 1 for c in (1, 2, 3)}
+    assert first == {1: 301, 2: 602, 3: 903}                                  # each column stays lit 301 frames (> 0x12c)
+    assert frames[-1] is not None and set(frames) == {0, 1, 2, 3}             # cycles 0..3 without a gap
+    cur.shimmer = 1
+    assert _lit(cur) == {0: "on", 1: "shine_off"}                             # not selected: shine_off
+
+
+@needs_graphics
+def test_idle_shimmer_hover_resets_and_resumes_after_the_column():
+    sh, _ = make_shell(GFS)
+    cur = to_chargen(sh)
+    _run(cur, 500)
+    assert cur.shimmer == 0
+    sh.handle(Move(*chargen_centre(sh, "class", 2)))                          # the pointer on a column restarts the idle wait
+    assert _run(cur, 3000) == [None] * 3000                                   # and while it stays there nothing shimmers
+    sh.handle(Move(0, 0))
+    assert _run(cur, 1)[0] == 3                                               # the stamp is refreshed only every 500 ms of hovering: idle again at once; resumes after the column
+    cur.hint = False
+    assert _run(cur, 1000) == [None] * 1000                                   # no hint window, no shimmer

@@ -100,8 +100,12 @@ School 5 elsewhere (CONFIRMED by callers): `FUN_00514f59` (callers `0x4919ff` pr
 Pictures per column (`...\<name>\on.bmp`, `shine_off.bmp`, `shine_on.bmp`, all the size above; names `sword axe Mace Pike Bow`, `fire water air earth astral`):
 flag bit 0 = selected, bit 1 = hovered (`+0x10c + 4 k`); paint `0x42b220` draws, at the position, **selected only: `on`; hovered only: `shine_off`;
 both: `shine_on`**; none: nothing (the column picture already shows the engraved icons). Hover bit: set on the hit column by `0x42b691`, cleared on all others every move.
-Also an idle shimmer (`0x42b406`): after 500 ms (`0x1f4`) without hover or click, one column per 300 ms (`0x12c`) cycling k = 0..3 draws `shine_on` (selected) or
-`shine_off` (not); it only runs after the first click or while the hint is shown (INFERRED reading; open 3).
+Also an idle shimmer (**CONFIRMED**, `0x42b406`, called only at the end of the column paint `0x42b220`, once per paint; clock = `timeGetTime`, not the animation tick). Globals: idle stamp A `0x61adc8`, step stamp B `0x61adb0`, last hovered column `cur` `0x5eecc4` (init -1), cycle index `idx` `0x61ade8` (init 0), count `0x5eecc8` = 4; A / B are set to "now" on the first call only (flag byte `0x61add4`; the globals outlive the screen). Per paint, `hit` = the column whose mask byte is under the cursor (`0x42d1a3`, regardless of windows on top):
+1. Runs only while the hint window exists (`owner+0x80` != 0; also needs `owner+0x100` == 0, INFERRED normal) - **not** after a first click.
+2. `now - A < 500` (`0x1f4`): B := now, nothing drawn.
+3. Else: if `cur` != -1, `idx := (cur + 1) % 4`. If `hit` != -1 (pointer on a column): A := B := now, `cur := hit`, nothing drawn (so hovering refreshes A only every 500 ms of hover; leaving shows the shimmer at once if A is already 500 ms old, resuming after the last hovered column).
+4. Else (no column under the pointer): draw column `idx` with its own paint-rect, `shine_on` if its flag is 1 (selected) else `shine_off` (the selected column is included in the cycle); `cur := -1`; then if `now - B > 300` (`0x12c`, strictly): `idx := (idx + 1) % 4`, B := now. The column stays lit for the 300 ms+ until the next step, columns follow one after the other without a gap (k = 0, 1, 2, 3, 0, ...); the picture is drawn over the normal paint and is gone when the conditions fail.
+Clicks and keys do not touch A / B; only a hovered column does. Engine: `CharGen.update(dt_ms)` runs this on a ms clock (`shimmer` = the lit column this frame, `scene()` draws it like a hover picture); A / B start at 0 on every entry.
 Loaded but never drawn (INFERRED, no use found): `chrgen\RollStatsR.bmp`, `chrgen\FullStatsR.bmp`, `Inn\RUOver.bmp`.
 
 ### 1.4 Full stats (child 2)
@@ -216,7 +220,6 @@ Free steps (`up = 0`, e.g. 16 -> 17) work with an empty pool. Click mace: school
 
 ## Open questions
 
-2. Exact rules of the idle shimmer. `0x42b406`.
 3. How the shared tooltip window places and styles the text of slot 5. `0x429b01`.
 4. Child `0x458` is built with the rect (0, 238, 160, 242) (a 4 px band): do its mouse events / tooltip (`0x42a34b`) ever reach it? `0x42a0f1`, `0x42d4b0`.
 6. Esc in this state at the shell window level (`FUN_004852d8` key path); the panel itself ignores it.

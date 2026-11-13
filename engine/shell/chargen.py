@@ -10,7 +10,7 @@ to `locations`.
 DECISIONs: the quadrant (480..640, 238..480) that nothing draws in the original keeps the last PreCreate pixels (CONFIRMED mechanism, chargen.md 1): `MainArea.bmp`, the right torch (a frozen frame, here 7) and the hovered OK button `okl`; the hint window (tips
 `#tips5` / `#tips6`, `#tips7` after the first class click) is the exe's tips window (chargen.md 1.5, CONFIRMED rects: frame, text box, Close, check box "Show tips next time"
 that writes Settings.tips at once); the preview (child 2) lists Life / Mana (`progression.derived_vitals` of the template with the current attributes) and the attributes;
-the idle shimmer, the tooltips of slot 5 and the Esc key (the panel ignores it) are not built."""
+the tooltips of slot 5 and the Esc key (the panel ignores it) are not built."""
 
 from allods2.formats.progression import derived_vitals, skills_of, start_pools  # noqa: F401  (skills_of for the preview)
 from allods2.graphics import load_bmp
@@ -72,6 +72,9 @@ def wrap_font2(shell, text, width):
 def cost(v):
     """`FUN_004f250e`: the point cost of an attribute value."""
     return int(0.349 * (v - 1) ** 1.15 + 0.5)
+
+
+SHIMMER_IDLE, SHIMMER_STEP = 500, 300              # `0x1f4` idle ms (>=), `0x12c` per column (strictly more)
 
 
 class ChargenState:
@@ -159,6 +162,10 @@ class CharGen(Screen):
             from engine.ui.orders import MainText
             self.main = MainText.load(self.shell.fs)
             self.town = decode_text(self.shell.fs.read("main/text/town.txt")).split("\r\n")
+        self.clock = 0                               # ms since entering (stands for timeGetTime, the idle shimmer 0x42b406)
+        self.idle_at = self.step_at = 0              # 0x61adc8 / 0x61adb0 (the globals are set on the first paint)
+        self.shim_cur, self.shim_idx, self.shimmer = -1, 0, None   # 0x5eecc4 / 0x61ade8 / the column lit this frame
+        self.pointer = None
         self.hover = None                            # ("plus", i) / ("minus", i) / ("class", k) / ("button", i) / ("close",)
         self.pressed = None
         self.hint = self.shell.settings.tips
@@ -184,17 +191,49 @@ class CharGen(Screen):
         for i, b in enumerate(BUTTONS):
             if rect_has(b, x, y):
                 return ("button", i)
+        k = self.class_at(x, y)
+        return None if k is None else ("class", k)
+
+    def class_at(self, x, y):
+        """The column whose mask colour is under the (panel-local) point, whatever lies on top (`0x42d1a3`)."""
         mask = self.masks[self.kind]
         mx = x - COLUMN_AT[0]
         if 0 <= mx < 320 and 0 <= y < 480:
             v = int(mask[y, mx])
             for k in range(PICKABLE):
                 if MASK[self.kind][k][0] == v:
-                    return ("class", k)
+                    return k
+        return None
+
+    def update(self, dt_ms):
+        """The idle shimmer (chargen.md 1.3, `0x42b406`), run once per frame on a clock of ms."""
+        self.clock += dt_ms
+        now = self.clock
+        self.shimmer = None
+        if not self.hint:                            # only while the hint window exists (`owner+0x80`)
+            return None
+        if now - self.idle_at < SHIMMER_IDLE:
+            self.step_at = now
+            return None
+        if self.shim_cur != -1:
+            self.shim_idx = (self.shim_cur + 1) % 4  # resume after the column last hovered
+        hot = self.class_at(*self._local(*self.pointer)) if self.pointer else None
+        if hot is not None:                          # the pointer on a column restarts the idle wait
+            self.idle_at = self.step_at = now
+            self.shim_cur = hot
+            return None
+        self.shim_idx %= 4
+        self.shimmer = self.shim_idx
+        self.shim_cur = -1
+        if now - self.step_at > SHIMMER_STEP:
+            self.shim_idx = (self.shim_idx + 1) % 4
+            self.step_at = now
         return None
 
     # -- input ---------------------------------------------------------------------------------------------------------------------
     def event(self, ev):
+        if hasattr(ev, "x"):
+            self.pointer = (ev.x, ev.y)
         if isinstance(ev, Move):
             self.hover = self.hit(ev.x, ev.y)
         elif isinstance(ev, Press) and ev.button == 1:
@@ -287,6 +326,8 @@ class CharGen(Screen):
         ops.append(Text("%d" % s.pool, ox + POOL[0] + POOL[2] // 2, oy + POOL[1] + POOL[3] // 2 + 2, STAT_FONT, "gold", 0xA, 1))
         for c in range(PICKABLE + 1):                 # the class pictures: selected `on`, hovered `shine_off`, both `shine_on` (bow / astral are never selected or hovered)
             sel, hot = s.school == c + 1 and c < PICKABLE, self.hover == ("class", c)
+            if self.shimmer == c and not hot:         # the shimmer: `shine_on` when selected, else `shine_off` (the same pictures as the hover)
+                hot = True
             if sel or hot:
                 ops.append(Image(BASE + "%s/%s/%s.bmp" % (k, CLASSES[k][c], "shine_on" if sel and hot else "on" if sel else "shine_off"),
                                  ox + MASK[k][c][1], oy + MASK[k][c][2], True))
