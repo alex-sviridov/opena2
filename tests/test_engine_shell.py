@@ -293,7 +293,7 @@ def test_name_caret_blinks_every_500_ms_and_typing_restarts_it():
     to_newgame(sh)
     ng = sh.current
     ng.name_text = "Elf"
-    shown = lambda: [o for o in sh.scene().ops if hasattr(o, "text")][0].text
+    shown = lambda: "".join(o.text for o in sh.scene().ops if hasattr(o, "text") and o.font == 4)      # the name, then the caret as its own Text
     assert shown().endswith("|")
     sh.update(300)
     assert shown().endswith("|")
@@ -428,3 +428,18 @@ def test_newgame_tips_window_texts_close_and_check_box():
     sh.go("menu")
     sh.go("newgame")
     assert sh.current.tips_win is None                                        # TipsMode off: not built
+
+
+@needs_graphics
+def test_name_centred_on_plate_and_caret_does_not_shift():
+    """shell.md 3.3 DECISION: the name is centred on the plate (x 172 + 156); the blink caret is a separate Text."""
+    from engine.shell.newgame import NAME_FONT, PLATE_AT, PLATE_W
+    from engine.shell.scene import Text
+    sh, rec = make_shell(GFS)
+    to_newgame(sh)
+    ng = sh.current
+    for blink in (False, True):
+        ng.blink_on = blink
+        t = [o for o in ng.name_ops() if isinstance(o, Text)]
+        assert t[0].text == ng.name_text and t[0].flags == 2 and t[0].x == PLATE_AT[0] + PLATE_W // 2 == 328
+        assert len(t) == (2 if blink else 1)

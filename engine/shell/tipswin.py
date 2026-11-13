@@ -13,6 +13,7 @@ Only Close and the check box take mouse input (INFERRED: the text box and frame 
 from .options import RADIO_OFF, RADIO_ON, RADIOB, SHADOW
 from .scene import Button, Frame, Sprite, Text
 
+TEXT_L, TEXT_R = 40, 44                                  # DECISION: skull sprites cover x 0..38 / w-44..w; the text box is inset to clear them (the exe's own box is 20 / 28)
 TEXT_FONT, LINE = 2, 12                                  # LINE = pitch = glyph-0 height of font2 (10) + 2 (`0x4d4e9b`, pitch argument 0)
 
 
@@ -26,7 +27,7 @@ class TipsWindow:
     def __init__(self, rect, main, wrap, measure):
         self.rect, self.main, self.wrap, self.measure = rect, main, wrap, measure
         x, y, w, h = rect
-        self.text_box = (x + 20, y + 24, w - 28 - 20, h - 36 - 24)
+        self.text_box = (x + TEXT_L, y + 24, w - TEXT_R - TEXT_L, h - 36 - 24)       # DECISION: the exe box (20, 24, w - 28, h - 36) runs into the 48 px corner skulls; inset in x only (chargen.md 1.5)
         self.close = (x + w - 120, y + h - 40, 80, 18)
         self.check = (x + 40, y + h - 40, w - 124 - 40, 16)
         self.checked = True                                   # `0x4deca4`: state 1 at build

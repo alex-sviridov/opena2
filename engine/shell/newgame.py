@@ -8,7 +8,7 @@ mouse press** (`0x436d48`; a move with the button held selects too), not on the 
 `0x432397`, `0x437829`, `0x437955`): printable characters (>= 0x20) up to **10**, Backspace deletes the last one, the caret is always at the end (`|` blinking every 500 ms),
 Enter = OK and ESC = Cancel, **an empty name does nothing**, typing plays `SFX\\Letter2.wav` (INFERRED: the index `+0x1e8` stays 0), clicks `ChrGen\\Level1-3.wav` / `Char.wav` /
 `Ok.wav`; clicking a hero swaps the name for its default name (`npcnames` 0x17..0x1a) only while the field holds a default name or "Unnamed" (`0x437d90`); the initial name is
-"Master Oberic", a default name is reset to "Aldor" (`npcnames` 0x14) on the next show.  Font4 draws the name at (300, 433), left aligned.
+"Master Oberic", a default name is reset to "Aldor" (`npcnames` 0x14) on the next show.  Font4: the exe draws the name left aligned at (300, 433); DECISION: we centre it on the plate (shell.md 3.3).
 INFERRED: the initial level is 0 (Easy: the window's `+0x20c` is never initialised before the show; the exe's own selector 1 = Medium is overwritten by the window's level at OK),
 the focus sits on the name field from the start, the position of the big portraits (template matching: x 112 for heroes 0-1, 260 for 2-3, y 44), Cancel plays `ChrGen\\Ok.wav`.
 Torches: `torch1` / `torch2` are 15-frame flame animations (48x72) on the two braziers, at **(4, 200)** and **(589, 200)** (CONFIRMED by pixel identity: the frames' static pixels equal `MainArea.bmp` there with error
@@ -37,6 +37,7 @@ BIG_AT = ((112, 44), (112, 44), (260, 44), (260, 44))
 PARTNER = (1, 0, 3, 2)                                  # the other pane of a pair: h1sel2, h2sel1, h3sel4, h4sel3
 CANCEL_AT, OK_AT, PLATE_AT = (16, 400), (548, 400), (172, 396)   # INFERRED by template matching (shell.md 3.3); the hover pictures `cancell` / `okl` are INFERRED too
 NAME_AT, NAME_FONT, NAME_MAX = (300, 433), 4, 10
+PLATE_W = 312                                               # tablol.bmp
 HERO_NAMES = ("Aldor", "Sagita", "Galinel", "Gildarius")      # male fighter, female fighter, female mage, male mage (npcnames 0x17..0x1a; 0x19 / 0x1a are Gildarius / Galinel in the file)
 HERO_CODE = (0x00, 0x80, 0xC0, 0x40)                    # `window+0x484 >> 0` per hero value: bit 0x40 mage, bit 0x80 female (`4891d8`, table `0x5cdd60`)
 TIPS_WINDOW = (232, 48, 408, 136)                       # CONFIRMED: `0x4dec24(0x467, 0xe8, 0x30, 0x280, 0xb8)` = SetRect (l, t, r, b) = (232, 48, 640, 184), a child of the panel (at the screen origin)
@@ -107,6 +108,22 @@ class NewGame(Screen):
     def _cancel(self):
         self.shell.play(OK_SOUND)                            # `0x437955` plays the Cancel sound (the second `ChrGen\Ok.wav`)
         return "menu"
+
+    def name_ops(self, ox=0, oy=0):
+        """The name (DECISION, the exe draws it left aligned at the rect's left, shell.md 3.3): centred on the plate; the blink caret is a separate Text just after the name so it never shifts it."""
+        cx = ox + PLATE_AT[0] + PLATE_W // 2
+        m = self.measure_name(self.name_text)
+        ops = [Text(self.name_text, cx, oy + NAME_AT[1], NAME_FONT, "normal", 2, 0)]
+        if self.blink_on:
+            ops.append(Text("|", cx - m // 2 + m, oy + NAME_AT[1], NAME_FONT, "normal", 0, 0))
+        return ops
+
+    def measure_name(self, text):
+        from allods2.graphics.font import Font, font_bytes
+        f = getattr(self.shell, "_font4", None)
+        if f is None:
+            f = self.shell._font4 = Font.load("graphics/font4/font4", self.shell.fs)
+        return f.measure(font_bytes(text))
 
     def tips_text(self):
         i = TIPS_LINE[8 + self.tips_n] + 1
@@ -216,8 +233,7 @@ class NewGame(Screen):
             ops.append(Image(DIR + "cancell.bmp", ox + CANCEL_AT[0], oy + CANCEL_AT[1]))
         if self.under == OK:
             ops.append(Image(DIR + "okl.bmp", ox + OK_AT[0], oy + OK_AT[1]))
-        text = self.name_text + ("|" if self.blink_on else "")
-        ops.append(Text(text, ox + NAME_AT[0], oy + NAME_AT[1], NAME_FONT, "normal", 0, 0))
+        ops += self.name_ops(ox, oy)
         if self.tips_win is not None:
             ops += self.tips_win.ops(self.tips_text(), self.tips_hover, self.tips_down if self.tips_down == self.tips_hover else None, ox, oy)
         return Scene(ops)
