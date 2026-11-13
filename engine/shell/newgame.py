@@ -18,10 +18,12 @@ Not built: the hover cross-fade `0x4364f7`, the tips window `#tips8` (the TipsMo
 import numpy as np
 
 from allods2.graphics import load_bmp
+from allods2.text import decode_text
 
 from .events import Key, Move, Press, Release
 from .scene import Image, Scene, Text
 from .screen import Screen
+from .tipswin import TipsWindow
 
 DIR = "graphics/interface/chrgen/precreate/"
 OK_SOUND, CHAR_SOUND, LETTER_SOUND = "sfx/chrgen/ok.wav", "sfx/chrgen/char.wav", "sfx/letter2.wav"
@@ -37,6 +39,8 @@ CANCEL_AT, OK_AT, PLATE_AT = (16, 400), (548, 400), (172, 396)   # INFERRED by t
 NAME_AT, NAME_FONT, NAME_MAX = (300, 433), 4, 10
 HERO_NAMES = ("Aldor", "Sagita", "Galinel", "Gildarius")      # male fighter, female fighter, female mage, male mage (npcnames 0x17..0x1a; 0x19 / 0x1a are Gildarius / Galinel in the file)
 HERO_CODE = (0x00, 0x80, 0xC0, 0x40)                    # `window+0x484 >> 0` per hero value: bit 0x40 mage, bit 0x80 female (`4891d8`, table `0x5cdd60`)
+TIPS_WINDOW = (232, 48, 408, 136)                       # CONFIRMED: `0x4dec24(0x467, 0xe8, 0x30, 0x280, 0xb8)` = SetRect (l, t, r, b) = (232, 48, 640, 184), a child of the panel (at the screen origin)
+TIPS_LINE = {8: 14, 9: 16, 10: 18}                      # `#tipsN` header lines of town.txt (the text is the next line)
 UNNAMED = "Unnamed"
 INITIAL_NAME = "Master Oberic"                          # 0x5efba8
 DEFAULT_LEVEL = 0                                       # INFERRED (see the module doc)
@@ -68,6 +72,13 @@ class NewGame(Screen):
             self.name_text = HERO_NAMES[0]
         self.hero, self.level = 0, DEFAULT_LEVEL             # `+0x208 := 0`; the level as left by the window (INFERRED 0)
         self.under, self.held = 0, False
+        self.tips_win, self.tips_n, self.tips_hover, self.tips_down = None, 0, None, None
+        if self.shell.settings.tips:                          # `0x43371e`: TipsMode on builds the window (`#tips8`, counter `+0x218` = 0)
+            from engine.ui.orders import MainText
+            from .chargen import wrap_font2
+            self.main = getattr(self, "main", None) or MainText.load(self.shell.fs)
+            self.town = getattr(self, "town", None) or decode_text(self.shell.fs.read("main/text/town.txt")).split("\r\n")
+            self.tips_win = TipsWindow(TIPS_WINDOW, self.main, lambda t, w: wrap_font2(self.shell, t, w))
         self.blink_on, self.blink_ms = True, 0
         self.anim_ms = 0
 
@@ -97,7 +108,42 @@ class NewGame(Screen):
         self.shell.play(OK_SOUND)                            # `0x437955` plays the Cancel sound (the second `ChrGen\Ok.wav`)
         return "menu"
 
+    def tips_text(self):
+        i = TIPS_LINE[8 + self.tips_n] + 1
+        return self.town[i] if len(self.town) > i else ""
+
+    def _tips_press(self, v):
+        """`0x4372d1` (called by the press handler `0x436d48` with the mask id): the first hero click shows `#tips9`, a level click after that `#tips10`."""
+        if self.tips_win is None:
+            return
+        if v in HEROES and self.tips_n == 0:
+            self.tips_n = 1
+        elif v in LEVELS and self.tips_n == 1:
+            self.tips_n = 2
+
+    def _tips_event(self, ev):
+        """Mouse over the tips window: swallowed (a child above the panel); the Close release removes it (`0x45a`), the check box release writes TipsMode (`0x46e`)."""
+        if isinstance(ev, (Move, Press, Release)) and self.tips_win is not None:
+            ox, oy = self.origin
+            h = self.tips_win.hit(ev.x - ox, ev.y - oy)
+            if isinstance(ev, Move):
+                self.tips_hover = h
+            elif ev.button == 1 and h:
+                if isinstance(ev, Press):
+                    self.tips_down = h
+                else:
+                    down, self.tips_down = self.tips_down, None
+                    if down == h and h == "close":
+                        self.tips_win = None
+                    elif down == h and h == "tips":
+                        self.shell.settings.tips = self.tips_win.toggle()
+                        self.shell.services.save_settings(self.shell.settings)
+            return bool(h)
+        return False
+
     def event(self, ev):
+        if self._tips_event(ev):
+            return None
         if isinstance(ev, Move):
             self.under = self._at(ev.x, ev.y)
             if self.held:
@@ -105,6 +151,7 @@ class NewGame(Screen):
         elif isinstance(ev, Press) and ev.button == 1:
             self.under = v = self._at(ev.x, ev.y)
             self.held = True
+            self._tips_press(v)
             if v in LEVELS:
                 self.shell.play(LEVEL_SOUNDS[LEVELS[v]])
                 self._select(v)
@@ -171,4 +218,6 @@ class NewGame(Screen):
             ops.append(Image(DIR + "okl.bmp", ox + OK_AT[0], oy + OK_AT[1]))
         text = self.name_text + ("|" if self.blink_on else "")
         ops.append(Text(text, ox + NAME_AT[0], oy + NAME_AT[1], NAME_FONT, "normal", 0, 0))
+        if self.tips_win is not None:
+            ops += self.tips_win.ops(self.tips_text(), self.tips_hover, self.tips_down if self.tips_down == self.tips_hover else None, ox, oy)
         return Scene(ops)

@@ -402,3 +402,29 @@ def test_shell_golden():
     gold = json.load(open(os.path.join(ROOT, "tests", "golden.json")))["shell"]
     got = ug.shell_hashes(GFS)
     assert got == gold, "shell screens changed: %s; run tools/update_golden.py --only shell" % [k for k in gold if got.get(k) != gold[k]]
+
+
+@needs_graphics
+def test_newgame_tips_window_texts_close_and_check_box():
+    """shell.md 3.3 Tips: `0x4dec24(0x467, 0xe8, 0x30, 0x280, 0xb8)` builds the window when TipsMode is on (`#tips8`); a hero press shows `#tips9`, a level press after
+    that `#tips10`; Close removes it; the check box writes TipsMode at once; a click elsewhere on the window reaches the panel beneath."""
+    from engine.shell.newgame import TIPS_WINDOW
+    sh, rec = make_shell(GFS)
+    to_newgame(sh)
+    ng = sh.current
+    assert TIPS_WINDOW == (232, 48, 408, 136) and ng.tips_win is not None and ng.tips_text().startswith("Select the class and the sex")
+    press(sh, 20)
+    assert ng.tips_text().startswith("Select the class")                      # a level press before a hero press: nothing
+    press(sh, 100)
+    assert ng.tips_text().startswith("Now select whatever game difficulty")
+    press(sh, 40)
+    assert ng.tips_text().startswith("If you don't like the name") and ng.level == 1
+    x, y, w, h = ng.tips_win.check
+    click(sh, (x + 5, y + 5))
+    assert not sh.settings.tips and not ng.tips_win.checked
+    x, y, w, h = ng.tips_win.close
+    click(sh, (x + 5, y + 5))
+    assert ng.tips_win is None
+    sh.go("menu")
+    sh.go("newgame")
+    assert sh.current.tips_win is None                                        # TipsMode off: not built

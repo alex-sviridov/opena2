@@ -60,11 +60,11 @@ from both places when answered).
 - Spell book window leftovers: colour key of SpellBook / SpellBack / caps, rounding of the level-4 veil `FUN_004565cd`, `view+0x14` at 800x600, map-row recompute `FUN_0041b121`, the left release's cell cast `FUN_0041918e` (table `0x5f1810`). [ui-layout 11.12](engine/ui-layout.md#1112-spell-book-window-bottom-bar-id-3-class-fun_004c61e7-vtable-0x5cf918-confirmed-unless-marked)
 - Heads / hero arrows: receivers of messages `0x414` / `0x415` (the hero windows `FUN_0049a428` / `FUN_0049bd95` / `FUN_0049e187`?) and the hero list `FUN_00472460` flags. [ui-layout](engine/ui-layout.md#open-questions)
 - Text windows (pause, failed): justified paragraph drawing (`FUN_0045e01d`, `FUN_0045da67`), the scroll bar (`FUN_004da54d`), the complete path with chapter var `>= 0x78`. [ui-layout 11.4](engine/ui-layout.md#114-in-game-menu-pause-freeze)
-- Tips window (message `0x45b`, `tips:`): draw of `FUN_004deca4`; no install mission uses the tag. [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages)
+- Tips window of the mission message `0x45b` (`tips:`) and the town / shop / inn `#tips1..4, 11, 12` windows: callers not built (the window itself is `engine/shell/tipswin.py`, rect of `0x45b`: (10, 20, 370, 188)); no install mission uses the tag. [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages)
 - Info-panel knowledge table: character-file load / write-back (`Knowledge(blob)` / `to_blob`) and the exact engine mapping of client relation bit 8 (`FUN_0041e860`). [ui-layout](engine/ui-layout.md#open-questions) (`FUN_004ea6ab`, `0x4141fa`)
 - Info panel: whether the new-game name field accepts `|`. [ui-layout open questions](engine/ui-layout.md#open-questions)
 - Message list: quest-event lines (multiplayer only, no work), alternative message colour tables `0x61fb08` / `0x61fba8`. [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages)
-- Character generator ([chargen](engine/chargen.md#open-questions)): the hint window's rect and TipsMode check box (`0x4deca4`, `0x42dba8`); the idle shimmer (`0x42b406`); tooltip placement of slot 5 (`0x429b01`); child `0x458`'s 4 px rect (`0x42a0f1`); Esc at shell level (`FUN_004852d8`); Reset pool 100 reaching 45 x4 (verify in play).
+- Character generator ([chargen](engine/chargen.md#open-questions)): the idle shimmer (`0x42b406`); tooltip placement of slot 5 (`0x429b01`); child `0x458`'s 4 px rect (`0x42a0f1`); Esc at shell level (`FUN_004852d8`); Reset pool 100 reaching 45 x4 (verify in play).
 
 ## Rendering and engine
 

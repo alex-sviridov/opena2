@@ -8,8 +8,8 @@ of chargen.md 1).  Accept builds the campaign (`CampaignGame.new_game` with the 
 to `locations`.
 
 DECISIONs: the quadrant (480..640, 238..480) that nothing draws in the original keeps the last PreCreate pixels (CONFIRMED mechanism, chargen.md 1): `MainArea.bmp`, the right torch (a frozen frame, here 7) and the hovered OK button `okl`; the hint window (tips
-`#tips5` / `#tips6`, `#tips7` after the first class click; the Close button removes it) is a framed dialog at the bottom of the class column, since the exe's rect
-would cover the preview; the preview (child 2) lists Life / Mana (`progression.derived_vitals` of the template with the current attributes) and the attributes;
+`#tips5` / `#tips6`, `#tips7` after the first class click) is the exe's tips window (chargen.md 1.5, CONFIRMED rects: frame, text box, Close, check box "Show tips next time"
+that writes Settings.tips at once); the preview (child 2) lists Life / Mana (`progression.derived_vitals` of the template with the current attributes) and the attributes;
 the idle shimmer, the tooltips of slot 5 and the Esc key (the panel ignores it) are not built."""
 
 from allods2.formats.progression import derived_vitals, skills_of, start_pools  # noqa: F401  (skills_of for the preview)
@@ -17,8 +17,9 @@ from allods2.graphics import load_bmp
 from allods2.text import decode_text
 
 from .events import Key, Move, Press, Release
-from .scene import Button, Frame, Image, Scene, Text
+from .scene import Image, Scene, Text
 from .screen import Screen
+from .tipswin import TipsWindow
 
 BASE = "graphics/interface/chrgen/"
 INN = "graphics/interface/inn/"
@@ -44,9 +45,17 @@ CLASS_SOUNDS = {"fighter": ("fsword", "faxe", "fclub", "fpike"), "mag": ("mfire"
 MASK = {"fighter": ((0xFF, 248, 93), (0xBF, 252, 126), (0x98, 248, 182), (0x7F, 244, 225), (0x66, 248, 250)),
         "mag": ((0x7F, 360, 150), (0x66, 232, 165), (0xFF, 292, 98), (0x98, 300, 228), (0xBF, 296, 158))}
 PICKABLE = 4                                         # the hit loops are `< 4`: bow and astral cannot be picked
-HINT = (170, 296, 312, 184)                          # DECISION: the hint dialog (frame x, y, w, h incl. the 8 px shadow)
-HINT_CLOSE = (HINT[0] + 24, HINT[1] + HINT[3] - 40, 120, 24)
+HINT = (160, 280, 312, 200)                          # the tips window `0x4dec24(0x467, 0, 0x118, 0x138, 0x1e0)`: SetRect (l, t, r, b) relative to the class column (160, 0); layout in tipswin.py
 TIPS_LINE = {5: 8, 6: 10, 7: 12}                     # `#tipsN` header lines of town.txt (the text is the next line)
+
+
+def wrap_font2(shell, text, width):
+    """The tips text wrapped to `width` with font2 (the lines as str)."""
+    from allods2.graphics import Font
+    f = getattr(shell, "_font2", None)
+    if f is None:
+        f = shell._font2 = Font.load("graphics/font2/font2", shell.fs)
+    return [b.decode("cp866", "replace") if isinstance(b, bytes) else b for b in f.wrap(text, width)]
 
 
 def cost(v):
@@ -142,6 +151,7 @@ class CharGen(Screen):
         self.hover = None                            # ("plus", i) / ("minus", i) / ("class", k) / ("button", i) / ("close",)
         self.pressed = None
         self.hint = self.shell.settings.tips
+        self.tips_win = TipsWindow(HINT, self.main, self.wrap)
         self.vitals_cache = {}
 
     # -- geometry / hit testing (screen coordinates; the panel is 640x480 at `origin`) ---------------------------------------------
@@ -152,10 +162,9 @@ class CharGen(Screen):
     def hit(self, x, y):
         x, y = self._local(x, y)
         if self.hint:
-            if rect_has(HINT_CLOSE, x, y):
-                return ("close",)
-            if rect_has((HINT[0], HINT[1], HINT[2] - 8, HINT[3] - 8), x, y):
-                return None
+            h = self.tips_win.hit(x, y)
+            if h:
+                return (h,)
         for i in range(4):
             if rect_has((PLUS_X, ROW_Y + 32 * i, BOX, BOX), x, y):
                 return ("plus", i)
@@ -196,6 +205,9 @@ class CharGen(Screen):
             if down is not None and down == h:
                 if h[0] == "close":
                     self.hint = False
+                elif h[0] == "tips":                 # message 0x46e: TipsMode := the box state (in memory at once; the engine saves with the settings)
+                    self.shell.settings.tips = self.tips_win.toggle()
+                    self.shell.services.save_settings(self.shell.settings)
                 elif h[0] == "button":
                     return self._button(h[1])
         elif isinstance(ev, Key) and not ev.ctrl and ev.name == "return":
@@ -245,11 +257,7 @@ class CharGen(Screen):
         return self.town[TIPS_LINE[n] + 1] if len(self.town) > TIPS_LINE[n] + 1 else ""
 
     def wrap(self, text, width):
-        from allods2.graphics import Font
-        f = getattr(self.shell, "_font2", None)
-        if f is None:
-            f = self.shell._font2 = Font.load("graphics/font2/font2", self.shell.fs)
-        return [b.decode("cp866", "replace") if isinstance(b, bytes) else b for b in f.wrap(text, width)]
+        return wrap_font2(self.shell, text, width)
 
     def scene(self):
         ox, oy = self.origin
@@ -278,12 +286,7 @@ class CharGen(Screen):
             ops.append(Text(self.main.line(BUTTON_TEXT[i]), ox + x + w // 2, oy + y + h // 2 + (1 if held else 0), STAT_FONT, "yellow" if mine else "gold", 0xA, 1))
         ops += self.preview_ops(ox, oy)
         if self.hint:
-            hx, hy, hw, hh = HINT
-            ops.append(Frame(ox + hx, oy + hy, hw, hh))
-            for n, line in enumerate(self.wrap(self.tips_text(), hw - 8 - 40)[:9]):
-                ops.append(Text(line, ox + hx + 20, oy + hy + 20 + 14 * n, TEXT_FONT, "label", 0, 1))
-            cx, cy, cw, ch = HINT_CLOSE
-            ops.append(Button(ox + cx, oy + cy, cw, ch, self.main.line(0x7F), True, self.hover == ("close",), self.pressed == ("close",)))
+            ops += self.tips_win.ops(self.tips_text(), self.hover[0] if self.hover else None, self.pressed[0] if self.pressed else None, ox, oy)
         return Scene(ops)
 
     def preview_ops(self, ox, oy):

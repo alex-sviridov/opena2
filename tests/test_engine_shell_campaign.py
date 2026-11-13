@@ -179,11 +179,33 @@ def test_hint_shows_per_class_changes_after_a_class_click_and_closes():
     click(sh, chargen_centre(sh, "class", 0))
     assert cur.tips_text().startswith("Now you can change the basic stats")
     ox, oy = cur.origin
-    x, y, w, h = cg.HINT_CLOSE
+    x, y, w, h = cur.tips_win.close
     click(sh, (ox + x + w // 2, oy + y + h // 2))
     assert not cur.hint
     sh2, _ = make_shell(GFS, settings=type(sh.settings)(tips=False))
     assert not to_chargen(sh2).hint                                           # TipsMode off: no hint
+
+
+@needs_graphics
+def test_hint_check_box_writes_tips_mode_and_the_window_stays():
+    sh, _ = make_shell(GFS)
+    cur = to_chargen(sh)
+    ox, oy = cur.origin
+    assert cg.HINT == (160, 280, 312, 200) and cur.tips_win.close == (160 + 192, 280 + 160, 80, 18) and cur.tips_win.checked and sh.settings.tips      # the exe's SetRect (0, 0x118, 0x138, 0x1e0) in the class column
+    x, y, w, h = cur.tips_win.check
+    click(sh, (ox + x + w // 2, oy + y + h // 2))
+    assert not cur.tips_win.checked and not sh.settings.tips and cur.hint                    # message 0x46e writes TipsMode; the window stays until Close
+    click(sh, (ox + x + w // 2, oy + y + h // 2))
+    assert cur.tips_win.checked and sh.settings.tips
+    off = [op for op in cur.scene().ops if getattr(op, "path", "").endswith("radiob.256")]
+    assert {op.frame for op in off} == {5}                                            # on = frame 5
+    click(sh, (ox + x + w // 2, oy + y + h // 2))
+    assert {op.frame for op in cur.scene().ops if getattr(op, "path", "").endswith("radiob.256")} == {4}
+    sh3, _ = make_shell(GFS)
+    c3 = to_chargen(sh3)
+    ox, oy = c3.origin
+    click(sh3, (ox + cg.HINT[0] + 100, oy + cg.HINT[1] + 100))                        # inside the window (text): swallowed, nothing happens
+    assert c3.hint and c3.state.school == 1
 
 
 @needs_graphics
