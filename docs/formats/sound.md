@@ -206,7 +206,7 @@ when the state `+0x404` is 0), `0x425` character creation, `0x428` credits, `0x4
 | Screen | Playlist | Routine |
 |---|---|---|
 | main menu | `music\menu.wav` | `0x48b569` |
-| world / campaign map | `music\map.wav` (INFERRED screen; messages `0x41d`, `0x42d`) | `0x48b419` |
+| world / campaign map | `music\map.wav` (CONFIRMED screen: the world map window, [town-worldmap](../engine/town-worldmap.md); messages `0x41d`, `0x42d`) | `0x48b419` |
 | town | `b14`, `b16`, `b15` | `0x48bbc0` |
 | credits | `music\credit.wav` | `0x48be11` |
 | character creation | `music\chrgen.wav` | `0x48f4e2` (push `0x48f67b`) |
@@ -233,7 +233,7 @@ is **not read by the game** (no such string in `allods2.exe`); the map editor re
 - Which server events send a "Take damage" with unchanged HP (the slot-[1] blow sound), and what the shop window action is that triggers
   the 30 % shop speech (`0x4b5ffa`).
 - The 59 dialogue names with no file and the files the rule never produces (§4.3); whether `books/NN` is a spell id.
-- The host window of the `0x467` track-change message (`0x43d8a4`) and the exact screens of `0x48b419` / `0x48bbc0` (INFERRED map / town).
+- The host window of the `0x467` track-change message (`0x43d8a4`) and the exact screen of `0x48bbc0` (INFERRED town; `0x48b419` = the world map, answered).
 
 ## VERIFY BY EAR
 

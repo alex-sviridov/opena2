@@ -201,7 +201,7 @@ Loader `FUN_004a91d5` (file `famehall.dat`, `0x5f31f4`), writer `FUN_004a90c9` (
 
 Slot names (`FUN_0043ece0` and the list code `FUN_0043dc54`): `game%04ld.sav`-style zero padding (`game000%ld`, `game00%ld`, `game0%ld`, `game%ld`), the list scans `\game*.sav`; the
 literals `game9998.sav` / `game9999.sav` and `game0000.sav` (read by the server start when `server+0x1ac != 0`, `0x4eb992`). The save UI
-formats `game%d.sav` (`0x48850d`) as `9999 - slot`. **CONFIRMED** (full caller audit in [ui-layout 11.4](../engine/ui-layout.md#114-in-game-menu-pause-freeze)): `game9999.sav` is the automatic save written by the mission entry `FUN_0048c8a3(0)` (message `0x442`, description patch `0x37` "Restart last mission"); `game9998.sav` has no sender (description patch `0x5f` "Abort mission and return to town"); the Save dialog hides both, the Load dialog lists them. Single player never writes a `.a2c` (all writers gated by `+0x5d8 != 2`).
+formats `game%d.sav` (`0x48850d`) as `9999 - slot`. **CONFIRMED** (full caller audit in [ui-layout 11.4](../engine/ui-layout.md#114-in-game-menu-pause-freeze)): `game9999.sav` is the automatic save written by the mission entry `FUN_0048c8a3(0)` (message `0x442`, description patch `0x37` "Restart last mission"); `game9998.sav` is written by message `0x442` with wParam 1, posted by the three town scenes' leave click right before `0x42d` (`0x4cad5d`, `0x4d0758`, `0x4d3058`, [town-worldmap 1](../engine/town-worldmap.md); description patch `0x5f` "Abort mission and return to town"); the Save dialog hides both, the Load dialog lists them. Single player never writes a `.a2c` (all writers gated by `+0x5d8 != 2`).
 
 ### 6.1 Container (CONFIRMED, `FUN_004e9816` writer, `FUN_004e9b95` reader)
 

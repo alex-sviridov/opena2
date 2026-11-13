@@ -8,7 +8,6 @@ from both places when answered).
 
 - Town scenes: draw code and timing are resolved ([animation §4.11](formats/animation.md)). Left: the hover-region numbers of the
   fighter/mage/shopie sprites and the druid `man`/`woman` variant choice. [animation](formats/animation.md#open-questions)
-- World-map Cross: where `+0x134` is reset to 0 on a new click. [animation](formats/animation.md#open-questions)
 
 ## data.bin and items
 
@@ -42,6 +41,10 @@ from both places when answered).
 
 - [Effects](engine/effects.md#open-questions): the structure branch of the carriers (`vtable +0x34`, `FUN_00559b7f`); the human scan's recompute triggers besides the stat switch; the client effect messages (`FUN_005044ba`, `FUN_00504498`, `FUN_005045a5`).
 - Backpack window leftovers (K5b answered: text flag 8, message `0x46e`, the doll item on the cursor, Ctrl+F): the open sound, releases over the minimap / heads / window 8, the window `0x4ba` of message `0x463` (map 10), the hero-screen lists' gold cell (phase K, hero_ui). [ui-layout 11.13](engine/ui-layout.md#open-questions)
+
+## Town mode
+
+- World map screen ([town-worldmap 8](engine/town-worldmap.md#8-open-questions)): the anchor of the flag / Cross draw point (`FUN_0046fdd5`, sprite vtable `+0x18`), the description wrap width (`FUN_0045d479`), what is painted around the 640x480 window at 800x600 / 1024x768 (`FUN_00452bde`), what a loaded `game9998.sav` restores of the party point (`FUN_0048db37`), the exact path-edge tracer bookkeeping (`FUN_00471f0d`, `FUN_004721ff`).
 
 ## Triggers and scenario
 
@@ -82,7 +85,7 @@ from both places when answered).
 
 ## Saves
 
-- Saves ([saves](formats/saves.md#open-questions)): the server stream's object serialisers (`FUN_0052d16b`, `FUN_0052c3da`, `FUN_0052d5cb`, `FUN_00550008`, `FUN_0052d5b2`, `FUN_0053bbd0`, `FUN_0057a951`, start `FUN_004ec732`) and its 11 option words; the `+0x2f` byte; whether single player ever uses a stored character's items (VERIFY IN GAME); `famehall.dat` fields `b`, `c`; slot `game0000.sav` (read by the server start when `server+0x1ac != 0`, writer unknown) and `game9998.sav` (no sender).
+- Saves ([saves](formats/saves.md#open-questions)): the server stream's object serialisers (`FUN_0052d16b`, `FUN_0052c3da`, `FUN_0052d5cb`, `FUN_00550008`, `FUN_0052d5b2`, `FUN_0053bbd0`, `FUN_0057a951`, start `FUN_004ec732`) and its 11 option words; the `+0x2f` byte; whether single player ever uses a stored character's items (VERIFY IN GAME); `famehall.dat` fields `b`, `c`; slot `game0000.sav` (read by the server start when `server+0x1ac != 0`, writer unknown); `game9998.sav` (sender found, [town-worldmap](engine/town-worldmap.md#1-purpose-and-entry--exit); what loading it restores is open, [town-worldmap 8](engine/town-worldmap.md#8-open-questions)).
 - Phase K save/load UI and writers: the Save / Load / Delete dialogs (`FUN_0043ebf6`, `FUN_0043deaf`, list `FUN_0043dc54`), the `game%d.sav` writer `FUN_0048dc9f` (+ loader `FUN_0048db37`), the mission-start auto-save `game9999.sav` "Restart last mission" (message `0x442` from `FUN_0048c8a3(0)`), the `famehall.dat` write at exit; single player never writes a `.a2c` ([ui-layout 11.4](engine/ui-layout.md#114-in-game-menu-pause-freeze)).
 - [Items K5](engine/items.md#open-questions): the client sound of the item notice `FUN_00504b3a` / gold message `0x67`; `unit +0xe4` (the pack index of message `0x21`, INFERRED 0x7FFF); several selected units on a pickup.
 

@@ -1064,8 +1064,8 @@ laid; when `+0x12c` passes the route length and `+0x134 > 14` the party
 position `+0x104/+0x108` is set to the destination, `+0x12c` is reset to
 0 and the route is cleared (`0x472860`). So the Cross plays its 13 frames
 at ≤ 10 frames/s, holds the last one until the route is done, and stops
-after ~15 draws. Where `+0x134` is reset to 0 for a new click was not
-traced.
+after ~15 draws. `+0x134` is reset to 0 **only at the window load** (`0x46fbae`, `FUN_0046fa4b`); the window is unloaded after every walk, so there is
+exactly one Cross play per opening ([town-worldmap 3.1](../engine/town-worldmap.md)); the Cross set itself is still not built.
 API: `ui:map_missionflag`, `map_yourflag`, `map_flag1`, `map_flag`,
 `map_flagonmap`.
 
@@ -1315,4 +1315,3 @@ In order of need; none required by the coverage check.
   exact region numbers of the fighter/mage/shopie hover sprites
   (`FUN_004caf00` and `FUN_004cdbea` paths) and the `man`/`woman` variant
   choice in the druid hover handler (`FUN_004cfd58`).
-- World-map Cross: where the click handler resets `+0x134` to 0 (writers of `+0x134`, `FUN_0046fdd5` callers' mouse path).
