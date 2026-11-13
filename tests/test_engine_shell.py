@@ -203,10 +203,10 @@ def test_new_game_starts_with_hero_zero_and_the_original_defaults():
     to_newgame(sh)
     rec.sounds.clear()                                                # the menu's own click
     ng = sh.current
-    assert (ng.hero, ng.level, ng.name_text) == (0, 0, "Master Oberic")             # hero 0 selected by the show routine, level 0 (INFERRED), the ctor's name
+    assert (ng.hero, ng.level, ng.name_text) == (0, 1, "Master Oberic")             # hero 0 selected by the show routine, level 1 = Medium (CONFIRMED), the ctor's name
     press(sh, 180)                                                    # OK acts on the PRESS (`0x436d48`)
     assert sh.name == "chargen" and rec.starts == []                  # OK goes on to the character generator (L2), not into a map
-    assert sh.params == {"difficulty": 1, "hero": 0, "hero_code": 0, "name": "Master Oberic"}
+    assert sh.params == {"difficulty": 2, "hero": 0, "hero_code": 0, "name": "Master Oberic"}
     assert rec.sounds == ["sfx/chrgen/ok.wav"]
 
 
@@ -338,6 +338,8 @@ def test_tablet_and_portrait_states():
     sh, _ = make_shell(GFS)
     to_newgame(sh)
     ng = sh.current
+    assert ng.level == 1                                              # CONFIRMED: Medium on a fresh entry
+    ng.level = 0                                                      # the states below are checked on Easy
     names = lambda: [o.path.rsplit("/", 1)[1] for o in sh.scene().ops if hasattr(o, "path")]
     assert "h1sel.bmp" in names() and "level0on.bmp" in names()       # selected: the big portrait and the `on` tablet
     sh.handle(Move(*mask_centre(sh, ng.mask, 20)))
@@ -540,3 +542,17 @@ def test_newgame_hint_pulse_follows_the_tip_step():
     sh.settings.tips = False                                           # the check box: TipsMode off stops the pulse though the window stays
     tick(10)
     assert ng.hint_ops == []
+
+
+@needs_graphics
+def test_new_game_level_persists_over_back_from_chargen_but_resets_on_a_fresh_entry():
+    sh, _ = make_shell(GFS)
+    to_newgame(sh)
+    sh.current.level = 2
+    press(sh, 180)
+    assert sh.name == "chargen"
+    sh.go("newgame")                                                  # Back: re-show `0x48979c`, `+0x20c := game+0x598` (stored by OK)
+    assert sh.current.level == 2
+    sh.go("menu")
+    sh.go("newgame")                     # fresh entry (state 0x425 stores 1)
+    assert sh.current.level == 1

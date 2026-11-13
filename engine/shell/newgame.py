@@ -9,8 +9,8 @@ mouse press** (`0x436d48`; a move with the button held selects too), not on the 
 Enter = OK and ESC = Cancel, **an empty name does nothing**, typing plays `SFX\\Letter2.wav` (INFERRED: the index `+0x1e8` stays 0), clicks `ChrGen\\Level1-3.wav` / `Char.wav` /
 `Ok.wav`; clicking a hero swaps the name for its default name (`npcnames` 0x17..0x1a) only while the field holds a default name or "Unnamed" (`0x437d90`); the initial name is
 "Master Oberic", a default name is reset to "Aldor" (`npcnames` 0x14) on the next show.  Font4: the exe draws the name left aligned at (300, 433); DECISION: we centre it on the plate (shell.md 3.3).
-INFERRED: the initial level is 0 (Easy: the window's `+0x20c` is never initialised before the show; the exe's own selector 1 = Medium is overwritten by the window's level at OK),
-the focus sits on the name field from the start, the position of the big portraits (template matching: x 112 for heroes 0-1, 260 for 2-3, y 44), Cancel plays `ChrGen\\Ok.wav`.
+CONFIRMED (REA): the initial level is 1 = **Medium**: the state-0x425 handler stores 1 in the selector `game+0x598` (`0x48631b`), then the re-show `0x48f4e2` copies it into the window (`0x493c80`: `+0x20c := game+0x598`, `0x493c60`: `+0x208`) before the show routine `0x4334df` marks `flags[+0x20c]`; OK stores the window's level back into `game+0x598` (`0x4899ef`), so Back from the generator (re-show `0x48979c`) keeps the chosen level, while a fresh entry (menu -> New game) resets to Medium.
+INFERRED: the focus sits on the name field from the start, the position of the big portraits (template matching: x 112 for heroes 0-1, 260 for 2-3, y 44), Cancel plays `ChrGen\\Ok.wav`.
 Torches: `torch1` / `torch2` are 15-frame flame animations (48x72) on the two braziers, at **(4, 200)** and **(589, 200)** (CONFIRMED by pixel identity: the frames' static pixels equal `MainArea.bmp` there with error
 0), advanced by a global 67 ms timer (`0x436222`; the exe starts each torch at a random frame, here 0 and 7).
 Paint ticks (CONFIRMED `0x43541e`): the whole panel paints only when more than `0x43` = 67 ms passed since the last paint (`now - last > 67`); the two animations below run inside that tick.
@@ -52,7 +52,7 @@ TIPS_WINDOW = (232, 48, 408, 136)                       # CONFIRMED: `0x4dec24(0
 TIPS_LINE = {8: 14, 9: 16, 10: 18}                      # `#tipsN` header lines of town.txt (the text is the next line)
 UNNAMED = "Unnamed"
 INITIAL_NAME = "Master Oberic"                          # 0x5efba8
-DEFAULT_LEVEL = 0                                       # INFERRED (see the module doc)
+DEFAULT_LEVEL = 1                                       # CONFIRMED Medium (see the module doc)
 BLINK_MS = 500
 TORCH_AT = ((4, 200), (589, 200))                       # CONFIRMED by pixel identity of the static part of the frames against `MainArea.bmp`
 PAINT_TICK_MS = 0x43                                    # CONFIRMED `0x43541e`: the panel paints (and animates) when more than 67 ms passed
@@ -93,7 +93,9 @@ class NewGame(Screen):
             self.mask = np.asarray(m.index if m.index is not None else m.rgb[..., 0])
         if is_default_name(self.name_text):                  # the show routine `0x433628`: a default name goes back to line 0x14
             self.name_text = HERO_NAMES[0]
-        self.hero, self.level = 0, DEFAULT_LEVEL             # `+0x208 := 0`; the level as left by the window (INFERRED 0)
+        if self.shell.history[-2:-1] != ["chargen"]:         # Back from the generator keeps `game+0x598` (set by OK); a fresh entry (state 0x425, `0x48631b`) stores 1 = Medium
+            self.level = DEFAULT_LEVEL
+        self.hero = 0                                         # `+0x208 := 0` (show routine `0x4335d9`)
         self.under, self.held = 0, False
         self.tips_win, self.tips_n, self.tips_hover, self.tips_down = None, 0, None, None
         if self.shell.settings.tips:                          # `0x43371e`: TipsMode on builds the window (`#tips8`, counter `+0x218` = 0)
