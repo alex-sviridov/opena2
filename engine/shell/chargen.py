@@ -10,14 +10,16 @@ to `locations`.
 DECISIONs: the quadrant (480..640, 238..480) that nothing draws in the original keeps the last PreCreate pixels (CONFIRMED mechanism, chargen.md 1): `MainArea.bmp`, the right torch (a frozen frame, here 7) and the hovered OK button `okl`; the hint window (tips
 `#tips5` / `#tips6`, `#tips7` after the first class click) is the exe's tips window (chargen.md 1.5, CONFIRMED rects: frame, text box, Close, check box "Show tips next time"
 that writes Settings.tips at once); the preview (child 2) lists Life / Mana (`progression.derived_vitals` of the template with the current attributes) and the attributes;
-the tooltips of slot 5 and the Esc key (the panel ignores it) are not built."""
+the tooltips of slot 5 (the stat rows, drawn by the shared in-game tooltip box, chargen.md 1.6) are built, the Esc key (the panel ignores it) is not."""
 
 from allods2.formats.progression import derived_vitals, skills_of, start_pools  # noqa: F401  (skills_of for the preview)
 from allods2.graphics import load_bmp
 from allods2.text import decode_text
 
+from engine.ui.tooltip import TooltipTimer
+
 from .events import Key, Move, Press, Release
-from .scene import Image, Scene, Text
+from .scene import Image, Scene, Text, Tooltip
 from .screen import Screen
 from .tipswin import TipsWindow
 
@@ -47,6 +49,8 @@ MASK = {"fighter": ((0xFF, 248, 93), (0xBF, 252, 126), (0x98, 248, 182), (0x7F, 
         "mag": ((0x7F, 360, 150), (0x66, 232, 165), (0xFF, 292, 98), (0x98, 300, 228), (0xBF, 296, 158))}
 PICKABLE = 4                                         # the hit loops are `< 4`: bow and astral cannot be picked
 HINT = (160, 280, 312, 200)                          # the tips window `0x4dec24(0x467, 0, 0x118, 0x138, 0x1e0)`: SetRect (l, t, r, b) relative to the class column (160, 0); layout in tipswin.py
+NAME_X, NAME_Y, NAME_DY = 0x10, 0x39, 0x21          # the name rects (`0x42864f`): point (16, 57 + 33 i), size = the name's text width x line height
+MAIN_NAME, MAIN_DESC, MAIN_POOL = 0xF, 0x9B, 0x111  # main.txt: attribute names, descriptions (`#` = line break), "Free pool"
 TIPS_LINE = {5: 8, 6: 10, 7: 12}                     # `#tipsN` header lines of town.txt (the text is the next line)
 
 
@@ -55,6 +59,14 @@ def font2(shell):
     f = getattr(shell, "_font2", None)
     if f is None:
         f = shell._font2 = Font.load("graphics/font2/font2", shell.fs)
+    return f
+
+
+def font4(shell):
+    from allods2.graphics import Font
+    f = getattr(shell, "_font4", None)
+    if f is None:
+        f = shell._font4 = Font.load("graphics/font4/font4", shell.fs)
     return f
 
 
@@ -166,6 +178,7 @@ class CharGen(Screen):
         self.idle_at = self.step_at = 0              # 0x61adc8 / 0x61adb0 (the globals are set on the first paint)
         self.shim_cur, self.shim_idx, self.shimmer = -1, 0, None   # 0x5eecc4 / 0x61ade8 / the column lit this frame
         self.pointer = None
+        self.tip_timer = TooltipTimer()              # the shared mouse manager's hover clock (`FUN_004268c4`, ui-layout 11.6b); the screen is always enabled (`+0xa0` := 1 at the end of `0x42d8dc`)
         self.hover = None                            # ("plus", i) / ("minus", i) / ("class", k) / ("button", i) / ("close",)
         self.pressed = None
         self.hint = self.shell.settings.tips
@@ -208,6 +221,7 @@ class CharGen(Screen):
     def update(self, dt_ms):
         """The idle shimmer (chargen.md 1.3, `0x42b406`), run once per frame on a clock of ms."""
         self.clock += dt_ms
+        self.tip_timer.update(dt_ms, self.pointer, self.tooltip_text, lambda t: measure_font2(self.shell, t), (640, 480))
         now = self.clock
         self.shimmer = None
         if not self.hint:                            # only while the hint window exists (`owner+0x80`)
@@ -230,10 +244,41 @@ class CharGen(Screen):
             self.step_at = now
         return None
 
+    def name_rect(self, i):
+        """The row's name rect (`0x42864f`): (16, 57 + 33 i), the width of the name in the stat font (INFERRED font 4) x its line height."""
+        f = font4(self.shell)
+        from allods2.graphics.font import font_bytes
+        return NAME_X, NAME_Y + NAME_DY * i, f.measure(font_bytes(self.main.line(MAIN_NAME + i))), f.line_height()
+
+    def tooltip_text(self, pos):
+        """Slot 5 `0x429b01` (chargen.md 1.6): the text under the screen point `pos`, '' when none; the rows are tested in order, each: name, pool, value box, plus, minus."""
+        x, y = self._local(*pos)
+        s = self.state
+        for i in range(4):
+            if rect_has(self.name_rect(i), x, y):
+                return self.main.line(MAIN_DESC + i)
+            if rect_has(POOL, x, y):
+                return self.main.line(MAIN_POOL)
+            if rect_has((VALUE_X, ROW_Y + 32 * i, BOX, BOX), x, y):
+                return "%s = %d" % (self.main.line(MAIN_NAME + i), s.values[i])
+            if rect_has((PLUS_X, ROW_Y + 32 * i, BOX, BOX), x, y):
+                return "%+d" % -s.up(i)                # the price, shown even when the button is disabled
+            if rect_has((MINUS_X, ROW_Y + 32 * i, BOX, BOX), x, y):
+                return "%+d" % s.down(i)
+        return ""
+
+    def tooltip_op(self):
+        tip = self.tip_timer.tip
+        if tip is None:
+            return []
+        ox, oy = self.origin
+        return [Tooltip(tip.lines, tip.x + ox, tip.y + oy, tip.right + ox, tip.bottom + oy)]
+
     # -- input ---------------------------------------------------------------------------------------------------------------------
     def event(self, ev):
         if hasattr(ev, "x"):
             self.pointer = (ev.x, ev.y)
+            self.tip_timer.moved(self.pointer)
         if isinstance(ev, Move):
             self.hover = self.hit(ev.x, ev.y)
         elif isinstance(ev, Press) and ev.button == 1:
@@ -339,6 +384,7 @@ class CharGen(Screen):
         ops += self.preview_ops(ox, oy)
         if self.hint:
             ops += self.tips_win.ops(self.tips_text(), self.hover[0] if self.hover else None, self.pressed[0] if self.pressed else None, ox, oy)
+        ops += self.tooltip_op()
         return Scene(ops)
 
     def preview_ops(self, ox, oy):

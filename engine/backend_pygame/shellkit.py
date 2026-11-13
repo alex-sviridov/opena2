@@ -5,7 +5,7 @@ import numpy as np
 import pygame
 
 from allods2.graphics import SpriteFile
-from engine.shell import Button, Fill, Frame, Image, Key, Move, Press, Release, Sprite, Text
+from engine.shell import Button, Fill, Frame, Image, Key, Move, Press, Release, Sprite, Text, Tooltip
 from engine.ui.layout import Rect
 from engine.ui.modal import DButton
 
@@ -92,3 +92,5 @@ def render_scene(surface, scene, painter, clear=True):
             painter.panels.draw_button(surface, DButton(Rect(op.x, op.y, op.w, op.h), op.label, op.enabled, ("noop",)), op.hover, op.pressed)
         elif isinstance(op, Sprite):
             surface.blit(painter.sprite(op.path, op.frame, op.shadow), (op.x, op.y))
+        elif isinstance(op, Tooltip):
+            painter.panels.draw_tooltip(surface, op)

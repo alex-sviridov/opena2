@@ -68,6 +68,11 @@ class TooltipTimer:
         """`FUN_00427e45`: also run by the left press in the world (`FUN_0042748f`, begin of a selection / order capture)."""
         self.tip = None
 
+    def moved(self, pos):
+        """`FUN_00426594` at the event itself (the shell sees the move before the frame): timer 0, hide, stamp the position; the frame after it counts in full."""
+        if pos != self.pos:
+            self.pos, self.acc, self.tip = pos, 0, None
+
     def update(self, dt, pos, text_fn, measure, screen, frozen=False):
         if pos is None or frozen:
             self.pos, self.acc, self.tip = None, 0, None

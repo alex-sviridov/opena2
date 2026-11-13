@@ -35,6 +35,16 @@ class Fill:
     rgb: tuple = (0, 0, 0)
 
 
+@dataclass(frozen=True)
+class Tooltip:
+    """The shared tooltip box (ui-layout 11.6b, `FUN_00427999`): `lines` in the box (x, y)-(right, bottom) (the exe's RECT), painted by the in-game tooltip painter; the caller emits it last."""
+    lines: tuple
+    x: int
+    y: int
+    right: int
+    bottom: int
+
+
 @dataclass
 class Scene:
     ops: list = field(default_factory=list)

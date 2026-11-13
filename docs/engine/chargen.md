@@ -26,7 +26,7 @@ Panel `+0x36c`: ctor `0x42d39d` (vtable `0x5cb6a8`), builder `0x42d4b0`; childre
 | # | id | class / ctor (vtable) | rect (CONFIRMED `0x42d4b0`) | bitmaps drawn | paint |
 |---|---|---|---|---|---|
 | 1 | `0x457` stats | `0x428521` (`0x5cb4c8`), init `0x42864f` | (0, 0, 160, 238) | `main\graphics\chrgen\leftup.bmp` 160x238, at (0,0) (the names Body / Agility / Mind / Spirit and the empty slots are in the picture) | `0x4293cb` |
-| 2 | `0x458` full stats | `0x42a0f1` (`0x5cb540`) | ctor args (0, 238, 160, **242**) (INFERRED a bug: a 4 px band, see 6) | `graphics\interface\chrgen\FullStatsL.bmp` 160x242 at (0, 238) | `0x42a2b0` |
+| 2 | `0x458` full stats | `0x42a0f1` (`0x5cb540`) | ctor args (0, 238, 160, **242**) (CONFIRMED (l, t, r, b), 1.4: a 160 x 4 px band, a bug; its tooltip is unreachable) | `graphics\interface\chrgen\FullStatsL.bmp` 160x242 at (0, 238) | `0x42a2b0` |
 | 3 | `0x459` buttons | `0x42a443` (`0x5cb5b8`), init `0x42a549` | (480, 0, 640, 238) | `graphics\interface\Inn\ButtonsArea.bmp` 160x238 at (480, 0) | `0x42a6ee` |
 | 4 | `0x45a` class column | `0x42b052` (`0x5cb630`), init `0x42b890` | (160, 0, 480, 480) | `chrgen\fighter\column.bmp` or `chrgen\mag\column.bmp` 320x480 at (160, 0) (NOT `CenterArea.bmp`) | `0x42b220` |
 | 5 | `0x467` hint | tips window `0x4dec24` (child of 4) | SetRect(0, 0x118, 0x138, 0x1e0) = (l, t, r, b) relative to the column (160, 0) = screen (160, 280)-(472, 480), 312x200, CONFIRMED (1.5) | none: text box + Close button (`0x45a`) + check box | built `0x42dba8` |
@@ -112,6 +112,7 @@ Loaded but never drawn (INFERRED, no use found): `chrgen\RollStatsR.bmp`, `chrge
 
 `0x42a2b0`: the picture, then **`FUN_0046aa1d`** (the unit info panel text mode, [ui-layout 11](ui-layout.md#11-j1-minimal-ui)) for the **preview unit** (`this.panel+0x94`) in the rect
 (l + 12, t, r + 12, b) of the child, i.e. the same HP / mana / attributes / damage list as the in-game panel (font2, gold labels, sage values). Tooltip `0x42a34b` = `FUN_0046b9f0` (hit test of that panel).
+**Its mouse / tooltip never fires (CONFIRMED).** The ctor `0x42a0f1` -> `0x4d36ff` -> `0x4d3918` -> `SetRect(this+8, l, t, r, b)` (the same call builds `0x457` = (0, 0, 160, 238), `0x459` = (480, 0, 640, 238), `0x45a` = (160, 0, 480, 480)), so child `0x458` is **(0, 238, 160, 242), 160 x 4**, not 160 x 242. The manager finds the window with `FUN_004d42e8` (children last-to-first, `PtInRect` on the rect `+8`), so the child answers only for a pointer in y 238..241. `0x42a34b` converts the pointer to (x - l - 12, y - t - 12) = y in -12..-9 and `FUN_0046b9f0` returns no text for any y below 0x2c (every branch needs y >= 0x2c; the Life / Mana / attribute rows start at 0x2c = 44, 0x58, 0x7a, 0xad, 0xbe, 0xc8) : the 4 px band never yields a tooltip, and the visible panel (y >= 242) lies in no child, so **the preview panel has no tooltip and no mouse reaction**. The text is still drawn (the paint is not clipped to the rect).
 
 ### 1.5 Hint widget `0x467` (TipsMode, default on, `0x622774`)
 
@@ -130,7 +131,11 @@ With TipsMode off the widget is not built. `#tips` n = line `2n - 1` of `town.tx
 ### 1.6 Tooltips (slot 5 `0x429b01`, child 1; active once the panel flag `+0x104` is set)
 
 Hover on: a name rect -> main.txt `0x9b + i` (155..158, the attribute descriptions, `#` = line break); the pool -> `0x111` "Free pool"; A -> `"%s = %d"` (`0x5eeec4`: name, value);
-B -> `"%+d"` of **-up(v)** (the price: "-1", "+0" when free); C -> `"%+d"` of **down(v)** (the refund). Shown even for a disabled button. How the shared tooltip window places it is not decoded (open 5).
+B -> `"%+d"` of **-up(v)** (the price: "-1", "+0" when free); C -> `"%+d"` of **down(v)** (the refund). Shown even for a disabled button.
+
+**The shared tooltip (CONFIRMED).** Slot 5 (vtable `+0x14`) of child `0x457` is the same "tooltip text under the pointer" hook as the bar's `FUN_004ad61c`: the tooltip is not a window of the screen, it is the global mouse manager `0x604500` (`FUN_004268c4`, called from every long routine and the shell loop; [ui-layout 11.6b](ui-layout.md)), so **every rule of 11.6b applies unchanged**: shown after 500 ms without a pointer move (accumulator `499 < acc < 0x639c`, one question at the crossing, an empty text = nothing until the next move), hidden by the next move and at 25 500 ms; box above and to the right of the pointer (left = x, bottom = y, top = y - 5 - 14 n, right = x + widest + 11; shifted left past x 640, down past y 0); fill `(0x24, 0x2c, 0x27)`, bronze bevel and `Ball.bmp` corners; text font2, colour table `0x6200e0` ("tooltip"), shadow 1, one line per `#` part (main 0x9b..0x9e carry the `#` breaks). The enable flag `mgr+0xa0` is 1 in this screen (`0x42d8dc` clears it at its top, `FUN_00437ee0`, and sets it again at its end, `FUN_00437ec0`; it also sets the panel flag `+0x104 := 1`, without which both slot-5 handlers return 0). The hint window `0x467` is an ordinary child, not a modal, and does not disable it. Handler order (`0x429b01`): for row i = 0..3: name rect, pool rect, value box A, plus B, minus C (first hit wins; the 4 name rects are `(16, 57 + 33 i)` with the text width of the name x line height; the font of that measure is INFERRED font 4). The `"%s = %d"` string is name `+0x1bc + 4 i` (main 0xf + i) and the value `+0x1d0 + 4 i`.
+
+Engine (built): `CharGen.tooltip_text(pos)`, `name_rect`, `tip_timer` (`engine.ui.tooltip.TooltipTimer`, `moved` at the event, `update(dt_ms)` from `CharGen.update`), the scene op `Tooltip` (`engine/shell/scene.py`) painted last by `Panels.draw_tooltip` in `backend_pygame/shellkit.py`; the box is placed in panel coordinates (clamp 640 x 480). Tests `tests/test_engine_shell_campaign.py` (`test_stat_tooltip*`).
 
 ## 2. Behaviour
 
@@ -220,7 +225,5 @@ Free steps (`up = 0`, e.g. 16 -> 17) work with an empty pool. Click mace: school
 
 ## Open questions
 
-3. How the shared tooltip window places and styles the text of slot 5. `0x429b01`.
-4. Child `0x458` is built with the rect (0, 238, 160, 242) (a 4 px band): do its mouse events / tooltip (`0x42a34b`) ever reach it? `0x42a0f1`, `0x42d4b0`.
-6. Esc in this state at the shell window level (`FUN_004852d8` key path); the panel itself ignores it.
-7. Verify in play: Reset + pool 100 allows 45 / 45 / 45 / 45; the unreachable server budget check.
+1. Esc in this state at the shell window level (`FUN_004852d8` key path); the panel itself ignores it.
+2. Verify in play: Reset + pool 100 allows 45 / 45 / 45 / 45; the unreachable server budget check.

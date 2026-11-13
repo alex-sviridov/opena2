@@ -351,3 +351,62 @@ def test_idle_shimmer_hover_resets_and_resumes_after_the_column():
     assert _run(cur, 1)[0] == 3                                               # the stamp is refreshed only every 500 ms of hovering: idle again at once; resumes after the column
     cur.hint = False
     assert _run(cur, 1000) == [None] * 1000                                   # no hint window, no shimmer
+
+
+# -- the stat-row tooltips (chargen.md 1.6: slot 5 `0x429b01` + the shared mouse manager, ui-layout 11.6b) -------------------------------------
+
+def hover(sh, cur, pos, ms=500, step=100):
+    sh.handle(Move(*pos))
+    for _ in range(ms // step):
+        sh.update(step)
+    return cur.tip_timer.tip
+
+
+@needs_graphics
+def test_stat_tooltips_after_500ms_with_the_in_game_box_geometry():
+    sh, rec = make_shell(GFS)
+    cur = to_chargen(sh)
+    ox, oy = cur.origin
+    p = chargen_centre(sh, "plus", 1)
+    sh.handle(Move(*p))
+    sh.update(100)
+    sh.update(399)
+    assert cur.tip_timer.tip is None                                          # 499 ms since the move: not yet
+    sh.update(1)
+    tip = cur.tip_timer.tip
+    assert tip is not None and tip.lines == ("%+d" % -cur.state.up(1),)        # the price of the next point, "-1" or so
+    assert (tip.x, tip.bottom) == (p[0] - ox, p[1] - oy)                       # left = pointer x, bottom = pointer y (above and to the right)
+    ops = [o for o in cur.scene().ops if type(o).__name__ == "Tooltip"]
+    assert len(ops) == 1 and (ops[0].x, ops[0].bottom) == p
+    sh.handle(Move(p[0] + 1, p[1]))                                           # a move hides it and restarts the clock
+    assert cur.tip_timer.tip is None and not [o for o in cur.scene().ops if type(o).__name__ == "Tooltip"]
+
+
+@needs_graphics
+def test_stat_tooltip_texts_per_widget():
+    sh, rec = make_shell(GFS)
+    cur = to_chargen(sh)
+    ox, oy = cur.origin
+    m, s = cur.main, cur.state
+    at = lambda x, y: cur.tooltip_text((ox + x, oy + y))
+    for i in range(4):
+        nx, ny, nw, nh = cur.name_rect(i)
+        assert at(nx + 1, ny + 1) == m.line(0x9B + i)                          # attribute description (`#` breaks lines)
+        assert at(cg.VALUE_X + 5, cg.ROW_Y + 32 * i + 5) == "%s = %d" % (m.line(0xF + i), s.values[i])
+        assert at(cg.PLUS_X + 5, cg.ROW_Y + 32 * i + 5) == "%+d" % -s.up(i)
+        assert at(cg.MINUS_X + 5, cg.ROW_Y + 32 * i + 5) == "%+d" % s.down(i)
+    assert s.pool == 0 and not s.can_plus(3) and at(cg.PLUS_X + 5, cg.ROW_Y + 96 + 5) == "-1"   # shown even for a disabled button
+    assert at(cg.POOL[0] + 3, cg.POOL[1] + 3) == m.line(0x111)
+    assert at(300, 100) == "" and at(5, 300) == ""                             # elsewhere (the preview panel included: its tooltip is unreachable, chargen.md 1.4) nothing
+
+
+@needs_graphics
+def test_stat_tooltip_hides_after_25500ms_and_clamps_at_the_right_edge():
+    sh, rec = make_shell(GFS)
+    cur = to_chargen(sh)
+    p = chargen_centre(sh, "minus", 0)
+    assert hover(sh, cur, p) is not None
+    sh.update(25000)
+    assert cur.tip_timer.tip is None
+    tip = hover(sh, cur, (cur.origin[0] + cg.MINUS_X + 18, cur.origin[1] + cg.ROW_Y + 18))
+    assert tip is not None and tip.right <= 640
