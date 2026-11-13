@@ -105,7 +105,7 @@ wrappers of the town / dialog windows, out of scope).
 ### 2.6 Not built (documented)
 
 Town scenes and shops (`0x438570` / `0x4a0ff0` loops, enter / leave sounds, NPC speech `0x4dc84c`, shop speech `0x4b5ffa`): there are no town scenes yet (phase K
-backlog); the speech *names* are specified in [sound §4.3](../formats/sound.md#43-speech) and the player will reuse the same mixer. Script instant 37
+backlog; the shop sound slots and their files are in [town-shop 6](town-shop.md#6-sounds-music-and-tips)); the speech *names* are specified in [sound §4.3](../formats/sound.md#43-speech) and the player will reuse the same mixer. Script instant 37
 "set music node" does nothing in the exe ([triggers §instants](triggers.md)).
 
 ## 3. Playback rules

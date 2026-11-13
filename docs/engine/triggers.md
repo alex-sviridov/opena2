@@ -434,8 +434,8 @@ the script check / instant `0x577789` / `0x577976`), and by a scan of every inst
 | `0x228 + k` | town (2 or 3) that offers mercenary `k + 1` | same cases | `EnterInn` (listed only in that town) |
 | `0x2f0`-`0x2ff` | sub-objectives | map scripts, zeroed by `ScenarioEnterLocation` | script check 24, exe `0x444496` |
 | `0x300` | chapter `C` (10 at start, +10 per main mission) | completion | everywhere |
-| `0x301` | 1 once `TalkTo` type 3 offered mission 10 (`B == 10`) | `TalkTo` | exe `0x4cad3c`, `0x4cd0fb`, `0x4cdd0a`: town-screen routines (UI, not decoded; INFERRED a first-mission tutorial gate) |
-| `0x302` | 1 after mission 70; 2 after `TalkTo(0x4e02a3)` | case 70, `TalkTo` | `EnterInn`; exe `0x4bf0ba` (`FUN_004bf096` returns `Var(0x302) != 0`, always 1 outside the campaign mode; a town-3 UI gate, INFERRED) |
+| `0x301` | 1 once `TalkTo` type 3 offered mission 10 (`B == 10`) | `TalkTo` | exe `0x4cad3c` (human scene leave gate, [town-worldmap 1](town-worldmap.md#1-purpose-and-entry-exit)), `0x4cd0fb`, `0x4cdd0a` (druid / Kaarg scenes, not decoded) |
+| `0x302` | 1 after mission 70; 2 after `TalkTo(0x4e02a3)` | case 70, `TalkTo` | `EnterInn`; exe `FUN_004bf096` (`0x4bf0ba`): CONFIRMED the gate of the **fourth (elven) shelf of the druid shop** ([town-shop 5](town-shop.md#5-data-read--written)); always 1 outside the campaign mode |
 | `0x303` | 1 after mission 50 | case 50 | `EnterInn` (town 3: offers missions 70 and 71) |
 | `0x304` | 1 when the map-20 script instant "Get mission 21" ran | **map 20** (instant 35) | case 20 (adds mission 21) |
 | `0x305` | hero number the next mission end recruits | case 40 := `0x17`; cleared at the start of every completion | exe `0x486c8d` (11.3) |
@@ -611,7 +611,7 @@ hero recruit `FUN_004f312a` / `FUN_004f36c0` and the roster carry-over (decoded,
 
 * L1 open questions (school-5 skill order, XP in the headless chain): [campaign 4](campaign.md#4-open-questions).
 
-* Who sets the word `window+0x160` that the three shop windows pass to `TalkTo` (`0x4b9117`, `0x4bec83`, `0x4c0995`; text `shop\npc31m<B>`), and what the town-screen routines `0x4cad3c` / `0x4cd0ea` / `0x4cdd0a` (Var(0x301)) and `0x4bf096` (Var(0x302)) switch on. UI only; no variable is written there ([11.1](#111-variable-map)).
+* Answered in [town-shop](town-shop.md): `window+0x160` = `ScenarioEnterShop()` = always 0 (the three `TalkTo` sites never run), `Var(0x302)` = the druid shop's elven shelf. Left: the druid / Kaarg scene readers of `Var(0x301)` (`0x4cd0fb`, `0x4cdd0a`).
 * The hire price: CONFIRMED none (L1-2, 11.2); the cost of a mercenary elsewhere (e.g. at the mission start) was not searched.
 * The purpose of `Var(0x307)` (reset of the available list, never written by the exe, the DLL or any map; INFERRED a debug / cheat unlock) and of the exact order of the 40 locations it adds ([11.1](#111-variable-map)).
 * The story window is decoded: [ui-layout 11.5](ui-layout.md#115-on-screen-messages); its UI sounds (table ids 16 / 14 / 14) are built ([audio.md](audio.md) 2.5).
