@@ -132,6 +132,12 @@ class Recorder:
             self._handler.close()
             self._handler = None
 
+    def save_campaign(self, blob):
+        """A campaign mission: the campaign's state at the mission start (`CampaignGame.snapshot`), so `replay` can rebuild the carried party."""
+        with open(self.path("campaign.pkl"), "wb") as f:
+            f.write(blob)
+        self.header["campaign"] = True
+
     def attach(self, sim):
         self.sim = sim
         self._write_commands()
@@ -192,7 +198,14 @@ def replay_session(path, install=None, ticks=None, on_start=None, on_tick=None):
     if os.path.exists(final_path):
         with open(final_path, encoding="utf-8") as f:
             recorded = json.load(f)
-    world, assets = build_game(s["map"], install, seed=s["seed"], difficulty=s["difficulty"], vision=True)
+    snap = os.path.join(s["dir"], "campaign.pkl")
+    if s.get("campaign") and os.path.exists(snap):                  # a campaign mission: the carried party and the campaign's variables (campaign.md)
+        from engine.campaign import CampaignGame
+        with open(snap, "rb") as f:
+            game = CampaignGame.from_snapshot(f.read(), install)
+        world, assets = game.start_mission(int(s["map"]), seed=s["seed"], vision=True)
+    else:
+        world, assets = build_game(s["map"], install, seed=s["seed"], difficulty=s["difficulty"], vision=True)
     sim = Simulation(world, triggers=True, vision=True, keep_sound_events=on_tick is not None)     # play runs with fog and the dump holds the fog bits
     if on_start is not None:
         on_start(world, assets, s)

@@ -497,3 +497,33 @@ def test_grind_phase_gives_the_carried_hero_xp_and_stays_deterministic():
     idle = CG.run_chain(GFS, through=20, log=lambda *a: None)["game"].roster[0].state
     assert sum(hero.xp) > sum(idle.xp) == 0 or max(hero.skills[1:]) > max(idle.skills[1:])
     assert runs[0]["hash"] != CG.run_chain(GFS, through=20, log=lambda *a: None)["hash"]       # the idle chain is untouched by the option (default 0)
+
+
+@needs_data
+def test_a_recorded_campaign_mission_replays_with_the_carried_party(tmp_path):
+    """The session files of a campaign mission hold the campaign's state at the mission start (`campaign.pkl`), so `replay --verify` rebuilds the carried party
+    (a fresh one would give another hash)."""
+    from engine import session
+    from engine.sim import MoveUnits, Simulation
+    r = CG.run_chain(GFS, through=10, grind=900, log=lambda *a: None)
+    game = r["game"]
+    assert game.roster[0].state is not None                                   # a carried hero (XP from the grind)
+    blob = game.snapshot()
+    world, _ = game.start_mission(20, seed=5, vision=True)                     # fog on, as `play` runs
+    sim = Simulation(world, triggers=True, vision=True)
+    rec = session.Recorder(str(tmp_path), "20", 5, game.difficulty)
+    rec.save_campaign(blob)
+    rec.attach(sim)
+    hero = next(u for u in world.units.values() if u.owner == 1 and PT.hero_number(u) == 0x15)
+    cmds = [MoveUnits(1, (hero.id,), (hero.x + 3, hero.y + 2))]
+    for t in range(120):
+        sim.step(cmds if t == 10 else [])
+    final = rec.finish("quit")
+    got_world, got, recorded = session.replay_session(str(tmp_path), GFS)
+    assert recorded["tick"] == got["tick"] == 120
+    assert recorded["hash"] == got["hash"]                                    # the same world, tick for tick
+    h2 = next(u for u in got_world.units.values() if u.owner == 1 and PT.hero_number(u) == 0x15)
+    assert h2.skills == hero.skills and h2.xp == hero.xp and h2.skills != (0,) * 6
+    fresh, _ = CG.CampaignGame(GFS, seed=5).new_game(CG.HeroChoice("MF"), visit=True), None
+    fw, _ = fresh.start_mission(10, seed=5, vision=True)
+    assert fw.dump_hash() != got_world.dump_hash()                           # a fresh party / other mission is another world: the snapshot is what carries the party

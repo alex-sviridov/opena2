@@ -103,6 +103,7 @@ def run(a, parser, PlaySession, make_audio, audio_settings):
         if camp is not None:                                # a campaign mission: the carried party, the campaign's variables (campaign.md)
             ns.map, ns.difficulty, ns.seed = str(params["mission"]), camp.difficulty, camp.seed
             ns.hero_name = camp.roster[0].spec.name if camp.roster and camp.roster[0].spec and camp.roster[0].spec.name else a.hero_name
+            ns.campaign_snapshot = camp.snapshot()                  # before the mission starts: the session files can replay it
             ns.prebuilt = camp.start_mission(params["mission"])
         else:
             ns.map, ns.difficulty = params["map"], params["difficulty"]

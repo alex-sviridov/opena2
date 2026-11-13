@@ -74,6 +74,27 @@ class CampaignGame:
         self.mercenaries = {}               # unit id -> hero number of the hired units of the running mission
         self.log = []                       # one line per town visit / recruit (stand-in transcript)
 
+    # --- snapshots (the session files of a campaign mission) -------------------------------------------------------------------------
+
+    def snapshot(self):
+        """The state a mission starts from as bytes (a pickle of the variables, the location lists, the roster with its carried states, gold, statistics,
+        the free-id table, difficulty, seed): `replay` rebuilds the mission's world from it (`engine.session.replay_session`).  Local files of the
+        player's own sessions only: a pickle is never read from anywhere else."""
+        import pickle
+        return pickle.dumps({"camp": self.camp, "roster": self.roster, "gold": self.gold, "hero_deaths": self.hero_deaths, "kills_monsters": self.kills_monsters,
+                             "kills_players": self.kills_players, "net_ids": self.net_ids, "difficulty": self.difficulty, "seed": self.seed, "mission": self.mission,
+                             "mercenaries": self.mercenaries})
+
+    @classmethod
+    def from_snapshot(cls, blob, install=None, assets=None):
+        import pickle
+        d = pickle.loads(blob)
+        g = cls(install, seed=d["seed"], difficulty=d["difficulty"], assets=assets)
+        g.camp, g.roster, g.gold, g.hero_deaths = d["camp"], d["roster"], d["gold"], d["hero_deaths"]
+        g.kills_monsters, g.kills_players, g.net_ids = d["kills_monsters"], d["kills_players"], d["net_ids"]
+        g.mission, g.mercenaries = d["mission"], d["mercenaries"]
+        return g
+
     # --- assets / small helpers ------------------------------------------------------------------------------------------------
 
     @property

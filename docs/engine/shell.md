@@ -120,8 +120,7 @@ The original shows its town / world map here (the `town` step builds them). `eng
 available list in unlock order (`Mission N: <map name>`, up to 8) and **Main Menu** (ESC; Enter = the first mission). A dialog text button acts on the release over the pressed one (ui-layout 11.4). The campaign flow:
 `GameScreen` with `params["campaign"]` asks `services.start_game` for a session whose World is `CampaignGame.start_mission(n)` (carried roster, the script on the campaign's variables; the backend's `PlaySession` takes it as
 `a.prebuilt`); the mission loop returns `victory` -> `leave_mission(world, "won")` (carry-over, Scenario.dll completion, recruit, the town stand-in `visit_towns`) -> `locations`; `defeat`, End Quest / Exit to Main Menu -> `leave_mission`
-without carry-over -> `menu` (the original ends the game: `0x41e`, `0x431`); the last mission's ending (`Outcome.kind == "ending"`) -> `menu` (credits not built). The session files of a campaign mission record the campaign's seed
-and the map; `replay` rebuilds a *fresh* party, so a recorded campaign mission after the first does not verify (open). The death hook runs once at the mission end (`CampaignGame.death_hook`), not per tick.
+without carry-over -> `menu` (the original ends the game: `0x41e`, `0x431`); the last mission's ending (`Outcome.kind == "ending"`) -> `menu` (credits not built). The session files of a campaign mission hold `campaign.pkl` (`CampaignGame.snapshot()` before the mission starts: variables, location lists, roster with its carried states, gold, free ids, seed; a pickle, own sessions only) and `"campaign": true` in session.json, so `replay --verify` rebuilds the carried party (`session.replay_session` -> `CampaignGame.from_snapshot().start_mission`). The death hook runs once at the mission end (`CampaignGame.death_hook`), not per tick.
 
 ### 3.5 Keys in the shell, Esc (CONFIRMED)
 

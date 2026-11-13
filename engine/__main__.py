@@ -390,6 +390,8 @@ class PlaySession:
             parser.error("session directory: %s" % e)
         self.rec = session.Recorder(self.directory, a.map, a.seed, a.difficulty, a.size)
         self.rec.start_logging()
+        if getattr(a, "campaign_snapshot", None) is not None:
+            self.rec.save_campaign(a.campaign_snapshot)         # the campaign's state at the mission start: `replay` rebuilds the carried party from it
         print("session %s (seed %d)" % (self.directory, a.seed))
         self.reason, self.error, self.world, self.sim = "quit", None, None, None
         self.option_services = None                    # the shell's services for the in-game options windows (None = the defaults)

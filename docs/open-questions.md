@@ -91,4 +91,3 @@ from both places when answered).
 
 - Using a structure ([structures](engine/structures.md#open-questions)): verify in game the use-walk stop cells, a far use click failing (structures 2.1, answered in the exe) and that the hovered well's panel redraws as the charges fall (8.1); the "Saving Place" branch (`FUN_0044fff0(0x68f628) == 4`, `FUN_0050155f`). `FUN_0050f12c` case `0xf`.
 
-- Campaign missions in the shell: `replay SESSION --verify` rebuilds a fresh party, so a recorded campaign mission after the first does not verify; the sessions would need the roster (docs/engine/shell.md 3.4).

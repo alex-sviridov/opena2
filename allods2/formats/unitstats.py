@@ -67,6 +67,8 @@ class UnitType:
     raw: tuple
 
     def __getattr__(self, key):
+        if key == "fields":                       # not set yet (unpickling / copying builds the object without __init__): no recursion
+            raise AttributeError(key)
         try:
             return self.fields[key]
         except KeyError:
