@@ -99,3 +99,21 @@ Answered by REA (details in the window docs): inn button rects and captions; the
 - needs a run of the exe (no Wine / display here): the info panel's position at 800x600 / 1024x768, client price vs server price of stock;
 - pure pixel / art reading: the pixel positions of the three shop numbers, the "HIRED" anchor and the sprite placement inside a figure cell, which `backinv*` colour means what, the stock grid draw (`0x4b392a`), the shop panel tooltips, the druid / Kaarg shelf rects and animation tables, the last frame numbers of the druid / Kaarg ambient events;
 - bookkeeping with a headless stand-in already specified: the world map's path-edge tracer (`FUN_00471f0d`, `FUN_004721ff`).
+
+## 7. Working guesses for the still-open items (**GUESS**, not facts)
+
+Each stays in [open-questions.md](../open-questions.md) (marked "guess in town.md 7"). The build steps use these values and flip them to CONFIRMED / corrected when the exe or the art says otherwise. Basis in brackets.
+
+| open item | guess used until checked | basis |
+|---|---|---|
+| info panel position at 800x600 / 1024x768 | always **O + (480, 238)**, 160 x 242, same as at 640x480 | all other town widgets are O-relative; the move is symmetric (+480 / -480) |
+| client price vs server price of stock | **one price source**: the generated item's price (`+0x1c`) shown and charged; no buy fails after the client accepted | the client price is a serialised attribute of the same item |
+| the three shop numbers' positions | gold, buy total, sell total drawn **centred horizontally in the button's rect, in its lower half**, caption in the upper half, font `0xa`; Exit none | caption + number share the button (draw order: caption, then number) |
+| "HIRED" anchor / sprite in a figure cell | figure sprite centred horizontally, **feet 2 px above the cell bottom**; "HIRED" centred horizontally, **12 px above the cell bottom**, font table `0x620ea0` | 48 x 64 cell, row grid anchored at the bottom |
+| `backinv*` meaning | `backinvg` = normal cell, `backinvs` = item unsuitable for the shown hero (red), `backinvb` = selected / carried highlight | the unsuitable test feeds `+0xd0`; `b` used by the pack / table classes |
+| stock grid draw | 2 x 3 cells of 80 x 80, item icon centred, stack count bottom-right, price bar as in [items](../data/items.md) | grid size from the panel rect |
+| shop tooltips | the item tooltip builder of the pack strip (`FUN_0043901f` text); panel hints = `#tips3` / `#tips4`, no other tooltips | no other text source found |
+| druid / Kaarg shelf rects and animations | **the human 2 x 2 shelf rects** (A..D), shelf order armor / magic / potion / weapon (Kaarg 4th = weapons, druid 4th = elven, gated by `Var(0x302)`); idle animation = the human scheme (100 ms steps) | one shared base class `0x4b9cf5` |
+| druid / Kaarg ambient events | same cadence as the human one: `D = rand / 16 + 3000` ms between events, a sound fires at **frame 30** of its animation, water / dish sounds one random of four per 100 ms step when the frame is 0 | the slot table and the human scheduler |
+| world-map path-edge tracer | use the specified headless emulation (DFS cheapest route, cover check `2766 = 2552 + 2 x 107`) | [town-worldmap 3.3](town-worldmap.md#33-the-path-graph-fun_00471a75-confirmed-structure-bookkeeping-inferred) |
+

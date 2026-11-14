@@ -44,6 +44,8 @@ from both places when answered).
 
 ## Town mode
 
+- **Guessed for now (town.md 7), still to verify:** info panel position at 800x600 / 1024x768; client vs server stock price; shop number positions; "HIRED" anchor and figure sprite placement; `backinv*` colour meaning; stock grid draw; shop tooltips; druid / Kaarg shelf rects, animations and ambient frame numbers; the map path-edge tracer.
+
 - World map screen ([town-worldmap 8](engine/town-worldmap.md#8-open-questions)): the exact path-edge tracer bookkeeping (`FUN_00471f0d`, `FUN_004721ff`).
 
 - Inn dialogue ([town-inn 5](engine/town-inn.md#5-open-questions)): the druid / Kaarg scheduler's last frame numbers.
