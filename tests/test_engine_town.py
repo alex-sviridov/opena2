@@ -218,7 +218,13 @@ def shell_in_map(available):
 
 
 def click_button(sh, label):
-    """A placeholder town screen's button by label."""
+    """The scene's region of the same name, or a placeholder panel's button (the inn / shop `Exit`)."""
+    regions = {"Inn": 2, "Shop": 1, "Leave town": 8}
+    if label in regions:
+        import sys
+        sys.path.insert(0, __file__.rsplit("/", 1)[0])
+        from shell_scenarios import click_region
+        return click_region(sh, regions[label])
     from engine.shell.events import Move, Press, Release
     for b in sh.current.buttons():
         if b[4] == label:

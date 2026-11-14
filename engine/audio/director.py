@@ -135,6 +135,21 @@ class Director:
             self.now = now_ms
         return self._play(tick, "ui", "ui", 0, sound_id, ev.SFX, flat(priority))
 
+    def ui_loop(self, path, priority=0x80):
+        """A looping UI sound (the town scenes' entry loops, `0x45aa2f(.., loop=1, priority 0x80)`): returns the `Played`; `stop_ui_loop` ends it."""
+        self.stop_ui_loop()
+        p = self._play(0, "ui", "loop", 0, path, ev.SFX, flat(priority), loop=True)
+        if p.audible:
+            self.ui_loop_channel = p.channel
+        return p
+
+    def stop_ui_loop(self):
+        ch, self.ui_loop_channel = getattr(self, "ui_loop_channel", None), None
+        if ch is None:
+            return None
+        self.mixer.stop(ch)
+        return Played(self.now, None, 0, 0, 0, ch, "stopped", True)
+
     # -- ambience ---------------------------------------------------------
     def ambient(self, world, view, clock=None):
         """The ambience pass (`FUN_0041b311`): loops start / update / stop, one-shots play."""

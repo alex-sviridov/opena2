@@ -160,3 +160,12 @@ def map_walk(sh, loc=None, limit=300):
             return n
         sh.update(100)
     raise AssertionError("the walk did not end: %s" % sh.history)
+
+
+def click_region(sh, region):
+    """On the town scene: move to a point of the hit-mask `region` (1 shop, 2 inn, 8 leave; the stand-in rectangles without an install) and press / release there."""
+    cur = sh.current
+    assert cur.name == "town"
+    x, y = cur.point_of(region)
+    for ev in (Move(x, y), Press(x, y), Release(x, y)):
+        sh.handle(ev)

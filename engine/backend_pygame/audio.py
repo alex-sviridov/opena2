@@ -100,6 +100,14 @@ class NullAudio:
         self._output([p])
         return p
 
+    def loop(self, path):
+        """Shell service: start the looping sound `path` (a game path) after stopping the previous one; None only stops (the town scenes' entry loops)."""
+        p = self.director.stop_ui_loop()
+        if p is not None:
+            self._output([p])
+        if path:
+            self._output([self.director.ui_loop(path)])
+
     # -- music ------------------------------------------------------------
     @staticmethod
     def zone_list(zones):

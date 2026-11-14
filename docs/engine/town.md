@@ -6,7 +6,7 @@ This is the hub of the town spec. The per-window facts are in the five window do
 | doc | window | mode bit | opener / closer |
 |---|---|---|---|
 | [town-worldmap.md](town-worldmap.md) | world map `client+0xf0` (`0x46e66b`) | `0x10` | `0x48b419` / `0x445 -> 0x44c` then `0x468` |
-| *(no doc: scene art in [animation 4.11](../formats/animation.md))* | town scene `+0x110` / `+0x114` / `+0x118` | none (mask 0) | `0x48bbc0` |
+| [town-scenes.md](town-scenes.md) | town scene `+0x110` / `+0x114` / `+0x118` | none (mask 0) | `0x48bbc0` |
 | [town-hero.md](town-hero.md) + [town-inn.md](town-inn.md) | inn `+0x104` human / `+0x10c` Kaarg / `+0x108` druid | `4` | `0x48b885` (msg `0x42b`) / `0x49b69b` |
 | [town-shop.md](town-shop.md) | shop `+0xf8` human / `+0x100` Kaarg / `+0xfc` druid | `2` | `0x48aea8` (msg `0x42a`) / `0x4b956e` |
 
@@ -77,7 +77,7 @@ The old plan counted `town` as one block. The research splits it into six steps;
 |---|---|---|---|---|
 | **L4 town core** *(done 2026-11-14)* | the mask + the transition table of section 2 as pure code, the town ids / window table, `0x42e` / `0x42d` rules, autosave-slot events, `Var(0x301)` gate; wire into `shell/machine.py` with placeholder screens | L2 | the table over fake windows, edge coverage | none |
 | **L5 world map** *(done 2026-11-14)* | graph + route + walk + text + flags (needs the Cross set, [animation](../formats/animation.md#open-questions)); replaces `locations.py`'s mission list; intro walk | L4 | graph / route / schedule / intro | flag anchor, route dots, music |
-| **L6 town scenes** | the three scenes: art, animations ([animation 4.11](../formats/animation.md)), hover regions (open), click -> inn / shop / leave, music | L4 | region table, transitions | everything visual |
+| **L6 town scenes** (done) | the three scenes: art, animations, hover regions, click -> inn / shop / leave, NPC speech clicks, music ([town-scenes](town-scenes.md): the data recipe is its section 7) | L4 | region table, transitions | everything visual |
 | **L7 inn** | the window: panels, person strip, Hire / Dismiss / Talk / About, hero arrows, dialogue window + speech; the `visit_towns`-equivalence test | L4, L6 | handlers, keys, equivalence with `visit_towns` | layout, captions (open), sounds |
 | **L8 shop** | shop windows, the DLL shop table + stock, trade state machine, gold | L4, L6 | trade rules, stock, messages | layout, animations, sounds |
 | **L9 close-out** | remove the stand-in, play-test list, coverage / CLAUDE.md status | all | the campaign test through the real screens (scripted clicks) | the whole town loop |
@@ -101,10 +101,16 @@ L5 educated guesses for what only eyes and ears can settle (INFERRED, kept open;
 4. **Flag / Cross animation:** flags cycle at 10 fps (one frame per 100 ms draw), the Cross runs its 13 frames once during the walk and holds frame 12.
 5. **Dropped characters:** the original really shows the last line without its final "!" / "." (the code is unambiguous; nobody fixed it because the loss is hardly noticeable).
 
+### L6 as built
+
+`engine/townscene.py` (pure): `REGION_OF_BYTE`, `Mask` (`townmask.bmp` bytes, origin subtracted, -1 outside 640x480, the dither noise kept), `StandInMask` (three rectangles without an install), `SceneSpec` (per-town data, frame counts measured from the install when loaded, the spec's numbers as defaults), `SceneState` (`Human` / `Druid` / `Kaarg`: `advance(dt_ms)` = one draw, step 67 / 100 ms with `>` as the exe, `hover`, `press` -> ("inn",) / ("shop",) / ("leave",) / ("speech", name) / ("menu",) / None, `draw_ops()` in the exe's draw order, `take_sounds()`), `Globals` (the process-global counters, owned by the `Shell`, with the shell's `rng`). `engine/shell/town.py` `TownScene` is the real scene screen: a left **press** acts, moves hover, `update` advances, sounds through `shell.play`, the **entry loop** through the new `Services.loop(path | None)` (one looping UI sound: `NullAudio.loop`, stopped when the scene is left), speech by the `speech:` convention; the human leave gate stays in `TownCore.leave_town`; Inn / Shop remain the L4 panels (L7 / L8). Without the install the scene is three Fill rectangles and the existing tests click them (`tests/shell_scenarios.click_region`). Tests `tests/test_engine_townscene.py` (50: mask reader and the three real masks' dense boxes, click table, the Var(0x301) gate through the shell, stars every 10th, gate counter, guard rule, druid variant rule, Kaarg timers, visit kinds, birds, a render of each scene to `out/town_scene_<race>_<640|800>.png`). REA round and INFERRED decisions: [town-scenes 9](town-scenes.md#9-l6-round-rea--the-build-2026-11-14).
+DECISIONs: the `("menu",)` outcome (region `0x10`) does nothing yet; the human scene's `Var` reads for the gate animations use the campaign's variables live; a new `SceneState` (new random visit kinds, timers re-armed) at every opening of the scene, also when it comes back from the inn / shop (CONFIRMED loader behaviour).
+Needs eyes: the druid man / woman patches look like darker boxes over the base picture at idle (the 24-bit patches carry their own, darker background: the spec says opaque; if the original blends or keys them, change `Druid.draw_ops`); the sprite alpha of the `.16a` layers on the base; whether the baba idles invisibly; the horse sound repeat; footstep and guard sound timing; animation speeds; the click on the `0x10` region (stars on the human scene, the whole left strip on the Kaarg one).
+
 ## 6. Open questions
 
 All window-level questions are in the five docs and in [open-questions.md](../open-questions.md). Spec-level:
-1. The town **scene** classes (`0x4ca23c`, `0x4ce2b9`, `0x4d09ee`) have no doc: their hit-region numbers and the druid `man` / `woman` choice are listed in [animation open questions](../formats/animation.md#open-questions); to be researched at the start of L6.
+1. *(answered, L6 research 2026-11-14)* The three town **scene** classes (`0x4ca23c`, `0x4ce2b9`, `0x4d09ee`): mask byte -> region table, click handlers (left press), hover / highlight, every animation with frames / timers / sounds, the druid man / woman rule and the per-visit state are in [town-scenes.md](town-scenes.md); what is left (woman body by symmetry, `Town_add.bmp` role, speech-file mapping) is its section 8.
 2. *(answered)* A load resumes the mission, or builds the town scene of the saved location (`InBattle` key, [town-worldmap 8](town-worldmap.md#8-open-questions) 4); only the writer of that key in the save routine is untraced (`save`).
 3. Where the Hire cost / party limit lives, if anywhere (the inn handlers read neither: [town-inn 1](town-inn.md)); start `TalkTo` in Scenario.dll and the server's recruit path.
 

@@ -1,14 +1,14 @@
-"""The town screens (L4 placeholders, docs/engine/town.md 3): the town scene, the inn and the shop as plain dialogs driven by `engine.town.TownCore`.  The
-art, hit regions and windows are L6-L8; these screens only carry the mask, the messages and the exits, so the whole visit loop can be played and tested:
-scene -> Inn / Shop / Leave, inn / shop -> Exit (ESC), Leave -> the map (`locations`, the L2 stand-in until L5).
+"""The town screens (docs/engine/town.md 3): the town scene (L6, the real one) and the inn and the shop (L4 placeholders: plain dialogs, L7 / L8 replace them),
+driven by `engine.town.TownCore`: scene -> Inn / Shop / Leave (clicks on the regions), inn / shop -> Exit (ESC), Leave -> the map (`locations`).
 
 Every click is a message to the core; the events it appends are turned into services here (`Shell.drain_town`)."""
 
 from engine import town as T
+from engine import townscene as TS
 
 from . import dialog
 from .events import Key, Move, Press, Release
-from .scene import Button, Frame, Scene, Text
+from .scene import Button, Fill, Frame, Image, Scene, Sprite, Text
 from .screen import Screen
 
 W, H = 360, 280
@@ -83,22 +83,86 @@ class TownPanel(Screen):
         return Scene(ops)
 
 
-class TownScene(TownPanel):
+def ops_of(draw_ops, ox=0, oy=0):
+    """`SceneState.draw_ops()` tuples -> `Image` / `Sprite` ops at the window origin `(ox, oy)`."""
+    return [Image(op[1], ox + op[2], oy + op[3], op[4]) if op[0] == "bmp" else Sprite(op[1], op[2], ox + op[3], oy + op[4]) for op in draw_ops]
+
+
+class TownScene(Screen):
+    """The town scene (L6, docs/engine/town-scenes.md): the picture, the hit mask, the animations.  A left press acts (not the release), the pointer drives the
+    hover, ESC / Enter do nothing.  `engine.townscene.SceneState` is the model; without the install a stand-in of three rectangles (shop / inn / leave) keeps the visit loop
+    runnable.  The scene is rebuilt at every opening, as the exe's loader does; the entry loop sound stops when the screen is left."""
     name, view = "town", "scene"
-    labels = ("Inn", "Shop", "Leave town")
+    music = None                            # the core's `music` event picks the playlist
 
-    def title(self):
-        c = self.core
-        return "Town %d (%s)" % (c.town, c.windows.race) if c.windows else "Town"
+    def __init__(self, shell):
+        super().__init__(shell)
+        self.state, self.mask, self.real = None, TS.StandInMask(), False
 
-    def act(self, i):
-        c = self.core
-        if i == 0:
-            c.send(T.MSG_INN)
-        elif i == 1:
-            c.send(T.MSG_SHOP)
-        else:
-            c.leave_town()
+    @property
+    def core(self):
+        return self.shell.town_core()
+
+    def enter(self, **params):
+        core = self.core
+        spec, self.mask, self.real = TS.load_scene(self.shell.fs, core.town or 1)
+        self.state = TS.SceneState.build(spec, self.shell.rng, self.shell.scene_globals, var=core.camp.get)
+        if self.shell.mouse is not None:
+            self.state.hover(self._region(*self.shell.mouse))
+        self._sounds()
+
+    def exit(self):
+        self.shell.services.loop(None)
+
+    def _region(self, x, y):
+        return self.mask.region_at(x, y, self.origin)
+
+    def point_of(self, region):
+        """Screen coordinates of a point of `region` (tests, scripted clicks); None when the mask has none."""
+        p = self.mask.point_of(region)
+        return None if p is None else (p[0] + self.origin[0], p[1] + self.origin[1])
+
+    def _sounds(self):
+        for path, loop in self.state.take_sounds():
+            if loop:
+                self.shell.services.loop(path)
+            else:
+                self.shell.play(path)
+
+    def event(self, ev):
+        if isinstance(ev, Move):
+            self.state.hover(self._region(ev.x, ev.y))
+        elif isinstance(ev, Press) and ev.button == 1:
+            out = self.state.press(self._region(ev.x, ev.y))
+            if out is None or out[0] == "menu":             # `0x41f` (the in-game menu) is not built yet
+                return None
+            if out[0] == "speech":
+                self.shell.play("speech:%s" % out[1])
+                return None
+            c = self.core
+            if out[0] == "inn":
+                c.send(T.MSG_INN)
+            elif out[0] == "shop":
+                c.send(T.MSG_SHOP)
+            else:
+                c.leave_town()
+            return self.shell.town_screen()
+        return None
+
+    def update(self, dt_ms):
+        self.state.advance(dt_ms)
+        self._sounds()
+        return None
+
+    def scene(self):
+        ox, oy = self.origin
+        if not self.real:
+            ops = []
+            for region, label in ((TS.INN, "Inn"), (TS.SHOP, "Shop"), (TS.LEAVE, "Leave town")):
+                x, y, w, h = TS.StandInMask.RECTS[region]
+                ops += [Fill(ox + x, oy + y, w, h, (60, 50, 40) if self.state.region != region else (110, 90, 60)), Text(label, ox + x + w // 2, oy + y + h // 2, 1, "normal", 2 | 8, 1)]
+            return Scene(ops)
+        return Scene(ops_of(self.state.draw_ops(), ox, oy))
 
 
 class Inn(TownPanel):

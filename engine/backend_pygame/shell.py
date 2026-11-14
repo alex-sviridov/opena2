@@ -41,6 +41,10 @@ def make_services(a, audio, settings, parser_args=None):
         if audio is not None:
             audio.ui(path)
 
+    def loop(path):
+        if audio is not None:
+            audio.loop(path)
+
     def music(name):
         if audio is not None:
             audio.set_playlist(name)
@@ -52,7 +56,7 @@ def make_services(a, audio, settings, parser_args=None):
     def save(s):
         settings_mod.save(s)
         apply(s)
-    return Services(sound=sound, music=music, log=log.info, apply_settings=apply, save_settings=save)
+    return Services(sound=sound, loop=loop, music=music, log=log.info, apply_settings=apply, save_settings=save)
 
 
 class ShellGame:

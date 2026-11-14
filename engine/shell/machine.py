@@ -37,6 +37,7 @@ def _nothing(*a, **k):
 class Services:
     """What the shell needs from the outside world (the backend fills it in; tests pass fakes).  Every field has a harmless default."""
     sound: Callable = _nothing              # (path_or_id): a UI sound
+    loop: Callable = _nothing               # (path or None): the one looping UI sound (a town scene's entry loop); None stops it
     music: Callable = _nothing              # (playlist name)
     log: Callable = _nothing                # (line)
     start_game: Callable = None             # (params dict) -> a session object with `.world` and `.run() -> reason`; None = no game possible
@@ -59,6 +60,9 @@ class Shell:
         self.params = {}
         self._town = None                       # the town core of `campaign` (`town_core`)
         self._worldmap = None                   # `engine.worldmap.WorldData` (the map's install data, `worldmap()`)
+        import random
+        self.rng = random.Random()              # the town scenes' dice (tests assign a seeded one)
+        self._scene_globals = None              # `engine.townscene.Globals`: the exe's process-global scene counters (`scene_globals`)
         self.mouse = None                       # the last pointer position the shell saw (the map starts its hover from it)
         self.campaign = None                    # the running single-player campaign (`engine.campaign.CampaignGame`), made by `chargen`
         if screens is None:
@@ -139,6 +143,13 @@ class Shell:
         if self._town is None or self._town.camp is not self.campaign.camp:
             self._town = TownCore(self.campaign.camp)
         return self._town
+
+    @property
+    def scene_globals(self):
+        if self._scene_globals is None:
+            from engine.townscene import Globals
+            self._scene_globals = Globals()
+        return self._scene_globals
 
     def worldmap(self):
         """The map's data (`engine.worldmap.WorldData`: location points from `Scenario.dll`, path graphs, texts), loaded on first use; tests may assign `_worldmap`."""

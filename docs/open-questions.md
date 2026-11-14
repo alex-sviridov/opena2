@@ -4,11 +4,6 @@ Index of everything not yet known; each spec's "Open questions" section is
 the source of truth (rules in CLAUDE.md: add a line when raised, delete it
 from both places when answered).
 
-## Animation
-
-- Town scenes: draw code and timing are resolved ([animation §4.11](formats/animation.md)). Left: the hover-region numbers of the
-  fighter/mage/shopie sprites and the druid `man`/`woman` variant choice. [animation](formats/animation.md#open-questions)
-
 ## data.bin and items
 
 - Human and structure fields in code (`FUN_004a65b0`, `FUN_004a65d0` users; column names known). [databin](formats/databin.md#open-questions)
@@ -43,6 +38,8 @@ from both places when answered).
 - Backpack window leftovers (K5b answered: text flag 8, message `0x46e`, the doll item on the cursor, Ctrl+F): the open sound, releases over the minimap / heads / window 8, the window `0x4ba` of message `0x463` (map 10), the hero-screen lists' gold cell (phase K, hero_ui). [ui-layout 11.13](engine/ui-layout.md#open-questions)
 
 ## Town mode
+
+- Town scenes ([town-scenes 8](engine/town-scenes.md#8-open-questions), starting routines `0x4cfb45` druid woman body, `0x4ce641` druid load, `0x4d06cc` / `0x4d2fa3` speech ids): woman body by symmetry, the guard-sound start value, which of man / woman is which region (member order), the NPC speech-file mapping, what message `0x41f` does, the druid load timers.
 
 - **Guessed for now (town.md 7), still to verify:** info panel position at 800x600 / 1024x768; client vs server stock price; shop number positions; "HIRED" anchor and figure sprite placement; `backinv*` colour meaning; stock grid draw; shop tooltips; druid / Kaarg shelf rects, animations and ambient frame numbers; the map path-edge tracer.
 
