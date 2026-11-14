@@ -73,9 +73,10 @@ Hit test `0x497123` walks the three rects in order (`window + 0x90 + 16 i`, poin
 ## 4. What the headless side can test, what needs eyes
 
 Headless (pure, from the tables): the word lookup (`FUN_0049ab92`), the four handlers' state changes (bit 31 toggle, `TalkTo` calls and their order, chapter-dependent text keys), the key strings against `town.txt`, the sound slot per action; the equivalent of "a player who clicks everyone" is already `CampaignGame.visit_towns()` (L1), so the build step's test is: the window's click sequence yields the same `TalkTo` words and the same roster as `visit_towns` for the same policy.
+**New (CONFIRMED, [town-hero 3](town-hero.md#3-widgets-and-resources)):** a click on a person's figure selects him on the press and **acts on the release** (Hire / Fire toggle for a mercenary, Talk for an NPC): the click path needs no button.
 Needs your eyes / ears: the text pages as the dialogue window shows them (wrapping, speech pairing), the Hire / Dismiss caption swap, the sounds, the person strip's feel.
 
 ## 5. Open questions
 
 1. The druid / Kaarg schedulers beyond the slot-to-trigger table of 3c (the exact frame numbers of the bird / forest events; `0x49d259`-`0x49d7a9`, `0x49f6xx`-`0x49fcb0`).
-2. The person strip's hit rectangles and arrow schedule ([town-hero 8](town-hero.md#8-open-questions) 5, unchanged).
+2. *(answered: [town-hero 3](town-hero.md#3-widgets-and-resources), the figure cells and click = select + act)* The arrows' `LUOver` / `RUOver` hit rects only remain.
