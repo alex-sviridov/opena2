@@ -87,7 +87,7 @@ At 800x600 / 1024x768 nothing changes (the whole screen is the 640x480 area at `
 
 ## 3. Widgets and resources
 
-**Class / vtable table (CONFIRMED).** The inn window (vtable `0x5ce5f0` base): slots `+0x2c` `0x49a8f3` (draw: `FUN_004dbd20` base draw if loaded `+0x110`, then **`FUN_004a0ff0(+0x90)`**: start the ambient sound `+0x90` unless it is already playing), `+0x30` `0x49a924` (empty), `+0x48` `0x49a931` (messages), `+0x4c` `0x49ab10` (mouse move: resets the button hover of the right panel when the pointer is outside it), `+0x6c` `0x49aae2` (key: ESC only), `+0x78` `0x49a65e` / `0x49bdca` / `0x49e1bc` (create the panels), `+0x80` load (`0x49abfe` / `0x49c359` / `0x49e451`), `+0x84` `0x49b41b` / `0x49cb27` / `0x49ecf7` (unload: frees the bitmaps / sprites), `+0x88` sounds (`0x49bb47` / `0x49c05f` / `0x49ef88`), `+0x8c` `0x49bc86` / `0x49c210` / `0x49f122` (ambient sounds). The other slots are the window defaults.
+**Class / vtable table (CONFIRMED).** The inn window (vtable `0x5ce5f0` base): slots `+0x2c` `0x49a8f3` (draw: `FUN_004dbd20` base draw if loaded `+0x110`, then **`FUN_004a0ff0(+0x90)`**: start the ambient sound `+0x90` unless it is already playing), `+0x30` `0x49a924` (empty), `+0x48` `0x49a931` (messages), `+0x4c` `0x49ab10` (mouse move: resets the button hover of the right panel when the pointer is outside it), `+0x6c` `0x49aae2` (key: ESC only), `+0x78` `0x49a65e` / `0x49bdca` / `0x49e1bc` (create the panels), `+0x80` load (`0x49abfe` / `0x49c359` / `0x49e451`), `+0x84` `0x49b41b` / `0x49cb27` / `0x49ecf7` (unload: frees the bitmaps / sprites), `+0x88` sounds (`0x49bb47` / `0x49c05f` / `0x49ef88`), `+0x8c` `0x49bc86` / `0x49c210` / `0x49f122` (frees the sounds, corrected in [town-inn 3](town-inn.md#3-sounds-of-the-three-classes-confirmed-paths-0x88-loads-0x8c-frees)). The other slots are the window defaults.
 
 **Buttons (right panel, release handler `0x496bba`, press `0x496b41`; CONFIRMED structure).** On the press the pressed index is stored (`+0xc0`), button 2 plays the sound `parent +0xb0` (**Out.wav**) at once. On the release over the same button (`+0xc0` in 0..2 and the hit equals it; then `+0xc0 := -1`) and with `+0x5d8 == 2`:
 
@@ -97,7 +97,7 @@ At 800x600 / 1024x768 nothing changes (the whole screen is the 640x480 area at `
 | 1 **Talk** | a person of the NPC list (`+0xb8 >= count(+0xc0)`): `0x49ba28` (shows `npc<A>talk<B>`, `TalkTo`, [triggers 11.2](triggers.md#112-town-dialogue-enterinn-and-talkto)); a mercenary: shows `npc%dabout` (`0x5f40c0`, id = unit `+0x1dc`) through `FUN_0041d15e` and plays sound `+0xb4` (Talk.wav) |
 | 2 **Exit** | `0x49b69b` (the ESC path of [1](#1-purpose-and-entry-exit)) |
 
-The captions of the three buttons are the interface strings of the panel (not extracted: `town-inn.md`); the tips text names them `<Hire>` and `<Talk>` (`#tips2`).
+The captions of the three buttons are the interface strings of the panel (not extracted: [town-inn 5](town-inn.md#5-open-questions) 1); the tips text names them `<Hire>` and `<Talk>` (`#tips2`).
 
 **Person strip (centre panel, mouse `0x49a188` move, `0x49a347` press, `0x49a197` release).** Selecting a person is a click on his figure / the arrows `LUOver / LDOver / RUOver`: it sets `+0xb8` (and redraws); the release handler `0x49a197` is the one named in [triggers 11.2](triggers.md#112-town-dialogue-enterinn-and-talkto) as the hire-button handler; the exact hit rectangles are not extracted ([8](#8-open-questions) 5). Tooltips: none found in the three panel classes (their slot `+0x14` is not overridden, INFERRED none).
 
