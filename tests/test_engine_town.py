@@ -218,6 +218,7 @@ def shell_in_map(available):
 
 
 def click_button(sh, label):
+    """A placeholder town screen's button by label."""
     from engine.shell.events import Move, Press, Release
     for b in sh.current.buttons():
         if b[4] == label:
@@ -228,10 +229,17 @@ def click_button(sh, label):
     raise AssertionError("no button %r in %s" % (label, [b[4] for b in sh.current.buttons()]))
 
 
+def map_walk(sh, loc):
+    import sys
+    sys.path.insert(0, __file__.rsplit("/", 1)[0])
+    from shell_scenarios import map_walk as walk
+    return walk(sh, loc)
+
+
 def test_shell_visit_loop_scene_inn_shop_leave():
     sh, saves, music = shell_in_map([(C.TOWN, 2)])
     assert music == ["map"] and sh.name == "locations"
-    click_button(sh, "Town 2")
+    map_walk(sh, (C.TOWN, 2))
     assert sh.name == "town" and sh.town_core().view == "scene" and music[-1] == "town2"
     click_button(sh, "Inn")
     assert sh.name == "inn" and sh.town_core().mask == T.M_INN
@@ -255,7 +263,7 @@ def test_shell_graph_has_the_town_edges():
 def test_shell_mission_walk_autosaves_9999_and_starts_the_game():
     sh, saves, music = shell_in_map([(C.MISSION, 10)])
     sh.services.start_game = lambda params: object()
-    click_button(sh, "Mission 10")
+    map_walk(sh, (C.MISSION, 10))
     core = sh.town_core()
     assert sh.name == "game" and sh.params["mission"] == 10 and saves == [9999]
     assert core.view == "mission" and core.mask == T.M_MISSION and sh.campaign.camp.location == (C.MISSION, 10)

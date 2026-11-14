@@ -326,6 +326,8 @@ class CharGen(Screen):
         camp = CampaignGame(install=self.shell.fs, seed=time.time_ns() & 0xFFFFFFFF, difficulty=p["difficulty"])
         camp.new_game(self.state.choice(p["name"] or "Hero"))
         self.shell.campaign = camp
+        core = self.shell.town_core()
+        core.party_point, core.intro = (2, 1), True              # until the town scene (L6) the party has just left town 1 (`0x42d`): the intro walk to mission 10
         self.shell.log("new campaign: %s, attributes %s, school %d, difficulty %d" % (p["name"], tuple(self.state.values), self.state.school, p["difficulty"]))
         return "locations"
 

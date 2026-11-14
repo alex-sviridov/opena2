@@ -1,35 +1,23 @@
-"""Between the missions (L2 stand-in for the town / world map, docs/engine/shell.md 3.4): a plain dialog with the party's heroes and one button per available
-mission of the campaign (`CampaignGame.camp.available`, unlock order), plus Main Menu.  The original shows its town and the world map here; those are the `town`
-step (L3 / L4), this screen only lets the player choose the next mission, which is all the world map does for the campaign.
+"""The world map (L5, docs/engine/town-worldmap.md; `engine.worldmap` is the pure part): the 640x480 picture with the available locations as flags.  The pointer
+picks the nearest available location (no radius), the route to it shows as dots, a click starts the walk (a dot per 100 ms, the Cross at the destination),
+the end enters the location through `TownCore.walk_to` (mission start, or a town's scene).  After town 1 the intro map (`Umoir`) walks to the head of the available list
+by itself.  No button, no menu and no key leaves the screen (every key is consumed, ESC included: CONFIRMED `0x470fd4`).
 
-DECISIONs: all texts are literals (the original's town strings belong to the town spec); a mission is labelled "Mission N" with the map's own name when the map
-header can be read; a dialog text button acts on the **release** over the same button (the common dialog's rule, ui-layout 11.4); ESC = Main Menu, Enter = the first
-mission; the dialog is centred on the screen.  The screen owns no World."""
+DECISIONs: the pointer before the first move is the last one the shell saw (`Shell.mouse`, the picture's centre at the very start); the party point falls back to the
+head of the available list when the core has none (a shell started on this screen); a click while walking finishes the walk at once, as the exe does; without an
+install the route is a straight line and the locations get fixed stand-in points (`worldmap.WorldData`), so the screen runs in the synthetic tests."""
 
-from allods2.formats import Map
+from engine import worldmap as M
 
-from . import dialog
 from .events import Key, Move, Press, Release
-from .scene import Button, Frame, Scene, Text
+from .scene import Image, Scene, Sprite, Text
 from .screen import Screen
 
-W, H = 480, 424                         # the frame including the 8 px drop shadow
-PAD, ROW, GAP = dialog.CORNER, 24, 6          # content starts one corner skull in from the body edge
-MAX_ROWS = 6
-MISSION, TOWN = 1, 2                    # the location types in Scenario.dll's available list (`sim.campaign.MISSION` / `TOWN`; the shell never imports the sim)
-MENU_LABEL = "Main Menu"
-CLICK = "sfx/chrgen/ok.wav"
-
-
-def mission_label(fs, n):
-    """"Mission N: <map name>" (the name of the map file's header), "Mission N" when it cannot be read."""
-    try:
-        from allods2.cli import resolve_map
-        path, mfs = resolve_map(str(n), fs)
-        name = Map.load(path, mfs).header.name.strip()
-    except Exception:                       # noqa: BLE001  a label is decoration, never a reason to fail
-        name = ""
-    return "Mission %d: %s" % (n, name) if name else "Mission %d" % n
+MISSION, TOWN = M.MISSION, M.TOWN
+SPR = M.SPRITES
+FRAMES = {"flag1": 9, "flag": 4, "cross": 13, "missionflag": 9, "flagonmap": 9, "yourflag": 4}          # town-worldmap 3.2
+OFFSETS = {"flagonmap": (-5, -0x25), "missionflag": (-5, -0x29), "yourflag": (-0x14, -0x2c), "flag": (-10, -0x18), "cross": (-10, -12)}      # the frame's top-left from the point (open question 1)
+GONE = None
 
 
 class Locations(Screen):
@@ -38,88 +26,176 @@ class Locations(Screen):
 
     def __init__(self, shell):
         super().__init__(shell)
-        self.rows = []                          # [(button label, mission number or None for Main Menu)]
-        self.hot = self.pressed = None
+        self.reset()
+
+    def reset(self):
+        self.intro = False
+        self.avail = []                     # the available list (type, id), list order
+        self.dest = None                    # index into `avail` of the hovered / walked-to location (`+0x10c`)
+        self.route = []
+        self.walk = None                    # `worldmap.Walk` while `+0x12c != 0`
+        self.clock = self.since_draw = 0    # ms; a draw every 100 ms
+        self.mouse = (320, 240)
+        self.title, self.lines = "", []
+        self.point_sound = 0                # `window+0x190`
+        self.sound_end = 0                  # ms on `clock` when the current Point sound ends
 
     @property
-    def campaign(self):
-        return self.shell.campaign
+    def core(self):
+        return self.shell.town_core()
+
+    @property
+    def data(self):
+        return self.shell.worldmap()
 
     def enter(self, **params):
-        camp = self.campaign
-        self.missions = [n for kind, n in camp.camp.available if kind == MISSION][:MAX_ROWS]
-        self.labels = [mission_label(self.shell.fs, n) for n in self.missions]
-        self.towns = [n for kind, n in camp.camp.available if kind == TOWN]            # the towns the party can walk to (L4: a button each, after the missions)
-        core = self.shell.town_core()
+        core = self.core
         if core.view != "map":
             core.open_map()                                                      # the map window's open (`0x48b419`): bit 0x10, the map music
         self.shell.drain_town()
-        self.party = [l.split(":", 1)[-1] for l in camp.summary().split("; ")] if camp.roster else []      # "0x15:Aldor L1 ..." -> "Aldor L1 ..."
-        self.hot = self.pressed = None
+        self.reset()
+        self.intro = core.intro
+        self.avail = list(self.shell.campaign.camp.available)
+        self.party = core.party_point or (self.avail[0] if self.avail else None)
+        self.mouse = self.shell.mouse or (320, 240)
+        self.mouse = (self.mouse[0] - self.origin[0], self.mouse[1] - self.origin[1])
+        if not self.intro:
+            self.hover()
 
-    # -- geometry (screen coordinates) ---------------------------------------------------------------------------------------------
-    def frame_at(self):
-        ox, oy = self.origin
-        return ox + (640 - W) // 2, oy + (480 - H) // 2
+    # -- the model -----------------------------------------------------------------------------------------------------------------
+    def points(self):
+        return [self.data.point(loc) for loc in self.avail]
 
-    def buttons(self):
-        """`[(x, y, w, h, label, mission)]`: the mission buttons, then Main Menu at the bottom."""
-        fx, fy = self.frame_at()
-        top = fy + 176
-        rows = list(zip(self.labels, self.missions)) + [("Town %d" % n, (TOWN, n)) for n in self.towns]
-        out = [(fx + PAD, top + i * (ROW + GAP), W - 8 - 2 * PAD, ROW, label, n) for i, (label, n) in enumerate(rows[:MAX_ROWS])]
-        out.append((fx + PAD, fy + dialog.bottom_row_y(H, ROW), W - 8 - 2 * PAD, ROW, MENU_LABEL, None))
-        return out
+    @property
+    def party_point(self):
+        return self.data.point(self.party) if self.party is not None else None
 
-    def _at(self, x, y):
-        for i, (bx, by, bw, bh, _, _) in enumerate(self.buttons()):
-            if bx <= x < bx + bw and by <= y < by + bh:
-                return i
-        return None
+    def hover(self):
+        """`0x4716aa`: the nearest available location becomes the destination; the route and the text follow when it changed."""
+        i = M.nearest(self.points(), *self.mouse)
+        if i is None or i == self.dest or self.party is None:
+            return
+        self.set_dest(i)
+
+    def set_dest(self, i):
+        self.dest = i
+        loc = self.avail[i]
+        self.route = self.data.route(self.party_point, self.data.point(loc), self.intro)
+        self.title, self.lines = self.text_of(loc)
+
+    def text_of(self, loc):
+        if self.intro:
+            return "", []
+        title, body = M.title_and_body(self.data.texts, loc)
+        return title, self.wrap(body)
+
+    def wrap(self, body):
+        """The description's lines as the exe draws them (`worldmap.wrap` + `draw_lines`), measured with font2."""
+        if not body:
+            return []
+        width = M.DESC_RECT[2] - M.DESC_RECT[0]
+        try:
+            from .chargen import measure_font2
+            measure = lambda t: measure_font2(self.shell, t)
+            measure(" ")
+        except Exception:                                    # noqa: BLE001  no fonts (synthetic tests): 6 px per character
+            measure = lambda t: 6 * len(t)
+        return M.draw_lines(M.wrap(body, width, measure))
+
+    def start_walk(self):
+        if self.dest is None or not self.route:
+            return
+        self.walk = M.Walk(self.route)
 
     # -- input ---------------------------------------------------------------------------------------------------------------------
-    def _go(self, mission):
-        """A mission number, `(TOWN, n)` or None (Main Menu).  The walk is the core's (`TownCore.walk_to`: `0x445` / `0x44c`, `ScenarioEnterLocation`,
-        `0x468`): a mission starts the game screen (autosave 9999), a town its scene."""
-        self.shell.play(CLICK)
-        if mission is None:
-            return "menu"
-        loc = mission if isinstance(mission, tuple) else (MISSION, mission)
-        if not self.shell.town_core().walk_to(loc):
+    def event(self, ev):
+        ox, oy = self.origin
+        if isinstance(ev, Move):
+            self.mouse = (ev.x - ox, ev.y - oy)
+            if self.walk is None and not self.intro:
+                self.hover()
+        elif isinstance(ev, Press) and ev.button == 1:
+            self.mouse = (ev.x - ox, ev.y - oy)
+            if self.walk is not None:
+                return self.finish()                          # `0x470f72`: finish at once
+            if not self.intro:
+                self.hover()
+                self.start_walk()
+        elif isinstance(ev, Key) and self.walk is not None:
+            return self.finish()                              # a key finishes the walk; with no walk every key is consumed too
+        return None
+
+    def update(self, dt_ms):
+        """A draw every 100 ms: the intro starts its walk at the first one, a walk lays one more step."""
+        self.clock += dt_ms
+        self.since_draw += dt_ms
+        while self.since_draw >= M.DRAW_MS:
+            self.since_draw -= M.DRAW_MS
+            out = self.draw_step()
+            if out is not None:
+                return out
+        return None
+
+    def draw_step(self):
+        if self.intro and self.walk is None and self.avail:
+            self.party = self.core.party_point or self.party
+            self.set_dest(0)                                  # `0x46fe5d`: the head of the available list, the walk starts by itself
+            self.start_walk()
+        if self.walk is None:
+            return None
+        done = self.walk.step()
+        if self.walk.laying and self.clock >= self.sound_end:   # `0x470353`-`0x4703ac`, after the counters grow: the current Point sound must have finished,
+            self.point_sound ^= 1                             # then the index toggles and that sound starts (the first one played is Point2)
+            path = M.POINT_SOUNDS[self.point_sound]
+            self.shell.play(path)
+            self.sound_end = self.clock + self.data.sound_ms(path)
+        return self.finish() if done else None
+
+    def finish(self):
+        """The end sequence (`0x445` -> `0x44c` -> `0x468` -> `ScenarioEnterLocation`): the first available location whose point is the destination's (the head in the intro)."""
+        self.walk = None
+        if self.dest is None:
+            return None
+        pt = self.data.point(self.avail[self.dest])
+        loc = self.avail[0] if self.intro else next(l for l in self.avail if self.data.point(l) == pt)
+        if not self.core.walk_to(loc):
             return None
         self.shell.drain_town()
         if loc[0] == TOWN:
             return "town"
-        return "game", {"campaign": self.campaign, "mission": loc[1]}
+        return "game", {"campaign": self.shell.campaign, "mission": loc[1]}
 
-    def event(self, ev):
-        if isinstance(ev, Move):
-            self.hot = self._at(ev.x, ev.y)
-        elif isinstance(ev, Press) and ev.button == 1:
-            self.hot = self.pressed = self._at(ev.x, ev.y)
-        elif isinstance(ev, Release) and ev.button == 1:
-            hit, down, self.pressed = self._at(ev.x, ev.y), self.pressed, None
-            self.hot = hit
-            if hit is not None and hit == down:                       # the release over the pressed button acts
-                return self._go(self.buttons()[hit][5])
-        elif isinstance(ev, Key) and not ev.ctrl:
-            if ev.name == "escape":
-                return self._go(None)
-            if ev.name == "return" and self.missions:
-                return self._go(self.missions[0])
-        return None
+    # -- drawing -------------------------------------------------------------------------------------------------------------------
+    def frame(self, kind):
+        return (self.clock // M.DRAW_MS) % FRAMES[kind]
+
+    def sprite(self, kind, point, frame=None):
+        ox, oy = self.origin
+        dx, dy = OFFSETS[kind]
+        return Sprite(SPR[kind], self.frame(kind) if frame is None else frame, ox + point[0] + dx, oy + point[1] + dy)
 
     def scene(self):
-        fx, fy = self.frame_at()
-        camp = self.campaign
-        cx = fx + dialog.centre_x(W)
-        ops = [Frame(fx, fy, W, H),
-               Text("Campaign - chapter %d" % camp.camp.get(0x300), cx, fy + 24, 2, "normal", 2, 1),       # centred between the corner skulls
-               Text("Party", cx, fy + 48, 2, "normal", 2, 1)]
-        for i, line in enumerate(self.party[:4]):
-            ops.append(Text(line, cx, fy + 68 + 20 * i, 1, "normal", 2, 1))
-        ops.append(Text("Gold: %d" % camp.gold, cx, fy + 68 + 20 * min(4, len(self.party)), 1, "normal", 2, 1))
-        ops.append(Text("Choose the next mission" if self.missions else "No mission is available", cx, fy + 156, 2, "normal", 2, 1))
-        for i, (x, y, w, h, label, _) in enumerate(self.buttons()):
-            ops.append(Button(x, y, w, h, label, True, self.hot == i, self.pressed == i))
+        ox, oy = self.origin
+        ops = [Image(M.BACKGROUND[self.intro], ox, oy)]
+        if self.walk is not None:
+            dots = self.walk.dots
+        else:
+            dots = self.route[::M.STEP] if self.route else []
+        ops += [Image(M.BALL, ox + x - 4, oy + y - 4, True) for x, y in dots]
+        party = self.party_point
+        dest = self.data.point(self.avail[self.dest]) if self.dest is not None else None
+        if self.walk is not None:
+            if dest is not None:
+                ops.append(self.sprite("cross", dest, self.walk.cross_frame))
+        elif not self.intro:
+            for loc in self.avail:
+                p = self.data.point(loc)
+                if p != party:
+                    ops.append(self.sprite("missionflag" if p == dest else "flagonmap", p))
+        if party is not None:
+            ops.append(self.sprite("flag" if self.intro else "yourflag", party))
+        if not self.intro and self.title:
+            ops.append(Text(self.title, ox + M.TEXT_X, oy + M.TITLE_Y, 4, M.TITLE_GRADIENT, 2, 1))
+            for i, line in enumerate(self.lines):
+                ops.append(Text(line, ox + M.TEXT_X, oy + M.DESC_Y + M.DESC_LINE * i, 2, "mapdesc", 2, 1))
         return Scene(ops)

@@ -58,6 +58,8 @@ class Shell:
         self.screens = {}
         self.params = {}
         self._town = None                       # the town core of `campaign` (`town_core`)
+        self._worldmap = None                   # `engine.worldmap.WorldData` (the map's install data, `worldmap()`)
+        self.mouse = None                       # the last pointer position the shell saw (the map starts its hover from it)
         self.campaign = None                    # the running single-player campaign (`engine.campaign.CampaignGame`), made by `chargen`
         if screens is None:
             from .chargen import CharGen
@@ -113,6 +115,8 @@ class Shell:
     # -- input / time --------------------------------------------------------------------------------------------------------------
     def handle(self, ev):
         """Feed one input event to the current screen and follow the move it asks for."""
+        if hasattr(ev, "x") and hasattr(ev, "y"):
+            self.mouse = (ev.x, ev.y)
         if self.current is not None and not self.done:
             self.apply(self.current.event(ev))
 
@@ -135,6 +139,13 @@ class Shell:
         if self._town is None or self._town.camp is not self.campaign.camp:
             self._town = TownCore(self.campaign.camp)
         return self._town
+
+    def worldmap(self):
+        """The map's data (`engine.worldmap.WorldData`: location points from `Scenario.dll`, path graphs, texts), loaded on first use; tests may assign `_worldmap`."""
+        if self._worldmap is None:
+            from engine.worldmap import WorldData
+            self._worldmap = WorldData.load(self.fs)
+        return self._worldmap
 
     def drain_town(self):
         """Turn the core's events into services (autosave slot, playlist, speech, cutscene note); returns them."""

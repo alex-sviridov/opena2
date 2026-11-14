@@ -24,7 +24,10 @@ CACHE_SIZE = 512
 # Colour tables of palettes.md section 6 by role -> code-table address (code_ramps16).
 TABLES = {"normal": 0x620928, "highlight": 0x61fa80, "label": 0x620d90, "value": 0x620d70,
           "header": 0x620d50, "tooltip": 0x6200e0, "red": 0x620ea0, "yellow": 0x620e10,
-          "green": 0x620508, "gold": 0x620ec0}
+          "green": 0x620508, "gold": 0x620ec0, "mapdesc": 0x61faa0}
+
+# the code gradients that colour `.16a` fonts (palettes 6): `0x620ec0` gold, `0x620dc4` yellow; a TABLES name used with font4 means its gradient
+GRADIENTS = {"gold": (185, 159, 73), "yellow": (255, 255, 116)}
 
 _fonts = {}
 _surfaces = OrderedDict()
@@ -51,6 +54,11 @@ def ramp(colour):
 def _compose(font, lines, colour, shadow, align, width):
     """RGBA block: `lines` (font bytes) aligned inside `width` (None = the widest)."""
     cols = None if font.is16a else ramp(colour)
+    pal = None
+    if font.is16a and isinstance(colour, str):
+        colour = GRADIENTS.get(colour, colour)
+    if font.is16a and isinstance(colour, tuple) and len(colour) == 3:            # a code gradient (palettes 6): glyph index i -> `i * RGB / 255`, e.g. the map title's brown `0x620100`
+        pal = (np.arange(256, dtype=np.int32)[:, None] * np.array(colour, np.int32)[None] // 255).astype(np.uint8)
     widths = [font.measure(ln) for ln in lines]
     block = max([width or 0] + widths)
     lh = font.line_height()
@@ -64,7 +72,7 @@ def _compose(font, lines, colour, shadow, align, width):
         if shadow:
             img = font.render(ln, colours=None if font.is16a else shade, palette=dark if font.is16a else None)
             gfx.blend(out, img, x + SHADOW_OFFSET, y + SHADOW_OFFSET)
-        gfx.blend(out, font.render(ln, colours=cols), x, y)
+        gfx.blend(out, font.render(ln, colours=cols, palette=pal), x, y)
     return out
 
 

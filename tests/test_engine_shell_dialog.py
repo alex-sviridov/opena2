@@ -13,7 +13,6 @@ from allods2.common import as_fs  # noqa: E402
 from allods2.graphics import SpriteFile  # noqa: E402
 from engine.shell import chargen as cg  # noqa: E402
 from engine.shell import dialog as D  # noqa: E402
-from engine.shell import locations as L  # noqa: E402
 from helpers import GFS, needs_graphics  # noqa: E402
 from shell_scenarios import Recorder, click, make_shell  # noqa: E402
 
@@ -60,23 +59,6 @@ def test_tips_window_controls_are_inside_the_border_and_clear_of_the_skulls():
         assert not D.touches_corner((r[0] - x, r[1] - y, r[2], r[3]), w, h)
     ct, cb = tw.close, tw.text_box
     assert ct[1] >= cb[1] + cb[3]                                           # the control row starts below the text box
-
-
-@needs_graphics
-def test_locations_dialog_keeps_every_control_inside_the_free_area_and_centres_its_headings():
-    from engine.shell import Key
-    sh, _ = make_shell(GFS)
-    sh.start("menu")
-    sh.go("newgame")
-    sh.go("chargen", difficulty=2, hero=0, hero_code=0, name="Aldor")
-    sh.handle(Key("return"))
-    loc = sh.current
-    fx, fy = loc.frame_at()
-    for bx, by, bw, bh, label, m in loc.buttons():
-        rel = (bx - fx, by - fy, bw, bh)
-        assert D.clamp_inside(rel, L.W, L.H) == rel and not D.touches_corner(rel, L.W, L.H), label
-    heads = [op for op in loc.scene().ops if type(op).__name__ == "Text"]
-    assert heads and all(op.flags == 2 and op.x == fx + D.centre_x(L.W) for op in heads)         # headings and party lines are centred in the body
 
 
 @needs_graphics

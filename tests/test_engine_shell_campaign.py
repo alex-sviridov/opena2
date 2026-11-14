@@ -15,7 +15,7 @@ from engine.shell import GRAPH, Key, Move, Press, Release, Services, Shell  # no
 from engine.shell import chargen as cg  # noqa: E402
 from engine.shell.chargen import ChargenState  # noqa: E402
 from helpers import GFS, needs_graphics  # noqa: E402
-from shell_scenarios import Recorder, chargen_centre, click, make_shell, to_menu  # noqa: E402
+from shell_scenarios import Recorder, chargen_centre, click, make_shell, map_walk, to_menu  # noqa: E402
 
 
 # -- the model (no install) --------------------------------------------------------------------------------------------------------------
@@ -209,24 +209,33 @@ def test_hint_check_box_writes_tips_mode_and_the_window_stays():
 
 
 @needs_graphics
-def test_locations_lists_the_available_missions_and_main_menu():
+def test_a_new_game_opens_the_intro_map_and_walks_to_mission_10_by_itself():
     sh, rec = make_shell(GFS)
     to_chargen(sh)
     sh.handle(Key("return"))
     loc = sh.current
-    assert sh.name == "locations" and loc.missions == [10] and loc.labels[0].startswith("Mission 10")
-    assert loc.party == ["Aldor (new)"]
-    bx, by, bw, bh, label, mission = loc.buttons()[0]
-    assert mission == 10
-    click(sh, (bx + 5, by + 5))
+    assert sh.name == "locations" and loc.intro and loc.avail == [(1, 10)] and loc.party == (2, 1)
+    assert sh.town_core().mask == 0x10 and rec.music[-1] == "map"
+    ops = loc.scene().ops
+    assert ops[0].path.endswith("umoir.bmp") and not any(type(o).__name__ == "Text" for o in ops)        # the intro: no title, no description
+    for key in (Key("escape"), Key("return"), Key("x")):
+        sh.handle(key)
+        assert sh.name == "locations"                                         # every key is consumed, ESC included: the map has no menu
+    n = map_walk(sh)
+    assert 26 <= n <= 28                                                      # 216 route points: 27 draws of 100 ms
     assert sh.name == "game" and sh.params == {"campaign": sh.campaign, "mission": 10}
-    sh2, _ = make_shell(GFS)
-    to_chargen(sh2)
-    sh2.handle(Key("return"))
-    bx, by, bw, bh, label, mission = sh2.current.buttons()[-1]
-    assert label == "Main Menu" and mission is None
-    click(sh2, (bx + 5, by + 5))
-    assert sh2.name == "menu"
+    assert sh.town_core().mask == 1 and sh.campaign.camp.location == (1, 10)
+
+
+@needs_graphics
+def test_a_click_while_walking_finishes_the_walk_at_once():
+    sh, rec = make_shell(GFS)
+    to_chargen(sh)
+    sh.handle(Key("return"))
+    sh.update(300)                                                            # the intro's walk has started
+    assert sh.current.walk is not None
+    click(sh, (320, 240))
+    assert sh.name == "game" and sh.params["mission"] == 10
 
 
 # -- the campaign in one window: menu -> three missions, the oracle as the player ---------------------------------------------------------
@@ -258,11 +267,10 @@ def test_scripted_menu_run_through_the_first_three_missions():
     assert sh.name == "chargen"
     sh.handle(Key("return"))                                                  # Accept: the starting template
     assert sh.name == "locations"
-    for _ in range(3):
-        n = sh.current.missions[0]
-        bx, by, *_ = sh.current.buttons()[0]
-        click(sh, (bx + 5, by + 5))
-        assert sh.name == "game"
+    for i in range(3):
+        n = next(m for k, m in sh.campaign.camp.available if k == 1)
+        map_walk(sh, None if i == 0 else (1, n))                              # the first walk is the intro's, the next ones are clicks on the flag
+        assert sh.name == "game" and sh.params["mission"] == n
         sh.apply(sh.current.run())                                            # the oracle wins; the game screen ends the mission through the campaign
         assert sh.name == "locations", sh.history
         assert n in played
@@ -284,8 +292,7 @@ def test_a_defeat_or_leaving_goes_to_the_main_menu_without_carry_over():
     sh, _ = make_shell(GFS, rec=rec)
     to_chargen(sh)
     sh.handle(Key("return"))
-    bx, by, *_ = sh.current.buttons()[0]
-    click(sh, (bx + 5, by + 5))
+    map_walk(sh)
     before = sh.campaign.state_hash()
     sh.apply(sh.current.run())
     assert sh.name == "menu" and sh.campaign.state_hash() == before          # no carry-over, nothing completed
@@ -299,8 +306,7 @@ def test_the_last_missions_ending_goes_to_the_menu(monkeypatch):
     sh, _ = make_shell(GFS, rec=rec)
     to_chargen(sh)
     sh.handle(Key("return"))
-    bx, by, *_ = sh.current.buttons()[0]
-    click(sh, (bx + 5, by + 5))
+    map_walk(sh)
     monkeypatch.setattr(type(sh.campaign), "leave_mission", lambda self, world, result="won": C.Outcome("ending"))
     sh.apply(sh.current.run())
     assert sh.name == "menu"                                                  # the credits are not built

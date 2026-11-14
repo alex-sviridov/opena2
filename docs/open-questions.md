@@ -46,7 +46,6 @@ from both places when answered).
 
 - **Guessed for now (town.md 7), still to verify:** info panel position at 800x600 / 1024x768; client vs server stock price; shop number positions; "HIRED" anchor and figure sprite placement; `backinv*` colour meaning; stock grid draw; shop tooltips; druid / Kaarg shelf rects, animations and ambient frame numbers; the map path-edge tracer.
 
-- World map screen ([town-worldmap 8](engine/town-worldmap.md#8-open-questions)): the exact path-edge tracer bookkeeping (`FUN_00471f0d`, `FUN_004721ff`).
 
 - Inn dialogue ([town-inn 5](engine/town-inn.md#5-open-questions)): the druid / Kaarg scheduler's last frame numbers.
 - Hero panels = the Inn windows ([town-hero 8](engine/town-hero.md#8-open-questions)): the info panel's final rect in the inn at 800x600 / 1024x768 (`0x49e451`, ctor `0x4adf45`); the sprite placement inside the figure cells and the "HIRED" anchor (`0x497fa5`-`0x4981ee`).

@@ -52,8 +52,8 @@ def test_script_through_a_real_mission_and_back(tmp_path, monkeypatch):
     exit_to_menu = button_rect(endq, 1)
     centre = lambda r: (r.x + r.w // 2, r.y + r.h // 2)
     accept = (484 + 70, 44 + 23)                                   # the character generator's Accept button
-    mission = (80 + 44 + 192, 28 + 176 + 12)                       # the first mission button of the `locations` screen (frame at (80, 28), rows from +176)
-    script = [[], click(new_game), click(hero), click(ok), [], click(accept), [], click(mission)]       # frames of the shell; the game's loop takes over after the mission button
+    mission = (320, 240)                                           # any click on the map while the intro walks finishes the walk (the map has no buttons)
+    script = [[], click(new_game), click(hero), click(ok), [], click(accept)] + [[]] * 10 + [click(mission)]       # frames of the shell (10 frames of about 16 ms let the intro walk start); the game's loop takes over after the click
     from allods2.common import as_fs
     from engine.shell.options import OptionsPages, load_texts
     from shell_scenarios import Recorder

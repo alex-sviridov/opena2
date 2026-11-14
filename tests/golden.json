@@ -381,9 +381,9 @@
   "parity-63-piles": "6cb7117a7aa1d49f35715f3ea8d816e0bee7e19883cf88972b9149d95ad5623f"
  },
  "shell": {
-  "chargen": "e212c03017d672c130eb1fdbc8027180c47b8289a8e9436fc7b69992624b5561",
-  "chargen_changed": "54f427fead07878a23b91bc36a553af148e59945d9dd942770617f8c1fa08cb6",
-  "chargen_mage_air": "fe0b3f7ac5fdc4eecc4b288d775d48c6d7392db8091a6f29df1c959761e8ed09",
+  "chargen": "454b6fed624e811868ae5c10c8b52be88cc9b6ce30adbaa9f192944ecaa12dad",
+  "chargen_changed": "8c1535739f41d13678de91a9d3a69aaaa48f6077d900b80be3340f122b0af9c0",
+  "chargen_mage_air": "1296d260d378ce2ce157ce9ff86477e8e05265a056b17baff5eed9ae1533e27d",
   "menu": "4292d041dbeb1a275c50eb5a5d05c0875aa93700d338386cdbc7aba27d2fb4b9",
   "menu_800_hover_credits": "c88a00ee2a222cf457bcf4682c29a1531b879c901f9a7edce5c1358089212b2c",
   "menu_disabled_load": "e549f075a939e82b4087fceae1d9be820aaf37880fc63ec3e7ca6880dc87b171",

@@ -143,3 +143,20 @@ def opt_centre(pages, key):
     w = next(w for w in pages.widgets() if w.key == key)
     r = pages.screen_rect(w)
     return r.x + r.w // 2, r.y + r.h // 2
+
+
+def map_walk(sh, loc=None, limit=300):
+    """On the world map: click the flag of `loc` (the pointer at its point; None = just wait: the intro walks by itself), then run 100 ms draws until the shell
+    leaves the screen.  Returns the number of draws."""
+    cur = sh.current
+    assert cur.name == "locations"
+    if loc is not None:
+        x, y = sh.worldmap().point(loc)
+        ox, oy = cur.origin
+        for ev in (Move(ox + x, oy + y), Press(ox + x, oy + y), Release(ox + x, oy + y)):
+            sh.handle(ev)
+    for n in range(limit):
+        if sh.name != "locations":
+            return n
+        sh.update(100)
+    raise AssertionError("the walk did not end: %s" % sh.history)
