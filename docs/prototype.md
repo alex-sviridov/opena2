@@ -127,12 +127,8 @@ bow / astral do nothing, as in the exe), Reset (25 x4, pool 100), Accept / Back,
 offers the next missions with your party's level; ESC -> Game Options shows Tips, AutoCast, Formation, Retreat, Join and keeps them across a restart; a defeat or Exit to Main Menu returns to the main menu. Known gaps: no town / world map (stand-in), no
 save, the credits after the last mission, the hint window is placed by us, the preview panel is a text list.
 
-**L3 - Town mode spec (research, headless).**
-Goal: everything needed to build the town screens, decided before any drawing.
-Context: L1, L2, docs/engine/ui-layout.md §11.10, docs/formats/animation.md §4.11, docs/data/items.md §4, §12, §13.
-1. REA of the town / hero-screen mode (`client+0x404 & 0x226`): the world-map screen `FUN_0048b419`, the hero screen windows (`FUN_0049a428`, `FUN_0049bd95`, `FUN_0049e187`), the shop and inn windows, the hero arrows (`0x414` / `0x415`), the town and shop speech triggers. Per window: layout per resolution, widgets, messages, the data it reads.
-2. Spec `docs/engine/town.md`: windows, state machine (enter town, talk, shop, inn, world map, leave), what the headless side can test, a list of what only your eyes can judge; refine the effort of `town` and split it into build steps (L4...).
-Headless: yes (research and layout goldens); the build steps after it need a play-test. Commit.
+**L3 - Town mode spec (research, headless) (done).** [town.md](engine/town.md) (hub: shared core, state machine, link to `CampaignGame`) with [town-worldmap](engine/town-worldmap.md), [town-hero](engine/town-hero.md) (the Inn window family; the exe has no separate hero screen), [town-inn](engine/town-inn.md) (dialogue handlers) and [town-shop](engine/town-shop.md). Findings that change the plan: the three `FUN_0049a428` / `0049bd95` / `0049e187` are the inns, not hero screens; `ScenarioEnterShop` is `return 0` (no shop dialogue); accept / reject texts are keyed by the chapter `Var(0x300)`.
+Next: **L4 town core** (mask + transition table), then L5 world map and L6 scenes, L7 inn, L8 shop, L9 close-out ([town.md 5](engine/town.md#5-build-steps-refined-effort-every-step-ends-with-the-golden--unit-tests-it-can-have-then-a-play-test)). Layout numbers that are still open are read at the start of the step that draws them.
 
-After L3: `save` (needs your format decision), then `cutscenes`.
+After the town steps: `save` (needs your format decision), then `cutscenes`.
 

@@ -23,6 +23,7 @@ The recreated game, built on the core library (`allods2/`, `a2res/`).
 | [chargen.md](chargen.md) | L2 step 1: the character generator panel after PreCreate: layout / rects, attribute rules and costs, Reset, class pick, hint, sounds, the creation message `0x48` | decoded, CONFIRMED / INFERRED per fact |
 | [town-shop.md](town-shop.md) | L3: the three shop windows (id `0x3e8`, mode bit 2): panels and rects, table / shelf regions, buy / sell / cancel rules, messages `0x32`-`0x36` / `0x22` / `0x3f`, stock regeneration, sounds, `#tips3`; answers `window+0x160` and `Var(0x302)` | CONFIRMED / INFERRED |
 | [town-inn.md](town-inn.md) | L3: the Inn dialogue handlers behind Hire / Dismiss / Talk / About: text keys (accept / reject use the chapter `Var(0x300)`), bit-31 toggle and `TalkTo` order, sounds of the three classes, Exit and hero arrows | CONFIRMED / INFERRED |
+| [town.md](town.md) | L3 hub: shared core (mode mask, window table, messages), the state machine of a visit, link to `CampaignGame` / the L2 stand-in, testable vs eyes, build steps L4-L9 | CONFIRMED / INFERRED |
 | [town-worldmap.md](town-worldmap.md) | L3: the world map window `0x41a` (`FUN_0048b419` open, `FUN_0046fdd5` draw): layout, path graph, hover / walk / enter, the 49 location points, texts, sounds, messages `0x41d` / `0x42d` / `0x468` | CONFIRMED / INFERRED |
 
 Audio (K11): [audio.md](audio.md).
