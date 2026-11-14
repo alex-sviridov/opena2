@@ -44,7 +44,31 @@ Consequences for the headless model (all CONFIRMED by the above):
 | `+0x140..+0x14c` | (none) | `Town_druid\Inn\DWater1..4` | `Town_kaarg\Inn\Kdish1..4` |
 | `+0x150..+0x168` | (none) | `DDruid3`, `Ddruid4`, `Ddruid41`, `Dforest2`, `Dbird4`, `Dbird41`, `Dbird42` | `Kman2`, `Kman3`, `Kvox5`, `Kvox6`, `Kvox7`, `Kvox8` |
 
-(all under `SFX\`; 18 of 19 spot-checked files exist in the install, the Kaarg enter sound `Kin1.wav` does not: the load simply yields no sound, INFERRED; `FUN_004384f0` is not decoded for a missing file.) The ambient players of the druid / Kaarg classes pick among `+0x140..` (open question 2).
+(all under `SFX\`; 18 of 19 spot-checked files exist in the install, the Kaarg enter sound `Kin1.wav` does not: the load simply yields no sound, INFERRED; `FUN_004384f0` is not decoded for a missing file.) The ambient / event scheduler is 3c.
+
+## 3b. Buttons: rects and captions (CONFIRMED, answers old open question 1)
+
+The three panels are created by `0x49a65e` with rects (id, l, t, r, b) relative to the window origin `O`: left sheet `0x44d` (0, 0, 160, 480), buttons panel `0x44e` (480, 0, 640, 238), centre `0x450` (160, 0, 480, 480) (the ctor `0x496076` of the buttons panel takes the same arguments; the panel's own button rects below are in **window** coordinates, ctor `0x496172`, `RECT(l, t, r, b)` via `0x41e210`):
+
+| button | rect (relative to `O`) | caption, `main.txt` line (list `0x622600` = `main.txt`, the same list as chargen's Accept `0xee`) |
+|---|---|---|
+| 0 Hire / Fire | (484, 44, 624, 90) | ctor: `0xf3` "Hire/Fire"; at every refresh `0x497223`: person is not a mercenary or nobody selected -> **empty string**; mercenary with bit 31 clear -> `0x102` "Hire"; bit 31 set -> `0x103` "Fire" |
+| 1 Talk | (484, 91, 624, 137) | `0xf2` "Talk" (set at every refresh and in the ctor) |
+| 2 Exit | (484, 138, 624, 184) | `0xe8` "Exit" |
+
+Hit test `0x497123` walks the three rects in order (`window + 0x90 + 16 i`, point = mouse minus the window origin). Draw (`0x4966aa`): per button the face bitmap `+0x84` (idle) or `+0x78` (pressed / hovered: the pressed index `+0xc0` equals the hovered `+0xc4`) over the rect, the caption centred in the rect (font `0xa`, colour table `0x620ec0` idle / `0x620dc4` pressed). `0x497223` also redraws after the Hire / Fire click (the caption flips Hire <-> Fire because the word's bit 31 changed). The info-panel mode, the stat sheet and portrait: [town-hero 2](town-hero.md#2-layout-per-resolution).
+
+## 3c. Sounds in the centre panel: the animation scheduler (CONFIRMED for the human class `0x497adf`; answers open question 2)
+
+`FUN_004a0ff0(slot)` = play the slot **looped** (`FUN_0045aa2f(vol, 0, loop = 1, prio 0x80, 0)`) unless `FUN_0045a964` says it plays already; the window's draw slot (`0x49a8f3`) calls it every draw for `+0x90` (human: `water.wav`), so the **ambient is one looping sample re-armed every frame**; `FUN_00438570` is the same without the loop. The one-shots come from the centre panel's draw (statics `0x6275ec` flags, `0x627604` next delay, `0x6275c4` last-event time, `0x6275f4` / `0x627608` timers; `timeGetTime` = IAT `0x6cf074`):
+- **Steam**: every draw, if `now - [0x627608] > 10000` ms: play `+0x8c` (steam), stamp.
+- **Candle and cauldron** objects (`+0x280` at (x+0x30, y), `+0x2b0` at (x+0x104, y+0xa0)): placed each draw, advanced one frame (`0x401658`) when `now - [0x6275f4] > 100` ms.
+- **Idle event**: delay `D = rand() / 16 + 3000` ms (`0x583290`; recomputed after each event). When `now - [0x6275c4] > D`: **D odd -> tender animation 1** (the object `+0x310` at (x+0x50, y+0x98), "drink": it plays `+0x84` drink when its frame equals 30 (`0x4a0fa0`), steps every > 83 ms forward to the end, then backward to frame 0, then the event ends and plays `+0x88` glotok); **D even -> tender animation 2** (object `+0x2e0` at the same place, forward once; at the start plays `+0x94` chair and `+0xac` Breath together); at the end a new `D` is drawn.
+- Druid (`0x49ce4f`) and Kaarg (`0x49f353`) classes use the same pattern (100 ms steps, frame-30 triggers, `D = rand`-based): druid: a water-drop object (`+0x3d0`) at frame 0 plays one of `DWater1..4` (`+0x140..+0x14c`, `FUN_004a0fd0(4) + 1`) every 100 ms step; random events pick kind `(D & 3) + 1` (4 -> 3): kind 1 plays `+0x154` (Ddruid4), kind 2 `+0x150` (DDruid3), and a druid object (`+0x400` at (x+0x28, y+0x80)) plays `+0x158` (Ddruid41) at its frame 30; the bird / forest slots follow the same scheme (INFERRED from the slot offsets used: not traced to the last frame number). Kaarg uses `+0x154` / `+0x150` (Kman) the same way.
+
+## 3d. A missing sound file (CONFIRMED structure, answers open question 3)
+
+`FUN_004384f0(slot, path)` only allocates a 0x14-byte sound object holding the path (`FUN_0045a1a2`): **no file is read at load**. The first play (`FUN_0045aa2f`) calls the lazy loader `0x45a3f4` when the object has no buffers; if that leaves them null nothing is played and nothing is reported. So the absent `Kin1.wav` is **silent, not an error** (the Kaarg inn has no entry sound).
 
 ## 4. What the headless side can test, what needs eyes
 
@@ -53,7 +77,5 @@ Needs your eyes / ears: the text pages as the dialogue window shows them (wrappi
 
 ## 5. Open questions
 
-1. Caption strings of the three buttons and of the "taken" state (`push 0x103` at `0x4972e2`, table `0x622600`, `FUN_0041f350`): which `main.txt` ids, and the button rects `window+0x90 + 16 i` (set where, `0x4966aa` draws them only). Start `0x4972d9`-`0x497330`, the panel's load.
-2. The ambient sound players of the three classes (timers, random choice among `+0x140..`, `FUN_004a0ff0`): [town-hero 8](town-hero.md#8-open-questions) 6, unchanged.
-3. What the missing `Kin1.wav` does at load (`FUN_004384f0`, `0x4384f0`).
-4. The person strip's hit rectangles and arrow schedule ([town-hero 8](town-hero.md#8-open-questions) 5, unchanged).
+1. The druid / Kaarg schedulers beyond the slot-to-trigger table of 3c (the exact frame numbers of the bird / forest events; `0x49d259`-`0x49d7a9`, `0x49f6xx`-`0x49fcb0`).
+2. The person strip's hit rectangles and arrow schedule ([town-hero 8](town-hero.md#8-open-questions) 5, unchanged).
