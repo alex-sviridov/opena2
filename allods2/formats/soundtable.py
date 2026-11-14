@@ -76,7 +76,8 @@ SLOTS = ("attack", "blow", "easy", "hard", "dead")   # units.reg Sound list
 PLAYLIST_MISSION = tuple("music/b%02d.wav" % i for i in range(17))
 MUSIC_SCREENS = {"menu": "music/menu.wav", "map": "music/map.wav",
                  "chrgen": "music/chrgen.wav", "credit": "music/credit.wav",
-                 "town": ("music/b14.wav", "music/b16.wav", "music/b15.wav")}
+                 "town": ("music/b14.wav", "music/b16.wav", "music/b15.wav"),
+                 "town1": "music/b14.wav", "town2": "music/b16.wav", "town3": "music/b15.wav"}      # the scene of town id n (town.md 1)
 
 
 def hero_banks(fs):

@@ -16,7 +16,7 @@ from .screen import Screen
 W, H = 480, 424                         # the frame including the 8 px drop shadow
 PAD, ROW, GAP = dialog.CORNER, 24, 6          # content starts one corner skull in from the body edge
 MAX_ROWS = 6
-MISSION = 1                             # the location type of a mission in Scenario.dll's available list (`sim.campaign.MISSION`; the shell never imports the sim)
+MISSION, TOWN = 1, 2                    # the location types in Scenario.dll's available list (`sim.campaign.MISSION` / `TOWN`; the shell never imports the sim)
 MENU_LABEL = "Main Menu"
 CLICK = "sfx/chrgen/ok.wav"
 
@@ -34,7 +34,7 @@ def mission_label(fs, n):
 
 class Locations(Screen):
     name = "locations"
-    music = "chrgen"
+    music = None                            # the core's `map` event picks the playlist (`TownCore.open_map`)
 
     def __init__(self, shell):
         super().__init__(shell)
@@ -49,6 +49,11 @@ class Locations(Screen):
         camp = self.campaign
         self.missions = [n for kind, n in camp.camp.available if kind == MISSION][:MAX_ROWS]
         self.labels = [mission_label(self.shell.fs, n) for n in self.missions]
+        self.towns = [n for kind, n in camp.camp.available if kind == TOWN]            # the towns the party can walk to (L4: a button each, after the missions)
+        core = self.shell.town_core()
+        if core.view != "map":
+            core.open_map()                                                      # the map window's open (`0x48b419`): bit 0x10, the map music
+        self.shell.drain_town()
         self.party = [l.split(":", 1)[-1] for l in camp.summary().split("; ")] if camp.roster else []      # "0x15:Aldor L1 ..." -> "Aldor L1 ..."
         self.hot = self.pressed = None
 
@@ -61,7 +66,8 @@ class Locations(Screen):
         """`[(x, y, w, h, label, mission)]`: the mission buttons, then Main Menu at the bottom."""
         fx, fy = self.frame_at()
         top = fy + 176
-        out = [(fx + PAD, top + i * (ROW + GAP), W - 8 - 2 * PAD, ROW, label, n) for i, (label, n) in enumerate(zip(self.labels, self.missions))]
+        rows = list(zip(self.labels, self.missions)) + [("Town %d" % n, (TOWN, n)) for n in self.towns]
+        out = [(fx + PAD, top + i * (ROW + GAP), W - 8 - 2 * PAD, ROW, label, n) for i, (label, n) in enumerate(rows[:MAX_ROWS])]
         out.append((fx + PAD, fy + dialog.bottom_row_y(H, ROW), W - 8 - 2 * PAD, ROW, MENU_LABEL, None))
         return out
 
@@ -73,10 +79,18 @@ class Locations(Screen):
 
     # -- input ---------------------------------------------------------------------------------------------------------------------
     def _go(self, mission):
+        """A mission number, `(TOWN, n)` or None (Main Menu).  The walk is the core's (`TownCore.walk_to`: `0x445` / `0x44c`, `ScenarioEnterLocation`,
+        `0x468`): a mission starts the game screen (autosave 9999), a town its scene."""
         self.shell.play(CLICK)
         if mission is None:
             return "menu"
-        return "game", {"campaign": self.campaign, "mission": mission}
+        loc = mission if isinstance(mission, tuple) else (MISSION, mission)
+        if not self.shell.town_core().walk_to(loc):
+            return None
+        self.shell.drain_town()
+        if loc[0] == TOWN:
+            return "town"
+        return "game", {"campaign": self.campaign, "mission": loc[1]}
 
     def event(self, ev):
         if isinstance(ev, Move):

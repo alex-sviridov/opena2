@@ -8,6 +8,8 @@ victory ends it with `leave_mission(world, "won")` (carry-over, Scenario.dll's c
 screen; a defeat or the menu is the main menu (`leave_mission` for anything else: no carry-over, as the original's `0x41e` / `0x431` end the game);
 the last mission's ending also goes to the menu (the credits are not built)."""
 
+from dataclasses import replace
+
 from .scene import Scene
 from .screen import Screen
 
@@ -47,6 +49,9 @@ class GameScreen(Screen):
             return "menu" if reason in BACK_TO_MENU else "quit"
         out = self.campaign.leave_mission(self.session.world, "won" if reason == "victory" else reason)
         self.shell.log("mission %s %s -> %s" % (self.campaign.mission if reason != "victory" else "done", reason, out.kind))
+        core = self.shell.town_core()
+        # DECISION (until the map, L5): with no town available the exe starts the head mission at once; the stand-in shows the choice instead
+        core.mission_over(out if out.kind != "mission" else replace(out, kind="world_map"))
         return "locations" if reason == "victory" and out.kind not in CAMPAIGN_ENDINGS else "menu"
 
     def scene(self):

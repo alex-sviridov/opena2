@@ -76,7 +76,7 @@ def test_pool_never_goes_negative_and_a_round_trip_restores_it():
 
 def test_graph_has_the_campaign_screens():
     assert GRAPH["newgame"] == {"menu", "chargen"} and GRAPH["chargen"] == {"newgame", "locations"}
-    assert GRAPH["locations"] == {"game", "menu"} and "locations" in GRAPH["game"]
+    assert GRAPH["locations"] == {"game", "menu", "town"} and "locations" in GRAPH["game"]
 
 
 # -- the screens (install) ---------------------------------------------------------------------------------------------------------------

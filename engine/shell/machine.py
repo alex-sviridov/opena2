@@ -14,7 +14,10 @@ GRAPH = {
     "menu": {"newgame", "load", "quit"},
     "newgame": {"menu", "chargen"},
     "chargen": {"newgame", "locations"},
-    "locations": {"game", "menu"},
+    "locations": {"game", "menu", "town"},
+    "town": {"inn", "shop", "locations", "menu"},
+    "inn": {"town"},
+    "shop": {"town"},
     "load": {"menu", "game"},
     "game": {"menu", "locations"},
     "quit": set(),
@@ -39,6 +42,7 @@ class Services:
     start_game: Callable = None             # (params dict) -> a session object with `.world` and `.run() -> reason`; None = no game possible
     apply_settings: Callable = _nothing     # (Settings): the values take effect now (the sound sliders are live)
     save_settings: Callable = _nothing      # (Settings): persist (and apply)
+    autosave: Callable = _nothing           # (slot number): the original's game%d.sav autosave (9999 mission start, 9998 leaving a town); saving is not built
     events: list = field(default_factory=list)
 
 
@@ -53,6 +57,7 @@ class Shell:
         self.history = []
         self.screens = {}
         self.params = {}
+        self._town = None                       # the town core of `campaign` (`town_core`)
         self.campaign = None                    # the running single-player campaign (`engine.campaign.CampaignGame`), made by `chargen`
         if screens is None:
             from .chargen import CharGen
@@ -62,7 +67,8 @@ class Shell:
             from .mainmenu import MainMenu
             from .newgame import NewGame
             from .startup import Startup
-            screens = (Startup, MainMenu, NewGame, CharGen, Locations, LoadGame, GameScreen)
+            from .town import Inn, Shop, TownScene
+            screens = (Startup, MainMenu, NewGame, CharGen, Locations, LoadGame, GameScreen, TownScene, Inn, Shop)
         for cls in screens:
             self.screens[cls.name] = cls(self)
 
@@ -121,6 +127,35 @@ class Shell:
 
     def scene(self):
         return self.current.scene()
+
+    # -- the town (docs/engine/town.md) ---------------------------------------------------------------------------------------------
+    def town_core(self):
+        """The `engine.town.TownCore` of the running campaign (made on first use; a new campaign gets a new core)."""
+        from engine.town import TownCore
+        if self._town is None or self._town.camp is not self.campaign.camp:
+            self._town = TownCore(self.campaign.camp)
+        return self._town
+
+    def drain_town(self):
+        """Turn the core's events into services (autosave slot, playlist, speech, cutscene note); returns them."""
+        events = self.town_core().take_events()
+        for ev in events:
+            kind = ev[0]
+            if kind == "autosave":
+                self.services.autosave(ev[1])
+            elif kind == "music":
+                self.services.music(ev[1])
+            elif kind == "speech":
+                self.services.sound("speech:%s" % ev[1])
+            self.log("town: " + " ".join(str(x) for x in ev))
+        return events
+
+    def town_screen(self):
+        """The screen the core's `view` asks for, `(name, params)` or None to stay (screens return this from `event`)."""
+        self.drain_town()
+        view = self.town_core().view
+        want = {"scene": "town", "inn": "inn", "shop": "shop", "map": "locations", "menu": "menu"}.get(view)
+        return None if want is None or want == self.name else want
 
     # -- services shortcuts (screens use these) ------------------------------------------------------------------------------------
     def play(self, sound):

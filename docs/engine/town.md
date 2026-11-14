@@ -75,7 +75,7 @@ The old plan counted `town` as one block. The research splits it into six steps;
 
 | step | content | depends on | headless tests | needs eyes |
 |---|---|---|---|---|
-| **L4 town core** | the mask + the transition table of section 2 as pure code, the town ids / window table, `0x42e` / `0x42d` rules, autosave-slot events, `Var(0x301)` gate; wire into `shell/machine.py` with placeholder screens | L2 | the table over fake windows, edge coverage | none |
+| **L4 town core** *(done 2026-11-14)* | the mask + the transition table of section 2 as pure code, the town ids / window table, `0x42e` / `0x42d` rules, autosave-slot events, `Var(0x301)` gate; wire into `shell/machine.py` with placeholder screens | L2 | the table over fake windows, edge coverage | none |
 | **L5 world map** | graph + route + walk + text + flags (needs the Cross set, [animation](../formats/animation.md#open-questions)); replaces `locations.py`'s mission list; intro walk | L4 | graph / route / schedule / intro | flag anchor, route dots, music |
 | **L6 town scenes** | the three scenes: art, animations ([animation 4.11](../formats/animation.md)), hover regions (open), click -> inn / shop / leave, music | L4 | region table, transitions | everything visual |
 | **L7 inn** | the window: panels, person strip, Hire / Dismiss / Talk / About, hero arrows, dialogue window + speech; the `visit_towns`-equivalence test | L4, L6 | handlers, keys, equivalence with `visit_towns` | layout, captions (open), sounds |
@@ -83,6 +83,11 @@ The old plan counted `town` as one block. The research splits it into six steps;
 | **L9 close-out** | remove the stand-in, play-test list, coverage / CLAUDE.md status | all | the campaign test through the real screens (scripted clicks) | the whole town loop |
 
 Order: L4, then L5 and L6 (independent), then L7 and L8 (independent), L9. Open research items that block a step are listed per window doc; the ones that block **drawing** (captions, rects, hit regions) are all "layout numbers": they are read from the exe at the start of the step that draws them (L5 / L6 / L7 / L8), not before.
+
+### L4 as built
+
+`engine/town.py` (pure): `TownCore` = the mask (`client+0x404`) + the message flow (`post` / `pump`: `0x445 -> 0x44c -> 0x42e` is a chain of posts), `view` (map / scene / inn / shop / mission / ending), `events` (autosave 9998 / 9999, music, speech `plagatguard`, cutscene, mission start), the window table `TOWNS`, `EDGES`. Rules as section 2: entry guard `mask == 0`, `0x42e` only when the mask is exactly the window's own bit, human leave gated by `Var(0x301)`, town 1 leave sets the intro flag, `0x41d` = `mission_over(Outcome)` (ending / head mission at once / map). `engine/shell/town.py`: placeholder `town` / `inn` / `shop` screens (Exit / ESC); `locations` (the L2 stand-in for the map) now walks through the core and lists the available towns after the missions; `Shell.town_core()` / `drain_town()` turn events into services (`Services.autosave`, playlist, sound). Tests `tests/test_engine_town.py` (22 core + shell tests, no install).
+DECISIONs: (1) druid / Kaarg scenes leave **without** the `Var(0x301)` gate (open, section 6); (2) until L5 the stand-in map is shown after a mission even when no town is available (the exe starts the head mission at once; the core already does, the shell turns that outcome into `world_map`); (3) the autosave events reach `Services.autosave`, which does nothing: saving waits for the user's format decision; (4) the town scene playlists are `town1` / `town2` / `town3` (b14 / b16 / b15) in `MUSIC_SCREENS`; (5) `visit_towns` still runs inside `leave_mission` (the inn screen replaces it in L7).
 
 ## 6. Open questions
 
