@@ -88,5 +88,5 @@ Order: L4, then L5 and L6 (independent), then L7 and L8 (independent), L9. Open 
 
 All window-level questions are in the five docs and in [open-questions.md](../open-questions.md). Spec-level:
 1. The town **scene** classes (`0x4ca23c`, `0x4ce2b9`, `0x4d09ee`) have no doc: their hit-region numbers and the druid `man` / `woman` choice are listed in [animation open questions](../formats/animation.md#open-questions); to be researched at the start of L6.
-2. Whether a saved game restores the party point and which town screen it re-enters ([town-worldmap 8](town-worldmap.md#8-open-questions) 4): needed by `save`.
+2. *(answered)* A load resumes the mission, or builds the town scene of the saved location (`InBattle` key, [town-worldmap 8](town-worldmap.md#8-open-questions) 4); only the writer of that key in the save routine is untraced (`save`).
 3. Where the Hire cost / party limit lives, if anywhere (the inn handlers read neither: [town-inn 1](town-inn.md)); start `TalkTo` in Scenario.dll and the server's recruit path.
