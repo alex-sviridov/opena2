@@ -54,7 +54,7 @@ from both places when answered).
 - [Triggers](engine/triggers.md#open-questions): the owner race of the two gate-animation readers of Var(0x301) (`0x4cd0fb`, `0x4cdd0a`, decoded: gate animation only; the shop's `window+0x160` and `Var(0x302)` are answered in [town-shop](engine/town-shop.md)); (the hire price: none, answered). Instants 29 / 30 stay documented no-ops (the effect system exists now: [effects](engine/effects.md)).
 - Scenario event classes: unit `behaviour` bits 1, 2, 4 and the three scenario booleans `+0x194` / `+0x198` / `+0x19c` (`FUN_005303ed`). [map](formats/map.md#open-questions), [unit-struct](engine/unit-struct.md#open-questions)
 
-- Shop windows ([town-shop 8](engine/town-shop.md#8-open-questions)): where the gold / totals are drawn (`0x4bcd05`); cell-state bitmaps and the stock grid draw (`0x4b392a`); `0x4b8007` fill and the alternate view `0x40f` (`0x4b95b7`); shop tooltips and the owner of `#tips4`; the server container message's type (`0x412301` in `FUN_0040d9b2`); the druid / Kaarg class details (`0x4bde01`, `0x4c0017`); `0x4b8273` mirror and `window+0x132 = 100`.
+- Shop windows ([town-shop 8](engine/town-shop.md#8-open-questions)): where the gold / totals are drawn (`0x4bcd05`); cell-state bitmaps and the stock grid draw (`0x4b392a`); `0x4b8007` fill and the alternate view `0x40f` (`0x4b95b7`); shop tooltips and the owner of `#tips4`; the server container message's type (`0x412301` in `FUN_0040d9b2`); the druid / Kaarg class details (`0x4bde01`, `0x4c0017`).
 
 ## Movement and orders
 
