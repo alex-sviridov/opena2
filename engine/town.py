@@ -171,8 +171,8 @@ class TownCore:
     def leave_town(self):
         """The scene's leave click (`0x4cad5d` ...): posts `0x442` (autosave `game9998.sav`, "Abort mission and return to town") then `0x42d`.  The human
         scene leaves only when `Var(0x301) != 0`, else it plays the speech `plagatguard` and nothing else happens (`0x4cad3c`).  DECISION (the druid /
-        Kaarg readers of `Var(0x301)` are open, town.md 6): those two scenes leave without the gate (their leave flag 8 posts directly, `0x4d0758`,
-        `0x4d3058`)."""
+        Kaarg scenes: CONFIRMED, the druid click handler `0x4d06cc` posts `0x442` + `0x42d` for region 8 with no `Var` test, the Kaarg one `0x4d3058` likewise;
+        their `Var` reads are `Var(0x300)` texts); a refused leave posts no `0x442` (`0x4cad85`: the speech only)."""
         if self.view != "scene" or self.mask != 0:
             return
         if self.town == 1 and not self.camp.get(LEAVE_GATE):
@@ -201,7 +201,7 @@ class TownCore:
 
     # -- the end of a mission (0x41d) --------------------------------------------------------------------------------------------
     def mission_over(self, outcome):
-        """`0x41d` after the roster carry-over and `ScenarioLeaveLocation` (`engine.sim.campaign.complete` = `outcome`): the party point, the cutscene,
+        """`0x41d` (`0x486a68`; order CONFIRMED: mission time, `mask & 1` -> teardown `0x48da92` clears bit 1, carry-over, `SetPartyPoint` of the location the party stood on, leave, recruit, cutscene, ending test, town test) after the roster carry-over and `ScenarioLeaveLocation` (`engine.sim.campaign.complete` = `outcome`): the party point, the cutscene,
         then the ending (`Var(0x300) >= 0x78`), the head of the available list entered at once when no town is available (the map is never shown) or
         the map.  `main_menu` (defeat, left by the menu) ends the game."""
         self.mask &= ~M_MISSION
@@ -213,6 +213,8 @@ class TownCore:
             self.party_point = self.camp.available[0]
         if outcome.cutscene >= 0:
             self._emit("cutscene", outcome.cutscene)
+        if outcome.kind != "mission":
+            self.intro = False                      # the map branch writes `window+0x1b0 := 0` (`0x486d91`)
         if outcome.kind == "ending":
             self.view = "ending"
         elif outcome.kind == "mission":

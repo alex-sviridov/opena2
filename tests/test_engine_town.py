@@ -259,3 +259,11 @@ def test_shell_mission_walk_autosaves_9999_and_starts_the_game():
     core = sh.town_core()
     assert sh.name == "game" and sh.params["mission"] == 10 and saves == [9999]
     assert core.view == "mission" and core.mask == T.M_MISSION and sh.campaign.camp.location == (C.MISSION, 10)
+
+
+def test_mission_over_clears_the_intro_flag_on_the_map_branch():
+    c = core((C.TOWN, 2))
+    c.intro = True
+    c.mask = T.M_MISSION
+    c.mission_over(C.Outcome("world_map"))
+    assert not c.intro and c.mask == T.M_MAP
