@@ -91,11 +91,11 @@ All window-level questions are in the five docs and in [open-questions.md](../op
 2. *(answered)* A load resumes the mission, or builds the town scene of the saved location (`InBattle` key, [town-worldmap 8](town-worldmap.md#8-open-questions) 4); only the writer of that key in the save routine is untraced (`save`).
 3. Where the Hire cost / party limit lives, if anywhere (the inn handlers read neither: [town-inn 1](town-inn.md)); start `TalkTo` in Scenario.dll and the server's recruit path.
 
-### Status of the window-level questions (L3 close-out, 2026-11-14)
+### Status of the window-level questions (L3 close-out, 2026-11-14, second round)
 
-Answered by REA in this round (details in the window docs): inn button rects and captions, the inn / shop animation scheduler (human fully, druid / Kaarg by slot), missing sound files are silent, client unit flag bits, the lifetime of the inn's person units, the `0x405` target, the tips window rect, shop buy / pack-full / leave-with-table rules, `#tips4`'s trigger, the shop hero-arrow mirror and shelf marker, the container message type, `Var(0x301)` / `Var(0x307)`, load-game behaviour, the map description rect.
-**Not answered, and why** (each is read at the build step that draws it, none changes a rule):
-- pure layout / draw numbers: the centre panel's figure strip and arrow hit rects, the left sheet's caption block, shop cell-state bitmaps and the stock grid draw, the `0x4b8007` fill and the alternate view, the exact pixel positions of the shop numbers, the druid / Kaarg shelf rectangles and animation tables, the draw order of the area outside the 640x480 window;
-- needs a run of the exe (display mode / pixel results cannot come from static analysis): the info panel position at 800x600 / 1024x768, client price vs server price of stock;
-- bookkeeping: the path-edge tracer of the world map (`FUN_00471f0d`, `FUN_004721ff`), the sub-switch of message `0x76`.
+Answered by REA (details in the window docs): inn button rects and captions; the inn / shop animation scheduler; missing sound files are silent; client unit flag bits; the lifetime of the inn's person units; `0x405`; the tips window rect and `#tips4`; shop buy / pack-full / leave rules; the container message `0x76` and its keys; the shop gold / totals fields; the shop window's black strip and spell-book view; the cell background slots; the shop hero-arrow mirror; `Var(0x301)` / `Var(0x307)`; load-game behaviour; the map description rect, flag anchor (top-left) and the border (black); **the inn person strip (a click on a figure selects and acts), and that the left sheet's quest captions and the centre arrow overlays are multiplayer-only**.
 
+**Still open, with the reason** (none changes a rule; each is read at the build step that draws it):
+- needs a run of the exe (no Wine / display here): the info panel's position at 800x600 / 1024x768, client price vs server price of stock;
+- pure pixel / art reading: the pixel positions of the three shop numbers, the "HIRED" anchor and the sprite placement inside a figure cell, which `backinv*` colour means what, the stock grid draw (`0x4b392a`), the shop panel tooltips, the druid / Kaarg shelf rects and animation tables, the last frame numbers of the druid / Kaarg ambient events;
+- bookkeeping with a headless stand-in already specified: the world map's path-edge tracer (`FUN_00471f0d`, `FUN_004721ff`).
