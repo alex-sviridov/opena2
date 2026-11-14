@@ -95,7 +95,7 @@ All window-level questions are in the five docs and in [open-questions.md](../op
 
 Answered by REA in this round (details in the window docs): inn button rects and captions, the inn / shop animation scheduler (human fully, druid / Kaarg by slot), missing sound files are silent, client unit flag bits, the lifetime of the inn's person units, the `0x405` target, the tips window rect, shop buy / pack-full / leave-with-table rules, `#tips4`'s trigger, the shop hero-arrow mirror and shelf marker, the container message type, `Var(0x301)` / `Var(0x307)`, load-game behaviour, the map description rect.
 **Not answered, and why** (each is read at the build step that draws it, none changes a rule):
-- pure layout / draw numbers: the centre panel's figure strip and arrow hit rects, the left sheet's caption block, shop cell-state bitmaps and the stock grid draw, the `0x4b8007` fill and the alternate view, the exact pixel positions of the shop numbers, the druid / Kaarg shelf rectangles and animation tables, the flag / Cross anchor, the draw order of the area outside the 640x480 window;
+- pure layout / draw numbers: the centre panel's figure strip and arrow hit rects, the left sheet's caption block, shop cell-state bitmaps and the stock grid draw, the `0x4b8007` fill and the alternate view, the exact pixel positions of the shop numbers, the druid / Kaarg shelf rectangles and animation tables, the draw order of the area outside the 640x480 window;
 - needs a run of the exe (display mode / pixel results cannot come from static analysis): the info panel position at 800x600 / 1024x768, client price vs server price of stock;
 - bookkeeping: the path-edge tracer of the world map (`FUN_00471f0d`, `FUN_004721ff`), the sub-switch of message `0x76`.
 

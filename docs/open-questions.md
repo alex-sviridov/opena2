@@ -44,7 +44,7 @@ from both places when answered).
 
 ## Town mode
 
-- World map screen ([town-worldmap 8](engine/town-worldmap.md#8-open-questions)): the anchor of the flag / Cross draw point (`FUN_0046fdd5`, sprite vtable `+0x18`), what is painted around the 640x480 window at 800x600 / 1024x768 (`FUN_00452bde`), the exact path-edge tracer bookkeeping (`FUN_00471f0d`, `FUN_004721ff`).
+- World map screen ([town-worldmap 8](engine/town-worldmap.md#8-open-questions)): what is painted around the 640x480 window at 800x600 / 1024x768 (`FUN_00452bde`), the exact path-edge tracer bookkeeping (`FUN_00471f0d`, `FUN_004721ff`).
 
 - Inn dialogue ([town-inn 5](engine/town-inn.md#5-open-questions)): the druid / Kaarg scheduler's last frame numbers.
 - Hero panels = the Inn windows ([town-hero 8](engine/town-hero.md#8-open-questions)): the info panel's final rect in the inn at 800x600 / 1024x768 (`0x49e451`, ctor `0x4adf45`); the panel interiors (centre `0x497adf` / `0x49a188` / `0x49a347` / `0x49a197`, left caption `0x494832`).
@@ -54,7 +54,7 @@ from both places when answered).
 - [Triggers](engine/triggers.md#open-questions): the owner race of the two gate-animation readers of Var(0x301) (`0x4cd0fb`, `0x4cdd0a`, decoded: gate animation only; the shop's `window+0x160` and `Var(0x302)` are answered in [town-shop](engine/town-shop.md)); (the hire price: none, answered). Instants 29 / 30 stay documented no-ops (the effect system exists now: [effects](engine/effects.md)).
 - Scenario event classes: unit `behaviour` bits 1, 2, 4 and the three scenario booleans `+0x194` / `+0x198` / `+0x19c` (`FUN_005303ed`). [map](formats/map.md#open-questions), [unit-struct](engine/unit-struct.md#open-questions)
 
-- Shop windows ([town-shop 8](engine/town-shop.md#8-open-questions)): the pixel positions of the gold / totals numbers (`0x4bcd05`); cell-state bitmaps and the stock grid draw (`0x4b392a`); `0x4b8007` fill and the alternate view `0x40f` (`0x4b95b7`); shop panel tooltips (`#tips4`'s owner answered: shop tick `0x4b9144`); ; the druid / Kaarg class details (`0x4bde01`, `0x4c0017`).
+- Shop windows ([town-shop 8](engine/town-shop.md#8-open-questions)): the pixel positions of the gold / totals numbers (`0x4bcd05`); cell-state bitmaps and the stock grid draw (`0x4b392a`); shop panel tooltips (`#tips4`'s owner answered: shop tick `0x4b9144`); ; the druid / Kaarg class details (`0x4bde01`, `0x4c0017`).
 
 ## Movement and orders
 
