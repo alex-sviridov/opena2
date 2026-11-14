@@ -47,7 +47,7 @@ from both places when answered).
 - World map screen ([town-worldmap 8](engine/town-worldmap.md#8-open-questions)): the anchor of the flag / Cross draw point (`FUN_0046fdd5`, sprite vtable `+0x18`), the description wrap width (`FUN_0045d479`), what is painted around the 640x480 window at 800x600 / 1024x768 (`FUN_00452bde`), what a loaded `game9998.sav` restores of the party point (`FUN_0048db37`), the exact path-edge tracer bookkeeping (`FUN_00471f0d`, `FUN_004721ff`).
 
 - Inn dialogue ([town-inn 5](engine/town-inn.md#5-open-questions)): the druid / Kaarg scheduler's last frame numbers.
-- Hero panels = the Inn windows ([town-hero 8](engine/town-hero.md#8-open-questions)): the info panel's final rect in the inn at 800x600 / 1024x768 (`0x49e451`, ctor `0x4adf45`); the `0x405` target in town; the panel interiors (centre `0x497adf` / `0x49a188` / `0x49a347` / `0x49a197`, left caption `0x494832`); the tips window rect (`FUN_004dec24`).
+- Hero panels = the Inn windows ([town-hero 8](engine/town-hero.md#8-open-questions)): the info panel's final rect in the inn at 800x600 / 1024x768 (`0x49e451`, ctor `0x4adf45`); the panel interiors (centre `0x497adf` / `0x49a188` / `0x49a347` / `0x49a197`, left caption `0x494832`).
 
 ## Triggers and scenario
 
