@@ -50,9 +50,13 @@ class GameScreen(Screen):
         """Play the session to its end; the next screen's name."""
         reason = self.session.run()
         if reason == "load":                                    # the mission menu's Load window: the chosen file replaces the game (`0x419`); a refused file = the main menu (`0x421`)
-            from .saveload import load_file
-            status, res = load_file(self.shell, self.session.load_file)
-            return res if status == "ok" else "menu"
+            res = getattr(self.session, "load_result", None)       # the window loaded the file already (a refused file never gets here: it stays a notice)
+            if res is None:
+                from .saveload import load_file
+                status, res = load_file(self.shell, self.session.load_file)
+                if status != "ok":
+                    return "menu"
+            return res
         if self.campaign is None or reason not in BACK_TO_MENU:
             return "menu" if reason in BACK_TO_MENU else "quit"
         out = self.campaign.leave_mission(self.session.world, "won" if reason == "victory" else reason, visit=False)     # the player visits the towns (L7)

@@ -91,7 +91,7 @@ save is therefore always written from a scene, and a load of it stands in that s
 * **Mission saves (L10e-B, built):** see "L10e-B" below. (Earlier text, superseded:)
 * **Not supported yet (the L10e / L10f hook):** a mission-kind file (`InBattle` = 1, `savegame.kind`) shows the notice "Loading a saved mission is not supported yet." (DECISION text); in a mission the in-game menu's Save and Load stay disabled; the auto-saves
   `game9999` / `game9998` are not written (`Services.autosave` is called with the slot and ignored). The single extension point is `savegame.MissionSaveCodec` (`save(session, description)`, `load(save, campaign)`) assigned to `Shell.mission_codec`.
-* **Errors:** an unreadable / refused file -> a notice with the reader's message ("Invalid save file", "Outdated save file", the multiplayer message; a truncated file adds the detail), the Load window stays open; a failed write -> a notice, the Save window stays open (the old file is untouched: atomic write);
+* **Errors (L10f: [save 6](save.md#6-robustness-l10f-tests-testsenginesaverobustnesspy)):** any failure of the readers (also a damaged value deep in the stream) = a notice, nothing of the shell replaced; in the mission's ESC menu the Load window loads while it is open, so a refused file never ends the running mission. Earlier text: an unreadable / refused file -> a notice with the reader's message ("Invalid save file", "Outdated save file", the multiplayer message; a truncated file adds the detail), the Load window stays open; a failed write -> a notice, the Save window stays open (the old file is untouched: atomic write);
   a failed delete -> a notice.
 * Decisions: no overwrite confirmation (as the exe); the delete question quotes the description; the menu closes when a window opens and does not reopen (INFERRED from `FUN_004891d8`, which only clears bit 8); the Save window keeps the typed text across a Delete.
 
@@ -102,6 +102,8 @@ save is therefore always written from a scene, and a load of it stands in that s
 * **Auto-saves:** `Shell.mission_start_save(session)` after the campaign mission's session is built (`game9999.sav`, `FUN_0048c8a3(0)` -> `0x442`); `Shell.autosave(9998)` from the town core's leave event (`game9998.sav`, a town save: the party is still in the town). `Services.autosave(slot)` stays the observer hook.
 
 ## 5. VERIFY IN GAME (user's real-game check)
+
+The consolidated list (original <-> here, town / mission-start / mid-mission, with `save-info` / `save-diff`) is [save 10](save.md#10-verify-in-game-one-list-the-users-real-game-check); the items below are the window-level details it refers to.
 
 1. **Save from a town scene** (ESC or the star region -> Save Game): the window's look against the original (caption, edit field, "Saved Games" label, list, Ok / Delete / Cancel positions, scroll bar); the date format `DD.MM.YYYY  HH:MM:SS` and the two spaces; the empty first row.
 2. **Overwrite**: save twice with the same text (the second goes to the same file, no question); pick a row, retype, Ok (overwrites that row's file).

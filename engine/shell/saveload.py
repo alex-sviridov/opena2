@@ -436,31 +436,41 @@ class LoadDialog(SlotDialog):
 
 # -- the main menu's LOAD screen ---------------------------------------------------------------------------------------------------------------------------------------------------
 
+REFUSED = (Exception,)                  # a damaged file may fail anywhere inside the typed readers / the world rebuild: every failure is a notice, never a crash
+
+
+def refusal(e):
+    """The notice text of a load failure: the reader's own message ("Invalid save file", "Outdated save file", the multiplayer text), else "Invalid save file (detail)"."""
+    from engine import savegame
+    text = str(e) or type(e).__name__
+    if not isinstance(e, savegame.S.MultiplayerSave) and not text.startswith(("Invalid save file", "Outdated save file")):
+        text = "Invalid save file (%s)" % text[:160]
+    return text
+
+
 def load_file(shell, name):
     """Load a slot into the shell (the exe's `0x419` -> `FUN_0048db37`).  Returns `("ok", screen)` (the screen the shell goes to) or `("error", text)` for a notice: an unreadable / refused
-    file (the reader's own messages: "Invalid save file", "Outdated save file", multiplayer saves), a mission-kind file without a `MissionSaveCodec` (the hook of L10e / L10f)."""
+    file (the reader's own messages: "Invalid save file", "Outdated save file", multiplayer saves), a damaged one (any failure of the readers, no matter its kind), a mission-kind file
+    without a `MissionSaveCodec`.  **Nothing of the shell changes unless the load succeeded**, so a refused file leaves the running game / the dialog as it was (DECISION: the exe goes to the
+    main menu, `FUN_0040d480` failing posts `0x421`; the engine parses before it replaces anything, so staying is safe: save-ui 3)."""
     from engine import savegame
     try:
         save = savegame.S.parse_save(shell.slots.read(name))
-    except (OSError, ValueError) as e:
-        text = str(e) or "Invalid save file"
-        if not isinstance(e, savegame.S.MultiplayerSave) and not text.startswith(("Invalid save file", "Outdated save file")):
-            text = "Invalid save file (%s)" % text                  # a truncated / inconsistent file: the reader's detail after the exe's message
-        return "error", text
-    if savegame.kind(save) == "mission":
-        codec = shell.mission_codec
-        if codec is None:
-            return "error", NOT_SUPPORTED
-        try:
+        mission = savegame.kind(save) == "mission"
+        if mission:
+            codec = shell.mission_codec
+            if codec is None:
+                return "error", NOT_SUPPORTED
             params = codec.load(save, install=shell.fs)
-        except (ValueError, KeyError, IndexError, AttributeError, TypeError, struct.error) as e:
-            return "error", "Invalid save file (%s)" % e
-        return "ok", shell.resume_mission(params)
-    try:
-        game = savegame.from_save(save, install=shell.fs, seed=time.time_ns() & 0xFFFFFFFF, resume_location=True)
-    except (ValueError, KeyError, IndexError, AttributeError) as e:
-        return "error", "Invalid save file (%s)" % e
-    return "ok", shell.resume(game)
+        else:
+            game = savegame.from_save(save, install=shell.fs, seed=time.time_ns() & 0xFFFFFFFF, resume_location=True)
+        return "ok", (shell.resume_mission(params) if mission else shell.resume(game))
+    except RecursionError:
+        return "error", "Invalid save file (nested too deeply)"
+    except MemoryError:
+        return "error", "Invalid save file (too large)"
+    except REFUSED as e:
+        return "error", refusal(e)
 
 
 from .screen import Screen  # noqa: E402

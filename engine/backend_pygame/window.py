@@ -562,7 +562,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
             if closed:
                 running = False
             elif res is not None and res[0] == "load":
-                ui.load_file, ui.quit, running = res[1], "load", False
+                ui.load_file, ui.load_result, ui.quit, running = res[1], res[2], "load", False
             ui.files = (True, file_shell.slots.any_saves())
             was_frozen = True
             held.clear()

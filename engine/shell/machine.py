@@ -52,7 +52,7 @@ class Services:
 
 
 class Shell:
-    def __init__(self, fs, size=(640, 480), settings=None, services=None, screens=None, slots=None):
+    def __init__(self, fs, size=(640, 480), settings=None, services=None, screens=None, slots=None, hall_file=None):
         from engine.audio.settings import Settings
         self.fs = as_fs(fs) if fs is not None else None
         self.size = size
@@ -72,6 +72,8 @@ class Shell:
         self.view = (0, 0)                      # the mission camera at the last Save click (the backend sets it; `View/X`, `View/Y` of the client state)
         self.campaign = None                    # the running single-player campaign (`engine.campaign.CampaignGame`), made by `chargen`
         self.slots = slots                      # `engine.saveslots.SaveSlots` (the saved-game folder; None = no saves: the Load button stays disabled, Save writes nothing)
+        self.hall_file = hall_file              # the settings-side `famehall.dat` (`engine.famehall`): read at start, written at exit; None = none (tests)
+        self.hall = None                        # `famehall.Hall`, loaded lazily
         from engine import savegame
         self.mission_codec = savegame.MissionSaveCodec()    # mission-kind saves (`engine/missionsave.py`); None = "not supported" notice (tests)
         if screens is None:
@@ -138,6 +140,20 @@ class Shell:
     def update(self, dt_ms):
         if self.current is not None and not self.done:
             self.apply(self.current.update(dt_ms))
+
+    def load_hall(self):
+        """The hall of fame as the exe loads it at start (`FUN_004a91d5`): the settings-side file, else the install's."""
+        from engine import famehall
+        if self.hall is None:
+            self.hall = famehall.load(self.hall_file, self.fs)
+        return self.hall
+
+    def shutdown(self):
+        """The exe's exit write (`FUN_004a90c9` in the client destructor): `famehall.dat` is rewritten at every shutdown, into the settings-side folder (never the install).  Returns the path or None."""
+        from engine import famehall
+        if self.hall_file is None:
+            return None
+        return famehall.write(self.load_hall(), self.hall_file)
 
     def close_window(self):
         """The window's close box: from anywhere to `quit`."""

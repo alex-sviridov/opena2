@@ -193,7 +193,7 @@ The Scenario.dll variable array ([triggers §2](../engine/triggers.md#2-compilat
 
 ## 5. `famehall.dat` (CONFIRMED, the install's file decodes exactly)
 
-Loader `FUN_004a91d5` (file `famehall.dat`, `0x5f31f4`), writer `FUN_004a90c9` (`0x4825c4`, opened `0x1001`); the object is at `client+0x598`. `u32 count` (0 = the default hall,
+Loader `FUN_004a91d5` (file `famehall.dat`, `0x5f31f4`), writer `FUN_004a90c9` (`0x4825c4`, opened `0x1001`; called at shutdown from the client destructor `0x482526`, CONFIRMED: [save 8](../engine/save.md#8-famehalldat-l10f-enginefamehallpy)); the object is at `client+0x598`. `u32 count` (0 = the default hall,
 `FUN_004a9730`), then per entry `u32 length`, the name with its NUL (`length` bytes), `u32 a, u32 b, u32 c`. The install's 10 entries are sorted by `a` descending (70006,
 65817, ...) with `b = c = 0`: INFERRED `a` = score, `b`, `c` unknown. Size = `4 + sum(16 + length)` = 228.
 
@@ -587,6 +587,8 @@ Facts settled while building it (REA this round):
   `(x, y, x, y)` rectangles from `Scenario.dll` (zeros without the install).
 * INFERRED (needs a real save to confirm): one human player and one group in a town save; `server+0x20` = 0; map name empty; the item vtable / `+0xc` choice; the layout of the `0x24` statistics block and the `+0x1c / +0x20` pack
   words (`0x7fff`, 0); the group's `+0x20` object = `CList<u16>`; the mover / brain defaults above; that the loader accepts a hero without the `+0x1a8` kill list (it is not in the serialiser).
+
+**L10f additions** ([save](../engine/save.md) 6-8): `saves.damaged` (decorator: damaged values -> `ValueError`), `ClientState.extra` (unknown `.reg` keys survive), `engine/savemerge.py` (what the engine does not model survives a load -> save of an original file), `engine/saveinfo.py` (`save-info` / `save-diff`), `engine/famehall.py`.
 
 ### 7.1 L10e-B: the mission-save mapping (engine/missionsave.py; tests `test_engine_missionsave.py`, `test_engine_missionsave_shell.py`)
 

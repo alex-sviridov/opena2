@@ -1,6 +1,6 @@
 # L10: save / load with the original `game%d.sav` format
 
-Status: **L10b done** (container + typed client tail + MFC archive layer, `allods2/formats/saves.py`, `mfc.py`; saves.md 7); **L10c done** (typed server stream `allods2/formats/serverstream.py`, town saves `engine/savegame.py`, `CampaignGame.to_save / from_save`, `tests/test_savegame_town.py`; saves.md 7 "Engine mapping"); **L10d done** (town-mode Save / Load / Delete windows and the slot folder: [save-ui.md](save-ui.md), `engine/saveslots.py`, `engine/shell/saveload.py`; mission-kind saves are the hook `MissionSaveCodec`); **L10e-A done** (mission-branch codec, saves.md 6.12); **L10e-B done** (the `World` <-> mission-save mapping `engine/missionsave.py`, saves.md 7.1; shell: `MissionSaveCodec`, mission menu Save / Load, auto-saves `game9999` / `game9998`; tests `test_engine_missionsave*.py`; needs the real-game check below). Goal: the engine reads every save the original GOG game writes and writes saves the original
+Status: **L10 done (L10f closed: robustness, original-file tolerance, `save-info` / `save-diff`, `famehall.dat`, headless glue run; the user's real-game check is the "VERIFY IN GAME" list below)**. **L10b done** (container + typed client tail + MFC archive layer, `allods2/formats/saves.py`, `mfc.py`; saves.md 7); **L10c done** (typed server stream `allods2/formats/serverstream.py`, town saves `engine/savegame.py`, `CampaignGame.to_save / from_save`, `tests/test_savegame_town.py`; saves.md 7 "Engine mapping"); **L10d done** (town-mode Save / Load / Delete windows and the slot folder: [save-ui.md](save-ui.md), `engine/saveslots.py`, `engine/shell/saveload.py`; mission-kind saves are the hook `MissionSaveCodec`); **L10e-A done** (mission-branch codec, saves.md 6.12); **L10e-B done** (the `World` <-> mission-save mapping `engine/missionsave.py`, saves.md 7.1; shell: `MissionSaveCodec`, mission menu Save / Load, auto-saves `game9999` / `game9998`; tests `test_engine_missionsave*.py`; needs the real-game check below). Goal: the engine reads every save the original GOG game writes and writes saves the original
 loads, for single player: the Save / Load / Delete dialogs, the manual slots, the auto-saves `game9999.sav` ("Restart last mission")
 and `game9998.sav` ("Abort mission and return to town"). Byte layouts known so far: [formats/saves.md](../formats/saves.md) §6
 (container, server stream head, client tail, Scenario.dll block, MFC layer, player, group and unit serialisers: §6.4-6.8); L10a rounds 2-4: every object serialiser of the stream is decoded in §6.9-6.11; only field meanings and the option-word consumers stay open) and L10a is **closed**.
@@ -84,9 +84,76 @@ All families share the MFC layer of [saves 6.4](../formats/saves.md#64-mfc-archi
 - [x] L10e-7 Script state: `ScriptState` (values, fired flags, 0x30 / 400 blocks, the 70 x 70 relation matrix, counters) and the unit container + back-references (L10c); the mapping to the engine's trigger runner is L10e-B.
 - [x] L10e-8 Tick counters, `0xbadface1` pair (read, ignored by the loader), the 400-byte debug block, the even pad (town and mission streams).
 - [x] L10e-B (was 9) Integration: `World` <-> stream (`engine/missionsave.py`; saves.md 7.1): players, groups, units, structures, piles, carriers, casters, cell records, script state, counters, RNG tail field, fog runs, client state; the engine extension (`Engine/Blob`) for bit-exact resume; the stream-only loader derives what the exe derives. Invariants tested: resume == no save (full engine state) on all 46 maps and mid-fight at six ticks, re-save byte-identical, mission-start save restarts the mission, the oracle wins after a reload (six maps, also from a stream-only load).
-- [ ] L10f Compatibility pass with real files (VERIFY IN GAME list: save-ui 5.8-5.13), `famehall.dat` at exit, refused-file handling in the shell.
+- [x] L10f Compatibility pass: robustness (section 6), original-file tolerance + diagnostics (section 7), `famehall.dat` at exit (section 8), headless glue run (section 9); the real-file check is section 10.
+
+## 6. Robustness (L10f; tests `tests/test_engine_save_robustness.py`)
+
+* Contract: the readers raise only the `ValueError` family (`ArchiveError`, `MultiplayerSave`, "Invalid save file", "Outdated save file"); `saves.damaged` turns whatever a damaged *value* makes an engine-side reader raise (`KeyError`, `TypeError`, ...) into `ValueError`
+  (`parse_save`, `savegame.from_save` / `kind`, `missionsave.world_from_save`); `ClientTail.state` too (a garbage `.reg` leaf). Count guards: object lists refuse a count above the bytes left (`serverstream.read_list`), the tail's mission / location counts and the reg entry
+  count are checked against the file size, the engine blob inflates through `missionsave.inflate` (cap 512 MB, a zlib bomb = `ValueError`). Fuzz tests (random truncation, bit flips, 0 / 0xffffffff / 0x7fffffff / 0x80000000 words, zeroed runs) over synthetic town saves,
+  real town saves and mission saves (also the stream-only form): no exception outside the family, no call over 2 s.
+* **Shell** (`saveload.load_file`, DECISION): every failure of parse / build is a notice ("Invalid save file (detail)", the exe's own words first) and **nothing of the shell is replaced before the load succeeded** (campaign, town core, running mission). Main menu Load window and
+  the town scene menu keep the window open with the notice (Cancel goes back); the **mission's ESC menu Load window loads while it is open** (`fileview.run_file_dialog` calls `load_file`, `ui.load_result`), so a refused file leaves the mission running under a notice instead of ending
+  it. The exe differs: a failed load posts `0x421` (main menu, `FUN_0040d480`); the engine stays because it never destroys the game before the new one is built. Wrong magic / short file / outdated / multiplayer texts are the reader's (saves 7).
+
+## 7. Original-file tolerance and diagnostics (L10f)
+
+* A file the original wrote has no `Engine/*` blob and no RNG marker: `world_from_save` takes the stream-only path (`exact = False`), `from_save` (town) never looked at an engine key; both are tested with files stripped to that form.
+* **Pass-through** (`engine/savemerge.py`): at load, `world.save_origin` / `game.save_origin` = `(the stream the engine builds from the fresh state, the file's own stream)`; at every save the freshly built stream is merged: a byte of a raw block, a scalar, a tuple element that the engine has not changed
+  since the load (`new == base`) is taken from the file. So option words, `d20`, the 400-byte debug block, unnamed bytes of unit blocks (`blk_*`, unnamed mover / brain bytes), script blocks `b30` / `b400` / scalars survive a load -> save; changed values are the new ones; units match by (`id`, `d08`).
+  Raw pointer keys (`ptr`, `link`, the mover / brain pointer fields, `d40` / `d5c` / `d64` / `d44`) are never taken over: they are renumbered by our writer (meaningless outside one file). Spell effects / carriers of a stream-only load are not restored (known, 7.1), so they are not
+  written back. Unknown keys of the client `.reg` tree are kept (`ClientState.extra`, grafted back by `to_tree`; `world.client_extra`). Files that carry the blob are merged the same way (the origin is built at load too).
+* **`python -m engine save-info FILE`** (`engine/saveinfo.py`): container fields (magic, version, lengths, round-trip check `pack() == file`), description, kind (town / mission), writer (engine extension present or original-style), map / scenario id, tick, difficulty, option words, debug block (RNG marker or zeros),
+  players (name, human / AI, gold, kills, groups, units), the human-owned humanoids, **untyped unit bytes** (non-zero bytes of mover / brain that no named field covers, and of the raw `blk_*` blocks, with unit counts), the mission branch counts, script summary (non-zero values, fired flags, counters, unnamed blocks),
+  the Scenario.dll block (variables, shop towns, locations, current index), mission list, hotkeys, client `.reg` keys, and a **"could not type"** list (stream that does not parse, mission branch kept raw, `.reg` keys the engine does not type). A refused file prints the reason.
+* **`python -m engine save-diff A B [--limit N]`**: typed field-level diff of two files (`fields_of`: container, stream objects by field, raw blocks decoded by `serverblocks` layouts + the unnamed bytes, tail, `.reg` keys, variables, shop table, locations, hotkeys); pointer keys and the engine blob are ignored,
+  units are keyed by scenario uid. Use it on an original save and our save of the same moment, or on one original save and the engine's re-save of it (must say "no typed field differs").
+
+## 8. `famehall.dat` (L10f; `engine/famehall.py`)
+
+* CONFIRMED (REA, listing of `allods2.exe`): the exe loads it at start (`FUN_004a91d5`, call `0x481755`) and writes it **at shutdown**: `FUN_004a90c9` is called from the client's destructor `0x482526` (`0x4825e2`, file `0x5f32c0` opened `0x1001` = create / truncate), so it is
+  rewritten on every exit. Entries are added by `FUN_004a8d28` (called at `0x486ce2` in the mission-end handler when `FUN_00493da0` = campaign finished, Var 0x300 >= 0x78) through `FUN_004a8c5e`: insert before the first entry whose score is <= the new one (`new < entry` moves on, `0x4a8cbe`), else append, cut to the
+  limit (`obj+0xc`). Score = `round(hero+0x110 / (times * 10.0) * obj[+8])`, or `/ 500000.0` when the time sum `obj[+4]` is 0 (doubles `0x5cecd0` = 10.0, `0x5cecd8` = 500000.0); name = the hero's `+0xec` string.
+* Engine (DECISION): the file lives beside the settings file (`Settings` folder, `famehall.path`), never in the install; the first run reads the install's copy (`Shell.load_hall`); `Shell.shutdown()` (called by the backend after the loop) rewrites it atomically. **Entries are not added** and there is no Hall of Fame screen
+  (menu button disabled, credits not built): the score operand `obj[+8]` is never set by anything we know (saves 6.5 "mission list +8 unknown") and the end-of-campaign flow ends in the menu (`game.py CAMPAIGN_ENDINGS`). `Hall.add` implements the confirmed insert rule (tested) for the day those two exist.
+
+## 9. Headless glue run (L10f; `tests/test_engine_save_glue.py`)
+
+The real `python -m engine` shell loop (`backend_pygame/shell.py`, `PlaySession`, `window.run`, `fileview.py`) runs with `SDL_VIDEODRIVER=dummy` and scripted pygame events: main menu LOAD (damaged file = notice, the dialog stays), an original-style mission save loads into the real game loop (stream-only), ESC menu Save (typed
+description) writes a file, ESC menu Load with a damaged file = notice and the same world keeps running, Load of the saved file replaces the world, End Quest -> main menu, LOAD of a town save -> town scene, scene menu Save, window close -> `famehall.dat` in the settings folder. Found and fixed by it: nothing broke in the
+glue; the damaged-file case in the mission menu used to end the mission (now a notice, section 6).
+
+## 10. VERIFY IN GAME (one list; the user's real-game check)
+
+Tools: `python -m engine save-info FILE` (what the file is, what could not be typed), `python -m engine save-diff A B` (typed diff). Slot folder: `~/.config/allods2-engine/saves` (`Settings.save_dir`; `ALLODS2_SETTINGS` moves the settings file and with it the folder). The original keeps its saves in its install folder
+(`game*.sav`). Always copy, never move. Report: the file name, what `save-info` printed (paste it), what happened (crash / notice / wrong state) and a screenshot when something looks different.
+
+**A. Original -> here** (make each file in the original, copy it to our folder, run `save-info`, then start our shell and Load it from the main menu):
+
+1. **Town save** (any town scene: ESC -> Save Game; ideally after one or two missions with items and spells). Expect: listed with the same text and date format, loads into the same town scene; party, gold, items, spell books, shop stock regenerated, campaign variables (the map's open locations). Report: `save-info` "could not type" lines and any
+   non-zero option words, the town shown, party / gold differences. Then `save-diff original.sav our-resave.sav` (Save it again here under the same text) should say "no typed field differs" (or only fields we derive: the location rectangles, fog); report any other line.
+2. **Mission-start save** (`game9999.sav` = "Restart last mission", made by entering a mission; also usable from the original's folder as is). Expect: loads, the party stands at the drop cell with the saved items, the script runs (messages / triggers). Report the `save-info` "untyped unit bytes" line.
+3. **Mid-mission save** (ESC -> Save Game during a fight with spells, summons, corpses, items on the ground, some fog explored). Expect: units / HP / mana / items / effects / corpses / fog come back; known gaps: walking steps, casts in progress, flying missiles, effects and carriers on the ground (the Wall of Fire etc.) are not restored from an original file; the script's pass counters and the RNG restart.
+   Report: anything missing or wrong, and whether the fight continues normally for a minute.
+4. **`game9998.sav`** ("Abort mission and return to town", made when leaving a town scene): loads back into that town.
+5. **Refusals**: copy a truncated copy of any save, a renamed other file, and (if you have one) a multiplayer save: each must show a notice and leave the shell as it was (no crash).
+
+**B. Here -> original** (save in our shell, copy the file into the original's folder; the original must list and load it):
+
+6. **Town save** (scene menu -> Save Game): the original lists it with our text, loads, shows the town, party, items, gold, variables. Report any "Invalid save file" / "Outdated save file", a crash, or wrong values.
+7. **Mission-start save** (`game9999.sav` written at a mission start): the original loads it (map, party, script).
+8. **Mid-mission save** (ESC -> Save Game in a fight): the original loads it. This is the riskiest item: it reads the INFERRED Building / SpellEffect / VirtualCaster / Sack scalars (saves 7.1) and must ignore the `Engine/*` `.reg` keys and the RNG bytes in the debug block. Report a crash on load (note which map and what was on screen: summons, walls, items on the ground, structures) and any
+   unit / structure that is off.
+9. If the original refuses or crashes: run `save-diff ORIGINAL_OWN_SAVE OUR_SAVE` on two saves of the **same moment** (same mission start) and paste the output.
+
+**C. Windows and flow** (save-ui 5.1-5.13 stay valid): window looks and positions, date format, empty first row, overwrite behaviour, delete question text, list order, LOAD enable with only invalid files, auto-saves `game9999` / `game9998` listed first and hidden from the Save window, ESC-menu Save / Load enabled in a mission, a refused file in the mission's Load window shows a notice (here the game
+   keeps running; the original goes to the main menu).
+
+**D. famehall.dat**: after quitting our shell a `famehall.dat` exists beside the settings file (same bytes as the install's on a first run); the install's copy is untouched. The original adds your hero when a campaign is completed (not built here, section 8): if you play to the end, report what it shows and copy its `famehall.dat` for us.
 
 ## Open questions
+
+* Hall of fame entries (L10f, `FUN_004a8d28`): what `obj[+8]` of the object at `client+0x598` is (the score operand), `FUN_004a9730` (the default hall), the credits / hall screens after the campaign ends; starting routine `FUN_004a8d28`, caller `0x486ce2`.
 
 * L10e-B DECISIONs to confirm with a real save (VERIFY IN GAME, saves.md 7.1 / save-ui 5): the `Engine/*` extension and the RNG bytes are ignored by the original; the INFERRED scalars of Building / SpellEffect / VirtualCaster / Sack; which of the exe's unsaved runner counters (stage / stage2 / passes) matter.
 

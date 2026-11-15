@@ -656,6 +656,39 @@ def _ints(v):
     return [v] if isinstance(v, int) else list(v)
 
 
+def _typed_keys(st):
+    """The `/`-paths `ClientState` reads (for a battle save also the battle keys)."""
+    keys = {"CurrentState/InBattle", "Character/Name", "View/X", "View/Y", "SpellBook/IsOpen", "SpellBook/Pressed", "SpellBook/Shortcuts", "Objects/Selection", "Inventory/IsOpen",
+            "Engine/Size", "Engine/Blob"}
+    keys |= {"GameOptions/" + k for k in OPTION_KEYS} | {"Objects/Group%d" % n for n in range(10)}
+    if st.in_battle & 1:
+        keys |= {"Projectiles/FreeIndex", "Projectiles/IDs", "Fog/FirstState", "Fog/Data"} | {"Prj%d/%s" % (i, k) for i in st.projectile_ids for k in PRJ_FIELDS}
+    return keys
+
+
+def _untyped(tree, st, prefix=""):
+    """The part of the `.reg` tree (nested dict) that `ClientState` does not read."""
+    known = _typed_keys(st)
+    out = {}
+    for k, v in tree.items():
+        key = prefix + k
+        if isinstance(v, dict):
+            sub = _untyped(v, st, key + "/")
+            if sub:
+                out[k] = sub
+        elif key not in known:
+            out[k] = v
+    return out
+
+
+def _graft(tree, extra):
+    for k, v in extra.items():
+        if isinstance(v, dict):
+            _graft(tree.setdefault(k, {}) if isinstance(tree.get(k, {}), dict) else {}, v)
+        elif k not in tree:
+            tree[k] = v
+
+
 @dataclass
 class ClientState:
     """The typed content of the tail's `.reg` tree (6.3).  Value kinds of the arrays and the `Fog` keys are INFERRED (int
@@ -677,6 +710,7 @@ class ClientState:
     projectiles: dict = field(default_factory=dict)     # id -> {PRJ_FIELDS: int}  (sections Prj<id>)
     fog_first_state: int = 0                            # Fog/FirstState
     fog_data: list = field(default_factory=list)        # Fog/Data (run lengths of fog bit 15, INFERRED int array)
+    extra: dict = field(default_factory=dict)           # every other key of the tree (a section dict, nested): what we do not type survives a load -> save (docs/engine/save.md)
     engine: bytes = b""                                 # Engine/Size + Engine/Blob: the engine's own extension (engine/missionsave.py, DECISION; the original ignores unknown keys, INFERRED)
 
     @classmethod
@@ -704,6 +738,7 @@ class ClientState:
                     st.projectiles[pid] = {k: sec.get(k, 0) for k in PRJ_FIELDS}
             st.fog_first_state = g("Fog/FirstState", 0)
             st.fog_data = _ints(g("Fog/Data"))
+        st.extra = _untyped(reg.to_dict(), st)
         n = g("Engine/Size", 0)
         if n:
             ints = _ints(g("Engine/Blob"))
@@ -711,6 +746,11 @@ class ClientState:
         return st
 
     def to_tree(self):
+        t = self._typed_tree()
+        _graft(t, self.extra)
+        return t
+
+    def _typed_tree(self):
         t = {"CurrentState": {"InBattle": self.in_battle}, "Character": {"Name": self.name},
              "GameOptions": {k: self.options.get(k, 0) for k in OPTION_KEYS},
              "View": {"X": self.view_x, "Y": self.view_y},
@@ -751,7 +791,10 @@ class ClientTail:
 
     @property
     def state(self):
-        return ClientState.from_reg(self.reg)
+        try:
+            return ClientState.from_reg(self.reg)
+        except (TypeError, ValueError, KeyError, IndexError, struct.error) as e:
+            raise ValueError("saved game: client state damaged (%s)" % e) from None
 
     def with_state(self, state):
         raw = state.to_reg_bytes()
@@ -820,6 +863,23 @@ def pack_tail(t):
 MP_HEADER = b"Server Multiplayer save file."    # the 0x100-byte header of a multiplayer save (6.1)
 
 
+DAMAGED = (KeyError, IndexError, AttributeError, TypeError, OverflowError, ZeroDivisionError, struct.error, UnicodeError)
+
+
+def damaged(fn):
+    """Decorator for the readers that build engine state from a parsed file: whatever a damaged value makes them raise becomes `ValueError("saved game damaged (...)")`, so callers handle one family
+    (`ArchiveError` and `MultiplayerSave` are `ValueError`s too; docs/engine/save.md "Robustness")."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(*a, **kw):
+        try:
+            return fn(*a, **kw)
+        except DAMAGED as e:
+            raise ValueError("saved game damaged (%s: %s)" % (type(e).__name__, e)) from None
+    return wrapper
+
+
 class MultiplayerSave(ValueError):
     """The file is a multiplayer save (out of scope: single player only)."""
 
@@ -847,6 +907,7 @@ class SaveGame:
         return (struct.pack("<IIII", SAVE_MAGIC, 16 + len(comp), self.version, len(comp)) + comp + pack_tail(self.tail))
 
 
+@damaged
 def parse_save(data):
     """FUN_004e9b95 (server block) + the client reader FUN_0048c2e9.  Raises ValueError("Invalid save file") (bad magic or
     a file too short for the header), ValueError("Outdated save file") (version below 0x0BAD0002), `MultiplayerSave` for a

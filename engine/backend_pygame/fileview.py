@@ -11,7 +11,7 @@ from .shellkit import Painter, render_scene, to_shell_event
 
 
 def run_file_dialog(kind, screen, backdrop, shell, painter=None, cursors=None, audio=None):
-    """Run the `kind` ("save" / "load") window until it closes.  Returns `(result, closed)`: `result` = `("save", file, description)`, `("load", file)` or `None` (Cancel / ESC),
+    """Run the `kind` ("save" / "load") window until it closes.  Returns `(result, closed)`: `result` = `("save", file, description)`, `("load", file, loaded)` (`loaded` = what `saveload.load_file` returned: the next screen) or `None` (Cancel / ESC),
     `closed` True when the OS window was closed meanwhile.  A Save whose write fails keeps the window open with the notice (as the town scene's menu does)."""
     painter = painter or Painter(shell.fs)
     cursors = cursors or CursorSprites(shell.fs)
@@ -38,6 +38,12 @@ def run_file_dialog(kind, screen, backdrop, shell, painter=None, cursors=None, a
                 if err is None:
                     return out, closed
                 dialog.notice(err)
+            elif out[0] == "load":
+                status, res = SL.load_file(shell, out[1])           # the load is made now: a refused / damaged file = a notice and the window stays (the game under it is untouched)
+                if status == "error":
+                    dialog.notice(res)
+                    continue
+                return ("load", out[1], res), closed
             else:
                 return out, closed
         dialog.update(dt)

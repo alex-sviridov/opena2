@@ -137,7 +137,7 @@ class Decoder:
             raw = bytes.fromhex(d["b"])
             return bytearray(raw) if d.get("ba") else raw
         if "a" in d:
-            raw = zlib.decompress(base64.b64decode(d["a"]))
+            raw = inflate(base64.b64decode(d["a"]))
             return np.frombuffer(raw, dtype=np.dtype(d["dt"])).reshape(d["sh"]).copy()
         if "ns" in d:
             return SimpleNamespace(**{k: self.dec(v) for k, v in d["ns"]})
@@ -188,6 +188,21 @@ def _stats_lookup(world):
     return of
 
 
+INFLATE_LIMIT = 1 << 29                 # 512 MB: a damaged / hostile blob never expands past this (zlib bomb guard)
+
+
+def inflate(blob, limit=INFLATE_LIMIT):
+    """`zlib.decompress` with a size cap: `ValueError` when the stream is damaged or would expand past `limit`."""
+    try:
+        d = zlib.decompressobj()
+        out = d.decompress(bytes(blob), limit + 1)
+    except zlib.error as e:
+        raise ValueError("engine extension damaged (%s)" % e) from None
+    if len(out) > limit or d.unconsumed_tail:
+        raise ValueError("engine extension too large")
+    return out
+
+
 def capture(world):
     """The engine extension of a world as a JSON-able dict (see the module text)."""
     e = Encoder(_stats_lookup(world))
@@ -224,7 +239,7 @@ def blob_bytes(world):
 def restore(world, blob, m, assets):
     """Overlay the extension on a fresh `World.from_map(m, assets, populate=False)`: all state first, then the compiled script (it resolves its units and
     groups against that state), then the script's saved counters."""
-    d = json.loads(zlib.decompress(blob))
+    d = json.loads(inflate(blob))
     if d.get("v") != BLOB_VERSION:
         raise ValueError("engine extension version %r" % d.get("v"))
     table = assets.unit_stats()
@@ -613,7 +628,11 @@ class LoadedMission:
 def world_to_save(world, campaign=None, client_state=None, description="", hotkeys=None):
     """A running mission as a `saves.SaveGame` (`.pack()` = the bytes of a `game%d.sav`)."""
     stream = build_stream(world, campaign)
+    from engine import savemerge
+    stream = savemerge.merge_stream(stream, getattr(world, "save_origin", None))      # a file the original wrote: what we do not model stays as it was
     st = client_state_of(world, client_state)
+    if not st.extra:
+        st.extra = dict(getattr(world, "client_extra", None) or {})          # the original's other `.reg` keys survive a load -> save
     st.engine = blob_bytes(world)
     mission = str(world.map_arg) if world.map_arg is not None else ""
     if mission.isdigit():
@@ -629,6 +648,7 @@ def world_to_save(world, campaign=None, client_state=None, description="", hotke
     return S.SaveGame(stream.pack(), tail)
 
 
+@S.damaged
 def world_from_save(save, assets=None, install=None, campaign=None, seed=None):
     """`saves.SaveGame` (or file bytes) -> `LoadedMission`.  A save with the engine extension resumes bit for bit; one without it (the original's) is
     rebuilt from the stream (`world_from_stream`)."""
@@ -641,7 +661,7 @@ def world_from_save(save, assets=None, install=None, campaign=None, seed=None):
         raise ValueError("not a mission save (loaded flag %d)" % stream.loaded)
     st = save.tail.state
     assets = assets or (campaign.assets if campaign is not None else AssetCache(install))
-    d = json.loads(zlib.decompress(st.engine)) if st.engine else None
+    d = json.loads(inflate(st.engine)) if st.engine else None
     mission = d["map"] if d is not None and d.get("map") else str(stream.scenario)
     m = open_map(mission, install)
     world = W.World.from_map(m, assets, seed=1, difficulty=stream.difficulty, populate=False)
@@ -659,6 +679,8 @@ def world_from_save(save, assets=None, install=None, campaign=None, seed=None):
             game.camp.vars = world.script.scenario_vars     # the saved array as it was (explicit zeros included): one array, as `CampaignGame.start_mission` binds it
         else:
             world.script.scenario_vars = game.camp.vars
+    world.client_extra = st.extra
+    world.save_origin = (build_stream(world, game), stream)      # (what the engine builds from the fresh load, the file's own stream): `savemerge`
     return LoadedMission(world, assets, game, st, mission, exact)
 
 

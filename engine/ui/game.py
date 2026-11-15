@@ -51,6 +51,7 @@ class GameUi:
         self.files = False                      # the Save / Load entries of the menu: False, True or (save, load) enable flags; the backend sets it when the shell has a slot folder (L10e-B)
         self.file_request = None                # "save" / "load": the menu asked for the Save / Load window (the backend runs it, `0x41a` / `0x418`)
         self.load_file = None                   # the file the Load window chose (quit reason "load")
+        self.load_result = None                 # what `saveload.load_file` made of it (the next screen), loaded while the window was open
         self.queue = []                         # story numbers waiting for the modal stack to empty (exe list 0x627170)
         self.bar = bar.BarWindow()              # the command bar's highlight state and press rules (11.2)
         self.pressed = None                     # (dialog, button index) under a held left button

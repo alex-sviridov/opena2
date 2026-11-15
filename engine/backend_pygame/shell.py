@@ -77,6 +77,10 @@ class ShellGame:
     def load_file(self):
         return self.play.load_file
 
+    @property
+    def load_result(self):
+        return self.play.load_result
+
     def run(self):
         play = self.play
         try:
@@ -138,7 +142,8 @@ def run(a, parser, PlaySession, make_audio, audio_settings):
         return ShellGame(play.start(), audio)
     services.start_game = start_game
     from engine.saveslots import SaveSlots
-    shell = Shell(assets.fs, a.size, stored, services, slots=SaveSlots(settings_mod.saves_path(stored)))
+    from engine import famehall
+    shell = Shell(assets.fs, a.size, stored, services, slots=SaveSlots(settings_mod.saves_path(stored)), hall_file=famehall.path(settings_mod.path()))
     painter, cursors = Painter(assets.fs), CursorSprites(assets.fs)
     clock = pygame.time.Clock()
     shell.start("startup" if a.start == "startup" else "menu")
@@ -165,6 +170,7 @@ def run(a, parser, PlaySession, make_audio, audio_settings):
         if shell.scene().cursor:
             draw_cursor(screen, cursors, CursorState.DEFAULT, mouse, pygame.time.get_ticks())
         pygame.display.flip()
+    shell.shutdown()                                    # `famehall.dat` at exit, settings side (`FUN_004a90c9`)
     if audio is not None:
         audio.close()
     pygame.quit()

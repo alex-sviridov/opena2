@@ -12,6 +12,7 @@ reports and crash traceback; docs/superpowers/specs/2026-11-05-prototype-j4-desi
    python -m engine play MAP [--out DIR] [--size WxH] [--speed N] [--difficulty 1|2|3] [--seed N] [--hero-name NAME] [--install DIR]
    python -m engine replay SESSION [--verify] [--audio-log CSV] [--install DIR]
    (run and play also take --mute, --sfx-volume N, --music-volume N, --speech-volume N (0-100, this run only; settings file: docs/engine/audio.md 6) and --no-audio)
+   python -m engine save-info FILE | save-diff A B [--limit N]   (inspect / compare game%d.sav files: docs/engine/save.md "VERIFY IN GAME")
    python -m engine maps [--install DIR]           (the campaign maps: number, size, players, name)
    python -m engine coverage [GAME_DIR] [--ticks N] [--csv PATH] [--docs PATH|-] [--maps 10,32]
                                                    (map coverage report, phase K0: out/coverage.csv + docs/coverage.md)
@@ -398,6 +399,7 @@ class PlaySession:
         self.exit = None                               # the ui's quit reason when the loop ended (None = the window was closed)
         self.file_shell = getattr(a, "file_shell", None)      # the shell: the mission menu's Save / Load windows (L10e-B); None = the entries stay disabled
         self.load_file = None                          # the file the mission menu's Load window chose (exit "load")
+        self.load_result = None                        # the loaded game's next screen, made while the window was open
 
     def start(self):
         a = self.a
@@ -439,7 +441,7 @@ class PlaySession:
         self.exit = sim.ui.quit if getattr(sim, "ui", None) is not None else None
         self.reason = {"won": "victory", "lost": "defeat"}.get(triggers.result(world), "quit")
         if self.exit == "load":
-            self.reason, self.load_file = "load", getattr(sim.ui, "load_file", None)
+            self.reason, self.load_file, self.load_result = "load", getattr(sim.ui, "load_file", None), getattr(sim.ui, "load_result", None)
         return self.reason
 
     def crash(self, e):
@@ -574,6 +576,12 @@ def build_parser():
     ca.add_argument("--no-side", action="store_true", help="do not take the optional goals that add missions 21 and 52")
     ca.add_argument("--grind", type=int, default=0, metavar="TICKS", help="the heroes fight the nearest hostile units for this many ticks at the start of every mission (the party gains XP); default 0 = the idle oracle")
     ca.add_argument("--install")
+    si = sub.add_parser("save-info", help="describe a game%d.sav: container, kind, players, units, script, what the parser could not type (docs/engine/save.md)")
+    si.add_argument("file")
+    sd = sub.add_parser("save-diff", help="typed field-level diff of two saves (e.g. an original's and ours)")
+    sd.add_argument("a")
+    sd.add_argument("b")
+    sd.add_argument("--limit", type=int, default=400)
     rp = sub.add_parser("replay", help="run a recorded session again, headless")
     rp.add_argument("session", help="a session directory or its session.json")
     rp.add_argument("--verify", action="store_true", help="exit 1 when the world hash differs from final.json")
@@ -601,6 +609,19 @@ def _dispatch(a, p):
     if a.cmd == "maps":
         from allods2.cli import map_list
         return map_list(a)
+    if a.cmd in ("save-info", "save-diff"):
+        from engine import saveinfo
+        try:
+            with open(a.file if a.cmd == "save-info" else a.a, "rb") as f:
+                first = f.read()
+            if a.cmd == "save-info":
+                print(saveinfo.info(first))
+            else:
+                with open(a.b, "rb") as f:
+                    print(saveinfo.diff(first, f.read(), a.limit))
+        except OSError as e:
+            p.exit(2, "%s: error: %s\n" % (p.prog, e))
+        return 0
     if a.cmd == "replay":
         return replay_cmd(a)
     if a.cmd == "coverage":

@@ -301,9 +301,12 @@ def to_save(game, description="", state=None, hotkeys=None, positions=None):
     total = sum(game.camp.times)
     tail = S.ClientTail.new(description or game.description, st, (), (total & 0xFFFFFFFF, 0), scenario_state(game.camp, positions if positions is not None else _positions(game)),
                             list(hot) if hot else None)
+    from engine import savemerge
+    stream = savemerge.merge_stream(stream, getattr(game, "save_origin", None))
     return S.SaveGame(stream.pack(), tail)
 
 
+@S.damaged
 def from_save(save, install=None, hire=None, seed=1, assets=None, difficulty=None, resume_location=False):
     """`saves.SaveGame` (or the bytes of a file) -> `CampaignGame`.  Only town saves (loaded flag 0) load here; a mission save raises `ValueError`.
     `resume_location`: set `camp.location` to the saved position in the available list (`ScenarioLoad` does, CONFIRMED, saves.md 7); the shell uses it to
@@ -328,6 +331,7 @@ def from_save(save, install=None, hire=None, seed=1, assets=None, difficulty=Non
     game.mission, game.mercenaries, game.log = None, {}, []
     game.client_state, game.hotkeys, game.description = save.tail.state, list(save.tail.hotkeys), save.tail.description
     game.knowledge = human.table if any(human.table) else None
+    game.save_origin = (build_stream(game), stream)              # `savemerge`: the option words, unnamed unit bytes ... of a file we did not write survive a re-save
     if resume_location and save.tail.scenario.locations:
         cur = save.tail.scenario.current
         if 0 <= cur < len(game.camp.available):
@@ -335,6 +339,7 @@ def from_save(save, install=None, hire=None, seed=1, assets=None, difficulty=Non
     return game
 
 
+@S.damaged
 def kind(save):
     """"mission" or "town": the loaded game's `CurrentState/InBattle` key decides (`FUN_0048c214` -> `FUN_0048c8a3(1)` resumes a mission, else the town scene, CONFIRMED,
     town-worldmap 8 / 4).  `save` = `saves.SaveGame` or file bytes."""
