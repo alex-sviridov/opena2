@@ -58,6 +58,8 @@ class TownCore:
         self.party_point = None
         self.events = []
         self.queue = []
+        self.visit = 0                      # arrivals in a town (`0x468` -> `0x48bbc0`; the exe's message `0x3f` regenerates the shop stock then, town-shop 5)
+        self.stock, self.stock_visit = None, -1    # the shop object of the current visit (`engine.shop.open_stock`)
 
     # -- plumbing ----------------------------------------------------------------------------------------------------------------
     def post(self, msg, *args):
@@ -123,6 +125,8 @@ class TownCore:
             self._emit("autosave", AUTOSAVE_MISSION)
             self._emit("mission", n)
         elif kind == TOWN and n in TOWNS:
+            self.visit += 1
+            self.stock = None
             self._scene()
         else:
             raise TownError("no screen for location %r" % (loc,))

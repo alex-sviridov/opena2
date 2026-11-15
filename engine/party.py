@@ -167,6 +167,7 @@ class RosterEntry:
     net_id: int = 0
     state: object = None
     spec: HeroSpec = None
+    bought: tuple = ()          # the shop's items of a hero that was never in a world (`state` None): filed in the pack when `spec` builds him (engine/shop.py)
 
 
 @dataclass
@@ -296,6 +297,13 @@ def place_party(world, assets, drops, count=1, start="MF", owner=None, record=No
                 restore(world, u, entry.state)
             elif entry.spec is not None:
                 apply_spec(world, u, entry.spec)
+            if entry.state is None and entry.bought and world.item_table is not None:
+                from .sim import gear
+                gear.ensure_loadout(world, u)
+                for it in entry.bought:
+                    gear._file(world, u, it)
+                gear.sync_carried(u)
+                gear.recompute(world, u)
         placed.append(u)
     if roster is not None:
         owner.gold, owner.hero_deaths = roster.gold, roster.hero_deaths

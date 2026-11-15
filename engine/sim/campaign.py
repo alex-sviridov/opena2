@@ -28,6 +28,21 @@ BTN_MENU, BTN_LOAD, BTN_CONTINUE = 0x445, 0x446, 0x41D
 MISSION, TOWN = 1, 2            # location types of the DLL
 
 
+def new_game_shop():
+    """`ScenarioNewGame`'s shop table (items.md 13): towns 1 and 2, `min 0`, `max` 1500 / 5000, `count`, `stack` and flags per block."""
+    t1 = [(100, 2, 0x1381CC03), (100, 2, 0x10418103), (20, 1, 0x28018100), (20, 1, 0x04000000)]
+    t2 = [(100, 2, 0x1383C305), (20, 1, 0x2BC3C304), (20, 1, 0x04000000), (100, 2, 0x10438305)]
+    return {1: [[0, 1500, c, s, f] for c, s, f in t1], 2: [[0, 5000, c, s, f] for c, s, f in t2]}
+
+
+# the completion cases that change a town's flags: mission -> ((town, block, flags), ...); the chapter caps (`max`, from chapter `limit` on, towns 2 and 3) and the town 2 floors
+SHOP_CASES = {30: ((2, 0, 0x1383C22C), (2, 1, 0x2BC3C324), (2, 3, 0x10438324)), 40: ((2, 0, 0x1387C26C), (2, 1, 0x2BC7C324), (2, 3, 0x10478264)),
+              60: ((2, 0, 0x1387C268), (2, 1, 0x2BC7C268), (2, 3, 0x10478260)), 80: ((2, 0, 0x138752E0), (2, 1, 0x2BC752E0), (2, 3, 0x104702E0)),
+              90: ((2, 0, 0x138772C0), (2, 1, 0x2BC772C0), (2, 3, 0x104722C0))}
+SHOP_CAPS = ((30, 10000), (40, 22000), (50, 60000), (60, 150000), (70, 400000), (80, 800000), (90, 1500000), (100, 5000000), (110, 10000000))
+SHOP_MINS = ((90, 12000), (100, 40000))
+
+
 def new_game_vars():
     """A new campaign's variable array as the engine keeps it (a sparse dict, absent = 0)."""
     return dict(START_VARS)
@@ -66,6 +81,7 @@ class Campaign:
     location: tuple = None
     available: list = field(default_factory=list)
     times: list = field(default_factory=list)       # FUN_00493b40: the mission times, in 16-tick blocks (win+0x598)
+    shop: dict = field(default_factory=dict)        # `0x10037420 + 0x50 * town`: per town four blocks [min, max, count, stack, flags] (items.md 13)
 
     def get(self, n):
         return self.vars.get(n, 0)
@@ -79,6 +95,7 @@ class Campaign:
     def new_game(cls):
         """`ScenarioNewGame`: variables zero except the chapter 10; the available list holds town 1 and the player stands in it."""
         c = cls()
+        c.shop = new_game_shop()
         c.available = [(TOWN, 1)]
         c.enter((TOWN, 1))
         return c
@@ -144,7 +161,28 @@ class Campaign:
             code = 4 if self.get(0x30B) == 0 else 5
         if n % 10 == 0:
             self.vars[CHAPTER] = self.get(CHAPTER) + 10
+        self.shop_update(n)
         return code
+
+    def shop_update(self, n):
+        """The shop part of `0x10001da5` (items.md 13): the per-mission flag cases, then the price caps of the chapter (after its +10)."""
+        for town, b, flags in SHOP_CASES.get(n, ()):
+            self.shop_blocks(town)[b][4] = flags
+        if n == 50:
+            self.shop[3] = [[499, 0, 100, 2, 0x13C7D318], [499, 0, 20, 1, 0x2BC7D318], [0, 0, 20, 1, 0x04000000], [499, 0, 100, 2, 0x2BC042F0]]
+        c = self.get(CHAPTER)
+        for limit, cap in SHOP_CAPS:
+            if c >= limit:
+                for town in (2, 3):
+                    for blk in self.shop.get(town, ()):
+                        blk[1] = cap
+        for limit, lo in SHOP_MINS:
+            if c >= limit:
+                for b in (0, 1, 3):
+                    self.shop_blocks(2)[b][0] = lo
+
+    def shop_blocks(self, town):
+        return self.shop.setdefault(town, [[0, 0, 0, 0, 0] for _ in range(4)])
 
     def recruit_clear(self):
         """`0x10001da5` starts with Var(0x305) = 0."""
@@ -239,6 +277,8 @@ class Campaign:
                 self.vars[0x218], self.vars[0x22C], self.vars[0x306] = 1, 3, 2
             elif a == 0x2A3 and b == 0x4E:
                 self.vars[0x302] = 2
+                if 3 in self.shop:
+                    self.shop[3][3][4] |= 0x80000       # `ScenarioTalkTo`: quality 4 joins town 3's block 3
         elif t == 1:
             if 1 <= a <= MERCENARIES:
                 self.vars[MERC_HIRED + a - 1] = 0 if self.get(MERC_HIRED + a - 1) else 1

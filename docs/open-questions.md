@@ -41,7 +41,7 @@ from both places when answered).
 
 - Town scenes ([town-scenes 8](engine/town-scenes.md#8-open-questions), starting routine `0x41d15e` story window): the scene's NPC click still only voices page 1 (the dialogue window exists since L7: `engine.inn.Dialogue`, to be hosted by `TownScene`); Save / Load windows not built; whether the exe keeps the scene loop under the main menu after Exit to Main Menu (no close hook on that path).
 
-- **Guessed for now (town.md 7), still to verify:** info panel position at 800x600 / 1024x768; client vs server stock price; shop number positions; `backinv*` colour meaning; stock grid draw; shop tooltips; druid / Kaarg shelf rects (the inn animations are answered, town-inn 3e); the map path-edge tracer.
+- **Guessed for now (town.md 7), still to verify:** info panel position at 800x600 / 1024x768; `backinv*` colour meaning (which of g / b / s a cell takes); the map path-edge tracer (the shop's numbers, grid draw, shelf rects and prices are answered: town-shop 9).
 
 
 - Inn dialogue ([town-inn 5](engine/town-inn.md#5-open-questions)): the left sheet's derived stat rows for a person (the exe shows every `FUN_0046aa1d` row at detail 7; the engine shows the template's four attributes / HP / mana / defence: a world-free `CombatStats` builder is missing).
@@ -52,7 +52,7 @@ from both places when answered).
 - [Triggers](engine/triggers.md#open-questions): the owner race of the two gate-animation readers of Var(0x301) (`0x4cd0fb`, `0x4cdd0a`, decoded: gate animation only; the shop's `window+0x160` and `Var(0x302)` are answered in [town-shop](engine/town-shop.md)); (the hire price: none, answered). Instants 29 / 30 stay documented no-ops (the effect system exists now: [effects](engine/effects.md)).
 - Scenario event classes: unit `behaviour` bits 1, 2, 4 and the three scenario booleans `+0x194` / `+0x198` / `+0x19c` (`FUN_005303ed`). [map](formats/map.md#open-questions), [unit-struct](engine/unit-struct.md#open-questions)
 
-- Shop windows ([town-shop 8](engine/town-shop.md#8-open-questions)): the pixel positions of the gold / totals numbers (`0x4bcd05`); which colour of `backinv*` means what (art look) and the stock grid draw (`0x4b392a`); shop panel tooltips (`#tips4`'s owner answered: shop tick `0x4b9144`); ; the druid / Kaarg class details (`0x4bde01`, `0x4c0017`).
+- Shop windows ([town-shop 8 / 9](engine/town-shop.md#9-l8-rea-round-2026-11-15), built in L8): the Yes / No shopkeeper clips, shelf highlights and shelf-turn animations (`0x4baa98`, `0x4bae3e`, `0x4baf3f`, `0x4bb040`), the shop tooltips (`0x4b37f7`, `0x4bb2c4`, `0x4bccf8`), the equip path of a drop on the doll (server `0x4f5d27`; refused for now), the insert order of a returned item inside its shelf (`0x52151c`) and the two lists per block, the pack region's hover rule (`+0x144`), the druid / Kaarg animation tables, a lost mission's DLL shop update (the L1 flow).
 
 ## Movement and orders
 
