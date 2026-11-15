@@ -3,7 +3,7 @@
 Status: **plan** (nothing built). Goal: the engine reads every save the original GOG game writes and writes saves the original
 loads, for single player: the Save / Load / Delete dialogs, the manual slots, the auto-saves `game9999.sav` ("Restart last mission")
 and `game9998.sav` ("Abort mission and return to town"). Byte layouts known so far: [formats/saves.md](../formats/saves.md) §6
-(container, server stream head, client tail, Scenario.dll block); the serialisers of the stream body are **not decoded**.
+(container, server stream head, client tail, Scenario.dll block, MFC layer, player, group and unit serialisers: §6.4-6.8); L10a second and third pass: all object serialisers in §6.9 and §6.10; three polymorphic objects stay open) and L10a is **done except** the leftovers in the checklist below.
 
 ## 1. Constraints and the verification problem
 
@@ -29,7 +29,7 @@ mission-kind saves. A mission-start save is still reconstructible from the map +
 
 ## 3. Steps (prompt-sized, one subagent at a time, `model: sonnet`, REA mandatory)
 
-**L10a - REA: the stream body (research, headless).** Decode with REA, per routine, byte layout + CONFIRMED marks, into
+**L10a - REA: the stream body (research, headless; first pass done, rest open: saves.md 6.9).** Decode with REA, per routine, byte layout + CONFIRMED marks, into
 `docs/formats/saves.md` new §6.4-6.9: `FUN_004ec732` (11 option words; meaning), `FUN_0052d16b` + vtable `[0]` of
 `[server+0x7c]+0xc` (players, groups, unit lists), the creature / unit serialiser reached from it (items via `FUN_005241bf`,
 effects list `unit+0x20`, brain `+0x1c0/+0x1c4`, orders), `FUN_0052c3da`, `FUN_0052d5cb`, `FUN_00550008` (map dynamic layer),
@@ -70,6 +70,21 @@ script state; (2) save here, load in the original; both for a town save, a missi
   back unchanged, so a load -> save of an original file preserves what we do not understand.
 * Order: town saves (L10c) before mission saves (L10e) because they are verifiable and unblock the menu early.
 
+## 5. L10e split by object family (checklist; each item = decode leftovers with REA, codec, round-trip test)
+
+All families share the MFC layer of [saves 6.4](../formats/saves.md#64-mfc-archive-layer-of-the-server-stream-confirmed-unless-noted) (object tags, counted lists, raw-pointer keys, XOR words). Layouts decoded in saves 6.5-6.9; "needs" = leftovers.
+
+- [ ] L10e-0 MFC archive codec: tags exactly as saves 6.10 (verify the counter start against a real save), class table (`Player`, `Unit`, `Humanoid`, `Building`, `SpellEffect`, `VirtualCaster`, `Sack`, `Item`, `Effect`, `Spell`), MFC counts, counted lists, old-pointer map; synthetic tests.
+- [ ] L10e-1 Players + groups (6.6, 6.7): decoded; needs `group+0x20` object, the 11 option words. Town saves (L10c) depend only on this plus Items.
+- [ ] L10e-2 Items, Effects, Sacks (6.9 table): fully decoded; map to `.a2c` item codec / `engine` items (L10c shares it).
+- [ ] L10e-3 Units (6.8, 6.9): decode `Humanoid::Serialize` first, then `unit+0x1c8/0x1e4` objects and the raw blocks; map to `engine/` unit fields (HP, mana, position, orders, effects, brain `+0x1c0/+0x1c4`, hero fields).
+- [ ] L10e-4 Buildings / structures (`Building` 6.9, decoded) and ground items (Sack list `FUN_0052d5b2`).
+- [ ] L10e-5 Spell effects and virtual casters (6.9, decoded).
+- [ ] L10e-6 Map dynamic layer (6.9, decoded: sparse list); needs the `map+0x54084` object (read its vtable).
+- [ ] L10e-7 Script state (6.9, decoded byte layout) <-> `engine` script runner; needs the object at `[server+0x7c]+0xc` (slot 0 serialiser).
+- [ ] L10e-8 Tick counters, `0xbadface1` pair, the 400-byte tail (object `[server+0x170]`, not the RNG: write the bytes through or zeros).
+- [ ] L10e-9 Integration: `World` <-> stream, unknown fields kept raw, invariants of step L10e (reload determinism).
+
 ## Open questions
 
-* Everything of L10a (listed there); whether REA can drive `allods2.exe` to produce a real save (would turn INFERRED into CONFIRMED).
+* Everything left of L10a (saves 6.9, listed per family above); whether REA can drive `allods2.exe` to produce a real save (would turn INFERRED into CONFIRMED).

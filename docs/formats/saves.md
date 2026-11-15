@@ -257,6 +257,202 @@ projectile with `x, y, z, picture, dir, phase, lastaction, action, actiondir, ac
 Gold and the 1000 script variables: gold is `player+0x3c` inside the server stream (players), the script variables are in the Scenario.dll block (tail item 4) and in the script state
 (`FUN_0057468d`, `values`).
 
+### 6.4 MFC archive layer of the server stream (CONFIRMED unless noted)
+
+Read / write direction is chosen by `FUN_00401db0` (true = storing: `archive+0x14 & 1 == 0`); every serialiser below is one routine with a store branch and a load branch, and the two
+branches agree field by field in everything decoded here. Primitives (little endian): `FUN_0053ba30/0053baf0` u32 write / read, `FUN_0053ba50/0053bb10` u8, `FUN_00543170/005431e0` u16
+(`FUN_00543190/00543200` the signed variants, same width), `FUN_005aa981/005aa873` raw bytes (`ptr, n`), `FUN_005aa47d/005aa4f7` CString (§6.2 item 3).
+
+* **Counted lists** (`FUN_00546610` players, `FUN_005462b0` buildings, `FUN_00546850` spell effects, `FUN_00546750` class `0x5f91a0`, `FUN_0053bbd0` virtual casters, `FUN_00546360` a group's units,
+  `FUN_00546410` a unit's sub-list): `u32 count`, then `count` MFC object pointers (`FUN_005ac36a` store, `FUN_005ac3e9(CRuntimeClass*)` load, a class-checked read). The load side clears the list first.
+* **Object pointer = MFC `WriteObject`** (`FUN_005ac36a`): `u16 0` null; a pointer already written: `u16 index` (`index <= 0x7ffe`) or `u16 0x7fff` + `u32 index`; a new object: the class tag (new
+  class `u16 0xffff, u16 schema, u16 nameLen, name`; known class `u16 0x8000 | classIndex`; MFC standard) and then the object's `Serialize` (vtable slot 2, `+8`). The running map counter is at
+  `archive+0x30`; the object's index is stored in a per-object slot (`FUN_005a120b`) and the counter increments after the class tag and before `Serialize` (CONFIRMED order in `FUN_005ac36a`;
+  INFERRED: the first index is 1, as MFC). A re-implementation must reproduce this tagging; indices are in write order, classes and objects share one counter.
+* **Raw pointers as keys.** Several serialisers write `this` (or a stored pointer) as a plain u32; the loader maps the old value to the new object with a global map (`SetAt(old, this)`, initialised
+  with `SetAt(0,0)` in `FUN_0052d16b`) and fixes stored pointers with `FUN_00546700` / `FUN_005465d0` (lookup, 0 when missing). The values are therefore arbitrary but must be unique and
+  consistent: **any unique non-zero ids work** (INFERRED for the write side, CONFIRMED for the read side's use as keys).
+* **XOR-protected words**: `FUN_00546740(x) = x ^ 0x5c073f4d` is applied to player `+0x3c` (gold, §6.1) and `+0xa48` on both directions.
+* CRuntimeClass table (record = `name, objectSize, schema, create, base, next`): `Player` `0x5f82b8` (size `0xa80`, schema 1, base CObject); the game-object base `0x5f8240` (size `0x3c`, create `0x50d3df`);
+  `Unit` `0x5f8270` (name pointer `0x5fb6e8`, size `0x208`, create `0x50db74`, base `0x5f8240`); `Building` `0x5f9098` (`0x6c`), `SpellEffect` `0x5f8310` (`0x48`),
+  `Sack` `0x5f91a0` (`0x50`), `Item` `0x5f9140` (`0x54`), `Effect` `0x5f8f20` (`0x48`), `Spell` `0x5f8e68`, `VirtualCaster` `0x5f8258` (`0x44`); `Humanoid` `0x5f8288` derives from `Unit` (6.10): all schema 1, base `0x5f8240`.
+* Vtables (slot 2 = `Serialize`): `Player` `0x5d1030` (`0x52d1c5`), `Unit` `0x5d0eb0` (`0x52c618`), `Building` `0x5d1268`, `SpellEffect` `0x5d1060`, `VirtualCaster` `0x5d0e78`, `Sack` `0x5d1530`, `Item` `0x5d1388`, `Effect` `0x5d1178`.
+
+### 6.5 Server stream, annotated (`FUN_004ec732`, store branch order; CONFIRMED)
+
+After the CString and the options, the **thirteen u32 words** are, in this exact order: `+0x174, +0x17c, +0x180, +0x184, +0x188, +0x18c, +0x190, +0x194, +0x1a0, +0x19c, +0x198` (the "11 option
+words", read with `FUN_0053baf0` in the same order), then `+0xd4` and `+0xd8` (items 5, 6). Load applies `+0xd8` only for 1..3 (`0 < v < 4`). The loader first calls `FUN_004f8cc9` (resets state). Meaning of the
+11 option words: not decoded (open question). After items 5, 6:
+
+| Step | Routine | Writes |
+|---|---|---|
+| a | `FUN_0052d16b` | `u32 server+0x20`; then the **player list** (`FUN_00546610`, §6.6) |
+| b | vtable `[0]` of `[server+0x7c]+0xc` (store) / `[1]` on load | a polymorphic object; not decoded |
+| c | `u8` loaded flag | 0 = town save, the stream continues at `FUN_0057a951` (item e); 1 = mission |
+| d | flag 1: `FUN_0052c3da` = building list (`FUN_005462b0`, `Building`); `FUN_0052d5cb` = spell-effect list (`FUN_00546850`, `SpellEffect`); `FUN_00550008` map layer; `FUN_0057468d` script state (only `if DAT_0066832c == 0` on load, always on store); `FUN_0052d5b2` = **Sack** list (`FUN_00546750`, ground sacks / items on the map, INFERRED); `FUN_0053bbd0` = virtual-caster list | |
+| e | `u32 0xbadface1` x 2 (written; the loader reads two u32 and ignores them), then `FUN_0057a951` | **`400` raw bytes** at the end of the stream (`FUN_005aa981(this, 400)`); `this` is the object left in ECX (INFERRED: the random generator state; not confirmed which object) |
+
+Order on load differs only in object creation: the loader walks every player's groups' units calling `FUN_0052b22a` for units without bit `0x8` of `+0x4c`, creates the building list / spell-effect list holders
+(`[server+0x7c]+0` size `0x1c` `FUN_0052bf45`, `+4` size `0x20` `FUN_0052c1e9`, `+8` size `0x1c` `FUN_0053ab10`), the map (`FUN_00534ad4`, size `0x3b8`) and the map object `FUN_0054d2d9` (size `0xa4570`, `DAT_00670e48`),
+the path finder only when `DAT_0066832c == 0` (before the script state), recompiles the script and calls `FUN_004a6430(1)`. For a town save (flag 0) the loader zeroes `+0x40, +0x44, +0x5c` of every unit.
+
+### 6.6 Player (`FUN_0052d1c5`, CONFIRMED order; field = player object offset)
+
+| Order | Type | Field | Meaning |
+|---|---|---|---|
+| 1 | CString | `+0x18` | player name |
+| 2 | u16 | `+4` | |
+| 3 | u32 | `+8` | |
+| 4 | 8 bytes | `+0x10` | |
+| 5 | u8 | `+0xa44` | |
+| 6 | u32 | `+0x2c` | |
+| 7 | u16 | `+0x30` (load copies to `+0x32`) | |
+| 8 | u32 | `+0x3c` XOR `0x5c073f4d` | gold ([§6.3](#63-the-client-tail-confirmed-fun_0048dc9f-writes-fun_0048c2e9-reads-from-offset-4--0x100)) |
+| 9, 10 | u8, u8 | `+0x40`, `+0x41` | |
+| 11 | u32 | `+0xa48` XOR `0x5c073f4d` | second protected value |
+| 12 | u32 | `+0xa50` | |
+| 13 | u16, u16 | `+0xa54`, `+0xa4c` | stored clamped to `0x7fff`; loaded as ints |
+| 14 | u32 | `+0xa5c` | |
+| 15 | u32 | `+0x38` | player id |
+| 16 | u32 | `this` | old pointer (key for the load map, §6.4) |
+| 17 | 0xa00 bytes | `+0x44` | table (INFERRED 640 x u32) |
+| 18 | group list | `FUN_0052c3f3` on `player+0x28` | `u32 count`, per group `FUN_0052d932` (§6.7) |
+| 19 | 0x24 bytes | `FUN_00574656` (`FUN_005aa981(this, 0x24)`); INFERRED `this` = `player+0x34` (the 0x24-byte object the constructor creates) | statistics block |
+
+Load tail: `+0x38` is registered, and for every unit of every group in `player+0x28`: `FUN_0052b22a(unit)` and `unit+0x14 = player`. The base-class call `FUN_00401970` is an empty function (CONFIRMED).
+
+### 6.7 Group (`FUN_0052d932`, size `0x50`; CONFIRMED)
+
+1. embedded polymorphic object at `group+0x20`: its `Serialize` (vtable slot 2; class not identified).
+2. `FUN_00574560` on `*(group+0x3c)`: `0x50` raw bytes of that object, then its `+0x4c` sub-object (size `0x1c`, built by `FUN_005420f0(10)`, polymorphic): load deletes the old one through vtable slot 1
+   (with arg 1), creates a new one and calls `Serialize`; store calls `Serialize`. INFERRED: the group's order / AI block.
+3. the unit list (`FUN_00546360`: count + MFC object pointers of class `Unit`, `FUN_0050dc0f`).
+4. `u32 +0x1c`, `u32 +0x40` (pointer, fixed by `FUN_00546700`), `u32 +0x44` (pointer, `FUN_005465d0`).
+
+### 6.8 Unit (`FUN_0052c618`, class `Unit`, size `0x208`; CONFIRMED order, meanings mostly open)
+
+Common part first: `FUN_0052cf8d` (object base `0x3c`): empty base `FUN_00401970`, `FUN_0054ffd1` (not decoded), then `u32 +4` (an id; on load non-zero ids go to `FUN_004f8cec`), `u16 +0xc`, `u16 +0xe`,
+`u32 +8`, `u16 +0x18` (load forces 0), `u32 +0x1c`, `u32 this` (old pointer), `u32 +0x14` (pointer, `FUN_005465d0`). Then in this order: `FUN_00546410` (a counted MFC list of
+class `0x5f...` via `FUN_0051ca31`, not decoded), the objects at `unit+0x1c8` and `unit+0x1e4` (polymorphic `Serialize`), `FUN_00515bea` (`0x18` raw bytes), `FUN_005157ee` (`0x16` raw bytes),
+`FUN_00515bea`, `FUN_005114bc`, `FUN_005595a8`, `FUN_00574452` (not decoded; ECX = embedded sub-objects of the unit, INFERRED). Then the unit's own fields (store order):
+
+| # | Type | Field | # | Type | Field |
+|---|---|---|---|---|---|
+| 1 | u8 | `+0x49` | 22 | u8 | `+0xa2` |
+| 2 | u8 | `+0x4a` | 23 | u8 | `+0xa3` |
+| 3 | u8 | `+0x4b` | 24 | u16 | `+0xa0` |
+| 4 | u8 | `+0x4c` (low byte of the dword) | 25 | i16 | `+0xa4` |
+| 5 | 4 bytes | `+0x50` | 26 | u8 | `+0x12c` |
+| 6 | 4 bytes | `+0x54` | 27 | u32 | `+0x130` |
+| 7 | 4 bytes | `+0x58` | 28 | u8 | `+0x134` |
+| 8 | u8 | `+0x60` | 29 | u8 | `+0x135` |
+| 9 | u8 | `+0x61` | 30 | u8 | `+0x136` |
+| 10 | byte (`FUN_005464c0/e0`) | `+0x6c` | 31 | u32 | `+0x138` |
+| 11 | MFC pointer | `+0x74` | 32 | u8 | `+0x13c` |
+| 12 | MFC pointer | `+0x78` | 33 | u32 packed | `word(+0x14c)` \| `(+0x204 != 0) << 16` \| `(+0x1a0 != 0) << 24` |
+| 13 | CString | `+0x80` | 34 | u32 | `+0x144` |
+| 14-27* | 14 x u16 | `+0x84, +0x86, +0x88, +0x8a, +0x8c, +0x8e, +0x90, +0x92, +0x94, +0x96, +0x98, +0x9a, +0x9c, +0x9e` | 35 | MFC pointer | `+0x68` |
+| | | | 36 | u8 flag (`+0x7c != 0`) | then `FUN_0052da4d` (not decoded) when 1 |
+| | | | 37 | u8 flag (`+0x140 != 0`) | then the object's `Serialize` (size `0x1c`, `FUN_0053a600`) when 1 |
+| | | | 38 | u32 x4 | `+0x5c, +0x64, +0x44, +0x40` |
+| | | | 39 | byte | `+0x48` (`FUN_005464c0/e0`) |
+
+(*) the 14 u16 are interleaved by the decompiler's `in_ECX[n]` / `+0x86` pairs: they are written in the order listed; the item numbers of the left column skip 14..27 for them.
+
+Offsets are the decompiler's `index * 4` arithmetic (the two branches use identical offsets); the **meaning** of each field is not decoded (stats / position / HP are in the object base and the `+0x84..` pairs, INFERRED:
+current / maximum value pairs). Load post-fixups: `unit+0x3c = FUN_0041e890(short +0xc)` unless virtual `[0x30]` returns non-zero (then 0); `+0x204` and `+0x1a0` come from bytes 2 and 3 of the packed word.
+
+### 6.9 The remaining serialisers (CONFIRMED order unless noted; second pass)
+
+Class identities (name strings read at the `CRuntimeClass.name` pointers): `0x5f9140` = **Item** (size `0x54`), `0x5f91a0` = **Sack** (size `0x50`, name pointer `0x5fbc7c`), `0x5f8f20` = **Effect** (`0x48`),
+`0x5f8e68` = **Spell** (element of the unit's spell array), `Unit` has a subclass record at `0x5f8288` = **Humanoid** (size `0x254`, create `0x51207c`, base Unit; decoded in 6.10). Shared helpers: `FUN_00401970` empty; `FUN_005aab4d / 005aab7b` = MFC count (`u16`, or `0xffff` + `u32` when
+`>= 0xffff`); `FUN_00543570 / 005435c0` = u32; `CList<u16>`-like lists (`FUN_005420f0(10)`, vtable `0x5d0f28`, `Serialize` `0x542230`): `count` (MFC count), then `count` elements of 2 bytes (`FUN_00421390`, INFERRED u16).
+
+| Routine | Class / object | Layout (store order) |
+|---|---|---|
+| `FUN_0052cf8d` (base of every game object, size `0x3c`) | `Object` | `0xc` raw bytes (`FUN_0054ffd1`, ECX not verified); u32 `+4`; i16 `+0xc`; i16 `+0xe`; u32 `+8`; i16 `+0x18`; u32 `+0x1c`; u32 `this`; u32 `+0x14` (pointer). Load: `+4 != 0` registers the id (`FUN_004f8cec`), `+0x18` forced 0 |
+| `FUN_0052029c` | **Building** (`0x52029c`, vtable `0x5d1268`) | base; `0x16` raw bytes (`FUN_005157ee`); u8 `+0x40`; u16 `+0x42`, `+0x44`, `+0x46`; u8 `+0x48`, `+0x60`, `+0x61`; u32 `+0x64`, `+0x68` (`FUN_00543570`). Load: `+0x3c = FUN_004a65d0(+0x40)` when `+0x40 != 0` else 0 |
+| `FUN_0051c6b5` | **SpellEffect** (vtable `0x5d1060`) | base; u8 `+0x40`; u8 `+0x41` |
+| `FUN_0052db3e` | **VirtualCaster** (vtable `0x5d0e78`) | base; u8 `+0x3c`; 6 raw bytes at `*(+0x40)` (a 6-byte sub-object built by `FUN_0055b95f`) |
+| `FUN_0052d8de` | **Sack** (vtable `0x5d1530`) | base; u32 `+0x3c`; then `FUN_0052da4d` |
+| `FUN_0052da4d` | Sack / unit pack (also unit `+0x7c`) | `FUN_00546970` = counted list of **Item** pointers (`FUN_00522e40`); u32 `+0x1c`; u32 `+0x20` |
+| `FUN_0052d65a` | **Item** (vtable `0x5d1388`) | base; `FUN_00546410` (counted list of **Effect** pointers, `FUN_0051ca31`); i16 `+0x40`; i16 `+0x42`; u8 `+0x44`, `+0x45`, `+0x46`; u16 `+0x48`, `+0x4a`; u8 `+0x47`. Load: `+0x3c = FUN_00439df0(+0xc)` when `+0xc < FUN_0053e1c0()` (item type table) else 0 |
+| `FUN_0051c5ed` | **Effect** (vtable `0x5d1178`) | base; u8 `+0x3c`; u8 `+0x3d`; u32 `+0x40`; i16 `+0xc` |
+| `FUN_0051c505` | unit `+0x140` (CArray of **Spell** pointers, vtable `0x5d0b20`) | u32 `+0x18`; u32 `GetSize`; then elements `1 .. GetSize-1` as MFC **Spell** pointers (element 0 is not saved) |
+| `FUN_00574560` | `*(group+0x3c)` (size `0x50`) | `0x50` raw bytes; a `CList<u16>` at `+0x4c` (load: delete old, create new, `Serialize`) |
+| `FUN_00574452` | block at unit | `0xb8` raw bytes; a `CList<u16>` at `+0xb4` (same rule) |
+| `FUN_00515bea` / `FUN_005114bc` / `FUN_005595a8` | unit sub-blocks | `0x18`, `0x40`, `0xb4` raw bytes (ECX = embedded sub-object, not verified) |
+| unit `+0x74`, `+0x78`, `+0x68` | Item pointers | `FUN_00522e40` on load, `FUN_0053bc80` on store |
+
+So a **unit's items** are Item objects: the pack at `unit+0x7c` and the held-item pointers `+0x74 / +0x78 / +0x68`; **effects on a unit** are the Effect list at the start of the unit serialiser
+(`FUN_00546410`), and each Item carries its own Effect list.
+
+**Script state (`FUN_0057468d`, ECX = the script runner / trigger object; offsets from it; CONFIRMED):** raw `4000` bytes at `+0xc784` (1000 x i32 values), `1000` bytes at `+0xe6c4` (1000 fired flags),
+`0x30` bytes at `+8`, `400` bytes at `+0xa728`, `0x132c` bytes at `+0xa8bc`, u8 `+0xa48`, u8 `+0xa49`, u32 `+0xa4c`, u32 `+0xbe0c`, `+0xbe10`, `+0xbe14` ([triggers](../engine/triggers.md)).
+(`+0xa728` 400 bytes is a block of the same size as the stream's last 400 bytes but a different object.)
+
+**Map dynamic layer (`FUN_00550008`, ECX = the map object, size `0xa4570`; CONFIRMED):** store: scan positions `i = 0x807 .. 0xedec` of the two planes at `map+0x10000` and `map+0x20000` (bytes `a` = `[+0x10000+i]`,
+`b` = `[+0x20000+i]`); for each `i` with `b > 0xf` collect the u32 `(i << 16) | (b << 8) | a`; then `FUN_0055fc20` writes the collected list (MFC count + one u32 per element, element order
+= collection order); then the polymorphic object at `map+0x54084` (`Serialize`, class not identified); then u32 `this`. Load: `FUN_0055fc20` reads the list back, the object at `+0x54084` reads, u32
+old pointer (`SetAt`), and each element is written back: `[+0x20000 + (e >> 16)] = (e >> 8) & 0xff`, `[+0x10000 + (e >> 16)] = e & 0xff`. So the dynamic layer is **a sparse list of (index, plane-2 byte > 0xf, plane-1 byte)**;
+the planes themselves are rebuilt from the map file by the loader (INFERRED: plane 2 bytes `<= 0xf` are the static state). The 2 planes are not otherwise saved.
+
+**Stream end.** `FUN_0057a951` writes `400` bytes with ECX = the object left in ECX by `FUN_004ec732` (not identified from the decompiled form; INFERRED RNG).
+
+**Server start and `game0000.sav` (`FUN_004eb715`, CONFIRMED):** when `server+0x1ac != 0` (`in_ECX[0x6b]`) the server loads `game0000.sav` with `FUN_004e9b95` (nonzero = error code 4); when 0 it loads the map
+(`FUN_005606aa`, error 5) and zeroes tick and block counters. `server+0x1ac` is therefore the "load the pending save" switch: `game0000.sav` is a **scratch slot** the client writes (the load path copies
+the chosen slot there, INFERRED; the writer was not found, open question). Also clears `DAT_0068ec78` (a 32 x 32 u16 table) after the load.
+
+### 6.10 Round 3: exact MFC tags, Humanoid, embedded objects, stream owners (CONFIRMED unless noted)
+
+**MFC tags** (`FUN_005ac36a` object store, `FUN_005ac598` class store, `FUN_005ac3e9` load; little endian):
+
+| Case | Bytes |
+|---|---|
+| null pointer | `u16 0x0000` |
+| object already written, index `< 0x7fff` | `u16 index` |
+| object already written, index `>= 0x7fff` | `u16 0x7fff`, `u32 index` (no flag bit) |
+| new object, class not yet written | `u16 0xffff`, class record (`FUN_005aa6c9`: schema word of the CRuntimeClass at `+8`, which is **1** for every class here; then name length and name, MFC `CRuntimeClass::Store`, INFERRED field widths u16 / u16 / bytes), then the object body (`Serialize`) |
+| new object, class already written, class index `< 0x7fff` | `u16 (0x8000 | classIndex)`, then the body |
+| new object, class index `>= 0x7fff` | `u16 0x7fff`, `u32 (0x80000000 | classIndex)`, then the body |
+
+Numbering: one counter (`archive+0x30`) shared by classes and objects; a new class takes the next index when it is written, then the object takes the next one **before** its body is serialised (so a child's
+back-reference to its parent works). **Not confirmed**: the counter's starting value (the archive constructor was not read; standard MFC starts at 1, index 0 = null). The reader maps the new object with
+`FUN_0059f62b(count, ptr)` in the same order. A reader that meets a class tag for a class whose pointer type check fails raises error 6 (`FUN_005ac8ad`), an index above the map size error 5.
+
+**Humanoid** (`FUN_0052d7c8`, vtable `0x5d0f40`, size `0x254`): `Unit::Serialize` (6.8), then `0x18` raw bytes at `+0x23c`, then 12 **Item** pointers for `+0x20c .. +0x238` (slots 1..12; slot 0 not saved; INFERRED equipment slots).
+
+**The class set (closed).** The `.data` records whose base is the object base `0x5f8240` are exactly `VirtualCaster`, `Unit`, `SpellEffect`, `Effect`, `Building`, `Item`, `Sack` (search of the pointer value), plus
+`Humanoid` (base `Unit`), `Player` and `Spell` (base CObject). **Spell** (`0x5f8e68`, size `0x14`, vtable `0x5d1160`, `Serialize` `0x51bf44`): u8 `+8`, u8 `+9`, u8 `+0xa`, u16 `+0xc`, u32 `this`; load: `+4 =
+FUN_0053e260(+8)` (spell table lookup).
+
+**Unit embedded objects (assembly of `FUN_0052c618`, ECX per call):** `+0x20` = counted list of **Effect** pointers (`FUN_00546410`); `+0x1c8` and `+0x1e4` = embedded `CList<u16>`-style lists (vtable `0x5d0f28`, `Serialize`
+`0x542230`: MFC count, then `count` 2-byte elements); raw blocks: `0x18` bytes at `+0xa6`, `0x16` at `+0xbe`, `0x18` at `+0x114`, `0x40` at `+0xd4`, `0xb4` at `*(unit+0x1c0)` (the **brain** object), and `0xb8`
+bytes at `*(unit+0x1c4)` followed by a `CList<u16>` at that object's `+0xb4` (the second brain object, same shape as the group's `*(group+0x3c)`). Store order of the head: base, effects, `+0x1c8` list,
+`+0x1e4` list, `+0xa6`, `+0xbe`, `+0x114`, `+0xd4`, brain `+0x1c0`, brain `+0x1c4`, then the fields of 6.8. The group's `+0x20` object is the same embedded `CList` kind (INFERRED, constructed by `FUN_005420f0(10)`).
+
+**Server-side holders (assembly of `FUN_004ec732`):** `FUN_0052d16b` and the player list run on the global player manager `[0x68d2c4]`; `FUN_0052c3da` on `*[server+0x7c]` (buildings), `FUN_0052d5cb` on
+`[server+0x7c]+4` (spell effects), `FUN_0052d5b2` on `[server+0x7c]+8` (sacks), `FUN_0053bbd0` on the **embedded** list at `[server+0x7c]+0x10` (virtual casters); the polymorphic object at `[server+0x7c]+0xc`
+is called through vtable slot **0** to store and slot 0 to load (and slot 1 after the load: it is not an MFC `CObject`, there is no `GetRuntimeClass` slot); the map is `[0x670e48]`, the script runner
+`[0x66832c]`. Store order check: tick, block, name, 13 words, player manager, `+0xc` object, flag `[server+0x94]`, then (flag 1) buildings, effects, map, script, sacks, casters, then the two `0xbadface1`.
+
+**The 400-byte tail.** `FUN_0057a951` runs with ECX = `[server+0x170]` (an object: `FUN_005aa981(this, 400)` writes the first 400 bytes of it at the very end of the stream, after the two `0xbadface1`). It is **not**
+the engine's RNG: [engine/rng.py](../../engine/rng.py) models the CRT generator whose whole state is one 32-bit word (`ptd+0x14`), and no 4-byte RNG word was found in any decoded serialiser, so a reload does not
+restore the CRT sequence (INFERRED: the undecoded polymorphic objects might hold one). What the 100-dword block is (a per-server table) is open. For a writer: copy the 400 bytes through, or zeros.
+
+**Save list date (CONFIRMED).** `FUN_0043dc54` lists the directory with `FindFirstFileA` (pattern `\game*.sav`), skips directories, skips `game9999.sav` and `game9998.sav` for the Save dialog (parameter 0; the Load dialog, parameter 1, keeps
+them), copies the whole `WIN32_FIND_DATAA` (0x50 dwords) into a list entry (`FUN_0044fd10`) and sorts. The date is therefore the **file system's last-write time** (`ftLastWriteTime`), not a field of the file;
+the description string is the 0x100-byte block of the client tail (6.3). A writer must only set the file time normally.
+
+**`game0000.sav`.** The literal is referenced only by the reader in `FUN_004eb715` (`0x4eb992`, taken when `server+0x1ac != 0`); `FUN_004e9816` is called by exactly two sites (the client writer `FUN_0048dc9f`, and
+the network case `0x4f723d`). So there is **no dedicated writer**: slot 0 of the `game%04d` numbering (`9999 - slot` in the save UI, 6) is `game0000.sav`, written by the ordinary save when the UI slot maps to it (INFERRED).
+
+**`game9998.sav`.** The two literals `game9999.sav` / `game9998.sav` appear **only** in the list filter above. A load of either goes through the generic loader (`FUN_0048db37` -> `FUN_004e9b95`): there is no special
+restore. `game9998` is a mission-kind save written at the town leave click ([6 intro](#6-the-saved-game-gamedsav)), so loading it restores the server state captured at that point exactly like any other mission save (INFERRED which instant: the state when the leave click posted `0x442`).
+
+**Mission list of the client tail (`FUN_004a8f96`, 6.3 item 3).** `u32 count` (`FUN_004a99b0`), then per entry `FUN_004a88db` = two 4-byte raw writes (entry `+0`, `+4`: INFERRED `u32, u32`), then two more u32 (`+4`, `+8` of the owning
+object at `client+0x598`). It is a list kept by the same object that holds the hall of fame, read back by `FUN_004a9032`; what the entries mean (INFERRED: a played-missions / medals list, entries = mission id and value) is not decoded.
+
 ## 7. Code
 
 `allods2.formats.saves`: `parse_a2c / build_a2c / load_a2c` (`Character`, `Identity`, `Stats`, `ItemPacket`, `Item`, `encode_item / decode_item`), `parse_famehall / build_famehall`,
@@ -265,9 +461,10 @@ flags and junk bytes, so a parsed `.a2c` rebuilds byte for byte. The server stre
 
 ## Open questions
 
-* The server stream's object serialisers: `FUN_0052d16b`, vtable `[0]` of `[server+0x7c]+0xc`, `FUN_0052c3da`, `FUN_0052d5cb`, `FUN_00550008`, `FUN_0052d5b2`, `FUN_0053bbd0`,
-  `FUN_0057a951` (creatures with items and effects, groups, map dynamic layer) and the 11 option words of §6.2 (start `FUN_004ec732`).
+* Objects not yet read: the polymorphic object at `[server+0x7c]+0xc` (slot 0 / slot 1; not an MFC class), the object at `map+0x54084` (slot 2), the object at `[server+0x170]` (first 400 bytes written last), the
+  `0x30` / `0x132c` / 400-byte script blocks' meaning, the `Effect` / `Item` field meanings, and the meaning of the 11 option words (`server+0x174..0x1a0`) and of most player / unit fields.
+* The MFC archive counter's starting value and the exact `CRuntimeClass::Store` field widths (6.10; standard MFC assumed): VERIFY by a real save.
 * The `0x2f` flag byte (network only: every client-pump rewrite of the file is gated by `+0x5d8 != 2`, so never in single player).
 * Whether a single-player continue ever uses a stored character's items (VERIFY IN GAME: pick an advanced character for a new campaign and compare attributes).
-* `famehall.dat` fields `b`, `c` and when the hall is written (`FUN_004825c4` caller; the score formula); the mission list (`FUN_004a8f96`) record meaning.
-* Who writes `game0000.sav` (read at server start; `FUN_004f515d` case 7 -> `FUN_004e9816` at `0x4f723d` writes a stream, no file name seen) and the field order of the date in the save list.
+* `famehall.dat` fields `b`, `c` and when the hall is written (`FUN_004825c4` caller; the score formula); what the mission-list entries of the client tail mean (`FUN_004a8f96`, entry type in 6.10).
+* Which UI path produces `game0000.sav` (no dedicated writer, 6.10); exactly which instant `game9998.sav` captures.
