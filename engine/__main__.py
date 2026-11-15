@@ -576,7 +576,7 @@ def build_parser():
     ca.add_argument("--no-side", action="store_true", help="do not take the optional goals that add missions 21 and 52")
     ca.add_argument("--grind", type=int, default=0, metavar="TICKS", help="the heroes fight the nearest hostile units for this many ticks at the start of every mission (the party gains XP); default 0 = the idle oracle")
     ca.add_argument("--install")
-    si = sub.add_parser("save-info", help="describe a game%d.sav: container, kind, players, units, script, what the parser could not type (docs/engine/save.md)")
+    si = sub.add_parser("save-info", help="describe a game%%d.sav: container, kind, players, units, script, what the parser could not type (docs/engine/save.md)")
     si.add_argument("file")
     sd = sub.add_parser("save-diff", help="typed field-level diff of two saves (e.g. an original's and ours)")
     sd.add_argument("a")
