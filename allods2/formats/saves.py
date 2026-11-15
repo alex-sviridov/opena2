@@ -9,9 +9,11 @@ are decoded from the code and tested on synthetic files (docs/formats/saves.md, 
 
 import random
 import struct
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from typing import NamedTuple
 
-from ..reg import HEADER as REG_HEADER, ENTRY as REG_ENTRY, parse_reg
+from ..reg import HEADER as REG_HEADER, ENTRY as REG_ENTRY, build_reg, parse_reg
+from .mfc import MfcReader, MfcWriter
 from ..text import decode_text
 
 U32 = 0xFFFFFFFF
@@ -527,18 +529,15 @@ LOC_SIZE = 24                   # u32 index, u32 type (1 mission, 2 town), 16 na
 
 
 def _archive_string(data, pos):
-    """MFC CArchive CString: length byte, 0xff + u16 for longer ones (the ANSI forms the exe writes)."""
-    n = data[pos]
-    pos += 1
-    if n == 0xFF:
-        n, = struct.unpack_from("<H", data, pos)
-        pos += 2
-    return decode_text(data[pos:pos + n]), pos + n
+    """MFC CArchive CString at `pos` (formats/mfc.py): returns (text, next position)."""
+    r = MfcReader(data, pos)
+    return r.cstring(), r.pos
 
 
 def _pack_archive_string(s):
-    b = s.encode("cp1251")
-    return bytes((len(b),)) + b if len(b) < 0xFF else b"\xff" + struct.pack("<H", len(b)) + b
+    w = MfcWriter()
+    w.cstring(s)
+    return w.getvalue()
 
 
 SERVER_WORDS = ("w174", "w17c", "w180", "w184", "w188", "w18c", "w190", "w194", "w1a0", "w19c", "w198", "scenario", "difficulty")
@@ -578,18 +577,41 @@ class ServerHead:
         return self.words[12]
 
 
+class Location(NamedTuple):
+    """One entry of the Scenario.dll location list: `index` (mission or town id), `type` (1 mission, 2 town) and the 16
+    name bytes (NUL padded)."""
+    index: int
+    type: int
+    name: bytes
+
+    @property
+    def text(self):
+        return decode_text(self.name.split(b"\0", 1)[0])
+
+
 @dataclass
 class ScenarioState:
     """What ScenarioSave writes (Scenario.dll `0x10003585`): the variable array, the shop table and the location list."""
     variables: tuple = (0,) * (SCENARIO_VARS // 4)      # 1024 i32 (docs/engine/triggers.md: scripts use the first 1000)
     shops: bytes = bytes(SCENARIO_SHOP)                 # 4 towns x 4 blocks x (min, max, count, stack, flags) u32
-    locations: list = field(default_factory=list)       # (index, type, name16) in list order
+    locations: list = field(default_factory=list)       # Location(index, type, name16) in list order
     current: int = 0                                    # position of the current location in the list
 
+    def shop_block(self, town, block):
+        """The five u32 of shop table block `block` (0..3) of `town` (0..3) (INFERRED field names: min, max, count,
+        stack, flags)."""
+        if not (0 <= town < 4 and 0 <= block < 4):
+            raise IndexError("town / block outside 0..3")
+        return struct.unpack_from("<5I", self.shops, (town * 4 + block) * 20)
+
     def pack(self):
+        if len(self.variables) != SCENARIO_VARS // 4:
+            raise ValueError("Scenario.dll block needs 1024 variables")
+        if len(self.shops) != SCENARIO_SHOP:
+            raise ValueError("Scenario.dll shop table is 0x140 bytes")
         out = struct.pack("<1024i", *self.variables) + self.shops + struct.pack("<I", len(self.locations))
         for index, typ, name in self.locations:
-            out += struct.pack("<II", index, typ) + name.ljust(16, b"\0")[:16]
+            out += struct.pack("<II", index, typ) + bytes(name).ljust(16, b"\0")[:16]
         return out + struct.pack("<I", self.current)
 
     @classmethod
@@ -601,26 +623,137 @@ class ScenarioState:
         pos += SCENARIO_SHOP
         n, = struct.unpack_from("<I", data, pos)
         pos += 4
+        if pos + n * LOC_SIZE + 4 > len(data):
+            raise ValueError("saved game: location list of %d entries runs past the end" % n)
         locs = []
         for _ in range(n):
             index, typ = struct.unpack_from("<II", data, pos)
-            locs.append((index, typ, bytes(data[pos + 8:pos + 24])))
+            locs.append(Location(index, typ, bytes(data[pos + 8:pos + 24])))
             pos += LOC_SIZE
         cur, = struct.unpack_from("<I", data, pos)
         return cls(v, shops, locs, cur), pos + 4
 
 
+class Hotkey(NamedTuple):
+    """One of the nine hotkey records of the tail (3.5): `u16 a, u16 b, u32 n, n bytes`."""
+    a: int
+    b: int
+    data: bytes
+
+
+# --- the client's `.reg` tree (6.3) --------------------------------------------------------------------------------------
+
+PRJ_FIELDS = ("x", "y", "z", "picture", "dir", "phase", "lastaction", "action", "actiondir", "actiontarget", "actionx",
+              "actiony", "actionz", "actionphase", "actionsegments", "actionspell")
+OPTION_KEYS = ("Wimpy", "ShowHP", "FlyingHP", "Formation", "Speed", "ShowTimeFlow")
+DEFAULT_NAME = "No name"        # FUN_0048c2e9 default for Character/Name (CONFIRMED, 6.3)
+
+
+def _ints(v):
+    """An id / int array leaf; a single int is read as a one-element array (INFERRED tolerance)."""
+    if v is None:
+        return []
+    return [v] if isinstance(v, int) else list(v)
+
+
+@dataclass
+class ClientState:
+    """The typed content of the tail's `.reg` tree (6.3).  Value kinds of the arrays and the `Fog` keys are INFERRED (int
+    arrays); `projectiles` and `fog` exist only for a battle save (`in_battle`).  Missing keys read as their default; a
+    key is written only when it is meaningful (the empty `Objects/Group<n>` are not written)."""
+    in_battle: int = 0                                  # CurrentState/InBattle (client +0x404 & 1)
+    name: str = DEFAULT_NAME                            # Character/Name
+    options: dict = field(default_factory=lambda: {k: 0 for k in OPTION_KEYS})     # GameOptions/*
+    view_x: int = 0                                     # View/X, View/Y
+    view_y: int = 0
+    spellbook_open: int = 0                             # SpellBook/IsOpen, Pressed, Shortcuts
+    spellbook_pressed: int = 0
+    spellbook_shortcuts: list = field(default_factory=list)
+    selection: list = field(default_factory=list)       # Objects/Selection (object ids)
+    groups: dict = field(default_factory=dict)          # n (0..9) -> Objects/Group<n> (object ids), non-empty only
+    inventory_open: int = 0                             # Inventory/IsOpen
+    projectile_free_index: int = 0                      # Projectiles/FreeIndex
+    projectile_ids: list = field(default_factory=list)  # Projectiles/IDs
+    projectiles: dict = field(default_factory=dict)     # id -> {PRJ_FIELDS: int}  (sections Prj<id>)
+    fog_first_state: int = 0                            # Fog/FirstState
+    fog_data: list = field(default_factory=list)        # Fog/Data (run lengths of fog bit 15, INFERRED int array)
+
+    @classmethod
+    def from_reg(cls, reg):
+        g = reg.get
+        st = cls()
+        st.in_battle = g("CurrentState/InBattle", 0)
+        st.name = g("Character/Name", DEFAULT_NAME)
+        st.options = {k: g("GameOptions/" + k, 0) for k in OPTION_KEYS}
+        st.view_x, st.view_y = g("View/X", 0), g("View/Y", 0)
+        st.spellbook_open, st.spellbook_pressed = g("SpellBook/IsOpen", 0), g("SpellBook/Pressed", 0)
+        st.spellbook_shortcuts = _ints(g("SpellBook/Shortcuts"))
+        st.selection = _ints(g("Objects/Selection"))
+        for n in range(10):
+            ids = _ints(g("Objects/Group%d" % n))
+            if ids:
+                st.groups[n] = ids
+        st.inventory_open = g("Inventory/IsOpen", 0)
+        if st.in_battle & 1:
+            st.projectile_free_index = g("Projectiles/FreeIndex", 0)
+            st.projectile_ids = _ints(g("Projectiles/IDs"))
+            for pid in st.projectile_ids:
+                sec = reg.get("Prj%d" % pid)
+                if sec is not None:
+                    st.projectiles[pid] = {k: sec.get(k, 0) for k in PRJ_FIELDS}
+            st.fog_first_state = g("Fog/FirstState", 0)
+            st.fog_data = _ints(g("Fog/Data"))
+        return st
+
+    def to_tree(self):
+        t = {"CurrentState": {"InBattle": self.in_battle}, "Character": {"Name": self.name},
+             "GameOptions": {k: self.options.get(k, 0) for k in OPTION_KEYS},
+             "View": {"X": self.view_x, "Y": self.view_y},
+             "SpellBook": {"IsOpen": self.spellbook_open, "Pressed": self.spellbook_pressed,
+                           "Shortcuts": list(self.spellbook_shortcuts)},
+             "Objects": {"Selection": list(self.selection)}}
+        for n in sorted(self.groups):
+            if self.groups[n]:
+                t["Objects"]["Group%d" % n] = list(self.groups[n])
+        t["Inventory"] = {"IsOpen": self.inventory_open}
+        if self.in_battle & 1:
+            t["Projectiles"] = {"FreeIndex": self.projectile_free_index, "IDs": list(self.projectile_ids)}
+            for pid in self.projectile_ids:
+                t["Prj%d" % pid] = {k: self.projectiles[pid].get(k, 0) for k in PRJ_FIELDS}
+            t["Fog"] = {"FirstState": self.fog_first_state, "Data": list(self.fog_data)}
+        return t
+
+    def to_reg_bytes(self):
+        return build_reg(self.to_tree())
+
+
 @dataclass
 class ClientTail:
     """The client part appended to the server block (FUN_0048dc9f): the 0x100-byte slot description, the `.reg` tree, the
-    mission list (client `+0x598`, FUN_004a8f96), the Scenario.dll block and nine hotkey records."""
+    mission list (client `+0x598`, FUN_004a8f96), the Scenario.dll block and nine hotkey records.  `reg_bytes` is the
+    image as stored (kept so a loaded file writes back byte for byte); `state` is its typed view, and `with_state` replaces
+    the tree by one built from a `ClientState`."""
     description: str
-    reg: object                     # allods2.reg.Registry
+    reg: object                     # allods2.reg.Registry (parse of reg_bytes)
     reg_bytes: bytes
     missions: list                  # (u32, u32) records
     mission_tail: tuple             # the two u32 of the object (`+4`, `+8`)
     scenario: ScenarioState
-    hotkeys: list                   # 9 x (u16, u16, bytes)
+    hotkeys: list                   # 9 x Hotkey(u16, u16, bytes)
+
+    @property
+    def state(self):
+        return ClientState.from_reg(self.reg)
+
+    def with_state(self, state):
+        raw = state.to_reg_bytes()
+        return replace(self, reg=parse_reg(raw, "save"), reg_bytes=raw)
+
+    @classmethod
+    def new(cls, description="", state=None, missions=(), mission_tail=(0, 0), scenario=None, hotkeys=None):
+        raw = (state or ClientState()).to_reg_bytes()
+        return cls(description, parse_reg(raw, "save"), raw, list(missions), tuple(mission_tail),
+                   scenario or ScenarioState(), hotkeys if hotkeys is not None else [Hotkey(0, 0, b"")] * 9)
 
 
 def reg_length(data, pos=0):
@@ -631,7 +764,16 @@ def reg_length(data, pos=0):
 
 
 def parse_tail(data, pos):
+    try:
+        return _parse_tail(data, pos)
+    except struct.error:
+        raise ValueError("saved game: client block truncated") from None
+
+
+def _parse_tail(data, pos):
     desc = decode_text(bytes(data[pos:pos + DESC_SIZE]).split(b"\0", 1)[0])
+    if pos + DESC_SIZE > len(data):
+        raise ValueError("saved game: client block truncated")
     pos += DESC_SIZE
     n = reg_length(data, pos)
     reg_bytes = bytes(data[pos:pos + n])
@@ -639,6 +781,8 @@ def parse_tail(data, pos):
     pos += n
     cnt, = struct.unpack_from("<I", data, pos)
     pos += 4
+    if pos + 8 * cnt + 8 > len(data):
+        raise ValueError("saved game: mission list of %d entries runs past the end" % cnt)
     missions = [struct.unpack_from("<II", data, pos + 8 * i) for i in range(cnt)]
     pos += 8 * cnt
     tail = struct.unpack_from("<II", data, pos)
@@ -648,7 +792,9 @@ def parse_tail(data, pos):
     for _ in range(9):
         a, b, ln = struct.unpack_from("<HHI", data, pos)
         pos += 8
-        hot.append((a, b, bytes(data[pos:pos + ln])))
+        if pos + ln > len(data):
+            raise ValueError("saved game: hotkey record runs past the end")
+        hot.append(Hotkey(a, b, bytes(data[pos:pos + ln])))
         pos += ln
     if pos != len(data):
         raise ValueError("saved game: %d trailing bytes after the client block" % (len(data) - pos))
@@ -658,14 +804,24 @@ def parse_tail(data, pos):
 def pack_tail(t):
     out = t.description.encode("cp1251")[:DESC_SIZE - 1].ljust(DESC_SIZE, b"\0") + t.reg_bytes
     out += struct.pack("<I", len(t.missions)) + b"".join(struct.pack("<II", *m) for m in t.missions) + struct.pack("<II", *t.mission_tail)
+    if len(t.hotkeys) != 9:
+        raise ValueError("a saved game holds nine hotkey records")
     return out + t.scenario.pack() + pack_hotkeys(t.hotkeys)
+
+
+MP_HEADER = b"Server Multiplayer save file."    # the 0x100-byte header of a multiplayer save (6.1)
+
+
+class MultiplayerSave(ValueError):
+    """The file is a multiplayer save (out of scope: single player only)."""
 
 
 @dataclass
 class SaveGame:
     """`game%d.sav`: `u32 0x26677342, u32 end of the server block, u32 version 0x0BAD0002, u32 length`, the word-RLE stream
-    (`stream` = the decompressed bytes), then the client tail.  A multiplayer save has 0x100 more bytes after the server block
-    (not handled)."""
+    (`stream` = the decompressed bytes, padded to an even length, kept raw beyond `ServerHead`; `archive()` gives an MFC
+    reader over what follows the head), then the client tail.  A multiplayer save has 0x100 more bytes after the server
+    block: `parse_save` refuses it with `MultiplayerSave`."""
     stream: bytes
     tail: ClientTail
     version: int = SAVE_VERSION
@@ -674,21 +830,33 @@ class SaveGame:
     def head(self):
         return ServerHead.parse(self.stream)
 
+    def archive(self):
+        """An `MfcReader` positioned after the head (players, objects: later steps)."""
+        return MfcReader(self.head.rest)
+
     def pack(self):
         comp = rle_encode(self.stream + (b"\0" if len(self.stream) & 1 else b""), unit=2)
         return (struct.pack("<IIII", SAVE_MAGIC, 16 + len(comp), self.version, len(comp)) + comp + pack_tail(self.tail))
 
 
 def parse_save(data):
-    """FUN_004e9b95 (server block) + the client reader FUN_0048c2e9.  Raises ValueError for "Invalid save file" (bad magic)
-    and "Outdated save file" (version below 0x0BAD0002)."""
+    """FUN_004e9b95 (server block) + the client reader FUN_0048c2e9.  Raises ValueError("Invalid save file") (bad magic or
+    a file too short for the header), ValueError("Outdated save file") (version below 0x0BAD0002), `MultiplayerSave` for a
+    multiplayer header, and ValueError for a truncated or inconsistent file."""
     data = bytes(data)
+    if len(data) < 16:
+        raise ValueError("Invalid save file")
     magic, end, version, ln = struct.unpack_from("<IIII", data, 0)
     if magic != SAVE_MAGIC:
         raise ValueError("Invalid save file")
     if version < SAVE_VERSION:
         raise ValueError("Outdated save file")
-    stream = rle_decode(data[16:16 + ln], unit=2)
-    if end != 16 + ln:
-        raise ValueError("server block ends at 0x%x, header says 0x%x" % (16 + ln, end))
-    return SaveGame(stream, parse_tail(data, end), version)
+    if end != 16 + ln or end > len(data):
+        raise ValueError("server block ends at 0x%x, header says 0x%x (file 0x%x)" % (16 + ln, end, len(data)))
+    if data[end:end + len(MP_HEADER)] == MP_HEADER:
+        raise MultiplayerSave("multiplayer saved game (\"Server Multiplayer save file.\"): only single player saves are supported")
+    try:
+        stream = rle_decode(data[16:end], unit=2)
+        return SaveGame(stream, parse_tail(data, end), version)
+    except struct.error:
+        raise ValueError("saved game truncated") from None

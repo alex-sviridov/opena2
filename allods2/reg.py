@@ -163,3 +163,45 @@ def parse_reg(data, name=""):
 def load_reg(path, fs=None):
     """path in `fs` (a2res FS; None = OS path)."""
     return parse_reg(read(path, fs), basename(path))
+
+
+def build_reg(tree):
+    """Serialise a nested `{name: value}` mapping (insertion order = child order) into a `.reg` image.  Values: `int`
+    (kind 2), `float` (4), `str` (0, cp1251, NUL counted), list of ints (6), `dict` = section (1).  The root is sorted
+    (`strcmp`, flag 0x10, type 0x11); no other section is (FUN_004e8e26, docs/formats/reg.md "Writing"); sections are laid
+    out breadth first.  INFERRED: the exe's incremental writer starts from a 32-byte blob with spare room, so a tree built
+    here is equivalent to, not necessarily byte-identical with, a file the exe wrote."""
+    root = sorted(tree.items(), key=lambda kv: kv[0].encode("cp1251"))
+    entries, blob = [], bytearray()
+    queue = [(root, None)]
+    qi = 0
+    while qi < len(queue):
+        items, owner = queue[qi]
+        qi += 1
+        first = len(entries)
+        if owner is not None:
+            entries[owner][1:3] = [first, len(items)]
+        for name, v in items:
+            nm = name.encode("cp1251")
+            if len(nm) > NAME_MAX:
+                raise ValueError("name %r longer than %d" % (name, NAME_MAX))
+            if isinstance(v, dict):
+                entries.append([nm, 0, 0, T_SECTION])
+                queue.append((list(v.items()), len(entries) - 1))
+            elif isinstance(v, int):
+                entries.append([nm, v & 0xFFFFFFFF, 0, T_INT])
+            elif isinstance(v, float):
+                lo, hi = struct.unpack("<II", struct.pack("<d", v))
+                entries.append([nm, lo, hi, T_FLOAT])
+            elif isinstance(v, str):
+                b = v.encode("cp1251") + b"\0"
+                entries.append([nm, len(blob), len(b), T_STRING])
+                blob += b
+            else:
+                b = struct.pack("<%di" % len(v), *v)
+                entries.append([nm, len(blob), len(b), T_INTS])
+                blob += b
+    out = bytearray(struct.pack("<6I", SIGNATURE, 0, len(root), 0x11, len(entries), 0))
+    for nm, a, b, t in entries:
+        out += struct.pack("<IIII", 0, a, b, t) + nm.ljust(16, b"\0")
+    return bytes(out) + struct.pack("<I", len(blob)) + bytes(blob)

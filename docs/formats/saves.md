@@ -1,7 +1,7 @@
 # Saves: `.a2c` characters, `famehall.dat`, `game%d.sav`
 
 Code: `allods2/formats/saves.py` (readers, writers, byte layer), `engine/party.py` (`place_party(record=)`, `apply_record`).
-Tests: `tests/test_saves.py`, `tests/test_engine_party.py`. Addresses refer to the GOG `allods2.exe`
+Tests: `tests/test_saves.py`, `tests/test_saves_l10b.py`, `tests/test_engine_party.py`. Addresses refer to the GOG `allods2.exe`
 (sha256 in [README](README.md)); `FUN_` names are Ghidra's.
 
 **Evidence.** The install holds no `.a2c` and no `.sav` (a fresh install has no characters or saves); only
@@ -481,15 +481,32 @@ slot 0 = `FUN_0052c500` -> `FUN_00546360`: `u32 count`, then `count` MFC **Unit*
 
 ## 7. Code
 
-`allods2.formats.saves`: `parse_a2c / build_a2c / load_a2c` (`Character`, `Identity`, `Stats`, `ItemPacket`, `Item`, `encode_item / decode_item`), `parse_famehall / build_famehall`,
-`parse_save` / `SaveGame.pack` (`ServerHead`, `ClientTail`, `ScenarioState`), the byte layer (`checksum`, `xor_stream`, `rle_encode / rle_decode`). `Character.layout` keeps the header
-flags and junk bytes, so a parsed `.a2c` rebuilds byte for byte. The server stream beyond its head is kept as raw bytes (`ServerHead.rest`).
+`allods2.formats.saves`: `parse_a2c / build_a2c / load_a2c` (`Character`, `Identity`, `Stats`, `ItemPacket`, `Item`, `encode_item / decode_item`), `parse_famehall / build_famehall`, the byte layer (`checksum`, `xor_stream`,
+`rle_encode / rle_decode`). `Character.layout` keeps the header flags and junk bytes, so a parsed `.a2c` rebuilds byte for byte.
+
+**Saved game (L10b, tests `tests/test_saves_l10b.py`, `tests/test_saves.py`).**
+* `parse_save(data)` / `SaveGame.pack()`: byte-exact round trip. Errors: `ValueError("Invalid save file")` (bad magic, or fewer than 16 bytes), `ValueError("Outdated save file")` (version below `0x0BAD0002`; a higher version
+  loads and is written back as stored), `ValueError` for a truncated file, a server block whose end disagrees with the header, or trailing bytes after the client block. **Multiplayer**: the 0x100 bytes after the server block
+  start with `"Server Multiplayer save file."` (§6.1) -> `MultiplayerSave` (a `ValueError` subclass, message says single player only). INFERRED: the exact text is the one named in §6.1 and the check is a prefix match at the server block end.
+* `SaveGame.stream` = the decompressed server stream, padded to an even length; `ServerHead` types the head (§6.2 items 1-6) and keeps everything after it raw in `rest` (players, objects, script state, the 400-byte tail:
+  unknown bytes are never dropped); `SaveGame.archive()` is an `MfcReader` over `rest` for the later steps.
+* `allods2.formats.mfc`: `MfcWriter` / `MfcReader` (u8 / u16 / u32 / raw / counted-list u32 / CString) and the object-pointer scheme of §6.10: null `u16 0`; back-reference `u16 index`, `0x7fff` + `u32 index` from `0x7fff`; new class
+  `0xffff, schema, nameLen, name`; known class `0x8000 | classIndex`, `0x7fff` + `u32 0x80000000 | classIndex` from `0x7fff`; one counter for classes and objects, the object's index taken before its body (a child can refer to its parent).
+  The reader registers the (created, still empty) object before `load`. `MfcClass(name, schema=1, create, load)` is the class table entry. **Decision (INFERRED)**: the first index is 1 (`first_index` parameter to change it when a real save disagrees);
+  the class record is `u16 schema, u16 nameLen, name` (CString-free, MFC `CRuntimeClass::Store`); a class whose schema differs from the table's is refused; an unknown class name or an index outside the map raises `ArchiveError` (the exe's errors 5 / 6).
+* `ClientTail` (§6.3): `description`, `reg` / `reg_bytes`, `missions`, `mission_tail`, `scenario` (`ScenarioState`: 1024 `variables`, the `0x140` `shops` with `shop_block(town, block)`, `locations` of `Location(index, type, name16)` with `.text`,
+  `current`), `hotkeys` (nine `Hotkey(a, b, data)`). `reg_bytes` is the stored image (so a loaded file writes back exactly); `ClientTail.state` is the typed `ClientState` view of the tree (`CurrentState/InBattle`, `Character/Name`
+  (default `"No name"`), `GameOptions/{Wimpy, ShowHP, FlyingHP, Formation, Speed, ShowTimeFlow}`, `View/{X, Y}`, `SpellBook/{IsOpen, Pressed, Shortcuts}`, `Objects/Selection`, `Objects/Group<n>`, `Inventory/IsOpen`, and for a battle
+  save `Projectiles/{FreeIndex, IDs}`, sections `Prj<id>` (16 fields `PRJ_FIELDS`), `Fog/{FirstState, Data}`; battle keys are read only when `InBattle & 1`). `ClientTail.with_state` / `ClientTail.new` build the tree with
+  `allods2.reg.build_reg`. INFERRED: the leaf kinds (ints, int arrays for the id lists, shortcuts and `Fog/Data`), and that a tree built by `build_reg` is equivalent to, not necessarily byte-identical with, one the exe wrote
+  (the exe's incremental writer leaves a 32-byte initial blob and spare room, [reg](reg.md)); a loaded file is never re-encoded, so this only matters for newly written saves.
 
 ## Open questions
 
 * Meaning and consumers of the 11 option words (`server+0x174..0x1a0`); only their defaults (0) and the fact that the single-player start path does not assign them are CONFIRMED (6.11). A real mission save would show which become non-zero.
 * The `0x3c`-byte values of the `map+0x54084` map and the `0x30` / `0x132c` script blocks, and the field meanings of player / unit / item / effect objects (6.6, 6.8, 6.9).
-* The MFC archive counter's starting value and the exact `CRuntimeClass::Store` field widths (6.10; standard MFC assumed): VERIFY by a real save.
+* The MFC archive counter's starting value and the exact `CRuntimeClass::Store` field widths (6.10; standard MFC assumed, implemented as first index 1 in `formats/mfc.py`): VERIFY by a real save.
+* The `.reg` value kinds of the client tail's id arrays / `Fog/Data` and whether the exe's loader tolerates a `build_reg` tree whose blob layout differs from its own (7; INFERRED): VERIFY IN GAME.
 * The `0x2f` flag byte (network only: every client-pump rewrite of the file is gated by `+0x5d8 != 2`, so never in single player).
 * Whether a single-player continue ever uses a stored character's items (VERIFY IN GAME: pick an advanced character for a new campaign and compare attributes).
 * `famehall.dat` fields `b`, `c` and when the hall is written (`FUN_004825c4` caller; the score formula); what the mission-list entries of the client tail mean (`FUN_004a8f96`, entry type in 6.10).

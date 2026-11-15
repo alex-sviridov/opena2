@@ -1,6 +1,6 @@
 # `.reg`: registry files (signature 0x31415926)
 
-Code: `allods2/reg.py` (`load_reg(path, fs)`). Tools: `tools/validate_reg.py`
+Code: `allods2/reg.py` (`load_reg(path, fs)`; `build_reg(tree)` writes a nested dict, used by the save client tail). Tools: `tools/validate_reg.py`
 (all 17 files: 5 in `graphics.res`, 8 in `video.res`, 2 in `world.res`,
 `sfx.res` and `scenario.res` one each).
 

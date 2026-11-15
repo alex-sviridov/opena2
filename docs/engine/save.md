@@ -1,6 +1,6 @@
 # L10: save / load with the original `game%d.sav` format
 
-Status: **plan** (nothing built). Goal: the engine reads every save the original GOG game writes and writes saves the original
+Status: **L10b done** (container + typed client tail + MFC archive layer, `allods2/formats/saves.py`, `mfc.py`; saves.md 7); L10c onward not started. Goal: the engine reads every save the original GOG game writes and writes saves the original
 loads, for single player: the Save / Load / Delete dialogs, the manual slots, the auto-saves `game9999.sav` ("Restart last mission")
 and `game9998.sav` ("Abort mission and return to town"). Byte layouts known so far: [formats/saves.md](../formats/saves.md) §6
 (container, server stream head, client tail, Scenario.dll block, MFC layer, player, group and unit serialisers: §6.4-6.8); L10a rounds 2-4: every object serialiser of the stream is decoded in §6.9-6.11; only field meanings and the option-word consumers stay open) and L10a is **closed**.
@@ -37,7 +37,7 @@ effects list `unit+0x20`, brain `+0x1c0/+0x1c4`, orders), `FUN_0052c3da`, `FUN_0
 Also: `game0000.sav` writer, the date field of the list, the `0x2f` byte, mission list `FUN_004a8f96` meaning. Update the Open
 questions in both places. Output = spec only, no code.
 
-**L10b - Container + client tail codec (headless).** Extend `allods2/formats/saves.py`: full typed `ClientTail` (the `.reg` tree
+**L10b - Container + client tail codec (headless). DONE** (`tests/test_saves_l10b.py`; multiplayer files raise `MultiplayerSave`; MFC reader/writer = L10e-0's byte layer). Extend `allods2/formats/saves.py`: full typed `ClientTail` (the `.reg` tree
 keys of §6.3, mission list, Scenario.dll block, hotkeys), byte-exact round trip, error messages as the exe ("Invalid save file",
 "Outdated save file"). Tests: synthetic, one per rule.
 
@@ -74,7 +74,7 @@ script state; (2) save here, load in the original; both for a town save, a missi
 
 All families share the MFC layer of [saves 6.4](../formats/saves.md#64-mfc-archive-layer-of-the-server-stream-confirmed-unless-noted) (object tags, counted lists, raw-pointer keys, XOR words). Layouts decoded in saves 6.5-6.9; "needs" = leftovers.
 
-- [ ] L10e-0 MFC archive codec: tags exactly as saves 6.10 (verify the counter start against a real save), class table (`Player`, `Unit`, `Humanoid`, `Building`, `SpellEffect`, `VirtualCaster`, `Sack`, `Item`, `Effect`, `Spell`), MFC counts, counted lists, old-pointer map; synthetic tests.
+- [~] L10e-0 MFC archive codec (tags, counter, back-references and tests done in `allods2/formats/mfc.py`; the class table with `Player`/`Unit`/... factories remains): tags exactly as saves 6.10 (verify the counter start against a real save), class table (`Player`, `Unit`, `Humanoid`, `Building`, `SpellEffect`, `VirtualCaster`, `Sack`, `Item`, `Effect`, `Spell`), MFC counts, counted lists, old-pointer map; synthetic tests.
 - [ ] L10e-1 Players + groups (6.6, 6.7): decoded; needs `group+0x20` object, the 11 option words. Town saves (L10c) depend only on this plus Items.
 - [ ] L10e-2 Items, Effects, Sacks (6.9 table): fully decoded; map to `.a2c` item codec / `engine` items (L10c shares it).
 - [ ] L10e-3 Units (6.8, 6.9): decode `Humanoid::Serialize` first, then `unit+0x1c8/0x1e4` objects and the raw blocks; map to `engine/` unit fields (HP, mana, position, orders, effects, brain `+0x1c0/+0x1c4`, hero fields).
