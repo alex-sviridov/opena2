@@ -6,6 +6,7 @@ The recreated game, built on the core library (`allods2/`, `a2res/`).
 |---|---|---|
 | [architecture.md](architecture.md) | layers, import rules, coordinate systems, tick, main loop, terrain drawing, CLI | G1 skeleton done |
 | [rendering.md](rendering.md) | draw list and backend: pass order, placement, shadows, light rows, smoothing, culling, debug overlays, timings, interface / cursor / picking / marker (§14) | G2b, G3b done |
+| [cutscenes.md](cutscenes.md) | m1: the Smacker 2 decoder, fades, the cutscene screen, start-up chain, chapter triggers, the Cut Scenes window; [cutscenes-rea.md](cutscenes-rea.md) = what the exe does | m1 done, VERIFY IN GAME |
 | [save.md](save.md) | L10 plan: the original `game%d.sav` for town and mission saves, steps L10a-f, decisions | L10a-d done (town) |
 | [save-ui.md](save-ui.md) | Save / Load / Delete windows, the slot folder (naming, order, dates), what a load does, VERIFY IN GAME | L10d |
 | [vision.md](vision.md) | fog of war: sight mask, tile bits, refresh, what is hidden per state, minimap fog, cheats, saves; VERIFY IN GAME | J2 |

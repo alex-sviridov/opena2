@@ -35,6 +35,7 @@ class Settings:
     formation: int = 1                  # Formation Mode `0x62275c`: 0 off, 1 auto (default, CONFIRMED ctor `0x402db0` view+0xab0), 2 on
     retreat: int = 0                    # Retreat Mode `0x622760`: 0 never (default, CONFIRMED client ctor `0x402db0` view+0xab4), 1 low health, 2 medium
     autocasting: int = 0x19             # AutoCasting `0x62277c`, default 0x19 (CONFIRMED): 8 heal, 0x10 / 0x20 buff levels, 1 / 2 / 4 own / allies / neutral
+    videos_seen: int = 1                # `Using VxD` (`0x5f1a04`): bit n = chapter video n has been started; the intro (bit 0) is always set (cutscenes-rea.md 4)
     save_dir: str = ""                  # the folder of the `game*.sav` slots (docs/engine/save-ui.md); "" = `saves` beside the settings file
 
     def bus_mb(self, bus):
@@ -75,6 +76,9 @@ def _clean(d):
         v = d.get(k)
         if isinstance(v, int) and not isinstance(v, bool):
             setattr(s, k, max(0, min(hi, v)))
+    v = d.get("videos_seen")
+    if isinstance(v, int) and not isinstance(v, bool):
+        s.videos_seen = (v & 0xFFFFFFFF) | 1
     v = d.get("save_dir")
     if isinstance(v, str):
         s.save_dir = v

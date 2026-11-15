@@ -16,6 +16,8 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 ADPCM_SRC = os.path.join(HERE, "adpcm.c")
 ADPCM_VERSION = 1               # A2_ADPCM_VERSION in adpcm.c
+SMK_SRC = os.path.join(HERE, "smk.c")
+SMK_VERSION = 1                 # A2_SMK_VERSION in smk.c
 _SUFFIX = ".dll" if os.name == "nt" else (".dylib" if sys.platform == "darwin" else ".so")
 _cache = {}
 _errors = {}
@@ -91,3 +93,30 @@ def adpcm():
 
 def error(name="adpcm"):
     return _errors.get(name)
+
+
+def _load_smk():
+    lib = ctypes.CDLL(build(SMK_SRC, "_smk"))
+    if lib.a2_smk_version() != SMK_VERSION:
+        lib = ctypes.CDLL(build(SMK_SRC, "_smk", force=True))
+        if lib.a2_smk_version() != SMK_VERSION:
+            raise RuntimeError("native smk version mismatch")
+    p = ctypes.c_void_p
+    lib.a2_smk_video.argtypes = [p, ctypes.c_size_t, ctypes.c_int, ctypes.c_int, p, p, p]
+    lib.a2_smk_video.restype = ctypes.c_int
+    return lib
+
+
+def smk():
+    """The ctypes Smacker block-loop library, or None (ALLODS2_NATIVE=0, or unavailable in auto mode; `=1` raises)."""
+    if mode() == "0":
+        return None
+    if "smk" not in _cache:
+        try:
+            _cache["smk"] = _load_smk()
+        except Exception as e:                       # noqa: BLE001 - any failure means "use Python"
+            _cache["smk"] = None
+            _errors["smk"] = "%s: %s" % (type(e).__name__, e)
+    if _cache["smk"] is None and mode() == "1":
+        raise RuntimeError("ALLODS2_NATIVE=1 but the native Smacker decoder is unavailable: %s" % _errors.get("smk"))
+    return _cache["smk"]

@@ -64,7 +64,14 @@ def make_services(a, audio, settings, parser_args=None):
     def save(s):
         settings_mod.save(s)
         apply(s)
-    return Services(sound=sound, stop=stop, loop=loop, speech=speech, music=music, log=log.info, apply_settings=apply, save_settings=save)
+    def pcm(samples, rate=22050):
+        if audio is not None and hasattr(audio, "pcm"):
+            audio.pcm(samples, rate)
+
+    def pcm_stop():
+        if audio is not None and hasattr(audio, "pcm_stop"):
+            audio.pcm_stop()
+    return Services(sound=sound, stop=stop, loop=loop, speech=speech, music=music, log=log.info, apply_settings=apply, save_settings=save, pcm=pcm, pcm_stop=pcm_stop)
 
 
 class ShellGame:
@@ -116,6 +123,7 @@ def run(a, parser, PlaySession, make_audio, audio_settings):
     pygame.display.set_caption("Allods 2")
     hide_os_cursor()
     services = make_services(a, audio, stored)
+    services.video = not getattr(a, "no_video", False)       # m1: the Smacker videos play (cutscenes.md)
 
     def start_game(params):
         ns = argparse.Namespace(**vars(a))

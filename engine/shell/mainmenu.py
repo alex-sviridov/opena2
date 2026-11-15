@@ -22,7 +22,7 @@ CAPTION_AT = (0xE8, 200)                    # the middle tablet (0x4a7b3f)
 #            name,           (x, y, w, h) of button%d.bmp, target screen (None = not built yet)
 BUTTONS = (("NEW GAME",     (204, 52, 104, 96), "newgame"),
            ("MULTI PLAYER", (124, 156, 108, 76), None),
-           ("CUT SCENES",   (124, 252, 96, 88), None),
+           ("CUT SCENES",   (124, 252, 96, 88), "cutlist"),
            ("CREDITS",      (208, 340, 100, 100), None),
            ("LOAD GAME",    (340, 52, 88, 100), "load"),
            ("SERVER",       (424, 152, 84, 88), None),
@@ -33,6 +33,7 @@ N = len(BUTTONS)
 # folder holds a `game*.sav` (CONFIRMED `FUN_0043ff4a`, `FindFirstFile("\\game*.sav")`; `Shell.slots`, none = disabled).
 DISABLED = 0b01111110                       # all but New game (bit 0) and Exit (bit 7)
 LOAD_BIT = 0b00010000
+CUT_BIT = 0b00000100                        # CUT SCENES (`0x43b`) is enabled by the CD / registry check only (`0x48b569`, REA cutscenes-rea.md 5): here, when the backend plays videos
 
 
 def mask_index(value):
@@ -60,6 +61,9 @@ class MainMenu(Screen):
         self.under = self.pressed = -1
         slots = self.shell.slots
         self.disabled = DISABLED & ~LOAD_BIT if slots is not None and slots.any_saves() else DISABLED
+        sh = self.shell
+        if sh.services.video and sh.fs is not None and sh.fs.exists("video/intro/01.smk"):
+            self.disabled &= ~CUT_BIT
 
     def enabled(self, n):
         return n >= 0 and not (self.disabled >> n) & 1

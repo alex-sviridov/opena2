@@ -13,7 +13,8 @@ from engine.ui import story
 
 GRAPH = {
     "startup": {"menu"},
-    "menu": {"newgame", "load", "quit"},
+    "menu": {"newgame", "load", "cutlist", "quit"},
+    "cutlist": {"menu", "cutlist"},                     # the Cut Scenes window: Cancel, or Ok -> the video -> the window again
     "newgame": {"menu", "chargen"},
     "chargen": {"newgame", "locations"},
     "locations": {"game", "menu", "town"},
@@ -22,6 +23,7 @@ GRAPH = {
     "shop": {"town"},
     "load": {"menu", "game", "town", "locations"},               # the main menu's Load window: back, or into the loaded game (a town save; a mission save is L10e / L10f)
     "game": {"menu", "locations", "game", "town"},                  # no town available after a mission: the head mission starts at once (`0x41d`)
+    "cutscene": set(),                  # leaves for the `then` screen it was given (checked when it was entered)
     "quit": set(),
 }
 START = "startup"
@@ -47,6 +49,9 @@ class Services:
     start_game: Callable = None             # (params dict) -> a session object with `.world` and `.run() -> reason`; None = no game possible
     apply_settings: Callable = _nothing     # (Settings): the values take effect now (the sound sliders are live)
     save_settings: Callable = _nothing      # (Settings): persist (and apply)
+    pcm: Callable = _nothing                # (samples int16 (n, 2) | None, rate): queue video audio; None only keeps the queue fed (a cutscene screen, every update)
+    pcm_stop: Callable = _nothing           # (): cut the video audio
+    video: bool = False                     # True: the backend can show a video (`Video` scene op + `pcm`); False = the old placeholders (`video skipped: ...` logged, tests)
     autosave: Callable = _nothing           # (slot number): the original's game%d.sav autosave (9999 mission start, 9998 leaving a town); saving is not built
     events: list = field(default_factory=list)
 
@@ -59,6 +64,7 @@ class Shell:
         self.settings = settings or Settings()
         self.services = services or Services()
         self.current = None
+        self.pending_cuts = []                  # chapter video codes the town core asked for (`ScenarioLeaveLocation`), played before the next screen
         self.history = []
         self.screens = {}
         self.params = {}
@@ -87,7 +93,9 @@ class Shell:
             from .inn import Inn
             from .shop import Shop
             from .town import TownScene
-            screens = (Startup, MainMenu, NewGame, CharGen, Locations, LoadGame, GameScreen, TownScene, Inn, Shop)
+            from .cutscene import Cutscene
+            from .cutlist import CutList
+            screens = (Startup, MainMenu, NewGame, CharGen, Locations, LoadGame, GameScreen, TownScene, Inn, Shop, Cutscene, CutList)
         for cls in screens:
             self.screens[cls.name] = cls(self)
 
@@ -109,8 +117,15 @@ class Shell:
         here = self.name
         if target not in GRAPH:
             raise ShellError("unknown screen %r" % target)
-        if target != "quit" and target not in GRAPH.get(here, ()):
+        if here != "cutscene" and target not in ("quit", "cutscene") and target not in GRAPH.get(here, ()):
             raise ShellError("no edge %s -> %s" % (here, target))
+        if here != "cutscene" and target not in ("quit", "cutscene") and self.pending_cuts:
+            codes, self.pending_cuts = self.pending_cuts, []
+            if self.services.video:                 # the exe plays them before the next screen is built (`0x41d`, `0x42d`); the screen then goes on to `target`
+                params = {"codes": codes, "then": target, "then_params": params}
+                target = "cutscene"
+        if target == "cutscene" and here != "cutscene" and params.get("then") not in GRAPH.get(here, ()) and params.get("then") != "quit":
+            raise ShellError("no edge %s -> %s" % (here, params.get("then")))
         self.current.exit()
         self._enter(target, params)
 
@@ -291,7 +306,9 @@ class Shell:
         events = self.town_core().take_events()
         for ev in events:
             kind = ev[0]
-            if kind == "autosave":
+            if kind == "cutscene":
+                self.pending_cuts.append(ev[1])
+            elif kind == "autosave":
                 self.autosave(ev[1])
             elif kind == "music":
                 self.services.music(ev[1])

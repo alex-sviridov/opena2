@@ -57,6 +57,15 @@ class Portrait:
     type_id: int = 1
 
 
+@dataclass(frozen=True, eq=False)
+class Video:
+    """One 8-bit video frame (a Smacker picture): `pixels` (h, w) palette indices, `palette` (256, 3) uint8, top-left at (x, y); drawn opaque."""
+    pixels: object
+    palette: object
+    x: int
+    y: int
+
+
 @dataclass
 class Scene:
     ops: list = field(default_factory=list)

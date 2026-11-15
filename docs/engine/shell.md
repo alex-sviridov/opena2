@@ -270,7 +270,7 @@ The `.reg` next to each file (`Common/startx`, `starty` = 0, `nFadings`, `Fading
 0xff000, -1)` on the in-memory file (`0x4c3bee`; INFERRED from RAD's `smack.h` constants, not from the packed `smackw32.dll`: `0xff000` = the audio-track bits (all tracks, none of the pan / volume / preload / no-skip flags) and `-1` = `SMACKAUTOEXTRA`, the extra buffer allocated by the library; neither changes what is decoded, the files have one audio track), `SmackUseMMX`, `SmackSoundUseDirectSound`, per frame `SmackWait` / `SmackDoFrame` / `SmackBlit`; the surface must be 565 or 555 (else "Unsupported pixel format").
 Chapter videos: `0x48f919(code)` plays `video\<cutpaths.txt line code>\NN.smk` for NN = 1, 2, ... while the file exists (only `01` is installed) and sets bit `code` of the seen mask; codes 0 intro, 1 teleport, 2 stars,
 3 crown, 4 knights, 5 druids. Triggers: start-up (0), mission victory (`0x486cc8`, `ScenarioLeaveLocation`: after missions 10 -> 1, 30 -> 2, 70 / 80 -> 3, 110 -> 4 or 5, [triggers §11](triggers.md)), world-map entry (`0x487daf`), the
-Cut Scenes list (`0x48a7fb`). **Not decoded in L0**: the engine only logs `video skipped: <name>`.
+Cut Scenes list (`0x48a7fb`). Built in m1 ([cutscenes](cutscenes.md); REA corrections: [cutscenes-rea 7](cutscenes-rea.md#7-corrections-to-the-earlier-notes): the loop skips missing `NN` and only an abort stops it, `0x487daf` is leaving a town, the seen bit is set and saved before the first frame, the list passes the row index). Without a video backend the engine still only logs `video skipped: <name>`.
 
 ## 7. Tests
 

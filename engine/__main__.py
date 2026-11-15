@@ -556,6 +556,7 @@ def build_parser():
     sh.add_argument("--seed", type=int)
     sh.add_argument("--out", help="session directory of the games played (default ~/.allods2/sessions/<map>-<time>)")
     sh.add_argument("--start", choices=("startup", "menu"), default="startup", help="first screen (default startup: the logos, then the menu)")
+    sh.add_argument("--no-video", action="store_true", help="skip the videos (logos, intro, chapter cutscenes): log `video skipped` and go on")
     sh.add_argument("--install")
     add_audio_flags(sh)
     mp = sub.add_parser("maps", help="list the campaign maps")

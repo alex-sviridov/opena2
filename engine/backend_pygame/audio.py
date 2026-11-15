@@ -122,6 +122,9 @@ class NullAudio:
         self._decide(self.director.music.start_mission(self.zone_list(zones), xy))
 
     def set_playlist(self, name):
+        if not name:                                    # the cutscene player's hard stop (`0x48f919` step 1)
+            self.stop_music()
+            return
         self._decide(self.director.music.set_playlist(name))
 
     def stop_music(self):
@@ -275,6 +278,28 @@ class Audio(NullAudio):
     def _music(self, decision):
         if self.ok and self.music is not None:
             self.music.apply(decision)
+
+    def pcm(self, samples, rate=FREQUENCY):
+        """Video audio (m1): `samples` int16 (n, 2) at the mixer's 22,050 Hz are queued on the last voice and played back to back; None only tops the queue up.
+        The speech bus sets the volume (INFERRED, cutscenes.md)."""
+        if not self.ok:
+            return
+        q = self.__dict__.setdefault("_pcm", [])
+        if samples is not None and len(samples):
+            q.append(samples)
+        ch = self.pg.mixer.Channel(VOICES - 1)
+        while q and ch.get_queue() is None:
+            snd_ = self.pg.mixer.Sound(buffer=q.pop(0).astype("<i2").tobytes())
+            if ch.get_busy():
+                ch.queue(snd_)
+            else:
+                ch.set_volume(0.0 if self.settings.mute else mix.gain(self.settings.bus_mb("speech")))
+                ch.play(snd_)
+
+    def pcm_stop(self):
+        self.__dict__["_pcm"] = []
+        if self.ok:
+            self.pg.mixer.Channel(VOICES - 1).stop()
 
     def _silence(self):
         if self.ok:

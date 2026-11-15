@@ -5,7 +5,7 @@ import numpy as np
 import pygame
 
 from allods2.graphics import SpriteFile
-from engine.shell import Button, Fill, Frame, Image, Key, Move, Portrait, Press, Release, Sprite, Text, Tooltip, Wheel
+from engine.shell import Button, Fill, Frame, Image, Key, Move, Portrait, Press, Release, Sprite, Text, Tooltip, Video, Wheel
 from engine.ui.layout import Rect
 from engine.ui.modal import DButton
 
@@ -126,3 +126,7 @@ def render_scene(surface, scene, painter, clear=True):
             painter.panels.draw_tooltip(surface, op)
         elif isinstance(op, Portrait):
             painter.portrait(surface, op)
+        elif isinstance(op, Video):
+            rgb = np.ascontiguousarray(op.palette[op.pixels])                       # (h, w, 3) uint8
+            h, w = op.pixels.shape
+            surface.blit(pygame.image.frombuffer(rgb.tobytes(), (w, h), "RGB"), (op.x, op.y))

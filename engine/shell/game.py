@@ -65,6 +65,7 @@ class GameScreen(Screen):
             self.shell.record_ending(self.campaign)             # `FUN_004a8d28` at `0x486ce2` (the credits and hall screens are not built)
         core = self.shell.town_core()
         core.mission_over(out)                                 # `0x41d`: the map, or (no town available) the head mission at once, as the exe does
+        self.shell.drain_town()                                # the chapter video of `ScenarioLeaveLocation` plays before the next screen (`Shell.go`)
         if out.kind == "mission" and reason == "victory":
             return "game", {"campaign": self.campaign, "mission": self.campaign.camp.location[1]}
         return "locations" if reason == "victory" and out.kind not in CAMPAIGN_ENDINGS else "menu"

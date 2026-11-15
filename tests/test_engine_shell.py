@@ -51,14 +51,14 @@ def dummy_shell():
 def test_graph_edges_stay_inside_the_graph():
     for a, targets in GRAPH.items():
         assert a in GRAPH and targets <= set(GRAPH)
-    assert GRAPH["startup"] == {"menu"} and GRAPH["menu"] == {"newgame", "load", "quit"} and "options" not in GRAPH
+    assert GRAPH["startup"] == {"menu"} and GRAPH["menu"] == {"newgame", "load", "cutlist", "quit"} and "options" not in GRAPH
     assert GRAPH["newgame"] == {"menu", "chargen"} and GRAPH["chargen"] == {"newgame", "locations"}                    # L2: the campaign in one window
     assert GRAPH["locations"] == {"game", "menu", "town"} and GRAPH["game"] == {"menu", "locations", "game", "town"}
 
 
 def test_every_legal_edge_works_and_every_other_raises():
     for a in GRAPH:
-        if a == "quit":
+        if a in ("quit", "cutscene"):                       # the cutscene screen leaves for the `then` it was given (checked on entry; tests/test_engine_cutscene_shell.py)
             continue
         for b in GRAPH:
             sh = dummy_shell()
