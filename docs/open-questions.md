@@ -39,7 +39,7 @@ from both places when answered).
 
 ## Town mode
 
-- Town scenes ([town-scenes 8](engine/town-scenes.md#8-open-questions), starting routine `0x41d15e` story window): the scene's NPC click still only voices page 1 (the dialogue window exists since L7: `engine.inn.Dialogue`, to be hosted by `TownScene`); Save / Load windows not built; whether the exe keeps the scene loop under the main menu after Exit to Main Menu (no close hook on that path).
+- Town scenes ([town-scenes 8](engine/town-scenes.md#8-open-questions), starting routine `0x41d15e` story window): the scene's NPC click still only voices page 1 (the dialogue window exists since L7: `engine.inn.Dialogue`, to be hosted by `TownScene`); whether the exe keeps the scene loop under the main menu after Exit to Main Menu (no close hook on that path).
 
 - **Guessed for now (town.md 7), still to verify:** info panel position at 800x600 / 1024x768; `backinv*` colour meaning (which of g / b / s a cell takes); the map path-edge tracer (the shop's numbers, grid draw, shelf rects and prices are answered: town-shop 9).
 
@@ -90,7 +90,8 @@ from both places when answered).
 
 - Saves ([saves](formats/saves.md#open-questions)): consumers / meaning of the 11 option words (`server+0x174..0x1a0`; defaults 0, `FUN_004e957b`); the 60-byte values of the `map+0x54084` map and the script blocks; meanings of unit / item / effect fields; MFC counter start and class-record widths (VERIFY by a real save); `.reg` kinds of the tail's id arrays and acceptance of `build_reg` trees (INFERRED); the `+0x2f` byte; whether single player ever uses a stored character's items (VERIFY IN GAME); `famehall.dat` fields `b`, `c`; mission-list entry meaning (`FUN_004a8f96`); which UI path writes `game0000.sav`; instant captured by `game9998.sav`.
 - Saves, L10c ([saves 7](formats/saves.md#open-questions), starting routine `FUN_004ec732` / `ScenarioLoad` `0x10003686`): the INFERRED parts of the town save (one player / one group, derived unit blocks, Item `+0xc`, player `0x24` block) and which screen a loaded town save resumes on (the current-location position is 0 when there is none); VERIFY IN GAME against an original town save.
-- Phase K save/load UI and writers: the Save / Load / Delete dialogs (`FUN_0043ebf6`, `FUN_0043deaf`, list `FUN_0043dc54`), the `game%d.sav` writer `FUN_0048dc9f` (+ loader `FUN_0048db37`), the mission-start auto-save `game9999.sav` "Restart last mission" (message `0x442` from `FUN_0048c8a3(0)`), the `famehall.dat` write at exit; single player never writes a `.a2c` ([ui-layout 11.4](engine/ui-layout.md#114-in-game-menu-pause-freeze)).
+- Save / Load / Delete windows (L10d, [save-ui](engine/save-ui.md#open-questions), starting routines `FUN_004d82f8` list, `FUN_004d601b` edit, `FUN_0044f2d0`): the list / edit / scroll-bar look and keys, what the delete question quotes, where a refused file's error text shows, tie order of equal write times; VERIFY IN GAME list: [save-ui 5](engine/save-ui.md#5-verify-in-game-users-real-game-check).
+- Phase K writers still open: the mission-kind save / load (`MissionSaveCodec`, L10e / L10f), the mission-start auto-save `game9999.sav` "Restart last mission" (message `0x442` from `FUN_0048c8a3(0)`), the `famehall.dat` write at exit; single player never writes a `.a2c` ([ui-layout 11.4](engine/ui-layout.md#114-in-game-menu-pause-freeze)).
 - [Items K5](engine/items.md#open-questions): the client sound of the item notice `FUN_00504b3a` / gold message `0x67`; `unit +0xe4` (the pack index of message `0x21`, INFERRED 0x7FFF); several selected units on a pickup.
 
 ## Structures

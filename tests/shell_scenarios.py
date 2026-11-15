@@ -120,6 +120,7 @@ def shell_golden(install):
     shotp("options_game_hover")
     pages = OptionsPages(texts, sh.size, Settings(), rec.services, "sound")
     shotp("options_sound")
+    out.update(saveload_golden(install, backend, art))
     sh2, _ = make_shell(install, (800, 600))
     sh2.start()
     sh2.update(16)
@@ -143,6 +144,57 @@ def opt_centre(pages, key):
     w = next(w for w in pages.widgets() if w.key == key)
     r = pages.screen_rect(w)
     return r.x + r.w // 2, r.y + r.h // 2
+
+
+def fake_save(path, description, mtime):
+    """A file the Save / Load lists accept: the magic, the description offset 8, the 0x100 description bytes (not a loadable save)."""
+    import os
+    import struct
+    with open(path, "wb") as f:
+        f.write(struct.pack("<II", 0x26677342, 8) + description.encode("cp1251").ljust(0x100, b"\0"))
+    os.utime(path, (mtime, mtime))
+
+
+def saveload_golden(install, backend, art):
+    """The three L10d windows (docs/engine/save-ui.md): Save with a row picked and text typed, Load over the main menu (the auto-save row first), the delete confirmation.  The dates are
+    drawn in UTC (the folder's file times are fixed)."""
+    import os
+    import tempfile
+    import time
+    from engine.saveslots import SaveSlots
+    from engine.shell import saveload as SL
+    from engine.shell.scene import Scene
+    out = {}
+    old = os.environ.get("TZ")
+    os.environ["TZ"] = "UTC"
+    time.tzset()
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            fake_save(os.path.join(d, "game0000.sav"), "Before the big fight", 1000000000)
+            fake_save(os.path.join(d, "game0001.sav"), "Town of Umoir", 1100000000)
+            fake_save(os.path.join(d, "game9999.sav"), "Restart last mission", 1200000000)
+            sh, _ = make_shell(install)
+            sh.slots = SaveSlots(d)
+            shot = lambda name, scene: out.__setitem__(name, hash_rgb(backend.scene_screenshot(scene, sh.size, art)))
+            save = SL.SaveDialog(sh, sh.slots)
+            shot("save_dialog", Scene(save.ops()))
+            save.event(Key("down"))
+            for ch in " 2":
+                save.event(Key(ch, False, ch))
+            shot("save_dialog_typed", Scene(save.ops()))
+            sh.start("menu")
+            sh.go("load")
+            shot("load_dialog", sh.scene())
+            ld = sh.current.dialog
+            ld.start_delete()
+            shot("delete_confirm", sh.scene())
+    finally:
+        if old is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = old
+        time.tzset()
+    return out
 
 
 def map_walk(sh, loc=None, limit=300):
@@ -179,6 +231,11 @@ def visit_town_as_player(sh, hire=(), shop=False):
     assert cur.name == "locations"
     town = next(loc for loc in sh.campaign.camp.available if loc[0] == C.TOWN)
     map_walk(sh, town)
+    return visit_current_town(sh, hire, shop)
+
+
+def visit_current_town(sh, hire=(), shop=False):
+    """`visit_town_as_player` from the town scene on (also the scene of a loaded game)."""
     assert sh.name == "town"
     click_region(sh, 2)
     inn = sh.current

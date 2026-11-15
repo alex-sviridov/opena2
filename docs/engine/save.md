@@ -1,6 +1,6 @@
 # L10: save / load with the original `game%d.sav` format
 
-Status: **L10b done** (container + typed client tail + MFC archive layer, `allods2/formats/saves.py`, `mfc.py`; saves.md 7); **L10c done** (typed server stream `allods2/formats/serverstream.py`, town saves `engine/savegame.py`, `CampaignGame.to_save / from_save`, `tests/test_savegame_town.py`; saves.md 7 "Engine mapping"); L10d onward not started. Goal: the engine reads every save the original GOG game writes and writes saves the original
+Status: **L10b done** (container + typed client tail + MFC archive layer, `allods2/formats/saves.py`, `mfc.py`; saves.md 7); **L10c done** (typed server stream `allods2/formats/serverstream.py`, town saves `engine/savegame.py`, `CampaignGame.to_save / from_save`, `tests/test_savegame_town.py`; saves.md 7 "Engine mapping"); **L10d done** (town-mode Save / Load / Delete windows and the slot folder: [save-ui.md](save-ui.md), `engine/saveslots.py`, `engine/shell/saveload.py`; mission-kind saves are the hook `MissionSaveCodec`); L10e onward not started. Goal: the engine reads every save the original GOG game writes and writes saves the original
 loads, for single player: the Save / Load / Delete dialogs, the manual slots, the auto-saves `game9999.sav` ("Restart last mission")
 and `game9998.sav` ("Abort mission and return to town"). Byte layouts known so far: [formats/saves.md](../formats/saves.md) §6
 (container, server stream head, client tail, Scenario.dll block, MFC layer, player, group and unit serialisers: §6.4-6.8); L10a rounds 2-4: every object serialiser of the stream is decoded in §6.9-6.11; only field meanings and the option-word consumers stay open) and L10a is **closed**.
@@ -46,7 +46,7 @@ keys of §6.3, mission list, Scenario.dll block, hotkeys), byte-exact round trip
 (variables, `Campaign.shop`, location list). `CampaignGame.to_save()/from_save()`; invariant test: save -> load -> `visit_towns`
 oracle continues identically, world-dump hashes unchanged.
 
-**L10d - Dialogs and slots (shell, play-test).** REA: Save / Load / Delete windows (`FUN_0043ebf6`, `FUN_0043deaf`, list
+**L10d - Dialogs and slots (shell, play-test). DONE for town saves ([save-ui](save-ui.md)); the mission-start `game9999` / `game9998` auto-saves and mission-kind load wait for L10e / L10f (`savegame.MissionSaveCodec`).** REA: Save / Load / Delete windows (`FUN_0043ebf6`, `FUN_0043deaf`, list
 `FUN_0043dc54`, slot naming `FUN_0043ece0`, description patches `0x37` / `0x5f`), the in-game menu entries, main-menu Load Game.
 Build in `engine/shell/` over a pure `SaveSlots` model (directory scan `game*.sav`, `9999 - slot` numbering, hidden auto-saves,
 description, date). Saves go in a settings-side directory (not the repo, not the install). Town saves first; mission-start

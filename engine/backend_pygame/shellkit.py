@@ -5,7 +5,7 @@ import numpy as np
 import pygame
 
 from allods2.graphics import SpriteFile
-from engine.shell import Button, Fill, Frame, Image, Key, Move, Portrait, Press, Release, Sprite, Text, Tooltip
+from engine.shell import Button, Fill, Frame, Image, Key, Move, Portrait, Press, Release, Sprite, Text, Tooltip, Wheel
 from engine.ui.layout import Rect
 from engine.ui.modal import DButton
 
@@ -35,6 +35,8 @@ def to_shell_event(ev):
         return Press(ev.pos[0], ev.pos[1], ev.button)
     if ev.type == pygame.MOUSEBUTTONUP and ev.button in (1, 3):
         return Release(ev.pos[0], ev.pos[1], ev.button)
+    if ev.type == pygame.MOUSEWHEEL:
+        return Wheel(*pygame.mouse.get_pos(), ev.y)
     if ev.type == pygame.KEYDOWN:
         return key_event(ev)
     return None

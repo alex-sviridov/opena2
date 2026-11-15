@@ -93,8 +93,9 @@ def ops_of(draw_ops, ox=0, oy=0):
 
 
 # The scene menu: message `0x41f` (CONFIRMED `FUN_004852d8` case `0x41f` -> `FUN_004407c2`: a 440x340 window at (100, 100), buttons in this order; ESC in a town scene posts it too, shell.md 3.5).
-# (id, `dialogs.txt` line, enabled, action).  Save (`0x41a`, the save list `FUN_0043ebf6`) and Load (`0x418`, `FUN_0043deaf`) are not built (DECISION: shown disabled, the exe enables them).
-MENU = (("save", 0x22, False), ("load", 0x23, False), ("sound", 0x25, True), ("abort", 0x4d, True), ("return", 0x28, True))
+# (id, `dialogs.txt` line, enabled, action).  Save (`0x41a`, the save window `FUN_0043ebf6`) is enabled in a town; Load (`0x418`, `FUN_0043deaf`) iff a `game*.sav` exists (CONFIRMED
+# `FUN_0043ff4a`); both windows are `engine/shell/saveload.py` (L10d).
+MENU = (("save", 0x22, True), ("load", 0x23, True), ("sound", 0x25, True), ("abort", 0x4d, True), ("return", 0x28, True))
 ABORT = (("exit_menu", 0x2c, True), ("exit_windows", 0x2d, True), ("return", 0x28, True))     # `0x41c` with `game+0x404 == 0` -> `FUN_00440a22`: messages `0x41e` (end game + main menu), `0x10`, `0x446`
 FALLBACK = {0x22: "~Save Game", 0x23: "~Load Game", 0x25: "Sou~nd Options", 0x4d: "Abort Game", 0x28: "~Return to Game", 0x2c: "~Exit to Main Menu", 0x2d: "Exit to ~Windows"}
 MENU_W, MENU_H = 392, 296                  # 440x340 snapped by `FUN_004dc4fc` (`w' = ((w - 8) / 0x60) * 0x60 + 8`, `h' = ((h - 0x68) / 0x40) * 0x40 + 0x68`)
@@ -105,14 +106,17 @@ class SceneMenu:
     Menu / Exit to Windows / Return to Game).  Text buttons act on the release over the pressed one; ESC = Return (`0x446`, the common dialog's key).  `event` returns the outcome
     ("sound",) (open the sound options), ("exit_menu",), ("exit_windows",), ("close",) or None."""
 
-    def __init__(self, texts, origin):
+    def __init__(self, texts, origin, save=True, load=True):
         self.texts = texts
+        self.flags = {"save": save, "load": load}
         self.page = "menu"
         self.frame = Rect(origin[0] + (640 - MENU_W) // 2, origin[1] + (480 - MENU_H) // 2, MENU_W, MENU_H)
         self.hot = self.pressed = None
 
     def entries(self):
-        return MENU if self.page == "menu" else ABORT
+        if self.page != "menu":
+            return ABORT
+        return tuple((k, line, self.flags.get(k, en)) for k, line, en in MENU)
 
     def label(self, line):
         return (self.texts["dialogs"].line(line) if self.texts else "") or FALLBACK[line]
@@ -168,6 +172,7 @@ class TownScene(Screen):
         super().__init__(shell)
         self.state, self.mask, self.real = None, TS.StandInMask(), False
         self.menu = self.options = None                     # the `0x41f` window / the Sound Options over it
+        self.dialog = None                                  # the Save / Load window (L10d), over the scene with the menu gone
 
     @property
     def core(self):
@@ -177,7 +182,7 @@ class TownScene(Screen):
         core = self.core
         spec, self.mask, self.real = TS.load_scene(self.shell.fs, core.town or 1)
         self.state = TS.SceneState.build(spec, self.shell.rng, self.shell.scene_globals, var=core.camp.get)
-        self.menu = self.options = None
+        self.menu = self.options = self.dialog = None
         if self.shell.mouse is not None:
             self.state.hover(self._region(*self.shell.mouse))
         self._sounds()
@@ -208,7 +213,8 @@ class TownScene(Screen):
 
     def open_menu(self):
         """Message `0x41f`: the scene menu window (`FUN_004407c2`), over the running scene."""
-        self.menu = SceneMenu(load_texts(self.shell.fs), self.origin)
+        slots = self.shell.slots
+        self.menu = SceneMenu(load_texts(self.shell.fs), self.origin, save=slots is not None, load=slots is not None and slots.any_saves())
 
     def _menu_event(self, ev):
         if self.options is not None:
@@ -223,6 +229,10 @@ class TownScene(Screen):
             self.menu = None
         elif out[0] == "sound":                             # `0x422` (`0x485bf3`: allowed in a running game in town)
             self.options = OptionsPages(load_texts(self.shell.fs), self.shell.size, self.shell.settings, self.shell.services, SOUND)
+        elif out[0] in ("save", "load"):                    # `0x41a` / `0x418`: the window replaces the menu; closing it resumes the scene (`FUN_004891d8`, +0x140 / +0x13c)
+            from .saveload import LoadDialog, SaveDialog
+            self.menu = None
+            self.dialog = (SaveDialog if out[0] == "save" else LoadDialog)(self.shell, self.shell.slots)
         elif out[0] == "exit_menu":                         # `0x41e`: `FUN_0048f2e5` ends the game, then `0x421` (the main menu)
             self.menu = None
             return "menu"
@@ -231,7 +241,31 @@ class TownScene(Screen):
             self.shell.close_window()
         return None
 
+    def _dialog_event(self, ev):
+        out = self.dialog.event(ev)
+        if out is None:
+            return None
+        if out[0] == "close":
+            self.dialog = None
+        elif out[0] == "save":                              # Ok: `FUN_0048dc9f` writes the file, the window closes (no overwrite question in the exe)
+            err = self.shell.save_game(out[1], out[2])
+            if err is None:
+                self.dialog = None
+            else:
+                self.dialog.notice(err)
+        elif out[0] == "load":
+            from .saveload import load_file
+            status, res = load_file(self.shell, out[1])
+            if status == "error":
+                self.dialog.notice(res)
+                return None
+            self.dialog = None
+            return res                                      # "town": a new scene of the loaded game (`town -> town`)
+        return None
+
     def event(self, ev):
+        if self.dialog is not None:
+            return self._dialog_event(ev)
         if self.menu is not None:                           # a modal window: nothing reaches the scene
             return self._menu_event(ev)
         if isinstance(ev, Key) and not ev.ctrl and ev.name == "escape":   # the game's key handler `0x484a76` posts `0x41f` (town-scenes 2.2); Enter does nothing
@@ -260,6 +294,8 @@ class TownScene(Screen):
         return None
 
     def update(self, dt_ms):
+        if self.dialog is not None:
+            self.dialog.update(dt_ms)
         self.state.advance(dt_ms)
         self._sounds()
         return None
@@ -273,6 +309,8 @@ class TownScene(Screen):
                 ops += [Fill(ox + x, oy + y, w, h, (60, 50, 40) if self.state.region != region else (110, 90, 60)), Text(label, ox + x + w // 2, oy + y + h // 2, 1, "normal", 2 | 8, 1)]
         else:
             ops = ops_of(self.state.draw_ops(), ox, oy)
-        if self.menu is not None:
+        if self.dialog is not None:
+            ops += self.dialog.scene_ops()
+        elif self.menu is not None:
             ops += self.options.scene().ops if self.options is not None else self.menu.scene_ops()
         return Scene(ops)

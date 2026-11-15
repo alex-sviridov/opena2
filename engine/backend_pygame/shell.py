@@ -126,7 +126,8 @@ def run(a, parser, PlaySession, make_audio, audio_settings):
         log.info("new game: map %s, difficulty %s, hero %s (%s)", ns.map, ns.difficulty, params.get("hero"), ns.hero_name)
         return ShellGame(play.start(), audio)
     services.start_game = start_game
-    shell = Shell(assets.fs, a.size, stored, services)
+    from engine.saveslots import SaveSlots
+    shell = Shell(assets.fs, a.size, stored, services, slots=SaveSlots(settings_mod.saves_path(stored)))
     painter, cursors = Painter(assets.fs), CursorSprites(assets.fs)
     clock = pygame.time.Clock()
     shell.start("startup" if a.start == "startup" else "menu")

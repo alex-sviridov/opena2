@@ -17,10 +17,10 @@ GRAPH = {
     "newgame": {"menu", "chargen"},
     "chargen": {"newgame", "locations"},
     "locations": {"game", "menu", "town"},
-    "town": {"inn", "shop", "locations", "menu"},
+    "town": {"inn", "shop", "locations", "menu", "town"},            # `town -> town`: a game loaded from the scene's menu (L10d)
     "inn": {"town"},
     "shop": {"town"},
-    "load": {"menu", "game"},
+    "load": {"menu", "game", "town", "locations"},               # the main menu's Load window: back, or into the loaded game (a town save; a mission save is L10e / L10f)
     "game": {"menu", "locations", "game"},                  # no town available after a mission: the head mission starts at once (`0x41d`)
     "quit": set(),
 }
@@ -52,7 +52,7 @@ class Services:
 
 
 class Shell:
-    def __init__(self, fs, size=(640, 480), settings=None, services=None, screens=None):
+    def __init__(self, fs, size=(640, 480), settings=None, services=None, screens=None, slots=None):
         from engine.audio.settings import Settings
         self.fs = as_fs(fs) if fs is not None else None
         self.size = size
@@ -69,6 +69,8 @@ class Shell:
         self._scene_globals = None              # `engine.townscene.Globals`: the exe's process-global scene counters (`scene_globals`)
         self.mouse = None                       # the last pointer position the shell saw (the map starts its hover from it)
         self.campaign = None                    # the running single-player campaign (`engine.campaign.CampaignGame`), made by `chargen`
+        self.slots = slots                      # `engine.saveslots.SaveSlots` (the saved-game folder; None = no saves: the Load button stays disabled, Save writes nothing)
+        self.mission_codec = None               # THE HOOK of L10e / L10f: an `engine.savegame.MissionSaveCodec` for mission-kind saves (None = not supported yet)
         if screens is None:
             from .chargen import CharGen
             from .game import GameScreen
@@ -141,6 +143,36 @@ class Shell:
 
     def scene(self):
         return self.current.scene()
+
+    # -- saved games (docs/engine/save-ui.md) ---------------------------------------------------------------------------------------
+    def save_game(self, filename, description):
+        """The Save dialog's Ok (`FUN_0048dc9f` for a town save): the campaign as `game%d.sav` in the slot folder.  Returns None or an error text (nothing written)."""
+        if self.slots is None or self.campaign is None:
+            return "No folder for saved games."
+        try:
+            data = self.campaign.to_save(description).pack()
+            self.slots.write(filename, data)
+        except OSError as e:
+            return "%s: %s" % (filename, e.strerror or e)
+        self.log("save: %s '%s'" % (filename, description))
+        return None
+
+    def resume(self, game):
+        """The loaded campaign takes over (`0x419` -> `FUN_0048db37`, a town save: the server is rebuilt, `FUN_0041aaa5(0, 0)` = the town scene of the saved location, `0x42e`): a new
+        town core, the scene of the saved town (the available list's saved position); a save with no town there (cannot be written by the menus) rests on the map.  Returns the screen name."""
+        from engine import town as T
+        self.campaign = game
+        self._town = None
+        core = self.town_core()
+        loc = game.camp.location
+        self.log("load: location %s, %d heroes" % (loc, len(game.roster)))
+        if loc is not None and loc[0] == T.TOWN and loc[1] in T.TOWNS:
+            core.send(T.MSG_ENTER)
+        else:
+            game.camp.location = None
+            core.open_map()
+        self.drain_town()
+        return "town" if core.view == "scene" else "locations"
 
     # -- the town (docs/engine/town.md) ---------------------------------------------------------------------------------------------
     def town_core(self):

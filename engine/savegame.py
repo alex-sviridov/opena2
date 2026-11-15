@@ -304,8 +304,10 @@ def to_save(game, description="", state=None, hotkeys=None, positions=None):
     return S.SaveGame(stream.pack(), tail)
 
 
-def from_save(save, install=None, hire=None, seed=1, assets=None, difficulty=None):
-    """`saves.SaveGame` (or the bytes of a file) -> `CampaignGame`.  Only town saves (loaded flag 0) load here; a mission save raises `ValueError`."""
+def from_save(save, install=None, hire=None, seed=1, assets=None, difficulty=None, resume_location=False):
+    """`saves.SaveGame` (or the bytes of a file) -> `CampaignGame`.  Only town saves (loaded flag 0) load here; a mission save raises `ValueError`.
+    `resume_location`: set `camp.location` to the saved position in the available list (`ScenarioLoad` does, CONFIRMED, saves.md 7); the shell uses it to
+    stand in the saved town's scene (the default keeps the loaded game on the map, the L10c decision)."""
     if isinstance(save, (bytes, bytearray, memoryview)):
         save = S.parse_save(save)
     stream = SS.ServerStream.parse(save.stream)
@@ -326,7 +328,36 @@ def from_save(save, install=None, hire=None, seed=1, assets=None, difficulty=Non
     game.mission, game.mercenaries, game.log = None, {}, []
     game.client_state, game.hotkeys, game.description = save.tail.state, list(save.tail.hotkeys), save.tail.description
     game.knowledge = human.table if any(human.table) else None
+    if resume_location and save.tail.scenario.locations:
+        cur = save.tail.scenario.current
+        if 0 <= cur < len(game.camp.available):
+            game.camp.location = game.camp.available[cur]
     return game
+
+
+def kind(save):
+    """"mission" or "town": the loaded game's `CurrentState/InBattle` key decides (`FUN_0048c214` -> `FUN_0048c8a3(1)` resumes a mission, else the town scene, CONFIRMED,
+    town-worldmap 8 / 4).  `save` = `saves.SaveGame` or file bytes."""
+    if isinstance(save, (bytes, bytearray, memoryview)):
+        save = S.parse_save(save)
+    return "mission" if save.tail.state.in_battle & 1 else "town"
+
+
+# --- L10e / L10f hook: mission-kind saves --------------------------------------------------------------------------------------------------
+class MissionSaveCodec:
+    """THE HOOK for mission saves (loaded flag 1: `game9999`, `game9998`, a manual save in a mission), to be filled by L10e (the `World` <-> server stream codec) and
+    wired by L10f (the in-mission menu, `Restart last mission`, the load of every kind).  Nothing implements it yet: `Shell.mission_codec` is None, the mission's
+    Save entry stays disabled and loading a mission-kind file shows the "not supported yet" notice (`engine/shell/saveload.py`).  A codec provides:
+
+    * `save(session, description) -> saves.SaveGame`: the running mission's world as a mission save (InBattle 1);
+    * `load(save, campaign) -> dict`: the `start_game` parameters that resume the mission (`campaign`, `mission`, the restored world / session).
+    """
+
+    def save(self, session, description):
+        raise NotImplementedError
+
+    def load(self, save, campaign):
+        raise NotImplementedError
 
 
 def roster_states(game):

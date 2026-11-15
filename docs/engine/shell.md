@@ -46,7 +46,7 @@ mask (never drawn; red channel = value), `button<n>p.bmp` (hover image), `button
 | 1 | MULTI PLAYER | 124, 156, 108, 76 | `0x90` | `0x426` | network lobby (out of scope) |
 | 2 | CUT SCENES | 124, 252, 96, 88 | `0xa0` | `0x43b` | the list of seen videos (`cutscene.txt` titles, mask in registry `Using VxD`); OK plays one and re-opens the list |
 | 3 | CREDITS | 208, 340, 100, 100 | `0xb0` | `0x428` | `credits.txt`, music `credit.wav`; on close `0x421` (or `0x429` hall of fame when `FUN_00493da0` is set) |
-| 4 | LOAD GAME | 340, 52, 88, 100 | `0xc0` | `0x418` | the save list (600x450 at (100, 30)); OK `0x419` loads |
+| 4 | LOAD GAME | 340, 52, 88, 100 | `0xc0` | `0x418` | the save list (600x450 at (100, 30)); OK `0x419` loads. **Built (L10d, [save-ui](save-ui.md)):** enabled when the slot folder holds any `game*.sav`; screen `load` = the menu picture under the Load window |
 | 5 | SERVER | 424, 152, 84, 88 | `0xd0` | `0x487` | dedicated-server dialog (out of scope) |
 | 6 | HALL OF FAME | 412, 260, 96, 84 | `0xe0` | `0x429` | `famehall\hall.bmp` + the table of `famehall.dat`, OK returns to `0x421` |
 | 7 | EXIT | 344, 348, 72, 80 | `0xf0` | `0x10` = WM_CLOSE | no confirmation |
@@ -273,6 +273,8 @@ Chapter videos: `0x48f919(code)` plays `video\<cutpaths.txt line code>\NN.smk` f
 Cut Scenes list (`0x48a7fb`). **Not decoded in L0**: the engine only logs `video skipped: <name>`.
 
 ## 7. Tests
+
+`test_engine_shell_saveload.py` (L10d): the Save / Load / Delete windows' rules over synthetic slots, the main menu's LOAD enable, and a scripted run (new game, missions, save in a town, Exit to Main Menu, LOAD, continue through the inn / map / next mission); goldens `save_dialog`, `save_dialog_typed`, `load_dialog`, `delete_confirm`.
 
 `test_engine_shell.py`: the graph (every legal edge works, every other raises, the close box quits from every screen), the main menu (mask -> button, hover / held / disabled drawing, sound on the press, action on the
 release over the same button, a release elsewhere does nothing, centring at 800x600), a scripted run menu -> new game -> cancel -> options -> back -> exit that follows the graph, new game needing a hero, **no `World`

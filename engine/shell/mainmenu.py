@@ -29,9 +29,10 @@ BUTTONS = (("NEW GAME",     (204, 52, 104, 96), "newgame"),
            ("HALL OF FAME", (412, 260, 96, 84), None),
            ("EXIT",         (344, 348, 72, 80), "quit"))
 N = len(BUTTONS)
-# DECISION: what is not built yet is disabled in the original's own way (no highlight, no click); bit n = button n.  Load game stays
-# disabled until the Save / load step (the exe disables it too when there is no `game*.sav`, `FUN_0043ff4a`, mask bit 0x10).
+# DECISION: what is not built yet is disabled in the original's own way (no highlight, no click); bit n = button n.  LOAD GAME (bit 4) is enabled while the saved-game
+# folder holds a `game*.sav` (CONFIRMED `FUN_0043ff4a`, `FindFirstFile("\\game*.sav")`; `Shell.slots`, none = disabled).
 DISABLED = 0b01111110                       # all but New game (bit 0) and Exit (bit 7)
+LOAD_BIT = 0b00010000
 
 
 def mask_index(value):
@@ -57,6 +58,8 @@ class MainMenu(Screen):
     def enter(self, **params):
         self._load()
         self.under = self.pressed = -1
+        slots = self.shell.slots
+        self.disabled = DISABLED & ~LOAD_BIT if slots is not None and slots.any_saves() else DISABLED
 
     def enabled(self, n):
         return n >= 0 and not (self.disabled >> n) & 1

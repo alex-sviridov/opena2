@@ -1,17 +1,5 @@
-"""Load game: the screen exists in the graph, the button is disabled until the Save / load step (docs/engine/shell.md 6)."""
+"""Load game: the main menu's LOAD button opens the Load window over the menu picture (`engine/shell/saveload.py`, docs/engine/save-ui.md)."""
 
-from .scene import Scene
-from .screen import Screen
+from .saveload import LoadGame
 
-
-class LoadGame(Screen):
-    name = "load"
-
-    def event(self, ev):
-        return None
-
-    def update(self, dt_ms):
-        return "menu"                              # unreachable while the menu keeps the button disabled; never a dead end
-
-    def scene(self):
-        return Scene([])
+__all__ = ["LoadGame"]
