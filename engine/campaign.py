@@ -257,9 +257,10 @@ class CampaignGame:
     def _entry(u, net_id):
         return PT.RosterEntry(PT.hero_number(u), u.server_id, u.human, net_id, PT.capture(u))
 
-    def leave_mission(self, world, result="won"):
+    def leave_mission(self, world, result="won", visit=True):
         """The end of the running mission.  `result` "won": the death hook, the carry-over, `ScenarioLeaveLocation` (triggers.md 11.1 order, which also
-        clears the hire flags), the recruit of `Var(0x305)`, then the town stand-in (`visit_towns`) unless the campaign is over.  Any other result (defeat,
+        clears the hire flags), the recruit of `Var(0x305)`, then the town stand-in (`visit_towns`) unless the campaign is over or `visit` is False (the shell's flow: the
+        player walks to the towns and the inn screen does the visit, docs/engine/town.md 5 "L7 as built").  Any other result (defeat,
         left by the menu) is the main menu: no carry-over.  Returns the `sim.campaign.Outcome`."""
         if result != "won":
             return C.Outcome("main_menu")
@@ -269,7 +270,7 @@ class CampaignGame:
         if out.recruit:
             self.recruit(out.recruit)
         self.mission, self.mercenaries = None, {}
-        if out.kind != "ending":
+        if out.kind != "ending" and visit:
             self.visit_towns()
         return out
 

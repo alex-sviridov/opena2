@@ -39,13 +39,13 @@ from both places when answered).
 
 ## Town mode
 
-- Town scenes ([town-scenes 8](engine/town-scenes.md#8-open-questions), starting routine `0x41d15e` story window): the NPC story window / Save / Load windows not built; whether the exe keeps the scene loop under the main menu after Exit to Main Menu (no close hook on that path).
+- Town scenes ([town-scenes 8](engine/town-scenes.md#8-open-questions), starting routine `0x41d15e` story window): the scene's NPC click still only voices page 1 (the dialogue window exists since L7: `engine.inn.Dialogue`, to be hosted by `TownScene`); Save / Load windows not built; whether the exe keeps the scene loop under the main menu after Exit to Main Menu (no close hook on that path).
 
-- **Guessed for now (town.md 7), still to verify:** info panel position at 800x600 / 1024x768; client vs server stock price; shop number positions; "HIRED" anchor and figure sprite placement; `backinv*` colour meaning; stock grid draw; shop tooltips; druid / Kaarg shelf rects, animations and ambient frame numbers; the map path-edge tracer.
+- **Guessed for now (town.md 7), still to verify:** info panel position at 800x600 / 1024x768; client vs server stock price; shop number positions; `backinv*` colour meaning; stock grid draw; shop tooltips; druid / Kaarg shelf rects (the inn animations are answered, town-inn 3e); the map path-edge tracer.
 
 
-- Inn dialogue ([town-inn 5](engine/town-inn.md#5-open-questions)): the druid / Kaarg scheduler's last frame numbers.
-- Hero panels = the Inn windows ([town-hero 8](engine/town-hero.md#8-open-questions)): the info panel's final rect in the inn at 800x600 / 1024x768 (`0x49e451`, ctor `0x4adf45`); the sprite placement inside the figure cells and the "HIRED" anchor (`0x497fa5`-`0x4981ee`).
+- Inn dialogue ([town-inn 5](engine/town-inn.md#5-open-questions)): the left sheet's derived stat rows for a person (the exe shows every `FUN_0046aa1d` row at detail 7; the engine shows the template's four attributes / HP / mana / defence: a world-free `CombatStats` builder is missing).
+- Hero panels = the Inn windows ([town-hero 8](engine/town-hero.md#8-open-questions)): the info panel's name / book / mode rows in the campaign inn and its final rect at 800x600 / 1024x768 (`0x49e451`, ctor `0x4adf45`: the shift `640 - width` is CONFIRMED, the mission-time rect and mode flag are run-time state); (figure cells and "HIRED": answered in L7, town-inn 6).
 
 ## Triggers and scenario
 

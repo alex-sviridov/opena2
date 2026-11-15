@@ -5,7 +5,7 @@ import numpy as np
 import pygame
 
 from allods2.graphics import SpriteFile
-from engine.shell import Button, Fill, Frame, Image, Key, Move, Press, Release, Sprite, Text, Tooltip
+from engine.shell import Button, Fill, Frame, Image, Key, Move, Portrait, Press, Release, Sprite, Text, Tooltip
 from engine.ui.layout import Rect
 from engine.ui.modal import DButton
 
@@ -75,6 +75,30 @@ class Painter:
         return self._frames[key]
 
 
+def _portrait(self, surface, op):
+    """`Portrait`: the keyed 160x240 picture (cropped), or the story window's speaker picture composite."""
+    import pygame
+    surf = self.panels.portrait_surface(op.spec)
+    if op.story:
+        from engine.ui import story
+        surface.fill((0, 0, 0), (op.x, op.y) + story.PICTURE_SIZE)
+        if surf is None:
+            return
+        x, y, w, h = story.crop_of(op.type_id)
+        back = self.panels.opaque("t_back")
+        if back is not None:
+            surface.blit(back, (op.x + 8, op.y + 7), pygame.Rect(x, y, w, h))
+        surface.blit(surf, (op.x + 8, op.y + 7), pygame.Rect(x, y, w, h))
+        border = self.panels.story_border()
+        if border is not None:
+            surface.blit(border, (op.x, op.y))
+    elif surf is not None:
+        surface.blit(surf, (op.x, op.y), None if op.crop is None else pygame.Rect(*op.crop))
+
+
+Painter.portrait = _portrait
+
+
 def render_scene(surface, scene, painter, clear=True):
     """Paint `scene` on `surface` (black first unless `clear` is False: a window over a backdrop) with `painter`: bitmaps, frames, buttons, sprites and the game's fonts."""
     if clear:
@@ -98,3 +122,5 @@ def render_scene(surface, scene, painter, clear=True):
             surface.blit(painter.sprite(op.path, op.frame, op.shadow), (op.x, op.y))
         elif isinstance(op, Tooltip):
             painter.panels.draw_tooltip(surface, op)
+        elif isinstance(op, Portrait):
+            painter.portrait(surface, op)

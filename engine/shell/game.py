@@ -4,7 +4,7 @@ returns why: `menu` (End Quest -> Exit to Main Menu, victory, defeat) or `quit` 
 session and with it the World: menus never see one.
 
 A **campaign mission** (`params["campaign"]` = the shell's `CampaignGame`, `params["mission"]`): the session is made from `CampaignGame.start_mission`; a
-victory ends it with `leave_mission(world, "won")` (carry-over, Scenario.dll's completion, recruits, the town stand-in) and goes on to the `locations`
+victory ends it with `leave_mission(world, "won")` (carry-over, Scenario.dll's completion, recruits; the towns are visited by the player through the inn screen, L7) and goes on to the `locations`
 screen; a defeat or the menu is the main menu (`leave_mission` for anything else: no carry-over, as the original's `0x41e` / `0x431` end the game);
 the last mission's ending also goes to the menu (the credits are not built)."""
 
@@ -47,7 +47,7 @@ class GameScreen(Screen):
         reason = self.session.run()
         if self.campaign is None or reason not in BACK_TO_MENU:
             return "menu" if reason in BACK_TO_MENU else "quit"
-        out = self.campaign.leave_mission(self.session.world, "won" if reason == "victory" else reason)
+        out = self.campaign.leave_mission(self.session.world, "won" if reason == "victory" else reason, visit=False)     # the player visits the towns (L7)
         self.shell.log("mission %s %s -> %s" % (self.campaign.mission if reason != "victory" else "done", reason, out.kind))
         core = self.shell.town_core()
         # DECISION (until the map, L5): with no town available the exe starts the head mission at once; the stand-in shows the choice instead

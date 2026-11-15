@@ -544,7 +544,8 @@ class FakeTownFS:
         self.files = set(files)
 
     def read(self, path):
-        assert path == TS.TOWN_TEXT
+        if path != TS.TOWN_TEXT:
+            raise KeyError(path)
         return (b"#plagatguard\r\n<npc=97, part=1>\r\nNo.\r\n#kaargwoman40\r\n<npc=90, iammale, iamfighter, part=1>\r\nHi.\r\n<npc=90, iamfemale, iammage, part=1>\r\nHi!\r\n")
 
     def exists(self, path):

@@ -77,7 +77,8 @@ class Shell:
             from .mainmenu import MainMenu
             from .newgame import NewGame
             from .startup import Startup
-            from .town import Inn, Shop, TownScene
+            from .inn import Inn
+            from .town import Shop, TownScene
             screens = (Startup, MainMenu, NewGame, CharGen, Locations, LoadGame, GameScreen, TownScene, Inn, Shop)
         for cls in screens:
             self.screens[cls.name] = cls(self)

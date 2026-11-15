@@ -6,7 +6,7 @@ import hashlib
 import numpy as np
 
 from allods2.common import as_fs
-from engine.shell import Move, Press, Release, Services, Shell
+from engine.shell import Key, Move, Press, Release, Services, Shell
 
 
 
@@ -169,3 +169,40 @@ def click_region(sh, region):
     x, y = cur.point_of(region)
     for ev in (Move(x, y), Press(x, y), Release(x, y)):
         sh.handle(ev)
+
+
+def visit_town_as_player(sh, hire=()):
+    """The player after a mission: on the world map walk to the first available town, open the inn, talk to every NPC (reading every page with Enter), hire the mercenaries
+    numbered in `hire`, leave through Exit and the scene's leave region.  Returns the person words clicked."""
+    from engine.sim import campaign as C
+    cur = sh.current
+    assert cur.name == "locations"
+    town = next(loc for loc in sh.campaign.camp.available if loc[0] == C.TOWN)
+    map_walk(sh, town)
+    assert sh.name == "town"
+    click_region(sh, 2)
+    inn = sh.current
+    assert inn.name == "inn"
+
+    def close_dialogue():
+        for _ in range(60):
+            if inn.dialogue is None:
+                return
+            sh.handle(Key("return"))
+        raise AssertionError("the dialogue does not end")
+
+    st = inn.state
+    clicked = []
+    for i in range(st.mercs, st.count):
+        click(sh, inn.point_of("figure", i))
+        clicked.append(st.persons[i].a)
+        close_dialogue()
+    for i in range(st.mercs):
+        if st.persons[i].a in hire:
+            click(sh, inn.point_of("figure", i))
+            close_dialogue()
+    click(sh, inn.point_of("button", 2))
+    assert sh.name == "town"
+    click_region(sh, 8)
+    assert sh.name == "locations"
+    return clicked

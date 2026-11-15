@@ -1,4 +1,4 @@
-"""The town screens (docs/engine/town.md 3): the town scene (L6, the real one) and the inn and the shop (L4 placeholders: plain dialogs, L7 / L8 replace them),
+"""The town screens (docs/engine/town.md 3): the town scene (L6, the real one), the inn (L7, `engine/shell/inn.py`) and the shop (an L4 placeholder: a plain dialog, L8 replaces it),
 driven by `engine.town.TownCore`: scene -> Inn / Shop / Leave (clicks on the regions), inn / shop -> Exit (ESC), Leave -> the map (`locations`).
 
 Every click is a message to the core; the events it appends are turned into services here (`Shell.drain_town`)."""
@@ -278,22 +278,16 @@ class TownScene(Screen):
         return Scene(ops)
 
 
-class Inn(TownPanel):
-    name, view = "inn", "inn"
+class Shop(TownPanel):
+    """The L4 placeholder of the shop window (L8 replaces it); the inn is the real window of `engine/shell/inn.py` (L7)."""
+    name, view = "shop", "shop"
     labels = ("Exit",)
 
     def title(self):
-        return "Inn (%s)" % self.core.windows.race
+        return "Shop (%s)" % self.core.windows.race
 
     def act(self, i):
         self.core.close_window()
 
     def escape(self):
         return self._do(0)
-
-
-class Shop(Inn):
-    name, view = "shop", "shop"
-
-    def title(self):
-        return "Shop (%s)" % self.core.windows.race

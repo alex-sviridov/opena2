@@ -245,7 +245,7 @@ Anim rows are those of sections 3.2, 4, 5 (frames, positions, sounds, timers). R
 
 ## 8. Open questions
 
-2. The story window of an NPC click (text, Ok pages 2.. and their voices) and the Save / Load windows of the scene menu are not built (L7 owns the dialogue window).
+2. The story window of an NPC click in the scene (text, Ok pages 2.. and their voices) is not hosted by `TownScene` yet: L7 built the window as `engine.inn.Dialogue` + `Inn._dialogue_ops` (town.md 5 "L7 as built"), reusable here; the Save / Load windows of the scene menu are not built.
 3. Whether the exe keeps the scene's loop sound under the main menu after *Exit to Main Menu* from a scene (no close hook found on that path, 3.6; we cut it).
 4. Play-test only: whether the dither noise of the human mask can be felt; animation speeds.
 

@@ -226,6 +226,11 @@ def click_button(sh, label):
         from shell_scenarios import click_region
         return click_region(sh, regions[label])
     from engine.shell.events import Move, Press, Release
+    if sh.name == "inn":                                          # the real window (L7): the Exit button's middle
+        x, y = sh.current.point_of("button", 2)
+        for ev in (Move(x, y), Press(x, y), Release(x, y)):
+            sh.handle(ev)
+        return
     for b in sh.current.buttons():
         if b[4] == label:
             x, y = b[0] + 5, b[1] + 5

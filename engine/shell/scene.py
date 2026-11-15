@@ -45,6 +45,18 @@ class Tooltip:
     bottom: int
 
 
+@dataclass(frozen=True)
+class Portrait:
+    """A unit portrait: `spec` = ("doll", (paths..)) | ("bmp", path) (`engine.ui.info.portrait`), the 160x240 picture keyed at (x, y), `crop` = (sx, sy, w, h) of the source (None = whole).
+    `story` True = the story window's speaker picture (ui-layout 11.5: the 88x108 surface at (x, y), the crop of `type_id` placed at (8, 7) over `t_back`, the `t_border` frame over it)."""
+    spec: tuple
+    x: int
+    y: int
+    crop: tuple = None
+    story: bool = False
+    type_id: int = 1
+
+
 @dataclass
 class Scene:
     ops: list = field(default_factory=list)

@@ -8,10 +8,10 @@ from .machine import GRAPH, Shell, ShellError, Services
 from .mainmenu import MainMenu
 from .newgame import NewGame
 from .options import OptionsPages
-from .scene import Button, Fill, Frame, Image, Scene, Sprite, Text, Tooltip
+from .scene import Button, Fill, Frame, Image, Portrait, Scene, Sprite, Text, Tooltip
 from .startup import Startup
 
 __all__ = ["GRAPH", "Shell", "ShellError", "Services", "Screen", "Startup", "MainMenu", "OptionsPages", "NewGame", "GameScreen",
-           "Key", "Move", "Press", "Release", "Wheel", "Scene", "Image", "Text", "Fill", "Frame", "Button", "Sprite", "Tooltip"]
+           "Key", "Move", "Press", "Release", "Wheel", "Scene", "Image", "Text", "Fill", "Frame", "Button", "Sprite", "Tooltip", "Portrait"]
 
 from .screen import Screen  # noqa: E402

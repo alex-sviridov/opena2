@@ -268,8 +268,11 @@ def test_scripted_menu_run_through_the_first_three_missions():
     sh.handle(Key("return"))                                                  # Accept: the starting template
     assert sh.name == "locations"
     for i in range(3):
+        first = i == 0
+        while not any(k == 1 for k, _ in sh.campaign.camp.available):       # no mission on the list: the player visits a town's inn (L7) until one is offered
+            __import__("shell_scenarios").visit_town_as_player(sh)
         n = next(m for k, m in sh.campaign.camp.available if k == 1)
-        map_walk(sh, None if i == 0 else (1, n))                              # the first walk is the intro's, the next ones are clicks on the flag
+        map_walk(sh, None if first else (1, n))                              # the first walk is the intro's, the next ones are clicks on the flag
         assert sh.name == "game" and sh.params["mission"] == n
         sh.apply(sh.current.run())                                            # the oracle wins; the game screen ends the mission through the campaign
         assert sh.name == "locations", sh.history
@@ -278,7 +281,7 @@ def test_scripted_menu_run_through_the_first_three_missions():
     camp = sh.campaign
     assert all(camp.camp.get(0x380 + m) == 1 for m in played)                 # Scenario.dll marked them finished
     assert camp.roster and camp.roster[0].state is not None                   # the carried hero left the world with a state
-    assert sh.history[2:] == ["newgame", "chargen", "locations"] + ["game", "locations"] * 3
+    assert sh.history[2:6] == ["newgame", "chargen", "locations", "game"] and sh.history[-1] == "locations" and "inn" in sh.history
 
 
 @needs_graphics
@@ -307,7 +310,7 @@ def test_the_last_missions_ending_goes_to_the_menu(monkeypatch):
     to_chargen(sh)
     sh.handle(Key("return"))
     map_walk(sh)
-    monkeypatch.setattr(type(sh.campaign), "leave_mission", lambda self, world, result="won": C.Outcome("ending"))
+    monkeypatch.setattr(type(sh.campaign), "leave_mission", lambda self, world, result="won", visit=True: C.Outcome("ending"))
     sh.apply(sh.current.run())
     assert sh.name == "menu"                                                  # the credits are not built
 
