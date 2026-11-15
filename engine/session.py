@@ -61,6 +61,8 @@ def build_game(map_arg, install=None, seed=None, difficulty=DEFAULT_DIFFICULTY, 
     assets = assets or AssetCache(install)
     m = open_map(map_arg, install)
     world = World.from_map(m, assets, seed=seed, difficulty=difficulty, reserve_ids=reserve_ids)
+    world.map_arg = str(map_arg)                        # what `open_map` needs again: a mission save names it (engine/missionsave.py)
+    world.difficulty = difficulty
     triggers.enable(world, m, assets=assets, roster=roster)
     if vision:
         from engine.sim import vision as vision_mod

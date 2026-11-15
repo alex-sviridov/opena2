@@ -268,7 +268,7 @@ def test_shell_visit_loop_scene_inn_shop_leave():
 
 def test_shell_graph_has_the_town_edges():
     from engine.shell import GRAPH
-    assert GRAPH["town"] == {"inn", "shop", "locations", "menu", "town"} and GRAPH["inn"] == {"town"} and GRAPH["shop"] == {"town"}
+    assert GRAPH["town"] == {"inn", "shop", "locations", "menu", "town", "game"} and GRAPH["inn"] == {"town"} and GRAPH["shop"] == {"town"}
 
 
 def test_shell_mission_walk_autosaves_9999_and_starts_the_game():

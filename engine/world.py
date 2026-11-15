@@ -701,6 +701,8 @@ class World:
         self.light_version = 0
         self.cells_version = 0      # bumped when a tile bit changes at run time (burnt ground): terrain surface caches drop
         self.tick = 0
+        self.map_arg = None         # the argument `session.build_game` opened the map with (mission saves; not dumped)
+        self.difficulty = DEFAULT_DIFFICULTY    # the game option the world was built with (mission saves; not dumped)
         self.seed = seed & 0xFFFFFFFF   # the game's RNG seed (docs/engine/simulation.md section 10)
         self.rng = Rng(seed)            # the one generator of the simulation, drawn in update order
         self.objects = {}           # id -> MapObject
@@ -1162,7 +1164,7 @@ class World:
     # --- loading -------------------------------------------------------------------
 
     @classmethod
-    def from_map(cls, m, assets, facing=None, seed=DEFAULT_SEED, difficulty=DEFAULT_DIFFICULTY, reserve_ids=()):
+    def from_map(cls, m, assets, facing=None, seed=DEFAULT_SEED, difficulty=DEFAULT_DIFFICULTY, reserve_ids=(), populate=True):
         """From an `allods2.formats.Map` and an `AssetCache` (spec "World").
         Structures first in record order, then section 3 cells row-major;
         bulk-added, then one full block build; then players, units and ground piles in
@@ -1214,8 +1216,9 @@ class World:
         rep.ignored_outside_window = int(np.count_nonzero(m.objects)) - len(placed)
         w._resolve(list(w._cells))
         w._load_players(m)
-        w._load_units(m, assets, facing, difficulty)
-        w._load_items(m)
+        if populate:                                    # populate=False: the mission-save loader fills units / piles from the save (engine/missionsave.py)
+            w._load_units(m, assets, facing, difficulty)
+            w._load_items(m)
         return w
 
     def _load_players(self, m):

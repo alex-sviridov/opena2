@@ -16,7 +16,7 @@ from .knowledge import Knowledge
 from .orders import MainText, MessageLine
 from .widgets import info_button_rect
 
-QUIT_REASONS = ("menu", "windows", "victory", "defeat")
+QUIT_REASONS = ("menu", "windows", "victory", "defeat", "load")
 
 # UI sound ids (sfx.reg, docs/engine/audio.md 2.5) and priorities: the UI always gets a voice (`0xdc`), the message line plays at 100
 S_CLICK00, S_CLICK01, S_IBOOK, S_CLICK04, S_MESSAGE, S_COMPLETE, S_FAILED = 1, 2, 7, 8, 15, 14, 16
@@ -48,6 +48,9 @@ class GameUi:
         self.doll_mask = None                      # (unit) -> the 240x160 hit mask of its paper doll (ids slot + 1, 0 none); the backend supplies it
         self.quit = None                        # a QUIT_REASONS value once the player left the mission
         self.options_request = None             # "game" / "sound": the menu asked for an options window (the backend runs it, `0x41b` / `0x422`)
+        self.files = False                      # the Save / Load entries of the menu: False, True or (save, load) enable flags; the backend sets it when the shell has a slot folder (L10e-B)
+        self.file_request = None                # "save" / "load": the menu asked for the Save / Load window (the backend runs it, `0x41a` / `0x418`)
+        self.load_file = None                   # the file the Load window chose (quit reason "load")
         self.queue = []                         # story numbers waiting for the modal stack to empty (exe list 0x627170)
         self.bar = bar.BarWindow()              # the command bar's highlight state and press rules (11.2)
         self.pressed = None                     # (dialog, button index) under a held left button
@@ -90,7 +93,7 @@ class GameUi:
     def open_menu(self):
         """ESC / the disk button (window message `0x416`): only while no modal is open (mode 1)."""
         if not self.frozen:
-            self.modals.push(modal.menu_dialog(self.layout, self.dialog_text))
+            self.modals.push(modal.menu_dialog(self.layout, self.dialog_text, self.files))
             return True
         return False
 
@@ -158,6 +161,9 @@ class GameUi:
         elif kind == "open":
             if action[1] == "endquest":
                 self.modals.push(modal.endquest_dialog(self.layout, self.dialog_text, self.world.mission_complete))
+            elif action[1] in ("save", "load"):
+                self.file_request = action[1]               # the menu closes; the backend runs the window over the frozen frame
+                self.modals.clear()
             elif action[1] in ("gameoptions", "soundoptions"):
                 self.options_request = action[1][:-7]       # the menu closes (the message arrives with bit 8 clear: `0x485cc4` needs `+0x404 == 1`)
                 self.modals.clear()

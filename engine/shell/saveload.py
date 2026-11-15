@@ -10,6 +10,7 @@
 Every window is 488x360 (500x420 snapped, `FUN_004dc4fc`) centred on the screen; the rects are relative to its top-left (CONFIRMED from the build slots, listed in save-ui.md).  The look of the
 list rows, the edit field and the scroll bar (the exe's `FUN_004d82f8` list class, `FUN_004d601b` edit) is not read from the binary: flat boxes (INFERRED, needs eyes)."""
 
+import struct
 import time
 
 from engine import saveslots as SS
@@ -28,8 +29,9 @@ BLINK_MS = 500
 LISTED = "normal"
 
 FALLBACK = {("d", 0): "Ok", ("d", 1): "Cancel", ("d", 0x9D): "Delete", ("d", 0x1D): "Save Game", ("d", 0x90): "Saved Games", ("d", 0x97): "Load Saved Game", ("d", 0x18): "Load Game",
-            ("m", 0x4B): "Yes", ("m", 0x4C): "No", ("p", 0x32): "Are you sure you want to delete game '", ("p", 0x33): "' ?"}
-NOT_SUPPORTED = "Loading a saved mission is not supported yet."          # DECISION: L10e / L10f build it (`savegame.MissionSaveCodec`)
+            ("m", 0x4B): "Yes", ("m", 0x4C): "No", ("p", 0x32): "Are you sure you want to delete game '", ("p", 0x33): "' ?",
+            ("p", 0x37): "Restart last mission", ("p", 0x5F): "Abort mission and return to town"}
+NOT_SUPPORTED = "Loading a saved mission is not supported yet."          # only a `Shell` without a `mission_codec` (L10e-B sets it)
 
 
 class Texts:
@@ -449,7 +451,11 @@ def load_file(shell, name):
         codec = shell.mission_codec
         if codec is None:
             return "error", NOT_SUPPORTED
-        return "error", NOT_SUPPORTED                       # the codec exists but the in-shell resume is L10f's: not wired yet
+        try:
+            params = codec.load(save, install=shell.fs)
+        except (ValueError, KeyError, IndexError, AttributeError, TypeError, struct.error) as e:
+            return "error", "Invalid save file (%s)" % e
+        return "ok", shell.resume_mission(params)
     try:
         game = savegame.from_save(save, install=shell.fs, seed=time.time_ns() & 0xFFFFFFFF, resume_location=True)
     except (ValueError, KeyError, IndexError, AttributeError) as e:

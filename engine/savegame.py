@@ -343,21 +343,23 @@ def kind(save):
     return "mission" if save.tail.state.in_battle & 1 else "town"
 
 
-# --- L10e / L10f hook: mission-kind saves --------------------------------------------------------------------------------------------------
+# --- mission-kind saves (L10e-B: engine/missionsave.py) ------------------------------------------------------------------------------------------
 class MissionSaveCodec:
-    """THE HOOK for mission saves (loaded flag 1: `game9999`, `game9998`, a manual save in a mission), to be filled by L10e (the `World` <-> server stream codec) and
-    wired by L10f (the in-mission menu, `Restart last mission`, the load of every kind).  Nothing implements it yet: `Shell.mission_codec` is None, the mission's
-    Save entry stays disabled and loading a mission-kind file shows the "not supported yet" notice (`engine/shell/saveload.py`).  A codec provides:
+    """`Shell.mission_codec`: mission-kind saves (loaded flag 1: `game9999`, a manual save in a mission).  A thin layer over `engine.missionsave`:
 
-    * `save(session, description) -> saves.SaveGame`: the running mission's world as a mission save (InBattle 1);
-    * `load(save, campaign) -> dict`: the `start_game` parameters that resume the mission (`campaign`, `mission`, the restored world / session).
-    """
+    * `save(session, description, state=None, campaign=None) -> saves.SaveGame`: the running mission's world (`session.world`) as a mission save (InBattle 1);
+      `state` = the UI's `ClientState` (view, groups), `campaign` = the shell's `CampaignGame` (Scenario.dll block, mission times, hotkeys);
+    * `load(save, campaign=None, install=None, assets=None) -> dict`: the `start_game` parameters that resume the mission: `campaign` (rebuilt from the save),
+      `mission`, `loaded` (the `missionsave.LoadedMission`: the live world, the client state)."""
 
-    def save(self, session, description):
-        raise NotImplementedError
+    def save(self, session, description, state=None, campaign=None):
+        from engine import missionsave
+        return missionsave.world_to_save(session.world, campaign, state, description)
 
-    def load(self, save, campaign):
-        raise NotImplementedError
+    def load(self, save, campaign=None, install=None, assets=None):
+        from engine import missionsave
+        lm = missionsave.world_from_save(save, assets=assets, install=install, campaign=campaign)
+        return {"campaign": lm.campaign, "mission": lm.mission, "loaded": lm}
 
 
 def roster_states(game):

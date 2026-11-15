@@ -243,7 +243,7 @@ def test_load_screen_cancel_returns_to_the_menu_and_an_invalid_file_shows_a_noti
     to_menu(sh)
     sh.go("load")
     d = sh.current.dialog
-    assert [s.name for s in d.slots] == ["game0000.sav"]
+    assert [s.name for s in d.slots if s.name != "game9999.sav"] == ["game0000.sav"]            # the mission's auto-save is listed too (L10e-B)
     sh.handle(Press(*mid(d.abs(d.button_rects()[0]))))
     sh.handle(Release(*mid(d.abs(d.button_rects()[0]))))
     assert sh.name == "load" and d.box is not None and d.box.kind == "notice" and "Invalid save file" in d.box.message
@@ -253,14 +253,19 @@ def test_load_screen_cancel_returns_to_the_menu_and_an_invalid_file_shows_a_noti
     assert sh.name == "menu"
 
 
-def test_a_mission_kind_file_shows_the_not_supported_notice(tmp_path):
+def test_a_mission_kind_file_needs_the_codec_and_a_readable_stream(tmp_path):
+    """A shell without a codec shows the "not supported" notice; with the codec (the default since L10e-B) a mission file whose stream is no mission save is
+    refused with the reader's message."""
     from allods2.formats import saves as S
     sh = Shell(None, (640, 480), slots=SS.SaveSlots(tmp_path))
     tail = S.ClientTail.new("mission save", S.ClientState(in_battle=1))
     sh.slots.write("game9999.sav", S.SaveGame(b"\0" * 8, tail).pack())
     assert savegame.kind(sh.slots.read("game9999.sav")) == "mission"
+    status, text = SL.load_file(sh, "game9999.sav")
+    assert status == "error" and text.startswith("Invalid save file")
+    assert isinstance(sh.mission_codec, savegame.MissionSaveCodec)
+    sh.mission_codec = None
     assert SL.load_file(sh, "game9999.sav") == ("error", SL.NOT_SUPPORTED)
-    assert sh.mission_codec is None and hasattr(savegame, "MissionSaveCodec")
 
 
 def test_a_multiplayer_or_outdated_file_is_refused_with_the_readers_message(tmp_path):
@@ -322,10 +327,10 @@ def test_save_in_a_town_back_to_the_menu_load_and_continue_the_campaign(tmp_path
     before = savegame.comparable(sh.campaign)
     location = sh.campaign.camp.location
 
-    # the scene's menu: Save and Load are enabled (Load only once a save exists)
+    # the scene's menu: Save and Load are enabled (Load by any file: the missions' game9999 auto-saves exist by now, L10e-B)
     sh.handle(Key("escape"))
     menu = sh.current.menu
-    assert [e[2] for e in menu.entries()[:2]] == [True, False]
+    assert [e[2] for e in menu.entries()[:2]] == [True, True]
     click(sh, menu_button(sh, 0))                                                    # Save Game
     d = sh.current.dialog
     assert isinstance(d, SL.SaveDialog) and sh.current.menu is None
@@ -344,7 +349,7 @@ def test_save_in_a_town_back_to_the_menu_load_and_continue_the_campaign(tmp_path
     click(sh, button_centre(sh, 4))
     assert sh.name == "load"
     d = sh.current.dialog
-    assert [s.name for s in d.slots] == ["game0000.sav"]
+    assert [s.name for s in d.slots if s.name != "game9999.sav"] == ["game0000.sav"]            # the mission's auto-save is listed too (L10e-B)
     click(sh, mid(d.abs(d.button_rects()[0])))                                       # Ok
     assert sh.name == "town" and sh.campaign.camp.location == location
     assert savegame.comparable(sh.campaign) == before                                # the same party, gold, variables, shop table, available list
@@ -387,7 +392,7 @@ def test_load_from_the_scene_menu_replaces_the_running_game(tmp_path):
     assert sh.current.menu.entries()[1][2] is True                                   # Load is enabled now
     click(sh, menu_button(sh, 1))
     d = sh.current.dialog
-    assert isinstance(d, SL.LoadDialog) and [s.description for s in d.slots] == ["A"]
+    assert isinstance(d, SL.LoadDialog) and [s.description for s in d.slots if s.name != "game9999.sav"] == ["A"]
     click(sh, mid(d.abs(d.button_rects()[0])))
     assert sh.name == "town" and sh.history[-2:] == ["town", "town"] and sh.campaign.gold == gold
     sh.handle(Key("escape"))
@@ -396,6 +401,6 @@ def test_load_from_the_scene_menu_replaces_the_running_game(tmp_path):
     click(sh, mid(d.abs(d.button_rects()[1])))                                        # Delete
     assert d.box is not None
     click(sh, mid(d.box.rects()[0]))                                                  # Yes
-    assert sh.slots.scan() == [] and d.enabled() == (False, False, True)
+    assert [x.name for x in sh.slots.scan(include_hidden=True)] == ["game9999.sav"]
     click(sh, mid(d.abs(d.button_rects()[2])))                                        # Cancel
     assert sh.current.dialog is None and sh.name == "town"

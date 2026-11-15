@@ -396,6 +396,8 @@ class PlaySession:
         self.reason, self.error, self.world, self.sim = "quit", None, None, None
         self.option_services = None                    # the shell's services for the in-game options windows (None = the defaults)
         self.exit = None                               # the ui's quit reason when the loop ended (None = the window was closed)
+        self.file_shell = getattr(a, "file_shell", None)      # the shell: the mission menu's Save / Load windows (L10e-B); None = the entries stay disabled
+        self.load_file = None                          # the file the mission menu's Load window chose (exit "load")
 
     def start(self):
         a = self.a
@@ -405,11 +407,15 @@ class PlaySession:
         self.opts = game_options(self.opts, self.settings)
         self.tv.set_time_flow(self.settings.day_night)
         hero = self.world.units.get(self.world.players[1].main_hero)
-        if hero is not None:                       # start with the hero in view
+        view = getattr(a, "loaded_view", None)
+        if view is not None:                       # a loaded mission: the saved camera (`View/X`, `View/Y`)
+            self.camera.move_to(*view)
+        elif hero is not None:                       # start with the hero in view
             self.camera.move_to(hero.x * 32 - self.camera.view_w / 2, hero.y * 32 - self.camera.view_h / 2)
         from engine.sim import vision
-        vision.enable(self.world)
-        vision.vision_system(self.world, [])
+        if self.world.fog is None:                 # a loaded world has its fog (the explored bits came from the save)
+            vision.enable(self.world)
+            vision.vision_system(self.world, [])
         from allods2.common import as_fs
         from allods2.minimap import load_color_table, load_dot_colors, load_structure_sizes
         from engine.view import Minimap
@@ -429,9 +435,11 @@ class PlaySession:
                          debug=self.debug, minimap=self.mm, ai=True, hero_name=a.hero_name,
                          mission_id=mission.group(1) if mission else None,
                          frame_hook=self.rec.frame, sim_hook=self.rec.attach, audio=audio, music_zones=map_music_zones(a),
-                         in_shell=self.in_shell, settings=self.settings, option_services=self.option_services)
+                         in_shell=self.in_shell, settings=self.settings, option_services=self.option_services, file_shell=self.file_shell)
         self.exit = sim.ui.quit if getattr(sim, "ui", None) is not None else None
         self.reason = {"won": "victory", "lost": "defeat"}.get(triggers.result(world), "quit")
+        if self.exit == "load":
+            self.reason, self.load_file = "load", getattr(sim.ui, "load_file", None)
         return self.reason
 
     def crash(self, e):

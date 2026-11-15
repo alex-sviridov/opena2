@@ -88,11 +88,18 @@ save is therefore always written from a scene, and a load of it stands in that s
   (`town -> town` in `GRAPH`). The **main menu** LOAD GAME enables from the folder (`MainMenu.enter`) and goes to the `load` screen (the menu picture under the Load window); Cancel -> `menu`, Ok -> `town` (or `locations` for a save without a town location).
   `GRAPH`: `town -> town`, `load -> town, locations`.
 * **Restoring the location:** `savegame.from_save(.., resume_location=True)` sets `camp.location` to the saved position in the available list (CONFIRMED `ScenarioLoad`: the entry at that position becomes current); the L10c default (location None, rests on the map) stays for headless use.
+* **Mission saves (L10e-B, built):** see "L10e-B" below. (Earlier text, superseded:)
 * **Not supported yet (the L10e / L10f hook):** a mission-kind file (`InBattle` = 1, `savegame.kind`) shows the notice "Loading a saved mission is not supported yet." (DECISION text); in a mission the in-game menu's Save and Load stay disabled; the auto-saves
   `game9999` / `game9998` are not written (`Services.autosave` is called with the slot and ignored). The single extension point is `savegame.MissionSaveCodec` (`save(session, description)`, `load(save, campaign)`) assigned to `Shell.mission_codec`.
 * **Errors:** an unreadable / refused file -> a notice with the reader's message ("Invalid save file", "Outdated save file", the multiplayer message; a truncated file adds the detail), the Load window stays open; a failed write -> a notice, the Save window stays open (the old file is untouched: atomic write);
   a failed delete -> a notice.
 * Decisions: no overwrite confirmation (as the exe); the delete question quotes the description; the menu closes when a window opens and does not reopen (INFERRED from `FUN_004891d8`, which only clears bit 8); the Save window keeps the typed text across a Delete.
+
+## 4.1 L10e-B: mission saves in the shell (built)
+
+* `Shell.mission_codec` = `savegame.MissionSaveCodec` (default; None restores the "not supported" notice). `saveload.load_file` of a mission-kind file: `codec.load` -> `Shell.resume_mission(params)` -> `("game", params)` (edges `town -> game`, `game -> town`, `load -> game`); `GameScreen` plays `params["loaded"].world` (no `start_mission`, no new auto-save, saved camera / selection / fog). An unreadable mission stream is a notice "Invalid save file (...)" (a refused load from inside a mission goes to the main menu, `0x421`).
+* **Mission ESC menu:** Save and Load are enabled when the shell has a slot folder (`GameUi.files`, `modal.menu_dialog(files=)`; Load only with any `game*.sav`, `FUN_0043ff4a`); the entry closes the menu (`GameUi.file_request`) and `window.run` opens the shell's `SaveDialog` / `LoadDialog` over the frozen frame (`backend_pygame/fileview.py`); Save Ok -> `Shell.save_mission` (the world as a mission save; the dialog keeps its notice on an error), Load Ok -> the loop ends with `ui.quit == "load"` and `ui.load_file`, `GameScreen.run` loads it. The menu has **no** "Restart last mission" / "Abort mission and return to town" entry (CONFIRMED menu list, ui-layout 11.4): those are the descriptions (patch `0x37` / `0x5f`) of `game9999.sav` / `game9998.sav` in the Load window, so restarting = loading `game9999`.
+* **Auto-saves:** `Shell.mission_start_save(session)` after the campaign mission's session is built (`game9999.sav`, `FUN_0048c8a3(0)` -> `0x442`); `Shell.autosave(9998)` from the town core's leave event (`game9998.sav`, a town save: the party is still in the town). `Services.autosave(slot)` stays the observer hook.
 
 ## 5. VERIFY IN GAME (user's real-game check)
 
@@ -102,8 +109,14 @@ save is therefore always written from a scene, and a load of it stands in that s
    (the L10c INFERRED parts of the stream: [saves 7](../formats/saves.md#7-code)). Check which town the original shows (the saved location) and that the shop stock after the load is regenerated.
 4. **Delete**: the confirmation text (`Are you sure you want to delete game '...' ?`: what is quoted, the description or the whole row), Yes / No, the selection after the delete, Ok / Delete disabled on an empty list.
 5. **Main menu**: LOAD GAME enabled exactly when a `game*.sav` exists (also an invalid one); Cancel returns to the menu; the Load window over the menu picture.
-6. **Mission-kind files** (`game9999.sav` made by the original at a mission start): listed first in the Load window; loading shows our "not supported yet" notice (L10e / L10f); the original shows no such thing.
+6. **Mission-kind files** (`game9999.sav` made by the original at a mission start): listed first in the Load window; since L10e-B it loads through the stream-only path (see 8-13).
 7. The list order (newest first), the row pitch, the selected-row colour, the edit field's character limit and caret, Enter / double-click behaviour, the click sounds, the window position at 800x600 / 1024x768 (centred on the real screen).
+8. **Mission start auto-save:** start a mission here, quit to the menu, Load Game: `game9999` ("Restart last mission") is listed (first, hidden from the Save window) and restarts the mission; the same file copied into the original's folder loads there (map, party at the drop cell, script state).
+9. **Mid-mission save here -> load in the original:** ESC -> Save Game in a fight (spells, summons, corpses, items on the ground): the original must list it, load it, and show the units / HP / items / fog; look for a crash on the INFERRED Building / SpellEffect / VirtualCaster / Sack scalars (saves 7.1) and that the unknown `Engine/*` reg key and the RNG bytes at the end of the debug block do not disturb it.
+10. **Original mission save -> load here:** a save made by the original in a fight loads (derived path): party, HP / mana, items, effects, corpses, script values, fog bits; the script's stage counters and the RNG restart (exe quirk: they are not in the file).
+11. **Resume feel:** after a load the fight continues without a visible jump (positions, walking units, cast in progress, flying missiles are not restored from the original's saves).
+12. **ESC menu:** Save / Load entries enabled in a mission (Load only when a `game*.sav` exists), the windows open over the frozen map, Cancel returns to the game; Load from a mission replaces the game; a town save loaded from a mission stands in its town.
+13. **`game9998`:** after leaving a town scene (leave click) the Load window lists "Abort mission and return to town"; loading it returns to that town.
 
 ## Open questions
 

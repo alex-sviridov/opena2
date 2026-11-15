@@ -677,6 +677,7 @@ class ClientState:
     projectiles: dict = field(default_factory=dict)     # id -> {PRJ_FIELDS: int}  (sections Prj<id>)
     fog_first_state: int = 0                            # Fog/FirstState
     fog_data: list = field(default_factory=list)        # Fog/Data (run lengths of fog bit 15, INFERRED int array)
+    engine: bytes = b""                                 # Engine/Size + Engine/Blob: the engine's own extension (engine/missionsave.py, DECISION; the original ignores unknown keys, INFERRED)
 
     @classmethod
     def from_reg(cls, reg):
@@ -703,6 +704,10 @@ class ClientState:
                     st.projectiles[pid] = {k: sec.get(k, 0) for k in PRJ_FIELDS}
             st.fog_first_state = g("Fog/FirstState", 0)
             st.fog_data = _ints(g("Fog/Data"))
+        n = g("Engine/Size", 0)
+        if n:
+            ints = _ints(g("Engine/Blob"))
+            st.engine = struct.pack("<%di" % len(ints), *ints)[:n]
         return st
 
     def to_tree(self):
@@ -721,6 +726,9 @@ class ClientState:
             for pid in self.projectile_ids:
                 t["Prj%d" % pid] = {k: self.projectiles[pid].get(k, 0) for k in PRJ_FIELDS}
             t["Fog"] = {"FirstState": self.fog_first_state, "Data": list(self.fog_data)}
+        if self.engine:
+            pad = self.engine + bytes(-len(self.engine) % 4)
+            t["Engine"] = {"Size": len(self.engine), "Blob": list(struct.unpack("<%di" % (len(pad) // 4), pad))}
         return t
 
     def to_reg_bytes(self):

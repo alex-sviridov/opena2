@@ -246,7 +246,7 @@ def party_option_commands(player_id, s, formation, retreat, autocast):
 def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Allods 2", max_frames=None,
         assets=None, options=None, debug=None, minimap=None, player_id=PLAYER_ID, commands=(), ai=True,
         trace=False, hero_name="Hero", mission_id=None, frame_hook=None, sim_hook=None, audio=None, music_zones=(), in_shell=False,
-        settings=None, option_services=None):
+        settings=None, option_services=None, file_shell=None):
     """Accumulator main loop: fixed-step sim, variable-rate drawing.  Returns the `Simulation` when the window
     closes (or after `max_frames`, for tests).  `layout`: `Layout` of the window size (the camera is built from
     `layout.viewport`).  `ai`: the monsters think (docs/engine/ai.md; `--no-ai` of the CLI).  F1-F3 and Shift+F4/F5 toggle the debug overlays, F4-F12 are the spell shortcuts, Ctrl+H the health bars, Ctrl+F cycles the formation.
@@ -264,8 +264,10 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     with the real camera and fog, feeds the issued commands to its Director, plays the UI sounds `GameUi` queues, starts the mission playlist (`music_zones` =
     `Map.music()` zones) and stops the music on victory.  `in_shell`: the loop was started by the shell (docs/engine/shell.md): the display and the
     audio device stay open for the next screen (no `pygame.quit()`, no `audio.close()`); the reason the loop ended is `sim.ui.quit`
-    (`menu`, `windows`, `victory`, `defeat`; None = the window was closed).  `settings`: the stored `Settings` the in-game options windows edit (None = the file);
-    `option_services`: their `Services` (None = `optionsview.default_services(audio)`).  The menu's Game / Sound Options entries open them (`ui.options_request`)."""
+    (`menu`, `windows`, `victory`, `defeat`, `load` with `ui.load_file`; None = the window was closed).  `settings`: the stored `Settings` the in-game options windows edit (None = the file);
+    `option_services`: their `Services` (None = `optionsview.default_services(audio)`).  The menu's Game / Sound Options entries open them (`ui.options_request`).
+    `file_shell`: the shell (a slot folder and a mission codec): the menu's Save / Load entries are enabled and open the shell's windows over the frozen frame
+    (`ui.file_request`, `fileview.run_file_dialog`); a chosen Load ends the loop with `ui.quit == "load"` and `ui.load_file` (L10e-B)."""
     options, debug = options or DrawOptions(), debug or DebugFlags()
     layout = layout or Layout.for_size(camera.view_w + 160, camera.view_h)
     screen = ensure_display(*layout.size)
@@ -331,7 +333,9 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
     gc.collect()
     gc.freeze()                         # the loaded world and art stay out of the collector's scans: a gen-2 pass over them paused a frame ~30 ms
     running = True
-    pending_options, backdrop = None, None
+    pending_options, pending_file, backdrop = None, None, None
+    if file_shell is not None and file_shell.slots is not None:
+        ui.files = (True, file_shell.slots.any_saves())
     state = CursorState.DEFAULT                 # the cursor of the previous frame (a pending mode without a cursor keeps it)
     while running:
         if frame_hook is not None:
@@ -527,6 +531,9 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
         iface.draw(screen, caches, build_terrain_items(terrain_view, camera, world.tick, items.lights), items, camera,
                    world, player_id, minimap, panel, None, lines or None, numbers, hover, ui,
                    bar.cells(sel_state, cast_enabled, ordering.pending, ui.bar.highlight(ordering.pending)), mouse, info_picture, tip, book_views, pack_view)
+        if ui.file_request:                                 # the Save / Load entry: same rule as the options windows
+            pending_file, ui.file_request = ui.file_request, None
+            backdrop = screen.copy()
         if ui.options_request:                              # the menu closed itself: this frame, without it, stays under the options window
             pending_options, ui.options_request = ui.options_request, None
             backdrop = screen.copy()
@@ -547,6 +554,18 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
         else:
             draw_cursor(screen, cursors, state, mouse, now)
         pygame.display.flip()
+        if pending_file is not None:
+            kind, pending_file = pending_file, None
+            from .fileview import run_file_dialog
+            file_shell.view = (int(camera.x), int(camera.y))
+            res, closed = run_file_dialog(kind, screen, backdrop, file_shell, audio=audio)
+            if closed:
+                running = False
+            elif res is not None and res[0] == "load":
+                ui.load_file, ui.quit, running = res[1], "load", False
+            ui.files = (True, file_shell.slots.any_saves())
+            was_frozen = True
+            held.clear()
         if pending_options is not None:
             page, pending_options = pending_options, None
             from engine.audio import settings as settings_mod

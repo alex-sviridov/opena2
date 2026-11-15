@@ -73,6 +73,10 @@ class ShellGame:
     def __init__(self, play, audio):
         self.play, self.audio, self.world = play, audio, play.world
 
+    @property
+    def load_file(self):
+        return self.play.load_file
+
     def run(self):
         play = self.play
         try:
@@ -89,7 +93,7 @@ class ShellGame:
                 self.audio.end_mission()
         if play.exit in (None, "windows"):
             return "quit"
-        return play.exit if play.exit in ("victory", "defeat") else "menu"
+        return play.exit if play.exit in ("victory", "defeat", "load") else "menu"
 
 
 def run(a, parser, PlaySession, make_audio, audio_settings):
@@ -112,7 +116,14 @@ def run(a, parser, PlaySession, make_audio, audio_settings):
     def start_game(params):
         ns = argparse.Namespace(**vars(a))
         camp = params.get("campaign")
-        if camp is not None:                                # a campaign mission: the carried party, the campaign's variables (campaign.md)
+        loaded = params.get("loaded")
+        ns.file_shell = shell
+        if loaded is not None:                              # a resumed mission (`FUN_0048c8a3(1)`, L10e-B): the loaded world, no start, no auto-save
+            ns.map, ns.difficulty, ns.seed = loaded.mission, loaded.world.difficulty, loaded.world.seed
+            ns.hero_name = a.hero_name
+            ns.prebuilt = (loaded.world, loaded.assets)
+            ns.loaded_view = (loaded.client_state.view_x, loaded.client_state.view_y)
+        elif camp is not None:                                # a campaign mission: the carried party, the campaign's variables (campaign.md)
             ns.map, ns.difficulty, ns.seed = str(params["mission"]), camp.difficulty, camp.seed
             ns.hero_name = camp.roster[0].spec.name if camp.roster and camp.roster[0].spec and camp.roster[0].spec.name else a.hero_name
             ns.campaign_snapshot = camp.snapshot()                  # before the mission starts: the session files can replay it

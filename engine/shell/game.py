@@ -37,14 +37,22 @@ class GameScreen(Screen):
             raise RuntimeError("no start_game service: the shell cannot start a game")
         self.campaign = params.get("campaign")
         self.session = start(params)
+        self.shell.mission_session = self.session
+        if params.get("loaded") is None and self.campaign is not None:
+            self.shell.mission_start_save(self.session)           # `FUN_0048c8a3(0)`: `game9999.sav`; a resumed mission writes none (`FUN_0048c8a3(1)`)
 
     def exit(self):
         self.session = None
+        self.shell.mission_session = None
         self.campaign = None
 
     def run(self):
         """Play the session to its end; the next screen's name."""
         reason = self.session.run()
+        if reason == "load":                                    # the mission menu's Load window: the chosen file replaces the game (`0x419`); a refused file = the main menu (`0x421`)
+            from .saveload import load_file
+            status, res = load_file(self.shell, self.session.load_file)
+            return res if status == "ok" else "menu"
         if self.campaign is None or reason not in BACK_TO_MENU:
             return "menu" if reason in BACK_TO_MENU else "quit"
         out = self.campaign.leave_mission(self.session.world, "won" if reason == "victory" else reason, visit=False)     # the player visits the towns (L7)

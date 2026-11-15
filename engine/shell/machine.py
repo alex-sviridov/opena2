@@ -17,11 +17,11 @@ GRAPH = {
     "newgame": {"menu", "chargen"},
     "chargen": {"newgame", "locations"},
     "locations": {"game", "menu", "town"},
-    "town": {"inn", "shop", "locations", "menu", "town"},            # `town -> town`: a game loaded from the scene's menu (L10d)
+    "town": {"inn", "shop", "locations", "menu", "town", "game"},            # `town -> town`: a game loaded from the scene's menu (L10d)
     "inn": {"town"},
     "shop": {"town"},
     "load": {"menu", "game", "town", "locations"},               # the main menu's Load window: back, or into the loaded game (a town save; a mission save is L10e / L10f)
-    "game": {"menu", "locations", "game"},                  # no town available after a mission: the head mission starts at once (`0x41d`)
+    "game": {"menu", "locations", "game", "town"},                  # no town available after a mission: the head mission starts at once (`0x41d`)
     "quit": set(),
 }
 START = "startup"
@@ -68,9 +68,12 @@ class Shell:
         self.rng = random.Random()              # the town scenes' dice (tests assign a seeded one)
         self._scene_globals = None              # `engine.townscene.Globals`: the exe's process-global scene counters (`scene_globals`)
         self.mouse = None                       # the last pointer position the shell saw (the map starts its hover from it)
+        self.mission_session = None             # the running mission's session (set by the game screen: the mission menu's Save writes its world)
+        self.view = (0, 0)                      # the mission camera at the last Save click (the backend sets it; `View/X`, `View/Y` of the client state)
         self.campaign = None                    # the running single-player campaign (`engine.campaign.CampaignGame`), made by `chargen`
         self.slots = slots                      # `engine.saveslots.SaveSlots` (the saved-game folder; None = no saves: the Load button stays disabled, Save writes nothing)
-        self.mission_codec = None               # THE HOOK of L10e / L10f: an `engine.savegame.MissionSaveCodec` for mission-kind saves (None = not supported yet)
+        from engine import savegame
+        self.mission_codec = savegame.MissionSaveCodec()    # mission-kind saves (`engine/missionsave.py`); None = "not supported" notice (tests)
         if screens is None:
             from .chargen import CharGen
             from .game import GameScreen
@@ -157,6 +160,67 @@ class Shell:
         self.log("save: %s '%s'" % (filename, description))
         return None
 
+    def description_text(self, number, fallback):
+        """`patch.txt` line `number` (the auto-save descriptions: 0x37 "Restart last mission", 0x5f "Abort mission and return to town")."""
+        if self.fs is not None:
+            try:
+                from .saveload import Texts
+                return Texts(self.fs)("p", number) or fallback
+            except Exception:                       # noqa: BLE001  a text table that cannot be read: the exe's English text
+                pass
+        return fallback
+
+    def autosave(self, slot):
+        """The core's `0x442` (saves.md 6, ui-layout 11.4): `services.autosave(slot)` is the observer hook; slot 9998 (the town scene's leave click) writes
+        `game9998.sav` now, a town save (the campaign still stands in the town: loading it returns there); slot 9999 (the mission entry) is written by
+        `mission_start_save` once the world exists."""
+        self.services.autosave(slot)
+        if slot == 9998 and self.slots is not None and self.campaign is not None:
+            from engine import saveslots
+            text = self.description_text(0x5F, "Abort mission and return to town")
+            try:
+                self.slots.write(saveslots.autosave_name(1), self.campaign.to_save(text).pack())
+            except OSError as e:
+                self.log("autosave %s: %s" % (slot, e))
+
+    def mission_start_save(self, session):
+        """`FUN_0048c8a3(0)` ends with `0x442(0)`: `game9999.sav`, "Restart last mission", the world as the mission starts (none after a load: `FUN_0048c8a3(1)`)."""
+        if self.slots is None or self.mission_codec is None or getattr(session, "world", None) is None:
+            return None
+        from engine import saveslots
+        text = self.description_text(0x37, "Restart last mission")
+        try:
+            self.slots.write(saveslots.autosave_name(0), self.mission_codec.save(session, text, campaign=self.campaign).pack())
+        except OSError as e:
+            self.log("autosave mission start: %s" % e)
+            return str(e)
+        self.log("autosave: game9999.sav '%s'" % text)
+        return None
+
+    def mission_state(self):
+        """The `ClientState` of a mission save the UI contributes: the camera view (`Shell.view`)."""
+        from allods2.formats import saves as S
+        return S.ClientState(view_x=int(self.view[0]), view_y=int(self.view[1]))
+
+    def save_mission(self, session, filename, description, state=None):
+        """The mission menu's Save dialog (`FUN_0048dc9f` with the running mission): the world as `game%d.sav` in the slot folder.  Returns None or an error text."""
+        if self.slots is None or self.mission_codec is None:
+            return "No folder for saved games."
+        try:
+            self.slots.write(filename, self.mission_codec.save(session, description, state, campaign=self.campaign).pack())
+        except OSError as e:
+            return "%s: %s" % (filename, e.strerror or e)
+        self.log("save: %s '%s'" % (filename, description))
+        return None
+
+    def resume_mission(self, params):
+        """A mission-kind file was loaded (`0x419` -> `FUN_0048db37` -> `FUN_0048c8a3(1)`: the mission resumes, no new auto-save): the loaded campaign takes over and
+        the game screen plays the loaded world.  Returns `("game", params)` for `Shell.apply`."""
+        self.campaign = params.get("campaign") or self.campaign
+        self._town = None
+        self.log("load: mission %s, tick %d" % (params.get("mission"), params["loaded"].world.tick))
+        return ("game", params)
+
     def resume(self, game):
         """The loaded campaign takes over (`0x419` -> `FUN_0048db37`, a town save: the server is rebuilt, `FUN_0041aaa5(0, 0)` = the town scene of the saved location, `0x42e`): a new
         town core, the scene of the saved town (the available list's saved position); a save with no town there (cannot be written by the menus) rests on the map.  Returns the screen name."""
@@ -202,7 +266,7 @@ class Shell:
         for ev in events:
             kind = ev[0]
             if kind == "autosave":
-                self.services.autosave(ev[1])
+                self.autosave(ev[1])
             elif kind == "music":
                 self.services.music(ev[1])
             elif kind == "speech":

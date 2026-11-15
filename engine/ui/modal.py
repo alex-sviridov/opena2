@@ -97,11 +97,12 @@ def _buttons(frame, entries):
     return tuple(out)
 
 
-def menu_dialog(layout, dialogs):
+def menu_dialog(layout, dialogs, files=False):
     """The in-game menu (message `0x416`): Save, Load, Options, Sound, Objectives, End Quest, Return.  Game Options (`0x41b`) and Sound Options (`0x422`) open the
-    shell's options windows (docs/engine/shell.md 5); the entries whose window is not built (Save, Load, Quest Objectives) are disabled (DECISION: the exe enables them)."""
+    shell's options windows (docs/engine/shell.md 5); the entries whose window is not built (Quest Objectives; Save and Load unless `files`, the session has a slot folder: L10e-B) are disabled (DECISION: the exe enables them)."""
     frame = widget_rect(layout, "menu.frame")
-    entries = [(dialogs(D_SAVE), False, NOOP), (dialogs(D_LOAD), False, NOOP), (dialogs(D_OPTIONS), True, ("open", "gameoptions")),
+    save_on, load_on = files if isinstance(files, tuple) else (bool(files), bool(files))        # (Save, Load): Load needs any `game*.sav` (`FUN_0043ff4a`)
+    entries = [(dialogs(D_SAVE), save_on, ("open", "save") if save_on else NOOP), (dialogs(D_LOAD), load_on, ("open", "load") if load_on else NOOP), (dialogs(D_OPTIONS), True, ("open", "gameoptions")),
                (dialogs(D_SOUND), True, ("open", "soundoptions")), (dialogs(D_OBJECTIVES), False, NOOP),
                (dialogs(D_ENDQUEST), True, ("open", "endquest")), (dialogs(D_RETURN), True, RETURN)]
     return Dialog("menu", frame, _buttons(frame, entries), escape=RETURN)
