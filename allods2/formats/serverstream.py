@@ -6,10 +6,10 @@ name, 11 option words, scenario id, difficulty), the player manager (`u32` word,
 integer) so `parse -> pack` is byte-exact; the objects share Python identity exactly where the stream shares MFC back-references (a hero is
 one `Unit` object in its group and in the unit container; a weapon is one `Item` object at `+0x74` and in equipment slot 1).
 
-Loaded flag 1 (a mission save): the map, script and object lists (`FUN_0052c3da`, `FUN_0052d5cb`, `FUN_00550008`, `FUN_0057468d`,
-`FUN_0052d5b2`, `FUN_0053bbd0`) are kept as `ServerStream.mission_raw`, the bytes between the flag and the final `0xbadface1` pair.
-`Building`, `SpellEffect`, `VirtualCaster` and `Sack` have codecs (`BuildingObj`, ...) and are in the class table, but are not wired to
-that branch yet.
+Loaded flag 1 (a mission save, L10e-A): `ServerStream.mission` = `Mission`, the typed branch in store order: buildings (`FUN_0052c3da`), spell effects
+(`FUN_0052d5cb`), the map dynamic layer (`FUN_00550008`: `MapLayer`), the script state (`FUN_0057468d`: `ScriptState`), sacks (`FUN_0052d5b2`) and
+virtual casters (`FUN_0053bbd0`).  Field layouts of the raw blocks inside (`serverblocks.py`) name what the engine needs.  A mission branch that
+does not parse as that layout (a hand-made blob) is kept as `mission_raw`, the bytes between the flag and the `0xbadface1` pair.
 
 Layout facts and their tags: docs/formats/saves.md 6.4-6.11; the routine of each class is cited at its dataclass.
 """
@@ -19,13 +19,14 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 from .mfc import ArchiveError, MfcClass, MfcReader, MfcWriter
+from .serverblocks import BRAIN, MOVER, POSITION, position_raw
 
 XOR_WORD = 0x5C073F4D           # FUN_00546740: gold (+0x3c) and +0xa48 are stored xor this
 BADFACE = 0xBADFACE1
 DEBUG_SIZE = 400                # [server+0x170] (6.11)
 TABLE_SIZE = 0xA00              # player +0x44: the viewer's knowledge table (saves.md 3.5)
 
-# vtable pointers of the classes (raw first 0xc bytes of every game object, 6.10 `FUN_0054ffd1`; INFERRED that these are what the exe wrote)
+# vtable pointers of the classes (town saves only: the 0xc raw bytes of an object are its Position, 6.12; these are what the town-save writer puts there, INFERRED harmless)
 VT_UNIT, VT_HUMANOID, VT_ITEM, VT_EFFECT = 0x5D0EB0, 0x5D0FB8, 0x5D1388, 0x5D1178
 VT_SACK, VT_BUILDING, VT_SPELLEFFECT, VT_CASTER = 0x5D1530, 0x5D1268, 0x5D1060, 0x5D0E78
 
@@ -45,7 +46,10 @@ def _u16(v):
 def read_ucount(r):
     """`FUN_005aab7b`: the MFC count of a `CList<u16>`: u16, or 0xffff + u32."""
     n = r.u16()
-    return r.u32() if n == 0xFFFF else n
+    n = r.u32() if n == 0xFFFF else n
+    if n > len(r.data) - r.pos:
+        raise ArchiveError("count %d past the end of the archive" % n)
+    return n
 
 
 def write_ucount(w, n):
@@ -69,7 +73,10 @@ def write_cells(w, cells):
 
 def read_list(r, classes, expect=None):
     """A counted list of MFC object pointers (`u32 count`, then the pointers, 6.4)."""
-    return [r.object(classes, expect) for _ in range(r.count())]
+    n = r.count()
+    if n > len(r.data) - r.pos:             # every element takes at least a 2-byte tag: a larger count is garbage, not a list
+        raise ArchiveError("list of %d objects past the end of the archive" % n)
+    return [r.object(classes, expect) for _ in range(n)]
 
 
 def write_list(w, items, put):
@@ -82,7 +89,7 @@ def write_list(w, items, put):
 
 @dataclass
 class Base:
-    """The part every game object writes first: 0xc raw bytes (the object's first three words: vtable, id, `+8`), `+4` id, `+0xc` / `+0xe` words,
+    """The part every game object writes first: 0xc raw bytes (the object's Position: cell, sub-cell, saves.md 6.12; `raw12` still builds the old vtable form town saves use), `+4` id, `+0xc` / `+0xe` words,
     `+8`, `+0x18` (the loader forces 0), `+0x1c`, the object's own raw pointer (the key of the load map, any unique non-zero value) and `+0x14`
     (a pointer key: the owner)."""
     raw12: bytes = bytes(12)
@@ -94,6 +101,15 @@ class Base:
     d1c: int = 0
     ptr: int = 0
     link: int = 0
+
+    @property
+    def pos(self):
+        """The first 12 bytes are the object's Position (`FUN_0052cf8d`, CONFIRMED): `serverblocks.POSITION` fields as a dict."""
+        return POSITION.decode(self.raw12)
+
+    def with_pos(self, **fields):
+        self.raw12 = POSITION.set(self.raw12, **fields)
+        return self
 
     @classmethod
     def read(cls, r):
@@ -325,6 +341,18 @@ class Unit:
     @property
     def class_name(self):
         return "Humanoid" if self.hum is not None else "Unit"
+
+    def mover_get(self, name):
+        return MOVER.get(self.mover, name)
+
+    def mover_set(self, **values):
+        self.mover = MOVER.set(self.mover, **values)
+
+    def brain_get(self, name):
+        return BRAIN.get(self.brain, name)
+
+    def brain_set(self, **values):
+        self.brain = BRAIN.set(self.brain, **values)
 
     @property
     def number(self):
@@ -633,6 +661,129 @@ class Player:
         return [u for g in self.groups for u in g.units]
 
 
+# --- the mission branch (loaded flag 1; L10e-A) ---------------------------------------------------------------------------------------------------
+
+@dataclass
+class MapLayer:
+    """`FUN_00550008` (the map object): `cells` = the sparse dynamic layer, one u32 per scanned index `0x807 .. 0xeded` whose plane-2 byte is above 0xf
+    (`index << 16 | plane2 << 8 | plane1`, `FUN_0055fc20`: MFC count then u32s); `records` = the CMap at `map+0x54084` (`FUN_0055f6b0`: MFC count, then per
+    entry u16 key and a 60-byte `CELL_RECORD`), in the order the stream has them; `ptr` = the map's own pointer key."""
+    cells: List[int] = field(default_factory=list)
+    records: List[Tuple[int, bytes]] = field(default_factory=list)
+    ptr: int = 0
+
+    @staticmethod
+    def cell(index, plane2, plane1):
+        return (index & 0xFFFF) << 16 | (plane2 & 0xFF) << 8 | (plane1 & 0xFF)
+
+    @staticmethod
+    def split(v):
+        return v >> 16, (v >> 8) & 0xFF, v & 0xFF
+
+    @staticmethod
+    def read(r):
+        m = MapLayer()
+        m.cells = [r.u32() for _ in range(read_ucount(r))]
+        m.records = [(r.u16(), r.raw(60)) for _ in range(read_ucount(r))]
+        m.ptr = r.u32()
+        return m
+
+    def write(self, w):
+        write_ucount(w, len(self.cells))
+        for v in self.cells:
+            w.u32(v)
+        write_ucount(w, len(self.records))
+        for k, val in self.records:
+            if len(val) != 60:
+                raise ValueError("cell record: 60 bytes")
+            w.u16(k)
+            w.raw(val)
+        w.u32(self.ptr)
+
+
+@dataclass
+class ScriptState:
+    """`FUN_0057468d` (the script runner / server object; offsets from it).  `values` `+0xc784` (1000 x i32: check results, constants, variables),
+    `fired` `+0xe6c4` (1000 flags), `b30` `+8` (0x30 bytes), `b400` `+0xa728`, `relations` `+0xa8bc` (0x132c = 8 header bytes + 70 x 70 relation bytes,
+    `serverblocks.relation`), u8 `+0xa48`, `+0xa49`, u32 `+0xa4c` (`FUN_00543570`), `complete` `+0xbe0c` (mission complete counter), `d_be10`, `fail`
+    `+0xbe14` (fail cause)."""
+    values: bytes = bytes(4000)
+    fired: bytes = bytes(1000)
+    b30: bytes = bytes(0x30)
+    b400: bytes = bytes(400)
+    relations: bytes = bytes(0x132C)
+    b_a48: int = 0
+    b_a49: int = 0
+    d_a4c: int = 0
+    complete: int = 0
+    d_be10: int = 0
+    fail: int = 0
+
+    SIZES = (("values", 4000), ("fired", 1000), ("b30", 0x30), ("b400", 400), ("relations", 0x132C))
+
+    @staticmethod
+    def read(r):
+        s = ScriptState()
+        s.values, s.fired, s.b30, s.b400, s.relations = r.raw(4000), r.raw(1000), r.raw(0x30), r.raw(400), r.raw(0x132C)
+        s.b_a48, s.b_a49, s.d_a4c = r.u8(), r.u8(), r.u32()
+        s.complete, s.d_be10, s.fail = r.u32(), r.u32(), r.u32()
+        return s
+
+    def write(self, w):
+        for name, n in self.SIZES:
+            if len(getattr(self, name)) != n:
+                raise ValueError("script state %s: %d bytes expected" % (name, n))
+            w.raw(getattr(self, name))
+        w.u8(self.b_a48)
+        w.u8(self.b_a49)
+        w.u32(self.d_a4c)
+        w.u32(self.complete)
+        w.u32(self.d_be10)
+        w.u32(self.fail)
+
+    @property
+    def variables(self):
+        return struct.unpack("<1000i", self.values)
+
+    @variables.setter
+    def variables(self, vals):
+        self.values = struct.pack("<1000i", *vals)
+
+    @property
+    def fired_flags(self):
+        return tuple(self.fired)
+
+
+@dataclass
+class Mission:
+    """The part of a mission save after the loaded flag, store order of 6.5: `buildings`, `effects` (SpellEffect), `map`, `script`, `sacks`, `casters`."""
+    buildings: List["BuildingObj"] = field(default_factory=list)
+    effects: List["SpellEffectObj"] = field(default_factory=list)
+    map: MapLayer = field(default_factory=MapLayer)
+    script: ScriptState = field(default_factory=ScriptState)
+    sacks: List["SackObj"] = field(default_factory=list)
+    casters: List["VirtualCasterObj"] = field(default_factory=list)
+
+    @staticmethod
+    def read(r):
+        m = Mission()
+        m.buildings = read_list(r, CLASSES, "Building")
+        m.effects = read_list(r, CLASSES, "SpellEffect")
+        m.map = MapLayer.read(r)
+        m.script = ScriptState.read(r)
+        m.sacks = read_list(r, CLASSES, "Sack")
+        m.casters = read_list(r, CLASSES, "VirtualCaster")
+        return m
+
+    def write(self, w):
+        write_list(w, self.buildings, lambda w_, b: w_.object(b, C_BUILDING, b.write_body))
+        write_list(w, self.effects, lambda w_, e: w_.object(e, C_SPELLEFFECT, e.write_body))
+        self.map.write(w)
+        self.script.write(w)
+        write_list(w, self.sacks, lambda w_, k: w_.object(k, C_SACK, k.write_body))
+        write_list(w, self.casters, lambda w_, c: w_.object(c, C_CASTER, c.write_body))
+
+
 # --- the class table (6.4, 6.10) --------------------------------------------------------------------------------------------------------
 
 C_PLAYER, C_UNIT, C_HUMANOID, C_ITEM, C_EFFECT, C_SPELL = (MfcClass(n) for n in ("Player", "Unit", "Humanoid", "Item", "Effect", "Spell"))
@@ -696,8 +847,8 @@ CLASSES = {
 class ServerStream:
     """`FUN_004ec732`.  `words` = the 11 option words (`+0x174, +0x17c, +0x180, +0x184, +0x188, +0x18c, +0x190, +0x194, +0x1a0, +0x19c, +0x198`: all 0
     in a game the engine writes, 6.11); `d20` = `server+0x20` (`FUN_0052d16b`); `container` = the unit container at `[server+0x7c]+0xc` (counted Unit
-    pointers, back-references to the units of the groups); `loaded` = the u8 flag (0 town save, 1 mission); `mission_raw` = everything of a mission save
-    between the flag and the `0xbadface1` pair; `tail_words` = the two `0xbadface1`; `debug` = the 400 bytes of `[server+0x170]`; `pad` = the byte that
+    pointers, back-references to the units of the groups); `loaded` = the u8 flag (0 town save, 1 mission); `mission` = the typed branch of a mission save (`Mission`), `mission_raw` = the same bytes when
+    they do not parse as that layout; `tail_words` = the two `0xbadface1`; `debug` = the 400 bytes of `[server+0x170]`; `pad` = the byte that
     makes the stream even."""
     tick: int = 0
     block: int = 0
@@ -713,6 +864,7 @@ class ServerStream:
     tail_words: Tuple[int, int] = (BADFACE, BADFACE)
     debug: bytes = bytes(DEBUG_SIZE)
     pad: bytes = field(default=b"", compare=False)
+    mission: Optional[Mission] = None
 
     @property
     def units(self):
@@ -735,16 +887,25 @@ class ServerStream:
                 raise ArchiveError("the unit container holds a non-unit object")
         s.loaded = r.u8()
         if s.loaded:
-            # the mission branch stays raw: up to the pair of 0xbadface1 words that precedes the 400-byte block (an even pad byte may follow it)
-            end = None
-            for pad in (0, 1):
-                at = len(stream) - DEBUG_SIZE - 8 - pad
-                if at >= r.pos and struct.unpack_from("<II", stream, at) == (BADFACE, BADFACE):
-                    end = at
-                    break
-            if end is None:
-                raise ArchiveError("mission save: no 0xbadface1 pair before the 400-byte block")
-            s.mission_raw = r.raw(end - r.pos)
+            rest = len(stream) - r.pos
+            saved = (r.pos, list(r._map))
+            try:
+                s.mission = Mission.read(r)
+                if rest - (r.pos - saved[0]) not in (8 + DEBUG_SIZE, 9 + DEBUG_SIZE):
+                    raise ArchiveError("mission branch does not end at the 0xbadface1 pair")
+            except (ArchiveError, ValueError):
+                # not the layout: keep the bytes up to the pair of 0xbadface1 words that precedes the 400-byte block (an even pad byte may follow it)
+                s.mission = None
+                r.pos, r._map = saved[0], saved[1]
+                end = None
+                for pad in (0, 1):
+                    at = len(stream) - DEBUG_SIZE - 8 - pad
+                    if at >= r.pos and struct.unpack_from("<II", stream, at) == (BADFACE, BADFACE):
+                        end = at
+                        break
+                if end is None:
+                    raise ArchiveError("mission save: no 0xbadface1 pair before the 400-byte block")
+                s.mission_raw = r.raw(end - r.pos)
         s.tail_words = (r.u32(), r.u32())
         s.debug = r.raw(DEBUG_SIZE)
         s.pad = r.rest()
@@ -768,9 +929,12 @@ class ServerStream:
         write_list(w, self.container, _put_unit)
         w.u8(self.loaded)
         if self.loaded:
-            w.raw(self.mission_raw)
-        elif self.mission_raw:
-            raise ValueError("mission_raw needs the loaded flag")
+            if self.mission is not None:
+                self.mission.write(w)
+            else:
+                w.raw(self.mission_raw)
+        elif self.mission_raw or self.mission is not None:
+            raise ValueError("a mission branch needs the loaded flag")
         w.u32(self.tail_words[0])
         w.u32(self.tail_words[1])
         if len(self.debug) != DEBUG_SIZE:

@@ -373,7 +373,7 @@ Class identities (name strings read at the `CRuntimeClass.name` pointers): `0x5f
 | `FUN_0052cf8d` (base of every game object, size `0x3c`) | `Object` | `0xc` raw bytes (`FUN_0054ffd1`, ECX not verified); u32 `+4`; i16 `+0xc`; i16 `+0xe`; u32 `+8`; i16 `+0x18`; u32 `+0x1c`; u32 `this`; u32 `+0x14` (pointer). Load: `+4 != 0` registers the id (`FUN_004f8cec`), `+0x18` forced 0 |
 | `FUN_0052029c` | **Building** (`0x52029c`, vtable `0x5d1268`) | base; `0x16` raw bytes (`FUN_005157ee`); u8 `+0x40`; u16 `+0x42`, `+0x44`, `+0x46`; u8 `+0x48`, `+0x60`, `+0x61`; u32 `+0x64`, `+0x68` (`FUN_00543570`). Load: `+0x3c = FUN_004a65d0(+0x40)` when `+0x40 != 0` else 0 |
 | `FUN_0051c6b5` | **SpellEffect** (vtable `0x5d1060`) | base; u8 `+0x40`; u8 `+0x41` |
-| `FUN_0052db3e` | **VirtualCaster** (vtable `0x5d0e78`) | base; u8 `+0x3c`; 6 raw bytes at `*(+0x40)` (a 6-byte sub-object built by `FUN_0055b95f`) |
+| `FUN_0052db3e` | **VirtualCaster** (vtable `0x5d0e78`) | base; u8 `+0x3c`; 6 raw bytes at `*(+0x40)` (a 6-byte sub-object built by `FUN_0055b95f`, INFERRED the same "effect6" as the cell record's `+0x34..+0x39`) |
 | `FUN_0052d8de` | **Sack** (vtable `0x5d1530`) | base; u32 `+0x3c`; then `FUN_0052da4d` |
 | `FUN_0052da4d` | Sack / unit pack (also unit `+0x7c`) | `FUN_00546970` = counted list of **Item** pointers (`FUN_00522e40`); u32 `+0x1c`; u32 `+0x20` |
 | `FUN_0052d65a` | **Item** (vtable `0x5d1388`) | base; `FUN_00546410` (counted list of **Effect** pointers, `FUN_0051ca31`); i16 `+0x40`; i16 `+0x42`; u8 `+0x44`, `+0x45`, `+0x46`; u16 `+0x48`, `+0x4a`; u8 `+0x47`. Load: `+0x3c = FUN_00439df0(+0xc)` when `+0xc < FUN_0053e1c0()` (item type table) else 0 |
@@ -479,6 +479,50 @@ slot 0 = `FUN_0052c500` -> `FUN_00546360`: `u32 count`, then `count` MFC **Unit*
 `+0x17c` / `+0x1a0` used by dozens of unrelated routines because of field-offset collisions, so no meaning is claimed). `+0xd4` = scenario id (`Scenario\<n>` name; **write the real mission id for a mission save, or 0 for a map without one**) and
 `+0xd8` = difficulty (1..3 applied on load; default 2). Not saved but derived at load: `+0x178`, `+0x1a4`, `+0x74`, `+0x1cc`.
 
+### 6.12 L10e-A: the mission branch and the raw-block layouts (CONFIRMED unless noted; REA this round, code `serverstream.py`, `serverblocks.py`)
+
+**Corrections to 6.5-6.11.**
+* **The first `0xc` raw bytes of every object are its Position, not vtable / id / `+8`** (CONFIRMED asm `0x52cfa9`: `FUN_0052cf8d` calls `FUN_0054ffd1` with `ECX = *(object + 0x10)`; that routine is `memcpy 0xc`). Layout (unit-struct "Position"): `+0` cell x u8,
+  `+1` cell y u8, `+2` u16 packed `(y << 8) + x`, `+4` / `+5` sub-cell x / y (`0x80` = cell centre; full coordinate = cell * 256 + sub), `+8` u32 stale pointer to the map object (`0x670e48`), `+6 / +7` unnamed. This is where a unit's **position** is saved
+  (`Base.pos`, `serverblocks.POSITION`, `position_raw`). The earlier INFERRED `VT_*` constants and `raw12(vtable, id, d08)` helper (town saves) write other bytes there; harmless for a hero that is placed by the town, wrong for a mission unit: use `position_raw`.
+* **`group + 0x20` is an embedded `CList<u16>`** (CONFIRMED group ctor `FUN_0052ae43`: `FUN_0053c3f0` list base at `+0`, `FUN_005420f0(10)` at `+0x20`, `0x1c` bytes up to `+0x3c`, GroupAI record at `+0x3c`, `+0x40 / +0x44` = 0, `+0x48 / +0x4c` = 0 and not saved).
+* Unit store order of the head (assembly `0x52c618`, CONFIRMED): base, effects, `+0x1c8` list, `+0x1e4` list, then raw `0x18` at **`unit+0xa6`**, `0x16` at **`+0xbe`**, `0x18` at **`+0x114`**, `0x40` at **`+0xd4`**, `0xb4` at `*(unit+0x1c0)` (mover), `0xb8` at `*(unit+0x1c4)` (brain) + its `CList<u16>`.
+
+**Mission branch** (flag 1; `Mission` in `serverstream.py`; store order CONFIRMED `FUN_004ec732`): `u32 count` + `Building` objects (`FUN_0052c3da` -> `FUN_005462b0`), `u32 count` + `SpellEffect` objects (`FUN_0052d5cb` -> `FUN_00546850`), the **map layer**, the **script state**,
+`u32 count` + `Sack` objects (`FUN_0052d5b2` -> `FUN_00546750`), `u32 count` + `VirtualCaster` objects (`FUN_0053bbd0`: `FUN_0053bca0` count, `FUN_0053bc80` per object), then the two `0xbadface1` words and the 400-byte block. The loader ignores the two words.
+Back-references: a building / effect / sack / caster body only holds raw pointer keys (`Base.ptr`, `link`), no MFC pointers, except the Sack's item list (new `Item` / `Effect` objects) and what the unit lists already wrote.
+
+| Part | Layout (`FUN_00550008`, `FUN_0055fc20`, `FUN_0055f6b0`) |
+|---|---|
+| map layer | `ucount` (`FUN_005aab4d`: u16, or `0xffff` + u32) + `count` u32 `(index << 16) \| plane2 << 8 \| plane1` (store scans `i = 0x807 .. 0xeded`, plane-2 byte `> 0xf`; load writes `[+0x20000 + i] = plane2`, `[+0x10000 + i] = plane1`); then the `CMap` at `map+0x54084`: `ucount`, per entry u16 key + 60-byte value (`FUN_0055fff0`); then u32 `this` (the map's pointer key, `SetAt`) |
+| script state | `4000` + `1000` + `0x30` + `400` + `0x132c` raw bytes, u8, u8, u32 (`FUN_00543570`), u32 x3 (`FUN_0057468d`, below) |
+
+**Cell record** (60-byte CMap value, key = the cell word; **CONFIRMED** field offsets from effects.md 6.4 / unit-struct "Cell record effect"): `+0` saved cost byte, `+1` saved block byte, `+2` used-slot count, `+0x14 + 4k` six carrier slots (Wall of Fire 0, Poison Cloud 2, Wall of Earth 3,
+Light 4, Darkness 5; the values are raw object pointers, INFERRED SpellEffect pointer keys), `+0x34..+0x39` the 6-byte trap effect (`+0x34` spell id, `0x17` Teleport, `+0x38 / +0x39` destination x / y), `+0x3a` u16 the cell's index word. A fresh-load map has records only where a map record or an
+instant made one (traps, area effects); the CMap walk order is hash order (`serverblocks.cmap_order`, INFERRED standard MFC: 17 buckets, `key >> 4`, head insertion), the loader inserts by key so any order loads.
+
+**Script runner block** (`FUN_0057468d`; the offsets are from the runner / server object): `+0xc784` 1000 x i32 values, `+0xe6c4` 1000 fired flags, `+0xbe0c` mission-complete counter, `+0xbe14` fail cause ([triggers](../engine/triggers.md)); `+0xa8bc` 0x132c bytes = **8 header bytes + 70 x 70 relation matrix**
+(`[a * 0x46 + 8 + b]`, bit 1 = at war, ai.md 4: CONFIRMED arithmetic `0x1324 + 8`; the header is INFERRED); `+8` 0x30 bytes, `+0xa728` 400 bytes, u8 `+0xa48 / +0xa49`, u32 `+0xa4c`, `+0xbe10`: meaning UNKNOWN, kept raw.
+
+**Load fix-ups of raw pointers (CONFIRMED vtable slot 9, `Unit` `0x52cef7`, `Humanoid` `0x52cf7a`, called through the unit container's slot 1 after the load).** The raw mover / brain blocks hold process pointers, remapped through the old-pointer map (`FUN_005a11e9`; a missing key keeps the old value):
+mover `+0x7c` (`FUN_00559681`); brain `+0xc, +0x10, +0x18, +0x20, +0x28, +0x30, +0x68` (`FUN_00576d00`); unit `+0x40, +0x44, +0x5c, +0x64, +0x68` (`FUN_005432c0` / `FUN_00546550` / `FUN_00546590`). A writer therefore stores a unit's `Base.ptr` key (any unique non-zero value) in each pointer that must survive and 0 otherwise.
+
+**Raw unit blocks, named fields** (`serverblocks.py`, one `Layout` per block with offset / size / tag per field; unnamed bytes stay raw so write-back is exact; the tables are the single record, only the headline is repeated here):
+
+| Block | Size | Fields the engine needs for resume |
+|---|---|---|
+| Position (object base) | 0xc | cell x / y, packed cell word, sub-cell x / y, world pointer (C) |
+| Mover `*(unit+0x1c0)` | 0xb4 | facing `+0` and target facing `+1`, step target `+6`, waypoint counter `+9`, turn rate `+0xa`, step origin `+0x70`, path dest `+0x74` / tail `+0x76`, wait ticks `+0x78`, follow pointer `+0x7c`, stamp cell `+0x80`, arrived `+0x90`, new-path flag `+0x98`, turn state `+0x9d / +0xa0 / +0xa4`, step length / ticks / tick / dir8 `+0xa8..+0xae`, dx / dy `+0xb0 / +0xb1` (all C, unit-struct 7.1) |
+| Brain `*(unit+0x1c4)` | 0xb8 | anchor `+0`, patrol waypoint `+2`, mode `+8`, order `+9`, destination `+0xa`, target / leader / approach / pool / cast-target / spell / structure pointers (`+0xc, +0x10, +0x18, +0x20, +0x28, +0x30, +0x68`, remapped on load), range `+0x14`, retry `+0x15`, cast cell `+0x3c`, withdraw / wimpy `+0x40 / +0x44`, stopped `+0x50`, cast kind / valid `+0x5c / +0x60`, follow distance `+0x70`, auto-spell `+0x78`, teleport `+0xb0` (C, unit-struct 8.1); `+0xb4` = stale pointer of the patrol list (INFERRED replaced by the stream's `CList<u16>`) |
+| `unit+0xa6` / `+0x114` | 0x18 | six skill words at block `+2 + 2k` (`+0xa8..` and its copy `+0x116..`; C copy ctor / `FUN_00514ea1`) |
+| `unit+0xbe` | 0x16 | defence word `+0` (C); the rest = monster params 15-28 bytes (unnamed) |
+| `unit+0xd4` | 0x40 | HP-regeneration bonus % `+0xa`, mana-regeneration bonus % `+0xe` (C); attribute bonus bytes `+0` .. `+3`, skill bonus words `+0x14 + 2k` (INFERRED from `savegame.py`) |
+| group AI `*(group+0x3c)` | 0x50 | group order `+0x20`, centroid `+0x24 / +0x28`, reach `+0x2a..+0x2c`, pool radius `+0x2d` / base `+0x38`, seen-once `+0x30`, passes `+0x34`, speed `+0x44`, active `+0x45`, awake `+0x48` (C, ai.md 2) |
+
+Fields of the unit's own store (6.8) that the engine resumes, by name: HP / max HP / mana / max mana = `words[8], [9], [11], [12]` (`+0x94 / +0x96 / +0x9a / +0x9c`), regeneration words `[10]`, `[13]`, accumulators `b_a2 / b_a3`, orders `r50` (order) / `r54` (state) / `r58` (attack phase), `b60 / b61` (cast cell),
+`b6c` tick timer, `d5c` (target id), `d64` (carrier / weapon attack id), `d138` rest clock (absolute tick), `b13c` death-handled flag, `d144` effect mask, `d40` last attacker pointer, effects = the Effect list, `list1c8` / `list1e4` = the two path lists (packed cells, front first), `d130` XP sum,
+group order and anchors = `GROUP_AI.order` + `Brain.anchor`. **Engine mapping for L10e-B**: `serverblocks.UNIT_MAP` lists stream field -> engine `Unit` / `Mover` attribute; building HP / state (`BuildingObj`) is not named yet (see open questions), sack contents = `SackObj.pack` items + the pile cell in `base.raw12`.
+
 ## 7. Code
 
 `allods2.formats.saves`: `parse_a2c / build_a2c / load_a2c` (`Character`, `Identity`, `Stats`, `ItemPacket`, `Item`, `encode_item / decode_item`), `parse_famehall / build_famehall`, the byte layer (`checksum`, `xor_stream`,
@@ -508,8 +552,7 @@ player list, unit container, loaded flag, the two `0xbadface1`, the 400-byte blo
 container; the weapon is one `Item` in `+0x74` and slot 1). Loaded flag 1: the bytes between the flag and the `0xbadface1` pair stay `mission_raw` (the pair is searched at 408 / 409 bytes from the end).
 Facts settled while building it (REA this round):
 * **Groups are inline (CONFIRMED `FUN_0052c3f3`)**: `u32 count`, then `FUN_0052d932` bodies back to back, no class tag (store walks the list and writes the count first; load allocates `0x50` bytes per group).
-* **Object base (CONFIRMED `FUN_0052cf8d`, `FUN_0054ffd1`)**: the first `0xc` raw bytes are the object's own first three words (vtable, `+4`, `+8`), then the listed fields. Written values: vtable of the class
-  (INFERRED which one the exe wrote), id, `+8`.
+* **Object base (CONFIRMED `FUN_0052cf8d`, `FUN_0054ffd1`)**: the first `0xc` raw bytes are the object's **Position** (6.12; this entry's earlier "vtable, `+4`, `+8`" reading was wrong), then the listed fields. Town saves still write the old `raw12(VT_*, id, d08)` bytes there (inert for a placed hero, INFERRED).
 * **Item (CONFIRMED `FUN_0052d65a`, `FUN_005241bf`, `FUN_00544160`)**: `+0x40` is the 16-bit item code (the `.a2c` code), `+0x42` the stack count, `+0x1c` the price, `+8 != 0` the "new" mark
   (the net writer sets flag `0x40` and clears it), the effects list at `+0x20` (Effect: kind `+0x3c` = the data.bin stat id, flags `+0x3d`, `+0x40` u32 = `a | b << 8` for kinds 44-48, `a | charges << 16` for castSpell 41,
   as the wire bytes `+0x40 / +0x41 / +0x42`). `+0xc` is an index into a table of `0x44`-byte records (`FUN_00439e30`; INFERRED the data.bin class record index, written `code & 31` / special `code & 0xff`).
@@ -548,7 +591,7 @@ Facts settled while building it (REA this round):
 ## Open questions
 
 * Meaning and consumers of the 11 option words (`server+0x174..0x1a0`); only their defaults (0) and the fact that the single-player start path does not assign them are CONFIRMED (6.11). A real mission save would show which become non-zero.
-* The `0x3c`-byte values of the `map+0x54084` map and the `0x30` / `0x132c` script blocks, and the field meanings of player / unit / item / effect objects (6.6, 6.8, 6.9).
+* Still open after 6.12: the `0x30` block (`+8`), the 400-byte block (`+0xa728`) and the scalars `+0xa48 / +0xa49 / +0xa4c / +0xbe10` of the script state; the `Building` fields (`+0x40 .. +0x68`: HP / state / owner not named; blk 0x16); the `SpellEffect` bytes `+0x40 / +0x41`, the VirtualCaster `+0x3c` byte and the Sack `+0x3c` word; the unnamed bytes of the unit blocks (`+0xbe` rest, `+0xd4`, `r50..`); whether the cell-record carrier slots are remapped; player and item field meanings (6.6, 6.9).
 * The MFC archive counter's starting value and the exact `CRuntimeClass::Store` field widths (6.10; standard MFC assumed, implemented as first index 1 in `formats/mfc.py`): VERIFY by a real save.
 * The `.reg` value kinds of the client tail's id arrays / `Fog/Data` and whether the exe's loader tolerates a `build_reg` tree whose blob layout differs from its own (7; INFERRED): VERIFY IN GAME.
 * The `0x2f` flag byte (network only: every client-pump rewrite of the file is gated by `+0x5d8 != 2`, so never in single player).
