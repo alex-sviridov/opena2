@@ -436,7 +436,7 @@ bytes at `*(unit+0x1c4)` followed by a `CList<u16>` at that object's `+0xb4` (th
 is called through vtable slot **0** to store and slot 0 to load (and slot 1 after the load: it is not an MFC `CObject`, there is no `GetRuntimeClass` slot); the map is `[0x670e48]`, the script runner
 `[0x66832c]`. Store order check: tick, block, name, 13 words, player manager, `+0xc` object, flag `[server+0x94]`, then (flag 1) buildings, effects, map, script, sacks, casters, then the two `0xbadface1`.
 
-**The 400-byte tail.** `FUN_0057a951` runs with ECX = `[server+0x170]` (an object: `FUN_005aa981(this, 400)` writes the first 400 bytes of it at the very end of the stream, after the two `0xbadface1`). It is **not**
+**The 400-byte tail (see 6.11).** `FUN_0057a951` runs with ECX = `[server+0x170]` (a debug block, 6.11: `FUN_005aa981(this, 400)` writes the first 400 bytes of it at the very end of the stream, after the two `0xbadface1`). It is **not**
 the engine's RNG: [engine/rng.py](../../engine/rng.py) models the CRT generator whose whole state is one 32-bit word (`ptd+0x14`), and no 4-byte RNG word was found in any decoded serialiser, so a reload does not
 restore the CRT sequence (INFERRED: the undecoded polymorphic objects might hold one). What the 100-dword block is (a per-server table) is open. For a writer: copy the 400 bytes through, or zeros.
 
@@ -453,6 +453,32 @@ restore. `game9998` is a mission-kind save written at the town leave click ([6 i
 **Mission list of the client tail (`FUN_004a8f96`, 6.3 item 3).** `u32 count` (`FUN_004a99b0`), then per entry `FUN_004a88db` = two 4-byte raw writes (entry `+0`, `+4`: INFERRED `u32, u32`), then two more u32 (`+4`, `+8` of the owning
 object at `client+0x598`). It is a list kept by the same object that holds the hall of fame, read back by `FUN_004a9032`; what the entries mean (INFERRED: a played-missions / medals list, entries = mission id and value) is not decoded.
 
+### 6.11 Round 4: the last three objects, option words, server constructor (CONFIRMED unless noted)
+
+**Server constructor `FUN_004e957b`** (allocates and defaults; `this` = server): `+0x7c` holder = static `DAT_0068e218` (`+0` buildings, `+4` spell effects, `+8` sacks, `+0xc` unit container, `+0x10` embedded virtual-caster
+list); globals `DAT_0066832c` (script runner), `DAT_0068d2dc` (unit container), `DAT_00672f64`, `DAT_0068d2c4` (player manager), `DAT_00670e48` (map) start 0; `+0x170` = a 400-byte zeroed block (`FUN_0057a925` =
+`memset(this, 0, 400)`); counters `+0`, `+4` = 0; **option word defaults**: `+0x174, +0x17c, +0x180, +0x184, +0x188, +0x18c, +0x190, +0x194, +0x198, +0x19c, +0x1a0` = **0**, `+0x178` = 0 (not saved), `+0x1a4` = 1,
+`+0x1a8` = 1, `+0x1ac` = 0 (load switch), `+0xd4` = 0, `+0xd8` = **2** (difficulty), `+0x94` = 0.
+`FUN_004eb356` (server start; arg `p`): `+0x74 = (p < 2)`, `+0x70 = (p > 0)`, `+0x1a8 = (+0x74 != 0)`, `+0x8c = 0`, `DAT_006044c4 = this`, then creates the 29 command slots at `+0xf8..`, the **unit container**
+(`DAT_0068d2dc`), a second container (`DAT_00672f64`), the `[server+0x7c]+0xc` **unit container**, and the player manager (`FUN_0051628e`). The map loader `FUN_005606aa` (new-game branch) sets `+0x74 = (map+0xd8 > 1)`, `+0x178 = (+0x74 == 0)`,
+`+0x1cc = map+0xdc`, `+0x1a4 = (+0x74 == 0)`, then sets unit `+0x1a0 = 1` for units of players whose relation to the local player `& 7 == 0`; **it does not touch the 11 saved option words**.
+
+**`[server+0x7c]+0xc` and `DAT_0068d2dc` = the unit container** (`FUN_0052b19a`, vtable `0x5d1598`, size `0x20`, a list base `FUN_0053c3f0`; the same class as `Player+0x24` / the group list):
+slot 0 = `FUN_0052c500` -> `FUN_00546360`: `u32 count`, then `count` MFC **Unit** pointers (MFC back-references to units already written inside the groups, so most are `u16 index`); slot 1 (after load) calls virtual
+`+0x24` of every unit (post-load init). Written right after the player list.
+
+**`map+0x54084`** (constructed by `FUN_0055f360(10)`, a `CMap` with 17 buckets, vtable `0x5d1ab8`, slot 2 `Serialize` = `FUN_0055f6b0`): MFC count, then per entry `u16 key` (`FUN_00421390`, 1 element) and a **60-byte value**
+(`FUN_0055fff0`, local buffer `0x3c`; INFERRED raw 60 bytes). Load: for each entry `FUN_0055f430(key, value)` inserts. The map object (`0xa4570`, base = the unit-container class at `+0x5400c`) also embeds lists at `+0x54068` (`CList<u16>`), `+0x54190`, `+0x58d88`,
+`+0x92ecc`, `+0xa44f4`, `+0xa4510` that `FUN_00550008` does **not** save (rebuilt from the map file / script).
+
+**`[server+0x170]` (400 bytes)** is a **debug / trace state block**, not the RNG: `+0` = "Turn tracing" flag (Alt+T, `FUN_00578910` case 3), `+4` = "Script tracing" flag (case `0x13`); the rest is the zeroed remainder
+(timing and XP statistics for the Alt-keys of the same handler). A writer emits **400 zero bytes** (what the constructor creates); the loader restores whatever was saved (harmless).
+
+**The 13 option words.** Saved order: `+0x174, +0x17c, +0x180, +0x184, +0x188, +0x18c, +0x190, +0x194, +0x1a0, +0x19c, +0x198`, then `+0xd4`, `+0xd8`. Defaults 0 (ctor above); the single-player start path
+(`FUN_004eb356`, `FUN_004eb715`, map loader) assigns none of the eleven, so **a world built by the engine should write eleven zeros** (CONFIRMED defaults; the words' consumers were not traced: address search shows
+`+0x17c` / `+0x1a0` used by dozens of unrelated routines because of field-offset collisions, so no meaning is claimed). `+0xd4` = scenario id (`Scenario\<n>` name; **write the real mission id for a mission save, or 0 for a map without one**) and
+`+0xd8` = difficulty (1..3 applied on load; default 2). Not saved but derived at load: `+0x178`, `+0x1a4`, `+0x74`, `+0x1cc`.
+
 ## 7. Code
 
 `allods2.formats.saves`: `parse_a2c / build_a2c / load_a2c` (`Character`, `Identity`, `Stats`, `ItemPacket`, `Item`, `encode_item / decode_item`), `parse_famehall / build_famehall`,
@@ -461,8 +487,8 @@ flags and junk bytes, so a parsed `.a2c` rebuilds byte for byte. The server stre
 
 ## Open questions
 
-* Objects not yet read: the polymorphic object at `[server+0x7c]+0xc` (slot 0 / slot 1; not an MFC class), the object at `map+0x54084` (slot 2), the object at `[server+0x170]` (first 400 bytes written last), the
-  `0x30` / `0x132c` / 400-byte script blocks' meaning, the `Effect` / `Item` field meanings, and the meaning of the 11 option words (`server+0x174..0x1a0`) and of most player / unit fields.
+* Meaning and consumers of the 11 option words (`server+0x174..0x1a0`); only their defaults (0) and the fact that the single-player start path does not assign them are CONFIRMED (6.11). A real mission save would show which become non-zero.
+* The `0x3c`-byte values of the `map+0x54084` map and the `0x30` / `0x132c` script blocks, and the field meanings of player / unit / item / effect objects (6.6, 6.8, 6.9).
 * The MFC archive counter's starting value and the exact `CRuntimeClass::Store` field widths (6.10; standard MFC assumed): VERIFY by a real save.
 * The `0x2f` flag byte (network only: every client-pump rewrite of the file is gated by `+0x5d8 != 2`, so never in single player).
 * Whether a single-player continue ever uses a stored character's items (VERIFY IN GAME: pick an advanced character for a new campaign and compare attributes).

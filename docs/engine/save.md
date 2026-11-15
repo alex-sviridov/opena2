@@ -3,7 +3,7 @@
 Status: **plan** (nothing built). Goal: the engine reads every save the original GOG game writes and writes saves the original
 loads, for single player: the Save / Load / Delete dialogs, the manual slots, the auto-saves `game9999.sav` ("Restart last mission")
 and `game9998.sav` ("Abort mission and return to town"). Byte layouts known so far: [formats/saves.md](../formats/saves.md) §6
-(container, server stream head, client tail, Scenario.dll block, MFC layer, player, group and unit serialisers: §6.4-6.8); L10a second and third pass: all object serialisers in §6.9 and §6.10; three polymorphic objects stay open) and L10a is **done except** the leftovers in the checklist below.
+(container, server stream head, client tail, Scenario.dll block, MFC layer, player, group and unit serialisers: §6.4-6.8); L10a rounds 2-4: every object serialiser of the stream is decoded in §6.9-6.11; only field meanings and the option-word consumers stay open) and L10a is **closed**.
 
 ## 1. Constraints and the verification problem
 
@@ -80,9 +80,9 @@ All families share the MFC layer of [saves 6.4](../formats/saves.md#64-mfc-archi
 - [ ] L10e-3 Units (6.8, 6.9): decode `Humanoid::Serialize` first, then `unit+0x1c8/0x1e4` objects and the raw blocks; map to `engine/` unit fields (HP, mana, position, orders, effects, brain `+0x1c0/+0x1c4`, hero fields).
 - [ ] L10e-4 Buildings / structures (`Building` 6.9, decoded) and ground items (Sack list `FUN_0052d5b2`).
 - [ ] L10e-5 Spell effects and virtual casters (6.9, decoded).
-- [ ] L10e-6 Map dynamic layer (6.9, decoded: sparse list); needs the `map+0x54084` object (read its vtable).
-- [ ] L10e-7 Script state (6.9, decoded byte layout) <-> `engine` script runner; needs the object at `[server+0x7c]+0xc` (slot 0 serialiser).
-- [ ] L10e-8 Tick counters, `0xbadface1` pair, the 400-byte tail (object `[server+0x170]`, not the RNG: write the bytes through or zeros).
+- [ ] L10e-6 Map dynamic layer (6.9, decoded: sparse list); `map+0x54084` decoded (CMap u16 -> 60 bytes, saves 6.11); needs the meaning of the 60-byte value.
+- [ ] L10e-7 Script state (6.9, decoded byte layout) <-> `engine` script runner; the object at `[server+0x7c]+0xc` is the unit container (count + Unit refs, 6.11).
+- [ ] L10e-8 Tick counters, `0xbadface1` pair, the 400-byte tail (`[server+0x170]` = debug block: write 400 zeros; the 11 option words: write 0 (6.11)).
 - [ ] L10e-9 Integration: `World` <-> stream, unknown fields kept raw, invariants of step L10e (reload determinism).
 
 ## Open questions
