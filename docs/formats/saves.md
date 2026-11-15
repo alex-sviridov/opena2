@@ -501,6 +501,49 @@ slot 0 = `FUN_0052c500` -> `FUN_00546360`: `u32 count`, then `count` MFC **Unit*
   `allods2.reg.build_reg`. INFERRED: the leaf kinds (ints, int arrays for the id lists, shortcuts and `Fog/Data`), and that a tree built by `build_reg` is equivalent to, not necessarily byte-identical with, one the exe wrote
   (the exe's incremental writer leaves a 32-byte initial blob and spare room, [reg](reg.md)); a loaded file is never re-encoded, so this only matters for newly written saves.
 
+**Typed server stream (L10c, `allods2/formats/serverstream.py`, tests `tests/test_savegame_town.py`).** `ServerStream.parse(stream)` / `.pack()` = the whole stream of §6.2 / §6.5 as typed objects
+(`Player`, `Group`, `Unit` / `Humanoid`, `Item`, `Effect`, `Spell`, `Spellbook`, `Pack`, and `SackObj`, `SpellEffectObj`, `VirtualCasterObj`, `BuildingObj` in the class table): head, `server+0x20` word,
+player list, unit container, loaded flag, the two `0xbadface1`, the 400-byte block, the even pad (`pad`, not compared). Everything unmodelled is raw bytes or a plain integer (`Base.raw12`, the `blk_*` /
+`mover` / `brain` blocks, `r50..r58`, `d5c`..), so `parse -> pack` is byte-exact on any stream built from the layout, and Python identity follows MFC back-references (a hero is one `Unit` in its group and in the
+container; the weapon is one `Item` in `+0x74` and slot 1). Loaded flag 1: the bytes between the flag and the `0xbadface1` pair stay `mission_raw` (the pair is searched at 408 / 409 bytes from the end).
+Facts settled while building it (REA this round):
+* **Groups are inline (CONFIRMED `FUN_0052c3f3`)**: `u32 count`, then `FUN_0052d932` bodies back to back, no class tag (store walks the list and writes the count first; load allocates `0x50` bytes per group).
+* **Object base (CONFIRMED `FUN_0052cf8d`, `FUN_0054ffd1`)**: the first `0xc` raw bytes are the object's own first three words (vtable, `+4`, `+8`), then the listed fields. Written values: vtable of the class
+  (INFERRED which one the exe wrote), id, `+8`.
+* **Item (CONFIRMED `FUN_0052d65a`, `FUN_005241bf`, `FUN_00544160`)**: `+0x40` is the 16-bit item code (the `.a2c` code), `+0x42` the stack count, `+0x1c` the price, `+8 != 0` the "new" mark
+  (the net writer sets flag `0x40` and clears it), the effects list at `+0x20` (Effect: kind `+0x3c` = the data.bin stat id, flags `+0x3d`, `+0x40` u32 = `a | b << 8` for kinds 44-48, `a | charges << 16` for castSpell 41,
+  as the wire bytes `+0x40 / +0x41 / +0x42`). `+0xc` is an index into a table of `0x44`-byte records (`FUN_00439e30`; INFERRED the data.bin class record index, written `code & 31` / special `code & 0xff`).
+* **Spell book (CONFIRMED `FUN_0051c29e`)**: a CArray indexed by the spell number (`SetAt(n, spell)`); the stream writes `GetSize` and the elements `1 .. GetSize-1`, null for an unknown spell, so the
+  `.a2c` spell mask is the set of non-null elements (`Spellbook.mask`, `from_mask`). Spell object: u8 spell number (`+8`), u8 `+9`, u8 `+0xa`, u16 `+0xc`, u32 `this`.
+* **Unit order re-checked (CONFIRMED `FUN_0052c618`)**: the 14 u16 are `+0x84 .. +0x9e` in offset order (body, reaction, mind, spirit, speed, `+0x8e`, `+0x90`, `+0x92`, HP, max HP, `+0x98`, mana, max mana, `+0x9e`),
+  then u8 `+0xa2`, `+0xa3`, u16 `+0xa0`, i16 `+0xa4`; the table of 6.8 stands.
+* **Town-save values (CONFIRMED `FUN_004ebd5f` step 7)**: the end of a mission resets `+0xd4` (scenario id) := 0, `+0x94` (loaded flag) := 0 and both tick counters := 0, so a town save writes tick 0, block 0,
+  scenario 0, loaded 0.
+* **Scenario.dll block (CONFIRMED by disassembling `ScenarioSave` `0x10003585` / `ScenarioLoad` `0x10003686`, `Scenario.dll`)**: the saved list is the **available list** (`0x10035f90`; `ScenarioLoad` re-adds it
+  by id with `0x1000192f` / `0x1000199f`); a location object is `{u32 type, u32 id, CRect}` written as id, type, then the rectangle (16 bytes): the constructor `0x100038e0(type, id, x, y, w, h)` stores the rectangle
+  `(x, y, x + w, y + h)` with `w = h = 0`, so the "name" is `(x, y, x, y)` of the world-map point (`worldmap.load_locations`). The position written is the index of the current location in the list, **0 when there is none**,
+  and `ScenarioLoad` sets the current location to the entry at that position: a loaded game cannot tell "on the map" from "at list entry 0".
+* **Mission list object `client+0x598` (CONFIRMED `FUN_00493b40`)**: `+4` is the running **sum** of the mission times (`tick >> 4` per finished mission), written as the first of the two trailing words; `+8` and the
+  `n` entry pairs are unknown (written 0 / empty).
+
+**Engine mapping (L10c, `engine/savegame.py`, `CampaignGame.to_save(description)` / `CampaignGame.from_save(save)`).** `to_save` -> `saves.SaveGame` (`.pack()` = the file); `from_save(SaveGame | bytes)`.
+* Stream: one human `Player` (name = main hero, `+0xa44` = difficulty, gold / kills / hero deaths with the xor / clamp rules, `+0x38` = the main hero's id, `+0x44` table = `CampaignGame.knowledge` (zeros), the `0x24`
+  block zeros), one `Group` holding the roster in list order, the unit container naming the same units. A human hero is a `Humanoid`: items as Item objects (equipment slots 1..12 = `Unit.equipment`, `+0x74` / `+0x78` =
+  slots 1 / 2, the pack = `Unit.pack` + `pack_index`, `+0x1c`), spell book from `Unit.spellbook`, XP pools / best school in the `+0x23c` block, `+0x130` = pool sum, name `+0x80` (the template name when `Unit.name` is empty),
+  `+0x14c` = hero number (low word of the packed field), `+0xc` = data.bin index of the template (`UnitType.index`), `+0xe` = unit type, `+0x4a` movement type, `+0x4b` = face | gender << 7.
+* Derived values written (INFERRED, the engine recomputes them): HP / mana = the maxima (CONFIRMED rule, `FUN_004ebd5f` step 6), speed `+0x8c` = `gear_speed` or the Reaction rule, regeneration `100` / `50`
+  (`FUN_0050ec60`), sight word `((mind + reaction) / 25 + 4) * 256`, windup / recovery 8 / 4, attack-done flag 1, orders / state / target all 0, empty effect list, empty path lists; skills `+0xa8 + 2k` = `skills + skill_bonus`
+  (bonus words at `+0xe8 + 2k`, attribute bonus bytes at `+0xd4..+0xd7`), the copy at `+0x118`; mover `0x40` facing, `+5 = 0x41`, `+8 = 5`, `+9 = 0xff`, `+0xa` = speed byte; brain `+0x16 = 0xffdc`, `+0x71 = 1`, `+0x78` =
+  `auto_spell`, `+0x40 / +0x44` = withdraw / wimpy thresholds (None = both 0), group AI block `0x50` zeros with `+0x45 = 1`.
+* `hero_state(game, entry)` **materialises** a hero that was never in a world (`RosterEntry.state` None) or that has the template's equipment strings (`equipment == ()`) through `party.place_party` in a one-player scratch world,
+  so the file always holds explicit items; the loaded roster therefore has explicit loadouts (same combat stats, tested; the world dump differs only by the `gear` entry).
+* Not kept (nothing in the stream names them): `kill_list`, `speed_mod`, effects, the explicit-zero script variables, the list of mission times (only their sum, `times = [sum]`), `camp.location` (`None`; see above).
+  Not modelled by `CampaignGame`, kept raw / default: the 11 option words and the debug block (zeros), the player table (`knowledge`), the client tree (`CampaignGame.client_state`), the nine hotkeys (`hotkeys`), the slot text.
+* Scenario block: variables <-> `Campaign.vars` (non-zero only), shop table row `town * 4 + block` <-> `Campaign.shop[town]` (towns with any non-zero value), available list <-> `Campaign.available` in order with the
+  `(x, y, x, y)` rectangles from `Scenario.dll` (zeros without the install).
+* INFERRED (needs a real save to confirm): one human player and one group in a town save; `server+0x20` = 0; map name empty; the item vtable / `+0xc` choice; the layout of the `0x24` statistics block and the `+0x1c / +0x20` pack
+  words (`0x7fff`, 0); the group's `+0x20` object = `CList<u16>`; the mover / brain defaults above; that the loader accepts a hero without the `+0x1a8` kill list (it is not in the serialiser).
+
 ## Open questions
 
 * Meaning and consumers of the 11 option words (`server+0x174..0x1a0`); only their defaults (0) and the fact that the single-player start path does not assign them are CONFIRMED (6.11). A real mission save would show which become non-zero.
@@ -511,3 +554,6 @@ slot 0 = `FUN_0052c500` -> `FUN_00546360`: `u32 count`, then `count` MFC **Unit*
 * Whether a single-player continue ever uses a stored character's items (VERIFY IN GAME: pick an advanced character for a new campaign and compare attributes).
 * `famehall.dat` fields `b`, `c` and when the hall is written (`FUN_004825c4` caller; the score formula); what the mission-list entries of the client tail mean (`FUN_004a8f96`, entry type in 6.10).
 * Which UI path produces `game0000.sav` (no dedicated writer, 6.10); exactly which instant `game9998.sav` captures.
+* L10c INFERRED items (7, "Engine mapping"): the player / group set of a town save, the derived unit blocks (mover, brain, bonus accumulators), the Item `+0xc` index, the `0x24` player block, the pack `+0x20` word; VERIFY IN GAME: save a town in the original, parse it with `parse_save` + `ServerStream.parse`, compare with `to_save`.
+* `Scenario.dll` current-location position 0 / none ambiguity (7): which screen a loaded town save resumes on (the client's own state, `FUN_0048c2e9`).
+

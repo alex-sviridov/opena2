@@ -1,6 +1,6 @@
 # L10: save / load with the original `game%d.sav` format
 
-Status: **L10b done** (container + typed client tail + MFC archive layer, `allods2/formats/saves.py`, `mfc.py`; saves.md 7); L10c onward not started. Goal: the engine reads every save the original GOG game writes and writes saves the original
+Status: **L10b done** (container + typed client tail + MFC archive layer, `allods2/formats/saves.py`, `mfc.py`; saves.md 7); **L10c done** (typed server stream `allods2/formats/serverstream.py`, town saves `engine/savegame.py`, `CampaignGame.to_save / from_save`, `tests/test_savegame_town.py`; saves.md 7 "Engine mapping"); L10d onward not started. Goal: the engine reads every save the original GOG game writes and writes saves the original
 loads, for single player: the Save / Load / Delete dialogs, the manual slots, the auto-saves `game9999.sav` ("Restart last mission")
 and `game9998.sav` ("Abort mission and return to town"). Byte layouts known so far: [formats/saves.md](../formats/saves.md) §6
 (container, server stream head, client tail, Scenario.dll block, MFC layer, player, group and unit serialisers: §6.4-6.8); L10a rounds 2-4: every object serialiser of the stream is decoded in §6.9-6.11; only field meanings and the option-word consumers stay open) and L10a is **closed**.
@@ -41,7 +41,7 @@ questions in both places. Output = spec only, no code.
 keys of §6.3, mission list, Scenario.dll block, hotkeys), byte-exact round trip, error messages as the exe ("Invalid save file",
 "Outdated save file"). Tests: synthetic, one per rule.
 
-**L10c - Town save <-> `CampaignGame` (headless).** Typed server stream for loaded-flag-0 saves: players, party units
+**L10c - Town save <-> `CampaignGame` (headless). DONE.** Typed server stream for loaded-flag-0 saves: players, party units
 (`engine/party.py` record path, items through the `.a2c` item codec), gold, statistics, spell books; Scenario block <-> `Campaign`
 (variables, `Campaign.shop`, location list). `CampaignGame.to_save()/from_save()`; invariant test: save -> load -> `visit_towns`
 oracle continues identically, world-dump hashes unchanged.
@@ -75,14 +75,14 @@ script state; (2) save here, load in the original; both for a town save, a missi
 All families share the MFC layer of [saves 6.4](../formats/saves.md#64-mfc-archive-layer-of-the-server-stream-confirmed-unless-noted) (object tags, counted lists, raw-pointer keys, XOR words). Layouts decoded in saves 6.5-6.9; "needs" = leftovers.
 
 - [~] L10e-0 MFC archive codec (tags, counter, back-references and tests done in `allods2/formats/mfc.py`; the class table with `Player`/`Unit`/... factories remains): tags exactly as saves 6.10 (verify the counter start against a real save), class table (`Player`, `Unit`, `Humanoid`, `Building`, `SpellEffect`, `VirtualCaster`, `Sack`, `Item`, `Effect`, `Spell`), MFC counts, counted lists, old-pointer map; synthetic tests.
-- [ ] L10e-1 Players + groups (6.6, 6.7): decoded; needs `group+0x20` object, the 11 option words. Town saves (L10c) depend only on this plus Items.
-- [ ] L10e-2 Items, Effects, Sacks (6.9 table): fully decoded; map to `.a2c` item codec / `engine` items (L10c shares it).
-- [ ] L10e-3 Units (6.8, 6.9): decode `Humanoid::Serialize` first, then `unit+0x1c8/0x1e4` objects and the raw blocks; map to `engine/` unit fields (HP, mana, position, orders, effects, brain `+0x1c0/+0x1c4`, hero fields).
-- [ ] L10e-4 Buildings / structures (`Building` 6.9, decoded) and ground items (Sack list `FUN_0052d5b2`).
-- [ ] L10e-5 Spell effects and virtual casters (6.9, decoded).
+- [x] L10e-1 Players + groups (6.6, 6.7): typed in `serverstream.py` (`Player`, `Group`; groups inline, CONFIRMED); the 11 option words are written 0 (6.11); the `group+0x20` object is typed as a `CList<u16>` (INFERRED).
+- [x] L10e-2 Items, Effects, Spells (L10c): `Item` / `Effect` / `Spell` / `Spellbook` / `Pack` typed and mapped to `saves.Item` (`savegame.item_object` / `stored_item`); `SackObj` typed, not wired (needs the flag-1 branch).
+- [~] L10e-3 Units (6.8, 6.9): `Unit` / `Humanoid` typed with every field (raw blocks for the unmodelled ones) and the hero fields of a town save mapped (`savegame.hero_unit` / `hero_entry`); open for mission saves: map units' HP / position / orders / effects / brain blocks <-> `engine` fields. Original text: decode `Humanoid::Serialize` first, then `unit+0x1c8/0x1e4` objects and the raw blocks; map to `engine/` unit fields (HP, mana, position, orders, effects, brain `+0x1c0/+0x1c4`, hero fields).
+- [~] L10e-4 Buildings / structures (`BuildingObj`) and ground items (`SackObj`): codecs typed (round-trip tested), not wired to the flag-1 branch (`mission_raw`).
+- [~] L10e-5 Spell effects and virtual casters: `SpellEffectObj`, `VirtualCasterObj` typed, not wired.
 - [ ] L10e-6 Map dynamic layer (6.9, decoded: sparse list); `map+0x54084` decoded (CMap u16 -> 60 bytes, saves 6.11); needs the meaning of the 60-byte value.
 - [ ] L10e-7 Script state (6.9, decoded byte layout) <-> `engine` script runner; the object at `[server+0x7c]+0xc` is the unit container (count + Unit refs, 6.11).
-- [ ] L10e-8 Tick counters, `0xbadface1` pair, the 400-byte tail (`[server+0x170]` = debug block: write 400 zeros; the 11 option words: write 0 (6.11)).
+- [x] L10e-8 (town saves) Tick counters, `0xbadface1` pair, the 400-byte tail (`[server+0x170]` = debug block: write 400 zeros; the 11 option words: write 0 (6.11)).
 - [ ] L10e-9 Integration: `World` <-> stream, unknown fields kept raw, invariants of step L10e (reload determinism).
 
 ## Open questions

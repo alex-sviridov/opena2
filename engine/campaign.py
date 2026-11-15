@@ -73,6 +73,10 @@ class CampaignGame:
         self.mission = None                 # the running mission number
         self.mercenaries = {}               # unit id -> hero number of the hired units of the running mission
         self.log = []                       # one line per town visit / recruit (stand-in transcript)
+        self.client_state = None            # what a loaded save kept of the client (`saves.ClientState`, nine `Hotkey` records, the slot text, the knowledge table): written back
+        self.hotkeys = None                 # by `to_save`, None = the defaults (engine/savegame.py)
+        self.description = ""
+        self.knowledge = None
 
     # --- snapshots (the session files of a campaign mission) -------------------------------------------------------------------------
 
@@ -94,6 +98,19 @@ class CampaignGame:
         g.kills_monsters, g.kills_players, g.net_ids = d["kills_monsters"], d["kills_players"], d["net_ids"]
         g.mission, g.mercenaries = d["mission"], d["mercenaries"]
         return g
+
+    # --- saved games (docs/engine/save.md L10c; engine/savegame.py) -------------------------------------------------------------------
+
+    def to_save(self, description="", **kw):
+        """The town save of this campaign state (`saves.SaveGame`; `.pack()` = the bytes of a `game%d.sav`)."""
+        from engine import savegame
+        return savegame.to_save(self, description, **kw)
+
+    @classmethod
+    def from_save(cls, save, **kw):
+        """A campaign from a town save (`saves.SaveGame` or file bytes); keywords: `install`, `hire`, `seed`, `assets`, `difficulty`."""
+        from engine import savegame
+        return savegame.from_save(save, **kw)
 
     # --- assets / small helpers ------------------------------------------------------------------------------------------------
 
