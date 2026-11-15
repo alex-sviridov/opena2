@@ -39,7 +39,7 @@ from both places when answered).
 
 ## Town mode
 
-- Town scenes ([town-scenes 8](engine/town-scenes.md#8-open-questions), starting routines `0x4cfb45` druid woman body, `0x4ce641` druid load, `0x4d06cc` / `0x4d2fa3` speech ids): woman body by symmetry, the guard-sound start value, which of man / woman is which region (member order), the NPC speech-file mapping, what message `0x41f` does, the druid load timers.
+- Town scenes ([town-scenes 8](engine/town-scenes.md#8-open-questions), starting routine `0x41d15e` story window): the NPC story window / Save / Load windows not built; whether the exe keeps the scene loop under the main menu after Exit to Main Menu (no close hook on that path).
 
 - **Guessed for now (town.md 7), still to verify:** info panel position at 800x600 / 1024x768; client vs server stock price; shop number positions; "HIRED" anchor and figure sprite placement; `backinv*` colour meaning; stock grid draw; shop tooltips; druid / Kaarg shelf rects, animations and ambient frame numbers; the map path-edge tracer.
 

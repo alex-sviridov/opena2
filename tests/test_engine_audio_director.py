@@ -155,3 +155,46 @@ def test_replay_clock_and_camera_view():
 def test_the_audio_rng_is_separate_from_the_world_rng():
     d1, d2 = director(seed=1), director(seed=2)
     assert d1.rng is not d2.rng and d1.voices.rng is d1.rng and d1.ambience.rng is d1.rng and d1.music.rng is d1.rng
+
+
+def test_speech_line_is_flat_priority_0x80_on_the_speech_bus_and_missing_files_drop():
+    d = director(settings=Settings(sfx=100, speech=0), duration_ms=lambda p: 500 if p == "speech/town/0097t000p01.wav" else None)
+    p = d.speech("speech/town/0097t000p01.wav", now_ms=10)
+    assert p.result == "played" and p.priority == 0x80 and p.volume == -10000 and p.pan == 0              # the speech slider (0) applies, not the sfx one
+    assert d.speech("speech/town/9999t000p01.wav").result == "dropped:missing"
+
+
+def test_shell_services_advance_the_clock_so_voices_free_up():
+    d = director(duration_ms=lambda p: 50)
+    for _ in range(16):
+        d.ui("sfx/a.wav")
+    assert d.ui("sfx/a.wav").result.startswith("dropped")                                # a frozen clock keeps all 16 voices busy: why the backend must advance it
+    d.now += 60
+    assert d.ui("sfx/a.wav").result == "played"
+
+
+def test_audio_backend_wall_clock_moves_the_director_clock():
+    import time
+    from engine.backend_pygame.audio import NullAudio
+    a = NullAudio(__import__("a2res").OS)
+    a._wall(None)
+    t0 = a.director.now
+    time.sleep(0.03)
+    a._wall(None)
+    assert a.director.now - t0 >= 20
+    a._wall(5000)                                                                         # an explicit mission clock is left alone
+    assert a.director.now - t0 < 1000
+
+
+def test_stop_ui_cuts_a_playing_ui_sound_by_path_and_ignores_an_ended_or_unknown_one():
+    """A town scene's slot stop (`0x4385b0`): only a sound that still plays is cut."""
+    d = director()
+    p = d.ui("sfx/town/shop/enter.wav", now_ms=0)
+    assert p.audible
+    out = d.stop_ui("sfx/town/shop/enter.wav")
+    assert [(q.channel, q.result) for q in out] == [(p.channel, "stopped")] and not d.mixer.busy[p.channel]
+    assert d.stop_ui("sfx/town/shop/enter.wav") == []                                  # already cut
+    assert d.stop_ui("sfx/town/never.wav") == []
+    d.ui("sfx/town/point.wav", now_ms=0)
+    d.now = 600                                                                         # the 500 ms sound ended: nothing to stop
+    assert d.stop_ui("sfx/town/point.wav") == []

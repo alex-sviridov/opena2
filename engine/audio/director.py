@@ -48,6 +48,7 @@ class Director:
         self.ambience = Ambience(self.rng, getattr(table, "ids", None))
         self.log, self.viewer = log, viewer
         self.hurt_stamp = {}
+        self.ui_playing = {}                        # `ui` sound id -> channels it was started on (`stop_ui`)
         self.loops = {}                             # ambience name -> channel of the running loop
         self.now = 0
 
@@ -133,7 +134,26 @@ class Director:
         """A flat UI sound (table id, priority `0xdc` unless given; the message line uses 100)."""
         if now_ms is not None:
             self.now = now_ms
-        return self._play(tick, "ui", "ui", 0, sound_id, ev.SFX, flat(priority))
+        p = self._play(tick, "ui", "ui", 0, sound_id, ev.SFX, flat(priority))
+        if p.audible:
+            self.ui_playing.setdefault(sound_id, []).append(p.channel)
+        return p
+
+    def stop_ui(self, sound_id):
+        """A town scene's slot stop (`0x4385b0`): cuts the voices that still play `sound_id` from `ui`; [] when none does (an ended or never played sound: the exe does nothing)."""
+        out = []
+        for ch in self.ui_playing.pop(sound_id, ()):
+            m = self.mixer
+            if m.busy[ch] and m.snd[ch] == sound_id and m._active(ch, self.now):
+                m.stop(ch)
+                out.append(Played(self.now, sound_id, 0, 0, 0, ch, "stopped", False))
+        return out
+
+    def speech(self, path, priority=0x80, tick=0, now_ms=None):
+        """A flat voice line of the speech bus (a town NPC's page, `FUN_004dc84c`: `0x45aa2f(speech volume, 0, 0, priority 0x80, 0)`): `path` is the game path."""
+        if now_ms is not None:
+            self.now = now_ms
+        return self._play(tick, "ui", "speech", 0, path, ev.SPEECH, flat(priority))
 
     def ui_loop(self, path, priority=0x80):
         """A looping UI sound (the town scenes' entry loops, `0x45aa2f(.., loop=1, priority 0x80)`): returns the `Played`; `stop_ui_loop` ends it."""

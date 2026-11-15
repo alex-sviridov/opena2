@@ -126,7 +126,7 @@ without carry-over -> `menu` (the original ends the game: `0x41e`, `0x431`); the
 
 ### 3.5 Keys in the shell, Esc (CONFIRMED)
 
-Path: WM_KEYDOWN reaches `FUN_00484a76` (the game object); with `game+0x448 == 0` ESC (`0x1b`) acts only by the screen mask `game+0x404`: **1 (mission)** posts `0x416` (in-game menu); **0 (no screen open)** posts `0x41f` when the CString `0x43a170` is non-empty and the game is single player, otherwise
+Path: WM_KEYDOWN reaches `FUN_00484a76` (the game object); with `game+0x448 == 0` ESC (`0x1b`) acts only by the screen mask `game+0x404`: **1 (mission)** posts `0x416` (in-game menu); **0 (no screen open)** posts `0x41f` (the scene menu, [town-scenes 2.2](town-scenes.md)) when the CString `game+0x3d4` is **empty** (`FUN_0043a170` is `CString::IsEmpty`; the earlier text had it inverted) and the game is single player, otherwise
 forwards the key; **any other mask (every shell screen: `0x80` menu, `0x200..0x800` the new-game panels)** forwards `(0x100, 0x1b)` to the window manager `game+0xcc` (`FUN_004852d8` itself does nothing for `0x100` and only forwards `0x101`). The container dispatch `FUN_004d4769` gives it to the focused child (`+0x38`), then to every child
 in add order (`0x4d460b`) until one returns non-zero, and last to the window's own key slot `0x6c`. Per state:
 

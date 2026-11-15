@@ -1089,7 +1089,7 @@ sprites only when opened.
 
 ### 4.11 Town scenes (`townbirds`, `town_druid`)
 
-> **L6 research (2026-11-14) supersedes the region / flag details below**: [town-scenes](../engine/town-scenes.md) (CONFIRMED). Corrections: the random rolls are **sign `0x40` 5 % and fluger `0x20` 2 %** (the `stars` anim is flag `0x10`, started by hovering mask byte `0xb0`, and plays only every 10th start); region flags are 1 shop = `0x90`, 2 inn = `0x80`, 8 leave = `0xa0`; the dervish runs for the whole visit (flag `0x400` set at load); fighter / mage / trainer sprites are never drawn; the druid `man` / `woman` lists are 3 variants each: hover plays variant 3, the ambient timer `rand(2)`; the druid and Kaarg scenes inherit the human hit test and have their own tables; Kaarg is covered.
+> **L6 research (2026-11-14) supersedes the region / flag details below**: [town-scenes](../engine/town-scenes.md) (CONFIRMED). Corrections: the random rolls are **sign `0x40` 5 % and fluger `0x20` 2 %** (the `stars` anim is flag `0x10`, started by hovering mask byte `0xb0`, and plays only every 10th start); region flags are 1 shop = `0x90`, 2 inn = `0x80`, 8 leave = `0xa0`; the dervish runs for the whole visit (flag `0x400` set at load); fighter / mage / trainer sprites are never drawn; the druid `man` / `woman` lists are 3 variants each: hover plays variant 3, the ambient timer `rand(2)`; **the `woman` list is the shop figure, the `man` list the inn figure** (L6 round 2); the druid and Kaarg scenes inherit the human hit test and have their own tables; Kaarg is covered.
 
 The two town views are window classes with a shared base; each has a
 loader, a draw method and a tick method (CONFIRMED by decompiling the

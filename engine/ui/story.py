@@ -28,6 +28,7 @@ class Page:
     sound: str = ""                 # `sound:` name (INFERRED: played by the caller; unused by the install's texts)
     tune: int = -1                  # `tune:` number
     tips: int = 0                   # `tips:` number (message `0x45b` when the dialogue ends)
+    iam: bool = False               # the winning tag has an `iam*` condition (the exe's window field `+0x84`: selects the hero-class voice letter, `FUN_004dc84c`)
 
 
 def section(text, key):
@@ -139,7 +140,7 @@ def page(sec, n, flags, alive=lambda npc: True):
             end = sec.rfind("\r", start, lt)               # back to the CR of the line before the next tag
             if end < 0:
                 end = lt                                    # an LF-only file (the exe's backward scan has no stop there; the install is CRLF)
-        return Page(sec[start:end], npc, has_npc, sound, tune, tips)
+        return Page(sec[start:end], npc, has_npc, sound, tune, tips, "iam" in tag)
 
 
 def pages(sec, flags, alive=lambda npc: True, limit=1000):

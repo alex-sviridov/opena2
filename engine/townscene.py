@@ -11,9 +11,12 @@ injected `random.Random` (`rand(n)` = `randrange(n)`, `FUN_004a0fd0`); the proce
 Marks as in the spec: INFERRED parts are marked in the comments (the woman's step body, the druid / Kaarg timer stamps, the baba idle draw, the once-per-frame horse sound,
 the initial guard-sound latch)."""
 
+import re
 from dataclasses import dataclass, field
 
 import numpy as np
+
+from engine.ui import story
 
 W, H = 640, 480
 SHOP, INN, LEAVE, MENU = 1, 2, 8, 0x10                 # region flags (the other flags are the NPC regions)
@@ -25,6 +28,8 @@ BYTE_OF_REGION = {v: k for k, v in REGION_OF_BYTE.items()}
 TOWN_DIR = {1: "graphics/interface/town/", 2: "graphics/interface/town_kaarg/", 3: "graphics/interface/town_druid/"}
 BIRDS_DIR = "graphics/interface/townbirds/"
 SFX = {1: "sfx/town/", 2: "sfx/town_kaarg/", 3: "sfx/town_druid/"}
+STOP = "stop"                                                                                       # the second element of a stop event (a play has the loop flag)
+SHOP_ENTER, SCHOOL_POINT = "sfx/town/shop/enter.wav", "sfx/town/school/point.wav"          # human slots `+0x94`, `+0x98`
 ENTRY_LOOP = {1: "sfx/town/crowd.wav", 2: "sfx/town_kaarg/kvox1.wav", 3: "sfx/town_druid/dforest1.wav"}        # looped, priority 0x80
 RACE = {1: "human", 2: "kaarg", 3: "druid"}
 STEP_MS = {1: 67, 2: 100, 3: 100}
@@ -37,6 +42,10 @@ class Globals:
     def __init__(self):
         self.stars = 0
         self.bird_delay = self.druid_birds = self.druid_trees = self.kaarg_voices = self.kaarg_birds = None
+        # Kaarg object fields that live for the session (the loader `0x4d0d46` and the ctor `0x4d09ee` never touch them): the voice / bird / Kman1 stamps
+        # `+0xb8 / +0x25c / +0x260` (None = never written: heap garbage / 0, in both cases `now - stamp > delay` at the first draw) on a clock that only counts
+        # the time spent in the scene (INFERRED: the exe's `timeGetTime` also counts the time away), and "the step clock `0x628248` was stamped" (first draw ever).
+        self.kaarg_clock, self.kaarg_stamps, self.kaarg_step_seen = 0, {"vox": None, "bird": None, "man": None}, False
 
 
 # -- the hit mask ---------------------------------------------------------------------------------------------------------------------------
@@ -119,6 +128,7 @@ class SceneSpec:
     entry_loop: str
     hover_patch: dict = field(default_factory=dict)        # region -> (path, x, y)
     counts: dict = field(default_factory=dict)
+    sound_ms: dict = field(default_factory=dict)           # game path of a scene sound -> its length in ms (`measure`; missing = 0: it never counts as still playing)
 
     @classmethod
     def for_town(cls, town, counts=None):
@@ -135,6 +145,18 @@ class SceneSpec:
         """Frame counts from the install: sprite files by their frame number, bitmap lists by probing 0.. / 1.. until the first missing file (`0x4ce914` loops, the
         Kaarg lists).  Keys not present stay on the defaults."""
         from allods2.graphics import SpriteFile
+        from engine.audio.wavlen import wav_duration_ms
+        for d in (SFX[self.town], SFX[self.town] + "shop/"):
+            try:
+                names = fs.listdir(d.rstrip("/"))
+            except (KeyError, OSError, ValueError):
+                continue
+            for name in names:
+                if name.lower().endswith(".wav"):
+                    try:
+                        self.sound_ms[(d + name).lower()] = wav_duration_ms(fs.read(d + name)) or 0
+                    except (KeyError, OSError, ValueError):
+                        pass
         for key in self.asset_keys():
             try:
                 if key.endswith(".16a"):
@@ -184,9 +206,29 @@ def load_scene(fs, town, counts=None):
 
 # -- click table (CONFIRMED, town-scenes 2.1) -----------------------------------------------------------------------------------------------
 
-SPEECH = {1: {},
-          2: {4: "kaargwoman_%d", 0x200: "kaargwoman_%d", 0x400: "kaargman_%d", 0x800: "kaargguard_%d"},
-          3: {0x200: "druidinnkeeper_%d", 0x1000: "druidshopkeeper_%d"}}
+SPEECH = {1: {},                                         # the format strings at `0x5f7148`, `0x5f715c`, `0x5f752c`, `0x5f753c`, `0x5f754c`, `0x5f755c` (no underscore; `%d` = `Var(0x300)`)
+          2: {4: "kaargwoman%d", 0x200: "kaargwoman%d", 0x400: "kaargman%d", 0x800: "kaargguard%d"},
+          3: {0x200: "druidinnkeeper%d", 0x1000: "druidshopkeeper%d"}}
+TOWN_TEXT = "main/text/town.txt"
+SPEECH_DIR = "speech/town/"
+
+
+def voice_letter(flags):
+    """The hero-class letter of `FUN_004dc84c` (CONFIRMED): flags bit 4 = female, bit 2 = mage; male fighter `f`, male mage `m`, female fighter `a`, female mage `s`."""
+    return ("s" if flags & 2 else "a") if flags & 4 else ("m" if flags & 2 else "f")
+
+
+def town_voice(text, key, flags, part=1, exists=None):
+    """The voice file of page `part` of the `town.txt` section `#<key>` (`FUN_004dc84c`, the `keeper` / `man` / `guard` branch, CONFIRMED): `speech/town/NNNNLCCCpPP.wav` with `N` = the page tag's
+    `npc=` (4 digits), `L` = `t`, or the hero letter when the tag has an `iam*` condition or `npc == 21`, `C` = the digits at the end of the key zero-padded to 3 (`plagatguard`: `000`),
+    `P` = the page (`part`).  None when the section has no such page or `exists(path)` says the file is missing (the exe plays only existing files)."""
+    pg = story.page(story.section(text, key), part, flags)
+    if pg is None:
+        return None
+    letter = voice_letter(flags) if pg.iam or pg.npc == 21 else "t"
+    digits = re.search(r"\d*$", key).group()[:5].rjust(3, "0")
+    path = "%s%04d%s%sp%02d.wav" % (SPEECH_DIR, pg.npc, letter, digits, part)
+    return path if exists is None or exists(path) else None
 
 
 def click(town, region, var):
@@ -215,10 +257,14 @@ class SceneState:
         self.now = self.last_step = 0                   # ms on the scene's own clock (the load stamps are 0)
         self.region = -1                                # `+0xb4`
         self.flags = 0                                  # `+0x208`
-        self.sounds = []
+        self.events = []                                # the sound events since the last take: (path, loop) = a play, (path, STOP) = a stop
         self.latch = set()                              # the entry-sound latches
+        self.busy = {}                                  # sound path -> ms on our clock until which it still plays
+        self.slot = {}                                  # the slots whose file changes at play time (gate `+0x78`, human guards `+0x7c`): name -> path of the loaded file
+        self.heard = []                                 # every path started in this visit (order of first play): what the release-all has to cut
         if spec.entry_loop:
-            self.sounds.append((spec.entry_loop, True))
+            self.heard.append(spec.entry_loop)
+            self.events.append((spec.entry_loop, True))
 
     @staticmethod
     def build(spec, rng, glob=None, var=None):
@@ -228,15 +274,65 @@ class SceneState:
     def rand(self, n):
         return self.rng.randrange(n)
 
-    def play(self, path, loop=False):
-        self.sounds.append((path, loop))
+    def play(self, path, loop=False, restart=False):
+        """The exe's slot play `0x438570` (CONFIRMED): a sound whose buffer still plays is not started again (`FUN_0045a964` finds the playing channel); `restart` = the `stop` (`0x4385b0`)
+        that precedes the play of the same slot (the figures' Ddruid1 / Ddruid2).  The length comes from `spec.sound_ms` (unknown = 0)."""
+        if restart:
+            self.stop(path)
+        if not loop:
+            if self.busy.get(path, 0) > self.now:
+                return
+            self.busy[path] = self.now + self.spec.sound_ms.get(path, 0)
+        self._heard(path)
+        self.events.append((path, loop))
 
-    def sfx(self, name):
-        self.play(SFX[self.spec.town] + name)
+    def sfx(self, name, restart=False):
+        self.play(SFX[self.spec.town] + name, restart=restart)
+
+    def stop(self, path):
+        """The exe's slot stop `0x4385b0` (CONFIRMED): the sound of the slot is cut when its buffer plays (the backend knows; an ended or empty slot does nothing there)."""
+        self.busy.pop(path, None)
+        self.events.append((path, STOP))
+
+    def stop_sfx(self, name):
+        self.stop(SFX[self.spec.town] + name)
+
+    def reload(self, slot, name):
+        """`FUN_004384f0` + `0x438570` on a slot whose file is chosen at play time (CONFIRMED `0x4cd0ea` gate, `0x4cce81` guards, `0x4d2c2c` Kaarg gate): the reload first releases
+        the old buffer (`FUN_00438480` = stop + free), so the other file of the slot is cut, and the new buffer always plays."""
+        if self.slot.get(slot):
+            self.stop(self.slot[slot])
+        path = self.slot[slot] = SFX[self.spec.town] + name
+        self.busy[path] = self.now + self.spec.sound_ms.get(path, 0)
+        self._heard(path)
+        self.events.append((path, False))
+
+    def release(self, slot):
+        """`FUN_00438480` on the slot (CONFIRMED `0x4cce81`): stop + free; an empty slot does nothing."""
+        if self.slot.get(slot):
+            self.stop(self.slot.pop(slot))
+
+    def _heard(self, path):
+        if path not in self.heard:
+            self.heard.append(path)
+
+    def release_all(self):
+        """The scene's close (CONFIRMED `0x4caaed`, vtable `+0x84`, reached by the click's `0x445`): vtable `+0x8c` = the release-all (`0x4ce00b` / `0x4cf4dc` / `0x4d1e36`)
+        stops and frees **every** sound slot, the looped entry sound included.  Yields one stop per path started since the load (a slot never played is empty in the exe, an
+        ended one is a no-op in the backend); the model forgets them (the next load starts afresh)."""
+        for path in self.heard:
+            self.stop(path)
+        self.heard = []
+        self.slot.clear()
+        self.busy.clear()
+
+    def take_events(self):
+        out, self.events = self.events, []
+        return out
 
     def take_sounds(self):
-        out, self.sounds = self.sounds, []
-        return out
+        """The plays of `take_events` (a stop is not a sound)."""
+        return [(p, k) for p, k in self.take_events() if k is not STOP]
 
     def count(self, key):
         return self.spec.count(key)
@@ -306,18 +402,18 @@ class Human(SceneState):
         self.stars_frame = 0                                            # `+0x1bc`: 0 = nothing drawn
         self.gate, self.gate_snd = 8, 0
         self.guard_f, self.guard_dir = spec.count(BIRDS_DIR + "guards/sprites.16a") - 1, 1
-        self.guard_snd = 1                                              # `+0xf0`, heap in the exe; INFERRED 1: the guards start up, so the first guard sound is Guard1
+        self.guard_snd = 0                                              # `+0xf0` = 0 at the load (CONFIRMED `0x4ca7e2`): the first step (dir +1) plays Guard2
         self.dervish = 0
         self.horse = self.baba = -1                                     # frame counters, -1 = idle
         self.horse_set = self.baba_set = 0
         self.horse_base = self.baba_base = 0
-        self.horse_delay, self.baba_delay = self.rand(2000) + 2000, self.rand(2000) + 2000        # first deadlines after the load (`0x4ca7e2`)
+        self.baba_delay = self.rand(2000) + 2000                        # first deadlines after the load (`0x4ca7e2`, CONFIRMED order: baba `+0x118/+0x11c`, then horse `+0x148/+0x14c`)
+        self.horse_delay = self.rand(2000) + 2000
         self.bird_base = 0
         self.bird_group = self.bird_count = 0
         self.bird_f = [0, 0, 0]
         if self.g.bird_delay is None:
             self.g.bird_delay = self.rand(2000) + 1000
-        self.horse_latch = None
 
     # -- paths
     def horse_path(self):
@@ -358,7 +454,8 @@ class Human(SceneState):
                 self.flags |= 1
             if "shop" not in self.latch:
                 self.latch.add("shop")
-                self.play("sfx/town/shop/enter.wav")
+                self.stop(SCHOOL_POINT)                                                                # `0x4cdbea`: stop `+0x98` (School\Point), play `+0x94`
+                self.play(SHOP_ENTER)
         elif region == INN:
             self.flags |= 2
         elif region == 4:
@@ -375,10 +472,13 @@ class Human(SceneState):
             self.flags |= 0x20
 
     # -- tick (`0x4cd606`)
-    def _run(self, counter, n, flag, sound=None):
-        """One step of a counted animation: the sound at counter 0, then ++, at `n` -> 0 and the flag clears."""
-        if counter == 0 and sound:
-            self.sfx(sound)
+    def _run(self, counter, n, flag, sound=None, stops=()):
+        """One step of a counted animation: at counter 0 the `stops` (the tavern cuts the shop-enter and School/Point sounds, `0x4ccfbf`) and the sound, then ++, at `n` -> 0 and the flag clears."""
+        if counter == 0:
+            for path in stops:
+                self.stop(path)
+            if sound:
+                self.sfx(sound)
         counter += 1
         if counter >= n:
             counter = 0
@@ -390,7 +490,7 @@ class Human(SceneState):
         if f & 1:
             self.shopie = self._run(self.shopie, self.count(BIRDS_DIR + "shopie/sprites.16a"), 1)
         if f & 2:
-            self.tav = self._run(self.tav, self.count(BIRDS_DIR + "tavern/sprites.16a"), 2, "point.wav")
+            self.tav = self._run(self.tav, self.count(BIRDS_DIR + "tavern/sprites.16a"), 2, "point.wav", (SHOP_ENTER, SCHOOL_POINT))
         self._gate()
         if f & 0x10:
             self._stars()
@@ -425,12 +525,12 @@ class Human(SceneState):
             if self.gate > 0:
                 if self.gate_snd != 1:
                     self.gate_snd = 1
-                    self.sfx("gateup.wav")
+                    self.reload("gate", "gateup.wav")
                 self.gate -= 1
         elif self.gate < 8:
             if self.gate_snd != 2:
                 self.gate_snd = 2
-                self.sfx("gatedn.wav")
+                self.reload("gate", "gatedn.wav")
             self.gate += 1
 
     def _stars(self):
@@ -449,20 +549,22 @@ class Human(SceneState):
             self.flags &= ~0x10
 
     def _guards(self):
-        """`0x4cce81` (CONFIRMED, REA): frame += dir; Guard2 when dir is +1 and the latch is 0, Guard1 when dir is -1 and the latch is set; clamp at 0 and n-1 (dir reset)."""
+        """`0x4cce81` (CONFIRMED, REA): frame += dir; Guard2 when dir is +1 and the latch is 0, Guard1 when dir is -1 and the latch is set; clamp at 0 and n-1 (dir reset) and free the slot (`FUN_00438480`: stops the guard sound)."""
         n = self.count(BIRDS_DIR + "guards/sprites.16a")
         self.guard_f += self.guard_dir
         if self.guard_dir == 1 and self.guard_snd == 0:
-            self.sfx("guard2.wav")
+            self.reload("guard", "guard2.wav")
             self.guard_snd = 1
         elif self.guard_dir == -1 and self.guard_snd != 0:
-            self.sfx("guard1.wav")
+            self.reload("guard", "guard1.wav")
             self.guard_snd = 0
         if self.guard_f < 0:
             self.guard_dir = self.guard_f = 0
+            self.release("guard")                                                                      # the clamp frees the slot: the guard sound is cut (also one started in this very step)
         elif self.guard_f >= n:
             self.guard_dir = 0
             self.guard_f = n - 1
+            self.release("guard")
 
     def after_draw(self):
         """The parts of the exe's draw that are not the step: the bird flyers end and stamp (`0x4caf00`), the horse sounds (INFERRED: once per frame, the exe fires
@@ -472,14 +574,12 @@ class Human(SceneState):
             if all(self.bird_f[k] >= n for k in range(self.bird_count)):
                 self.flags &= ~0x80
             self.bird_base = self.now
-        key = (self.horse_set, self.horse)
-        if self.horse >= 0 and key != self.horse_latch:
-            s, f = key
-            if f == 14 and s in (0, 1, 2) or (s == 1 and f == 8):
+        if self.horse >= 0:                                                                            # `0x4cb05d`: every draw while the frame matches; `play` skips a slot still playing
+            k, f = self.horse_set, self.horse
+            if f == 14 and k in (0, 1, 2) or (k == 1 and f == 8):
                 self.sfx("horse2.wav")
-            elif s == 2 and f == 1:
+            elif k == 2 and f == 1:
                 self.sfx("horse1.wav")
-        self.horse_latch = key if self.horse >= 0 else None
 
     # -- draw (`0x4cb05d`, town-scenes 3.4)
     def draw_ops(self):
@@ -504,17 +604,21 @@ class Human(SceneState):
         ops.append(self.bmp(t + "fluger/f%02d.bmp" % self.fluger, *self.FLUGER))
         ops.append(self.spr(BIRDS_DIR + "guards/sprites.16a", self.guard_f, *self.GUARDS))
         ops.append(self.spr(self.horse_path(), max(self.horse, 0), *self.HORSE_POS[self.horse_kind]))       # frame -1 draws frame 0 (CONFIRMED)
-        if self.baba >= 0:                                                                             # idle baba: not drawn (INFERRED, the spec only says -1)
-            ops.append(self.spr(self.baba_path(), self.baba, *self.BABA_POS[self.baba_kind]))
+        ops.append(self.spr(self.baba_path(), max(self.baba, 0), *self.BABA_POS[self.baba_kind]))     # idle (-1) = frame 0, like the horse (CONFIRMED `0x4cb05d`)
         if self.dervish >= 0:
             ops.append(self.spr(self.dervish_path(), self.dervish, *self.DERVISH_POS[self.dervish_kind]))
         return ops
 
 
 class Druid(SceneState):
-    """Town 3 (`0x4ce2b9`).  Flags: 1 man (shop), 2 woman (inn), 0x80 bug, 0x100 lizard."""
-    MAN_POS = {0: (0x150, 0xf4), 1: (0x150, 0xf4), 2: (0x154, 0xe0)}
-    WOMAN_POS = {0: (0xa4, 0xc8), 1: (0xa4, 0xc8), 2: (0x98, 0xb8)}
+    """Town 3 (`0x4ce2b9`).  Flags: 1 shop figure (graphics `woman`), 2 inn figure (graphics `man`), 0x80 bug, 0x100 lizard.  CONFIRMED (`0x4ce914`, `0x4cf65a`, `0x4cfd58`,
+    `0x4d00de`): the figure on the **shop** side (state `+0x2ec`, frame `+0x1e0`, region 1, hili_shop, Ddruid1) is loaded from `woman\\a%d%04d.bmp` (list `+0x2b0`), the figure on the
+    **inn** side (state `+0x2a4`, frame `+0x168`, region 2, hili_tavern, Ddruid2) from `man\\...` (list `+0x268`)."""
+    SHOP_POS = {0: (0x150, 0xf4), 1: (0x150, 0xf4), 2: (0x154, 0xe0)}          # `0x150 + (v / 2) * 4`, `0xf4 - (v / 2) * 0x14`
+    INN_POS = {0: (0xa4, 0xc8), 1: (0xa4, 0xc8), 2: (0x98, 0xb8)}              # `0xa4 - (v / 2) * 0xc`, `0xc8 - (v / 2) * 0x10`
+    GRAPHICS = {SHOP: "woman", INN: "man"}
+    SOUND = {SHOP: "ddruid1.wav", INN: "ddruid2.wav"}
+    FLAG = {SHOP: 1, INN: 2}
     BUG_POS, LIZARD_POS = (0, 0xd4), (0, 0x12c)
     LIZARD = (                                                                                       # `0x5f68c8`, animation 4.11, frames 1-based, -1 ends
         (39, 40, 41, 42, 41, 40, 39, 38),
@@ -524,130 +628,134 @@ class Druid(SceneState):
 
     def __init__(self, spec, rng, glob=None, var=None):
         super().__init__(spec, rng, glob, var)
-        self.man_v = self.wom_v = -1                                    # variant of the running animation, -1 idle
-        self.man_f = self.wom_f = 0
-        self.man_stamp = self.wom_stamp = 0                             # timer stamps: the load's are unread (open question 4); INFERRED 0 = load
-        self.man_delay, self.wom_delay = self.rand(5000) + 3500, self.rand(5000) + 3500
-        self.bug_v, self.bug_f = -1, 0
-        self.bug_stamp, self.bug_delay = 0, self.rand(10000) + 10000
-        self.liz_seq, self.liz_i = -1, 0
-        self.stamp = {"bird": None, "tree": None, "wolf": None}         # None = fires at the first draw (INFERRED like the Kaarg stamps: 0 at construction)
-        for k in ("birds", "trees"):
-            if getattr(self.g, "druid_" + k) is None:
-                setattr(self.g, "druid_" + k, self.rand(2000) + 2000)
-
-    def _list(self, who, v):
-        return "%s%s/a%d" % (self.spec.base, who, v + 1)
+        # the load `0x4ce641` (CONFIRMED): rolls in this order, every stamp = the load time (0 on our clock), states -1, flags 0, latches 0
+        self.v = {SHOP: -1, INN: -1}                                    # the variant of the running figure animation (`+0x2ec` / `+0x2a4`), -1 idle
+        self.f = {SHOP: -1, INN: -1}                                    # its frame (`+0x1e0` / `+0x168`, the loader sets -1)
+        self.stamp = {SHOP: 0, INN: 0}                                  # `+0x2f0` / `+0x2a8`
+        self.delay = {SHOP: self.rand(2000) + 2000, INN: self.rand(2000) + 2000}
+        self.bug_stamp, self.bug_delay = 0, self.rand(5000) + 7000      # `+0x304 / +0x308` (the later delays are `rand(10000) + 10000`)
+        self.bug_v, self.bug_f = -1, -1                                 # `+0x30c`, `+0x310`
+        self.liz_seq, self.liz_i = -1, -1                               # `+0x318`, `+0x31c`
+        self.bird_stamp = self.tree_stamp = self.wolf_stamp = 0         # `+0xb8`, `+0x2f8`, `+0x2fc`, all stamped at the load
 
     def _frames(self, who, v):
-        return self.count(self._list(who, v))
+        return self.count("%s%s/a%d" % (self.spec.base, self.GRAPHICS[who], v + 1))
+
+    def _path(self, who, v, f):
+        return "%s%s/a%d%04d.bmp" % (self.spec.base, self.GRAPHICS[who], v + 1, f + 1)
 
     def starters(self):
         n, g = self.now, self.g
-        if self.stamp["bird"] is None or n - self.stamp["bird"] > g.druid_birds:                                 # `0x4d00de`
+        if g.druid_birds is None:                                                                               # `0x4d00de`: the process-global first delays, once
+            g.druid_birds = self.rand(2000) + 2000
+        if g.druid_trees is None:
+            g.druid_trees = self.rand(2000) + 2000
+        for who in (SHOP, INN):                                                                                 # the figures: the timer is re-armed whether or not it starts
+            if n - self.stamp[who] > self.delay[who]:
+                self.delay[who] = self.rand(5000) + 3500
+                self.stamp[who] = n
+                if self.v[who] == -1:
+                    self.f[who] = 0
+                    self.v[who] = 2 if self.region == who else self.rand(2)
+                    self.flags |= self.FLAG[who]
+                    self.sfx(self.SOUND[who], True)                                                             # stop + play of the same slot
+        if n - self.bird_stamp > g.druid_birds:
             self.sfx("dbird%d.wav" % (self.rand(3) + 1))
-            g.druid_birds, self.stamp["bird"] = self.rand(2000) + 2000, n
-        if self.stamp["tree"] is None or n - self.stamp["tree"] > g.druid_trees:
+            g.druid_birds, self.bird_stamp = self.rand(2000) + 2000, n
+        if n - self.tree_stamp > g.druid_trees:
             self.sfx("dtree%d.wav" % (self.rand(4) + 1))
-            g.druid_trees, self.stamp["tree"] = self.rand(2000) + 2000, n
-        if self.stamp["wolf"] is None or n - self.stamp["wolf"] > 60000:
+            g.druid_trees, self.tree_stamp = self.rand(2000) + 2000, n
+        if n - self.wolf_stamp > 60000:
             self.sfx("dwolf1.wav")
-            self.stamp["wolf"] = n
-        if self.man_v == -1 and n - self.man_stamp > self.man_delay:                                           # the ambient man starter: variant 2 over its region, else rand(2)
-            self.man_v = 2 if self.region == SHOP else self.rand(2)
-            self.man_f, self.man_stamp, self.man_delay = 0, n, self.rand(5000) + 3500
-            self.flags |= 1
-            self.sfx("ddruid1.wav")
-        if self.wom_v == -1 and n - self.wom_stamp > self.wom_delay:                                           # INFERRED symmetric
-            self.wom_v = 2 if self.region == INN else self.rand(2)
-            self.wom_f, self.wom_stamp, self.wom_delay = 0, n, self.rand(5000) + 3500
-            self.flags |= 2
-            self.sfx("ddruid2.wav")
-        if self.bug_v == -1 and n - self.bug_stamp > self.bug_delay:                                           # `0x4cfc77`
-            self.bug_v, self.bug_f = self.rand(3), 0
-            self.bug_stamp, self.bug_delay = n, self.rand(10000) + 10000
-            self.flags |= 0x80
+            self.wolf_stamp = n
+        if n - self.bug_stamp > self.bug_delay:                                                                 # no idle test: the delay (>= 10 s) outlasts the run (6.1 s)
+            self.bug_v = self.rand(3)
             self.sfx("dbug%d.wav" % (self.bug_v + 1))
+            self.flags |= 0x80
+            self.bug_delay, self.bug_stamp = self.rand(10000) + 10000, n
         if self.liz_seq == -1:                                                                                  # restarts at once whenever idle
             r = self.rand(15)
             self.liz_seq = r + 1 if r < 3 else 0
-            self.liz_i = 0
-            self.flags |= 0x100
             self.sfx("dlizard%d.wav" % (self.liz_seq + 1))
+            self.flags |= 0x100
+            self.liz_i = 0
 
     def hover(self, region):
+        """`0x4cfd58`.  The entry-sound latches (`+0xac` shop, `+0x260` inn, `+0x264` out): entering a region plays its sound once and clears the other two; regions 4 / `0x200` /
+        `0x1000` return at once (the region is stored, latches kept); every other region value clears all three."""
         prev, self.region = self.region, region
-        if region == -1:
-            self.latch.clear()
-        elif region == SHOP:
-            if prev != SHOP and self.man_v != 2:                                                               # entering: man variant 2, one step now
-                self.man_v, self.man_f = 2, -1
-                self.flags |= 1
-                self._man_step()
-                self.sfx("ddruid1.wav")
-            if "shop" not in self.latch:
-                self.latch.add("shop")
-                self.sfx("denter2.wav")
-        elif region == INN:
-            if prev != INN and self.wom_v != 2:
-                self.wom_v, self.wom_f = 2, -1
-                self.flags |= 2
-                self._wom_step()
-                self.sfx("ddruid2.wav")
-            if "inn" not in self.latch:
-                self.latch.add("inn")
-                self.sfx("denter1.wav")
+        if region in (SHOP, INN):
+            if prev != region and self.v[region] != 2:                                                          # entering: variant 2, the timer re-stamped, one step now
+                self.stamp[region] = self.now
+                self.v[region], self.f[region] = 2, -1
+                self.flags |= self.FLAG[region]
+                self._step(region)
+                self.sfx(self.SOUND[region], True)
+            name = "shop" if region == SHOP else "inn"
+            if name not in self.latch:                                                                          # stop the other two enter sounds, play this one
+                for other in (("denter1.wav", "dout.wav") if region == SHOP else ("denter2.wav", "dout.wav")):
+                    self.stop_sfx(other)
+                self.sfx("denter2.wav" if region == SHOP else "denter1.wav")
+            self.latch = {name}
         elif region == LEAVE:
             if "out" not in self.latch:
-                self.latch.add("out")
+                self.stop_sfx("denter2.wav")
+                self.stop_sfx("denter1.wav")
                 self.sfx("dout.wav")
+            self.latch = {"out"}
         elif region in (4, 0x200, 0x1000):
             return
-        else:
-            self.flags |= region
+        else:                                                                                                   # -1 and the other flags
+            if region != -1:
+                self.flags |= region
+            self.latch.clear()
 
-    def _man_step(self):
-        self.man_f += 1
-        if self.man_f >= self._frames("man", self.man_v):
-            self.man_v, self.man_f = -1, 0
-            self.flags &= ~1
+    def _step(self, who):
+        """`0x4cfbf6` (shop) / `0x4cfb45` (inn, CONFIRMED: the same body; its frame-0 sound calls `+0x94 / +0x90` hit slots the druid never loads = no-ops)."""
+        if self.v[who] > -1:
+            self.f[who] += 1
+            if self.f[who] == self._frames(who, self.v[who]):
+                self.f[who], self.v[who] = 0, -1
+                self.flags &= ~self.FLAG[who]
 
-    def _wom_step(self):                                                                                        # body INFERRED by symmetry with the man's `0x4cfbf6`
-        self.wom_f += 1
-        if self.wom_f >= self._frames("woman", self.wom_v):
-            self.wom_v, self.wom_f = -1, 0
-            self.flags &= ~2
-
-    def tick(self):
+    def tick(self):                                                                                             # `0x4d065b`
         if self.flags & 1:
-            self._man_step()
+            self._step(SHOP)
         if self.flags & 2:
-            self._wom_step()
-        if self.flags & 0x80:
+            self._step(INN)
+        if self.flags & 0x80 and self.bug_v > -1:                                                               # `0x4cfc77`
             self.bug_f += 1
-            if self.bug_f >= 61:
-                self.bug_v, self.flags = -1, self.flags & ~0x80
-        if self.flags & 0x100:
+            if self.bug_f == 61:
+                self.bug_f, self.bug_v = 0, -1
+                self.flags &= ~0x80
+        if self.flags & 0x100 and self.liz_seq > -1:                                                            # `0x4cfcde`
             self.liz_i += 1
             if self.liz_i >= len(self.LIZARD[self.liz_seq]):                                                    # the -1 end marker
-                self.liz_seq, self.flags = -1, self.flags & ~0x100
+                self.liz_i, self.liz_seq = -1, -1
+                self.flags &= ~0x100
+
+    def _figure(self, who, pos):
+        """The patch (only for the hover or variant 2) and the figure; idle = frame 0 of variant 2 at the hovered place when the pointer is on the region, else of variant 0."""
+        ops = []
+        if self.region == who or self.v[who] == 2:
+            ops.append(self.bmp(*self.spec.hover_patch[who]))
+        if self.v[who] < 0:
+            v, f = (2 if self.region == who else 0), 0
+        else:
+            v, f = self.v[who], self.f[who]
+        ops.append(self.bmp(self._path(who, v, max(f, 0)), *pos[v]))
+        return ops
 
     def draw_ops(self):
         b = self.spec.base
         ops = [self.bmp(b + "townmain.bmp", 0, 0)]
-        if self.region == SHOP or self.man_v != -1:
-            ops.append(self.bmp(*self.spec.hover_patch[1]))
-        v = self.man_v if self.man_v != -1 else (2 if self.region == SHOP else 0)
-        f = max(self.man_f, 0) if self.man_v != -1 else 0
-        ops.append(self.bmp("%sman/a%d%04d.bmp" % (b, v + 1, f + 1), *self.MAN_POS[v]))
-        if self.region == INN or self.wom_v != -1:
-            ops.append(self.bmp(*self.spec.hover_patch[2]))
-        v = self.wom_v if self.wom_v != -1 else (2 if self.region == INN else 0)
-        f = max(self.wom_f, 0) if self.wom_v != -1 else 0
-        ops.append(self.bmp("%swoman/a%d%04d.bmp" % (b, v + 1, f + 1), *self.WOMAN_POS[v]))
-        if self.liz_seq != -1:
+        ops += self._figure(SHOP, self.SHOP_POS)
+        ops += self._figure(INN, self.INN_POS)
+        if self.liz_seq < 0 or self.liz_i < 0:                                                                  # idle: frame 0
+            ops.append(self.spr(b + "lizard/sprites.16a", 0, *self.LIZARD_POS))
+        else:
             ops.append(self.spr(b + "lizard/sprites.16a", self.LIZARD[self.liz_seq][min(self.liz_i, len(self.LIZARD[self.liz_seq]) - 1)] - 1, *self.LIZARD_POS))
-        if self.bug_v != -1:
+        if self.bug_v >= 0 and self.bug_f >= 0:
             ops.append(self.spr(b + "bug/sprites.16a", self.bug_v * 61 + self.bug_f, *self.BUG_POS))
         return ops
 
@@ -658,7 +766,7 @@ class Kaarg(SceneState):
         "girl1": (0x200, (2000, 2000), (3500, 5000)), "girl2": (4, (2000, 2000), (3500, 5000)),
         "guard": (0x800, (2000, 2000), (7500, 5000)), "dervish": (0x400, (4000, 500), (3700, 500))}
     GIRL1, GIRL2, GUARD_A, GUARD_B, DERVISH, GATES = (216, 284), (260, 284), (140, 152), (184, 156), (416, 328), (152, 256)
-    FOOT = ({5, 13, 21, 47, 55, 63}, {9, 17, 23, 51, 59}, {31, 69})          # frame sets of the guard's footsteps (the frames >= 55 never trigger, INFERRED dead)
+    FOOT = ({5, 13, 21, 47}, {9, 17, 23, 51}, {31})          # frame sets of the guard's footsteps (`0x4d26a4`: the exe's table also lists 55, 59, 63, 69, never seen: the counter wraps at 55 in the step, before the starters)
 
     def __init__(self, spec, rng, glob=None, var=None):
         super().__init__(spec, rng, glob, var)
@@ -667,10 +775,10 @@ class Kaarg(SceneState):
         self.stamp = {k: 0 for k in self.NPC}
         self.delay = {k: self.rand(s) + b for k, (_, (b, s), _) in self.NPC.items()}
         self.gate, self.gate_snd = 0, 0
-        self.foot = None
-        self.vox_stamp = self.bird_stamp = 0
-        self.man_stamp = None                                           # Kman1: the stamp is 0 at construction -> fires on the first draw (CONFIRMED)
-        self.bird_first = True
+        self.foot_latch = 0                                             # `+0x258`
+        if self.g.kaarg_step_seen:                                      # the step clock `0x628248` survives visits: after the first opening the first draw runs a step (INFERRED: the player was away > 100 ms)
+            self.last_step = -1000
+        self.g.kaarg_step_seen = True
         for k, a in (("kaarg_voices", 2000), ("kaarg_birds", 2000)):
             if getattr(self.g, k) is None:
                 setattr(self.g, k, self.rand(a) + 2000)
@@ -680,35 +788,48 @@ class Kaarg(SceneState):
         key = {"girl1": b + "girl1/g%d" % (v + 1), "girl2": b + "girl2/g%d" % (v + 1), "guard": b + "guard/g", "dervish": b + "dervish/d"}[name]
         return self.count(key)
 
+    def advance(self, dt_ms):
+        self.g.kaarg_clock += dt_ms
+        super().advance(dt_ms)
+
     def starters(self):
-        n, g = self.now, self.g
-        for name, (flag, _, (b, s)) in self.NPC.items():                                                       # the timers `0x4d26a4`
-            if self.v[name] == -1 and n - self.stamp[name] > self.delay[name]:
+        n, g, c, st = self.now, self.g, self.g.kaarg_clock, self.g.kaarg_stamps
+        for name, (flag, _, (b, s)) in self.NPC.items():                                                       # the timers `0x4d26a4` (no idle test: a due timer restarts a running animation)
+            if n - self.stamp[name] > self.delay[name]:
                 self.v[name] = self.rand(2) if name.startswith("girl") else 0
                 self.f[name], self.stamp[name], self.delay[name] = 0, n, self.rand(s) + b
                 self.flags |= flag
-        if n - self.vox_stamp > g.kaarg_voices:
+        if st["vox"] is None or c - st["vox"] > g.kaarg_voices:                                                # stamps never written before the first fire: voice, bird and Kman1 all fire on the very first draw
             self.sfx("kvox%d.wav" % (self.rand(3) + 2))
-            g.kaarg_voices, self.vox_stamp = self.rand(2000) + 2000, n
-        if self.bird_first or n - self.bird_stamp > g.kaarg_birds:                                             # stamp 0 at construction: the first bird fires on the first draw
+            g.kaarg_voices, st["vox"] = self.rand(2000) + 2000, c
+        if st["bird"] is None or c - st["bird"] > g.kaarg_birds:
             self.sfx("kbird%d.wav" % (self.rand(4) + 1))
-            g.kaarg_birds, self.bird_stamp, self.bird_first = self.rand(2000) + 2000, n, False
-        if self.man_stamp is None or n - self.man_stamp > 45000:
+            g.kaarg_birds, st["bird"] = self.rand(2000) + 2000, c
+        if st["man"] is None or c - st["man"] > 45000:
             self.sfx("kman1.wav")
-            self.man_stamp = n
+            st["man"] = c
 
     def hover(self, region):
+        """`0x4d244e` (CONFIRMED): the latches `+0xac` shop, `+0x250` inn, `+0x254` out; entering shop / inn plays its Kenter once and clears the other two; the gate region clears
+        shop / inn and latches out (stopping both enter sounds); 4 / `0x200` / `0x400` / `0x800` return at once; any other region ORs its flag and clears all three."""
         self.region = region
-        if region == -1:
+        if region in (SHOP, INN):
+            name = "shop" if region == SHOP else "inn"
+            if name not in self.latch:                                                                          # stop the other enter sound, play this one
+                self.stop_sfx("kenter1.wav" if region == SHOP else "kenter2.wav")
+                self.sfx("kenter2.wav" if region == SHOP else "kenter1.wav")
+            self.latch = {name}
+        elif region == LEAVE:
+            if "out" not in self.latch:                                                                         # latches out and stops both enter sounds
+                self.stop_sfx("kenter2.wav")
+                self.stop_sfx("kenter1.wav")
+            self.latch = {"out"}
+        elif region in (4, 0x200, 0x400, 0x800):
+            return
+        else:
+            if region != -1:
+                self.flags |= region
             self.latch.clear()
-        elif region == SHOP:
-            if "shop" not in self.latch:
-                self.latch.add("shop")
-                self.sfx("kenter2.wav")
-        elif region == INN:
-            if "inn" not in self.latch:
-                self.latch.add("inn")
-                self.sfx("kenter1.wav")
 
     def tick(self):
         for name, (flag, _, _) in self.NPC.items():
@@ -721,28 +842,27 @@ class Kaarg(SceneState):
             if self.gate < 10:
                 if self.gate_snd != 1:
                     self.gate_snd = 1
-                    self.sfx("kdoor1.wav")
+                    self.reload("gate", "kdoor1.wav")
                 self.gate += 1
         elif self.gate > 0:
             if self.gate_snd != 2:
                 self.gate_snd = 2
-                self.sfx("kdoor2.wav")
+                self.reload("gate", "kdoor2.wav")
             self.gate -= 1
 
     def after_draw(self):
-        f = self.f["guard"]
+        """The footstep switch of the starters (`0x4d26a4`, CONFIRMED): only while the guard flag is set; a frame in a set plays once when the latch `+0x258` is clear and sets it;
+        any other frame clears it (so a frame that stays across draws fires once; the latch is untouched while the guard is idle).  All three sets roll `rand(4) == 0` for the variant."""
         if self.v["guard"] == -1:
-            self.foot = None
             return
-        if f == self.foot:
-            return
-        self.foot = f
-        if f in self.FOOT[0]:
-            self.sfx("ksteps21.wav" if self.rand(4) == 0 else "ksteps2.wav")
-        elif f in self.FOOT[1]:
-            self.sfx("ksteps11.wav" if self.rand(4) == 0 else "ksteps1.wav")        # the second set's variant roll is INFERRED like the first's
-        elif f in self.FOOT[2]:
-            self.sfx("ksteps31.wav" if self.rand(4) == 0 else "ksteps3.wav")
+        f = self.f["guard"]
+        for k, (plain, alt) in enumerate((("ksteps2", "ksteps21"), ("ksteps1", "ksteps11"), ("ksteps3", "ksteps31"))):
+            if f in self.FOOT[k]:
+                if not self.foot_latch:
+                    self.sfx((alt if self.rand(4) == 0 else plain) + ".wav")
+                    self.foot_latch = 1
+                return
+        self.foot_latch = 0
 
     def draw_ops(self):
         b = self.spec.base

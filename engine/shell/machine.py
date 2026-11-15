@@ -9,6 +9,8 @@ from typing import Callable
 
 from allods2.common import as_fs
 
+from engine.ui import story
+
 GRAPH = {
     "startup": {"menu"},
     "menu": {"newgame", "load", "quit"},
@@ -37,6 +39,8 @@ def _nothing(*a, **k):
 class Services:
     """What the shell needs from the outside world (the backend fills it in; tests pass fakes).  Every field has a harmless default."""
     sound: Callable = _nothing              # (path_or_id): a UI sound
+    speech: Callable = _nothing             # (path): a voice line (the speech bus; a town NPC's page); the game path of an existing file
+    stop: Callable = _nothing               # (path): cut the UI sound `path` when it still plays (a town scene's slot stop)
     loop: Callable = _nothing               # (path or None): the one looping UI sound (a town scene's entry loop); None stops it
     music: Callable = _nothing              # (playlist name)
     log: Callable = _nothing                # (line)
@@ -168,9 +172,29 @@ class Shell:
             elif kind == "music":
                 self.services.music(ev[1])
             elif kind == "speech":
-                self.services.sound("speech:%s" % ev[1])
+                self.speak_town(ev[1])
             self.log("town: " + " ".join(str(x) for x in ev))
         return events
+
+    def speak_town(self, key):
+        """Voice the first page of the `town.txt` section `#<key>` (an NPC click / the human gate guard; `FUN_0041d15e` opens the story window whose page 1 `FUN_004dc84c` voices):
+        the file `townscene.town_voice` names for the main hero's class, played on the speech bus if it exists in the install.  The window and its text are not built (the Ok pages 2.. are
+        not voiced).  Returns the game path played, or None."""
+        from engine import townscene as TS
+        from allods2.text import decode_text
+        if self.fs is None:
+            return None
+        try:
+            text = decode_text(self.fs.read(TS.TOWN_TEXT))
+        except (KeyError, OSError):
+            return None
+        camp = self.campaign
+        flags = story.hero_flags(camp.is_female, camp.is_mage) if camp is not None else 0
+        path = TS.town_voice(text, key, flags, 1, self.fs.exists)
+        if path:
+            self.services.speech(path)
+        self.log("town: speech %s -> %s" % (key, path))
+        return path
 
     def town_screen(self):
         """The screen the core's `view` asks for, `(name, params)` or None to stay (screens return this from `event`)."""
@@ -182,6 +206,9 @@ class Shell:
     # -- services shortcuts (screens use these) ------------------------------------------------------------------------------------
     def play(self, sound):
         self.services.sound(sound)
+
+    def stop(self, sound):
+        self.services.stop(sound)
 
     def log(self, line):
         self.services.log(line)

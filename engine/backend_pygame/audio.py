@@ -6,7 +6,7 @@ once by `allods2.formats.sound.to_wav` into cached `mixer.Sound`s played on the 
 `NullAudio` needs no pygame at all."""
 
 import io
-import struct
+import time
 
 from allods2.formats import sound as snd
 from allods2.formats import soundtable
@@ -15,33 +15,12 @@ from engine.audio.audiolog import AudioLog  # noqa: F401  (re-export for the cal
 from engine.audio.director import Director, view_of
 from engine.audio.mixer import VOICES
 from engine.audio.settings import Settings
+from engine.audio.wavlen import wav_duration_ms  # noqa: F401  (the pure function, re-exported for the callers of this module)
 from engine.sim.clock import DEFAULT_SPEED, tick_period_ms
 
 FREQUENCY, FORMAT, CHANNELS, BUFFER = 22050, -16, 2, 512          # `mixer.init` (audio.md 5)
 MUSIC_PX_SCALE = 8                                                 # px -> 1/256 cell (32 px per cell)
 MIN_VIEW_PX = 32
-
-
-def wav_duration_ms(data):
-    """Length of a RIFF wav in ms from its headers (PCM: data / frame size; MS ADPCM: the `fact` frame count); None for a file with no samples or no
-    readable header."""
-    try:
-        b = bytes(data)
-        by = {}
-        for t, o, s in snd.parse_chunks(b):
-            by.setdefault(t, (o, s))
-        o, _ = by[b"fmt "]
-        tag, channels, rate, _bps, align, _bits = struct.unpack_from("<HHIIHH", b, o)
-        if b"fact" in by:
-            frames = struct.unpack_from("<I", b, by[b"fact"][0])[0]
-        elif tag == snd.WAVE_PCM and align:
-            frames = by[b"data"][1] // align
-        else:
-            frames = snd.decode(b).frames
-        ms = frames * 1000 // rate if rate else 0
-        return ms if ms > 0 else None
-    except (KeyError, ValueError, struct.error, snd.SoundError):
-        return None
 
 
 class NullAudio:
@@ -95,13 +74,37 @@ class NullAudio:
             m.tick(t, xy)
         self._music_tick = tick
 
+    def _wall(self, now_ms):
+        """The shell services (`ui`, `speech`, `loop`) have no mission clock: the Director's clock advances by the wall time since the previous such call, so a voice that ended
+        is free again (before, `director.now` never moved and the 16 voices stayed busy after 16 shell sounds)."""
+        t = time.monotonic()
+        if now_ms is None:
+            last = getattr(self, "_wall_last", None)
+            self.director.now += 0 if last is None else int((t - last) * 1000)
+        self._wall_last = t
+        return now_ms
+
     def ui(self, sound_id, priority=mix.UI_PRIORITY, now_ms=None, tick=0):
+        now_ms = self._wall(now_ms)
         p = self.director.ui(sound_id, priority, tick, now_ms)
+        self._output([p])
+        return p
+
+    def stop(self, path):
+        """Shell service: cut the `ui` sound `path` if it still plays (a town scene's slot stop `0x4385b0`)."""
+        self._wall(None)
+        self._output(self.director.stop_ui(path))
+
+    def speech(self, path, priority=0x80, now_ms=None, tick=0):
+        """Shell service: play the voice line `path` (a game path, the speech bus at priority `0x80`)."""
+        now_ms = self._wall(now_ms)
+        p = self.director.speech(path, priority, tick, now_ms)
         self._output([p])
         return p
 
     def loop(self, path):
         """Shell service: start the looping sound `path` (a game path) after stopping the previous one; None only stops (the town scenes' entry loops)."""
+        self._wall(None)
         p = self.director.stop_ui_loop()
         if p is not None:
             self._output([p])

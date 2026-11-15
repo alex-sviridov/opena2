@@ -50,11 +50,15 @@ class Painter:
         self._files, self._frames = {}, {}
 
     def keyed(self, path, img):
-        """`img` with black as the colour key (cached per path)."""
+        """`img` drawn with the exe's colour key (vtable `+0x38`, `FUN_00425585` / `FUN_00453bca`, bitmaps.md): the 24-bit bitmap lives as 5-6-5 and the word `0x0000` is skipped, i.e. every
+        source colour with R < 8, G < 4 and B < 8 is transparent, not only exact black (cached per path)."""
         k = ("key", path)
         if k not in self._frames:
-            c = img.copy()
-            c.set_colorkey((0, 0, 0))
+            import pygame
+            c = img.convert_alpha()
+            rgb = pygame.surfarray.array3d(c)
+            hole = (rgb[..., 0] < 8) & (rgb[..., 1] < 4) & (rgb[..., 2] < 8)
+            pygame.surfarray.pixels_alpha(c)[hole] = 0
             self._frames[k] = c
         return self._frames[k]
 

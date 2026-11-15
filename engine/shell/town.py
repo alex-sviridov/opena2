@@ -6,8 +6,12 @@ Every click is a message to the core; the events it appends are turned into serv
 from engine import town as T
 from engine import townscene as TS
 
+from engine.ui.layout import Rect
+from engine.ui.widgets import button_rect
+
 from . import dialog
 from .events import Key, Move, Press, Release
+from .options import SOUND, OptionsPages, load_texts
 from .scene import Button, Fill, Frame, Image, Scene, Sprite, Text
 from .screen import Screen
 
@@ -88,16 +92,82 @@ def ops_of(draw_ops, ox=0, oy=0):
     return [Image(op[1], ox + op[2], oy + op[3], op[4]) if op[0] == "bmp" else Sprite(op[1], op[2], ox + op[3], oy + op[4]) for op in draw_ops]
 
 
+# The scene menu: message `0x41f` (CONFIRMED `FUN_004852d8` case `0x41f` -> `FUN_004407c2`: a 440x340 window at (100, 100), buttons in this order; ESC in a town scene posts it too, shell.md 3.5).
+# (id, `dialogs.txt` line, enabled, action).  Save (`0x41a`, the save list `FUN_0043ebf6`) and Load (`0x418`, `FUN_0043deaf`) are not built (DECISION: shown disabled, the exe enables them).
+MENU = (("save", 0x22, False), ("load", 0x23, False), ("sound", 0x25, True), ("abort", 0x4d, True), ("return", 0x28, True))
+ABORT = (("exit_menu", 0x2c, True), ("exit_windows", 0x2d, True), ("return", 0x28, True))     # `0x41c` with `game+0x404 == 0` -> `FUN_00440a22`: messages `0x41e` (end game + main menu), `0x10`, `0x446`
+FALLBACK = {0x22: "~Save Game", 0x23: "~Load Game", 0x25: "Sou~nd Options", 0x4d: "Abort Game", 0x28: "~Return to Game", 0x2c: "~Exit to Main Menu", 0x2d: "Exit to ~Windows"}
+MENU_W, MENU_H = 392, 296                  # 440x340 snapped by `FUN_004dc4fc` (`w' = ((w - 8) / 0x60) * 0x60 + 8`, `h' = ((h - 0x68) / 0x40) * 0x40 + 0x68`)
+
+
+class SceneMenu:
+    """The window of message `0x41f` over a town scene: page "menu" (Save / Load / Sound Options / Abort Game / Return to Game) and, behind Abort Game, page "abort" (Exit to Main
+    Menu / Exit to Windows / Return to Game).  Text buttons act on the release over the pressed one; ESC = Return (`0x446`, the common dialog's key).  `event` returns the outcome
+    ("sound",) (open the sound options), ("exit_menu",), ("exit_windows",), ("close",) or None."""
+
+    def __init__(self, texts, origin):
+        self.texts = texts
+        self.page = "menu"
+        self.frame = Rect(origin[0] + (640 - MENU_W) // 2, origin[1] + (480 - MENU_H) // 2, MENU_W, MENU_H)
+        self.hot = self.pressed = None
+
+    def entries(self):
+        return MENU if self.page == "menu" else ABORT
+
+    def label(self, line):
+        return (self.texts["dialogs"].line(line) if self.texts else "") or FALLBACK[line]
+
+    def rects(self):
+        return [button_rect(self.frame, k) for k in range(len(self.entries()))]
+
+    def _at(self, x, y):
+        for i, r in enumerate(self.rects()):
+            if r.contains(x, y):
+                return i
+        return None
+
+    def _act(self, i):
+        key, _, enabled = self.entries()[i]
+        if not enabled:
+            return None
+        if key == "abort":
+            self.page, self.hot = "abort", None
+            return None
+        return ("close",) if key == "return" else (key,)
+
+    def event(self, ev):
+        if isinstance(ev, Move):
+            self.hot = self._at(ev.x, ev.y)
+        elif isinstance(ev, Press) and ev.button == 1:
+            self.hot = self.pressed = self._at(ev.x, ev.y)
+        elif isinstance(ev, Release) and ev.button == 1:
+            hit, down, self.pressed = self._at(ev.x, ev.y), self.pressed, None
+            self.hot = hit
+            if hit is not None and hit == down:
+                return self._act(hit)
+        elif isinstance(ev, Key) and not ev.ctrl and ev.name == "escape":
+            return ("close",)
+        return None
+
+    def scene_ops(self):
+        f = self.frame
+        ops = [Frame(f.x, f.y, f.w, f.h)]
+        for i, ((_, line, enabled), r) in enumerate(zip(self.entries(), self.rects())):
+            ops.append(Button(r.x, r.y, r.w, r.h, self.label(line), enabled, self.hot == i and enabled, self.pressed == i and enabled))
+        return ops
+
+
 class TownScene(Screen):
     """The town scene (L6, docs/engine/town-scenes.md): the picture, the hit mask, the animations.  A left press acts (not the release), the pointer drives the
-    hover, ESC / Enter do nothing.  `engine.townscene.SceneState` is the model; without the install a stand-in of three rectangles (shop / inn / leave) keeps the visit loop
-    runnable.  The scene is rebuilt at every opening, as the exe's loader does; the entry loop sound stops when the screen is left."""
+    hover, ESC opens the scene menu `0x41f` (CONFIRMED `0x484a76`: `game+0x3d4` is never written, so it is empty), Enter does nothing.  `engine.townscene.SceneState` is the model; without the install a stand-in of three rectangles (shop / inn / leave) keeps the visit loop
+    runnable.  The scene is rebuilt at every opening, as the exe's loader does; leaving it (click on shop / inn / leave) runs the close hook: every sound slot is released."""
     name, view = "town", "scene"
     music = None                            # the core's `music` event picks the playlist
 
     def __init__(self, shell):
         super().__init__(shell)
         self.state, self.mask, self.real = None, TS.StandInMask(), False
+        self.menu = self.options = None                     # the `0x41f` window / the Sound Options over it
 
     @property
     def core(self):
@@ -107,11 +177,16 @@ class TownScene(Screen):
         core = self.core
         spec, self.mask, self.real = TS.load_scene(self.shell.fs, core.town or 1)
         self.state = TS.SceneState.build(spec, self.shell.rng, self.shell.scene_globals, var=core.camp.get)
+        self.menu = self.options = None
         if self.shell.mouse is not None:
             self.state.hover(self._region(*self.shell.mouse))
         self._sounds()
 
     def exit(self):
+        """The scene's close hook `0x4caaed` (town-scenes 6): every slot is released (loops and one-shots cut), the window is hidden, the object stays."""
+        if self.state is not None:
+            self.state.release_all()
+            self._sounds()
         self.shell.services.loop(None)
 
     def _region(self, x, y):
@@ -123,21 +198,56 @@ class TownScene(Screen):
         return None if p is None else (p[0] + self.origin[0], p[1] + self.origin[1])
 
     def _sounds(self):
-        for path, loop in self.state.take_sounds():
-            if loop:
+        for path, loop in self.state.take_events():
+            if loop is TS.STOP:
+                self.shell.stop(path)
+            elif loop:
                 self.shell.services.loop(path)
             else:
                 self.shell.play(path)
 
+    def open_menu(self):
+        """Message `0x41f`: the scene menu window (`FUN_004407c2`), over the running scene."""
+        self.menu = SceneMenu(load_texts(self.shell.fs), self.origin)
+
+    def _menu_event(self, ev):
+        if self.options is not None:
+            self.options.event(ev)
+            if self.options.done:
+                self.options = None
+            return None
+        out = self.menu.event(ev)
+        if out is None:
+            return None
+        if out[0] == "close":
+            self.menu = None
+        elif out[0] == "sound":                             # `0x422` (`0x485bf3`: allowed in a running game in town)
+            self.options = OptionsPages(load_texts(self.shell.fs), self.shell.size, self.shell.settings, self.shell.services, SOUND)
+        elif out[0] == "exit_menu":                         # `0x41e`: `FUN_0048f2e5` ends the game, then `0x421` (the main menu)
+            self.menu = None
+            return "menu"
+        elif out[0] == "exit_windows":                      # `0x10`
+            self.menu = None
+            self.shell.close_window()
+        return None
+
     def event(self, ev):
+        if self.menu is not None:                           # a modal window: nothing reaches the scene
+            return self._menu_event(ev)
+        if isinstance(ev, Key) and not ev.ctrl and ev.name == "escape":   # the game's key handler `0x484a76` posts `0x41f` (town-scenes 2.2); Enter does nothing
+            self.open_menu()
+            return None
         if isinstance(ev, Move):
             self.state.hover(self._region(ev.x, ev.y))
         elif isinstance(ev, Press) and ev.button == 1:
             out = self.state.press(self._region(ev.x, ev.y))
-            if out is None or out[0] == "menu":             # `0x41f` (the in-game menu) is not built yet
+            if out is None:
                 return None
-            if out[0] == "speech":
-                self.shell.play("speech:%s" % out[1])
+            if out[0] == "menu":                            # region `0x10`: message `0x41f`
+                self.open_menu()
+                return None
+            if out[0] == "speech":                          # `FUN_0041d15e(key)`: the story window; page 1's voice is played (speak_town)
+                self.shell.speak_town(out[1])
                 return None
             c = self.core
             if out[0] == "inn":
@@ -161,8 +271,11 @@ class TownScene(Screen):
             for region, label in ((TS.INN, "Inn"), (TS.SHOP, "Shop"), (TS.LEAVE, "Leave town")):
                 x, y, w, h = TS.StandInMask.RECTS[region]
                 ops += [Fill(ox + x, oy + y, w, h, (60, 50, 40) if self.state.region != region else (110, 90, 60)), Text(label, ox + x + w // 2, oy + y + h // 2, 1, "normal", 2 | 8, 1)]
-            return Scene(ops)
-        return Scene(ops_of(self.state.draw_ops(), ox, oy))
+        else:
+            ops = ops_of(self.state.draw_ops(), ox, oy)
+        if self.menu is not None:
+            ops += self.options.scene().ops if self.options is not None else self.menu.scene_ops()
+        return Scene(ops)
 
 
 class Inn(TownPanel):
