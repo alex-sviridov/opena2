@@ -370,6 +370,29 @@ def _mode(u):
     return 0
 
 
+def _SG():
+    from engine import savegame
+    return savegame
+
+
+def _s16(v):
+    v &= 0xFFFF
+    return v - 0x10000 if v & 0x8000 else v
+
+
+def _combat_of(world, u):
+    """The unit's `CombatStats` as the exe holds them at this moment (the attack record `+0xa6`, the armour block `+0xbe`, the bonus accumulators), built without caching so a save leaves the world untouched."""
+    from engine.sim import combat
+    cached = u.combat
+    try:
+        return combat.combat_stats(world, u)
+    except Exception:                       # a unit without a usable template: zeros, as before
+        return None
+    finally:
+        if cached is None:
+            u.combat = None
+
+
 def unit_object(world, u, out, table, owner_ptr, off_map=False):
     """The stream `Unit` / `Humanoid` of an engine unit (field map: `serverblocks.UNIT_MAP`; saves.md 7 "L10e-B")."""
     from engine import party as PT
@@ -396,12 +419,22 @@ def unit_object(world, u, out, table, owner_ptr, off_map=False):
     struct.pack_into("<HH", brain, BRAIN_MARK_CELL, ai.mark_cell & 0xFFFF, ai.mark_age & 0xFFFF)
     struct.pack_into("<III", brain, BRAIN_SPELL_MARK, ai.spell_mark & 0xFFFFFFFF, ai.spell_tick & 0xFFFFFFFF, ai.area_hits & 0xFFFFFFFF)
     skills = tuple(u.skills) if u.skills else (0,) * 6
-    a6 = struct.pack("<h6h", 0, *skills).ljust(0x18, b"\0")
+    st = _combat_of(world, u)
+    rec, blk = (st.record, st.block) if st is not None else (None, None)
+    a6 = struct.pack("<h6h", rec.skill if rec else 0, *skills).ljust(0x18, b"\0")
+    if rec is not None:
+        a6 = B.BLK_A6.set(a6, dmg_lo=rec.lo & 0xFF, dmg_sp=rec.sp & 0xFF, kind=rec.kind & 0xFF, dmg_lo2=rec.lo2 & 0xFF, dmg_sp2=rec.sp2 & 0xFF,
+                          elem_lo=rec.elo & 0xFF, elem_sp=rec.esp & 0xFF, elem=rec.elem & 0xFF)
     b114 = bytearray(0x18)
     for k in range(1, 6):
         struct.pack_into("<H", b114, 4 + 2 * (k - 1), skills[k])
-    bd4 = B.BLK_D4.encode(hp_regen_bonus=u.fx.hp_regen & 0xFFFF, mana_regen_bonus=u.fx.mana_regen & 0xFFFF)
-    be = B.BLK_BE.encode(defence=0)
+    d4 = dict(hp_regen_bonus=u.fx.hp_regen & 0xFFFF, mana_regen_bonus=u.fx.mana_regen & 0xFFFF)
+    if st is not None:
+        d4.update(speed_bonus=_s16(st.speed_bonus), hp_max_bonus=_s16(st.hp_bonus), mana_max_bonus=_s16(st.mana_bonus), scan_bonus=_s16(st.scan_bonus << 8))
+        d4.update({"skill_bonus%d" % k: _s16(v) for k, v in enumerate(st.skill_bonus)})
+    bd4 = B.BLK_D4.encode(**d4)
+    be = B.BLK_BE.encode(**({"defence": _s16(blk.defence), "absorb": _s16(blk.absorb), **{"prot%d" % k: _s16(v) for k, v in enumerate(blk.prot)},
+                             **{"res%d" % k: v & 0xFF for k, v in enumerate(blk.res)}} if blk is not None else {}))
     attrs = (0, 0, 0, 0)
     if u.human and u.stats is not None:
         from allods2.formats import progression as prog
@@ -512,12 +545,13 @@ def build_stream(world, campaign=None, rng_state=None):
     for o in world.objects.values():
         if o.kind == "object":
             continue
-        mission.buildings.append(SS.BuildingObj(SS.Base(B.position_raw(o.x, o.y, o.sub_x, o.sub_y), 0, _s(o.type_id), 0, o.uid, 0, 0, out.struct[o.id], out.player.get(o.owner, 0)),
-                                                bytes(0x16), 1 if o.flags == 0 else 0, _s(o.hp) & 0xFFFF, _s(o.hp_max) & 0xFFFF, o.flags & 0xFFFF, o.owner & 0xFF, 0, 0, 0, 0))
+        b48, b60, b61, d64, d68 = _building_params(world, o)
+        mission.buildings.append(SS.BuildingObj(SS.Base(B.position_raw(o.x, o.y, o.sub_x, o.sub_y), 0, 0, _s(o.type_id), o.uid, 0, 0, out.struct[o.id], out.player.get(o.owner, 0)),
+                                                bytes(0x16), o.type_id & 0xFF, _s(o.hp) & 0xFFFF, _s(o.hp_max) & 0xFFFF, o.flags & 0xFFFF, b48, b60, b61, d64, d68))
     for c in world.carriers:
         x, y = c.centre if c.centre else (c.start[0] >> 8, c.start[1] >> 8)
         mission.effects.append(SS.SpellEffectObj(SS.Base(B.position_raw(x & 0xFF, y & 0xFF), 0, _s(c.level), 0, c.uid, 0, 0, out.ptr(), out.target(c.caster)),
-                                                 (1 if c.kind == "point" else 0) | (2 if c.centre else 0), c.spell & 0xFF))
+                                                 0, 1))      # the constructor's values: `+0x40` = done flag 0, `+0x41` = 1 (saves.md 6.12)
     for c in world.transients:
         mission.casters.append(SS.VirtualCasterObj(SS.Base(B.position_raw(c.x, c.y), 0, 0, 0, 0, 0, 0, out.ptr(), 0), c.state & 0xFF,
                                                    B.EFFECT6.encode(spell=c.cast.spell if c.cast else 0)))
@@ -560,7 +594,12 @@ def build_stream(world, campaign=None, rng_state=None):
         for j, word in enumerate(p.relations):
             if pid < B.RELATIONS_PLAYERS and j + 1 < B.RELATIONS_PLAYERS:
                 rel[pid * B.RELATIONS_PLAYERS + 8 + j + 1] = word & 0xFF
+    rel[0:4] = bytes((1, 1, 0, 0))                           # the matrix constructor `FUN_0057998c` (header flags; saves.md 6.12)
     sc.relations = bytes(rel)
+    sc.b30 = stopwatch_block()
+    humans = any(p.human for p in world.players.values())
+    sc.d_be10 = 1 if world.tick > 0 and humans else 0         # `FUN_0056f2b5`: "a human unit was seen" latch (+ the one-shot stamp `FUN_00558aab`)
+    sc.d_a4c = max(1, world.tick // 16)                       # pass counter, a divisor of the tracing output (never 0 in a running game)
     debug = bytearray(SS.DEBUG_SIZE)
     state = world.rng.state if rng_state is None else rng_state
     struct.pack_into("<II", debug, SS.DEBUG_SIZE - 8, RNG_MAGIC, state)
@@ -569,6 +608,29 @@ def build_stream(world, campaign=None, rng_state=None):
 
 
 # --- the client state ---------------------------------------------------------------------------------------------------------------------------
+
+STOPWATCH_FREQUENCY = 10_000_000      # QueryPerformanceFrequency of a current Windows (10 MHz); only its ratio matters
+
+
+def stopwatch_block():
+    """The 0x30-byte stopwatch the runner holds at `+8` (constructor `FUN_0055f290`: `+0x10` u64 = QueryPerformanceFrequency, `+0x20` = frequency / 1000;
+    `FUN_0057aee0` divides by `+0x20`, so an all-zero block would divide by zero at the next AI pass)."""
+    b = bytearray(0x30)
+    struct.pack_into("<Q", b, 0x10, STOPWATCH_FREQUENCY)
+    struct.pack_into("<I", b, 0x20, STOPWATCH_FREQUENCY // 1000)
+    return bytes(b)
+
+
+def _building_params(world, o):
+    """The data.bin values the `Building` constructor (`FUN_0051ff33`) copies into the object, which the loader keeps as they are: `+0x48` = param 2, `+0x60` / `+0x61` = W / H (params 0 / 1,
+    or the placed size of a sized structure), `+0x64` / `+0x68` = params 4 / 5 (a sized structure: 0 and 0xffffffff)."""
+    stats = world.assets.databin().structures if world.assets is not None else ()
+    known = 1 <= o.type_id <= len(stats)
+    p = stats[o.type_id - 1].params if known else (0, 0, 0, 0, 0, 0)
+    if o.size:
+        return p[2] & 0xFF, o.size[0] & 0xFF, o.size[1] & 0xFF, 0, 0xFFFFFFFF
+    return p[2] & 0xFF, p[0] & 0xFF, p[1] & 0xFF, p[4] & 0xFFFFFFFF, p[5] & 0xFFFFFFFF
+
 
 def fog_runs(world):
     """`Fog/FirstState` + `Fog/Data`: run lengths of tile bit 15 (explored) over the map cells, row by row (saves.md 6.3, INFERRED encoding)."""
@@ -644,7 +706,9 @@ def world_to_save(world, campaign=None, client_state=None, description="", hotke
         hot = list(hotkeys or campaign.hotkeys or [])
     else:
         scenario, times, hot = S.ScenarioState(), 0, list(hotkeys or [])
-    tail = S.ClientTail.new(description, st, (), (times & 0xFFFFFFFF, 0), scenario, hot or None)
+    human = next((p for _, p in sorted(world.players.items()) if p.human), None)
+    kills = human.kills_monsters if human is not None else 0                # INFERRED stand-in of the client's hostile-death counter (`FUN_0041fa00`)
+    tail = S.ClientTail.new(description, st, _SG().MISSION_LIST, (times & 0xFFFFFFFF, kills & 0xFFFFFFFF), scenario, hot or None)
     return S.SaveGame(stream.pack(), tail)
 
 

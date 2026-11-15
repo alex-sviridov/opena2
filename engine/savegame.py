@@ -290,6 +290,9 @@ def _positions(game):
 
 # --- the two directions -----------------------------------------------------------------------------------------------------------------------
 
+MISSION_LIST = ((1, 1),)    # the client's list `+0x24`: `FUN_004a8df6(1)` at the client start is its only writer (saves.md 6.10 "Mission list")
+
+
 def to_save(game, description="", state=None, hotkeys=None, positions=None):
     """`CampaignGame` -> `saves.SaveGame` (town save).  `state` (a `ClientState`) and `hotkeys` (nine `Hotkey`) default to the ones a loaded game kept
     (`game.client_state` / `game.hotkeys`), else the defaults (the hero's name, option words 0, nine empty records)."""
@@ -299,7 +302,7 @@ def to_save(game, description="", state=None, hotkeys=None, positions=None):
         st = S.ClientState(name=stream.players[0].name or S.DEFAULT_NAME)
     hot = hotkeys or game.hotkeys
     total = sum(game.camp.times)
-    tail = S.ClientTail.new(description or game.description, st, (), (total & 0xFFFFFFFF, 0), scenario_state(game.camp, positions if positions is not None else _positions(game)),
+    tail = S.ClientTail.new(description or game.description, st, MISSION_LIST, (total & 0xFFFFFFFF, game.kills_monsters & 0xFFFFFFFF), scenario_state(game.camp, positions if positions is not None else _positions(game)),
                             list(hot) if hot else None)
     from engine import savemerge
     stream = savemerge.merge_stream(stream, getattr(game, "save_origin", None))

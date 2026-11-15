@@ -148,6 +148,16 @@ class Shell:
             self.hall = famehall.load(self.hall_file, self.fs)
         return self.hall
 
+    def record_ending(self, campaign):
+        """The campaign's end (`0x486ce2`, `FUN_004a8d28`): the main hero enters the hall of fame with the exe's score (`famehall.score`).  Returns the position or None (no hero)."""
+        from engine import famehall
+        entry = next((e for e in campaign.roster if getattr(e, "state", None) is not None), None) if campaign.roster else None
+        if entry is None:
+            return None
+        st = entry.state
+        score = famehall.score(getattr(st, "xp_total", 0), sum(campaign.camp.times), campaign.kills_monsters)
+        return self.load_hall().add(getattr(st, "name", "") or "", score)
+
     def shutdown(self):
         """The exe's exit write (`FUN_004a90c9` in the client destructor): `famehall.dat` is rewritten at every shutdown, into the settings-side folder (never the install).  Returns the path or None."""
         from engine import famehall

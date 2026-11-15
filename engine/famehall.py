@@ -3,8 +3,8 @@
 The exe loads it at start (`FUN_004a91d5`, `0x481755`) and writes it back **at shutdown** (`FUN_004a90c9` from the client's destructor `0x482526`, file opened `0x1001` = create / truncate, so
 it is always rewritten, CONFIRMED).  Entries are added by `FUN_004a8d28` (called at `0x486ce2` when `FUN_00493da0` says the campaign is finished) through `FUN_004a8c5e`: insert before the first entry
 whose score `a` is <= the new one (`new.a < entry.a` moves on, CONFIRMED `0x4a8cbe`), append when none, then truncate to the limit `+0xc` (10 in the install's file).  The score formula
-(`FUN_004a8d28`: `round(hero+0x110 / (sum_of_mission_times * 10.0) * obj[+8])`, or `/ 500000.0` when the sum is 0) has an operand `obj[+8]` the saves never set (saves.md 6.5), so the engine
-**does not add entries** (DECISION; open question): it keeps the hall it loaded and writes it at exit.
+(`FUN_004a8d28`: `trunc(hero+0x110 / (sum_of_mission_times * 10.0) * obj[+8])`, or `/ 500000.0` when the sum is 0) has the operand `obj[+8]` = the client's hostile-death counter (saves.md 6.10): the shell adds the main hero at the campaign's last mission (`Shell.record_ending`, kills = the human's monster kills,
+INFERRED stand-in of the client counter); the hall screen and the credits are not built.
 
 Engine DECISION: the file lives beside the settings file (`Settings` folder), never in the install; the first run starts from the install's own `famehall.dat` (read through the game file system)."""
 
@@ -15,6 +15,13 @@ from allods2.formats import saves as S
 
 NAME = "famehall.dat"
 LIMIT = 10                       # the install's file holds 10 entries; the object's `+0xc` (INFERRED: constant)
+
+
+def score(xp, times, kills):
+    """`FUN_004a8d28` (CONFIRMED): `trunc(xp / (times * 10.0) * kills)`, or `trunc(xp / 500000.0 * kills)` when the time sum is 0 (`0x582c0c` converts with the truncating control word).  `xp` = the hero view's `+0x110`
+    (the sum of the five XP pools), `times` = the client object's `+4` (the sum of `server tick / 16` over the finished missions), `kills` = its `+8` (the client's hostile-death counter, `FUN_0041fa00`)."""
+    value = xp / (times * 10.0) * kills if times else xp / 500000.0 * kills
+    return int(value)
 
 
 def path(settings_path):
@@ -40,7 +47,7 @@ class Hall:
 
 
 def load(directory_file, fs=None):
-    """The hall: the file at `directory_file` (settings side), else the install's `famehall.dat` through `fs`, else empty (the exe's default hall is `FUN_004a9730`, not decoded).  A damaged file = the next source."""
+    """The hall: the file at `directory_file` (settings side), else the install's `famehall.dat` through `fs`, else empty (`FUN_004a9730` = an empty hall, used for a file with count 0; a missing file gets `FUN_004a938a`'s generated hall, saves.md 5).  A damaged file = the next source."""
     for read in (lambda: open(directory_file, "rb").read() if directory_file else None, lambda: bytes(fs.read_bytes(NAME)) if fs is not None else None):
         try:
             data = read()

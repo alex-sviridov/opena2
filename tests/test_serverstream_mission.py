@@ -313,3 +313,33 @@ def test_empty_mission_branch_is_typed():
 def test_unit_field_mapping_names_engine_fields():
     names = dict(B.UNIT_MAP)
     assert "Unit.hp" in names["words[8..13] (+0x94..)"] and "Unit.facing" == names["mover.facing"]
+
+
+# --- the derived carrier classes (saves.md 6.12: PointEffect / AreaEffect / SpellTransport) ---------------------------------------------------
+
+def test_derived_carrier_classes_round_trip_with_their_own_tails():
+    s = synthetic()
+    s.loaded, s.mission = 1, mission()
+    unit = s.container[0]
+    base = lambda k: SS.Base(B.position_raw(k, k), 0x30 + k, 6, 0, 0, 0, 0, 0x4100 + k, 0x500)
+    s.mission.effects = [
+        SS.SpellEffectObj(base(1), 0, 1, "PointEffect", {"o4c": unit, "p48": 0x4321}),
+        SS.SpellEffectObj(base(2), 0, 1, "AreaEffect", {"b4c": 1, "b4d": 2, "b4e": 3, "b4f": 4, "h50": 99, "o48": unit}),
+        SS.SpellEffectObj(base(3), 0, 1, "SpellTransport", {"o48": unit, "o4c": None, "h50": 7}),
+        SS.SpellEffectObj(base(4), 1, 1),
+    ]
+    raw = s.pack()
+    t = SS.ServerStream.parse(raw)
+    assert t.mission_raw == b"" and t.pack() == raw
+    kinds = [(e.kind, e.tail) for e in t.mission.effects]
+    assert [k for k, _ in kinds] == ["PointEffect", "AreaEffect", "SpellTransport", "SpellEffect"]
+    assert kinds[0][1]["o4c"] is t.container[0] and kinds[0][1]["p48"] == 0x4321
+    assert kinds[1][1] == {"b4c": 1, "b4d": 2, "b4e": 3, "b4f": 4, "h50": 99, "o48": t.container[0]}
+    assert kinds[2][1]["o4c"] is None and kinds[2][1]["h50"] == 7
+
+
+def test_unit_block_layouts_name_the_armour_and_bonus_fields():
+    be = B.BLK_BE.encode(defence=-5, absorb=3, prot2=7, res5=40)
+    assert B.BLK_BE.get(be, "defence") == -5 and be[0x04 + 4] == 7 and be[0x15] == 40
+    d4 = B.BLK_D4.encode(speed_bonus=-2, hp_max_bonus=10, skill_bonus5=9, scan_bonus=0x300)
+    assert B.BLK_D4.get(d4, "speed_bonus") == -2 and struct.unpack_from("<h", d4, 0x08)[0] == 10 and struct.unpack_from("<h", d4, 0x1E)[0] == 9 and struct.unpack_from("<h", d4, 0x10)[0] == 0x300

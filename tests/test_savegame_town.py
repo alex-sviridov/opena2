@@ -192,7 +192,7 @@ def test_synthetic_new_game_round_trip():
     assert SG.comparable(g2) == SG.comparable(g)
     assert g2.to_save("slot text").pack() == raw
     assert g2.camp.times == [7] and g2.camp.location is None and g2.description == "slot text"
-    assert sv2.tail.scenario.variables[0x301] == 7 and sv2.tail.mission_tail == (7, 0)
+    assert sv2.tail.scenario.variables[0x301] == 7 and sv2.tail.mission_tail == (7, 77) and sv2.tail.missions == [(1, 1)]
     assert [l.index for l in sv2.tail.scenario.locations] == [2, 20, 30] and sv2.tail.scenario.shop_block(3, 3) == (9, 8, 7, 6, 5)
 
 

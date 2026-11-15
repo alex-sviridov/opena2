@@ -61,6 +61,8 @@ class GameScreen(Screen):
             return "menu" if reason in BACK_TO_MENU else "quit"
         out = self.campaign.leave_mission(self.session.world, "won" if reason == "victory" else reason, visit=False)     # the player visits the towns (L7)
         self.shell.log("mission %s %s -> %s" % (self.campaign.mission if reason != "victory" else "done", reason, out.kind))
+        if out.kind in CAMPAIGN_ENDINGS:
+            self.shell.record_ending(self.campaign)             # `FUN_004a8d28` at `0x486ce2` (the credits and hall screens are not built)
         core = self.shell.town_core()
         core.mission_over(out)                                 # `0x41d`: the map, or (no town available) the head mission at once, as the exe does
         if out.kind == "mission" and reason == "victory":

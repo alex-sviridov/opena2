@@ -482,20 +482,50 @@ class SackObj:
         self.pack.write(w)
 
 
+# the derived carrier classes and what each adds after the SpellEffect part (FUN_0051c7e5 PointEffect, FUN_0051c88e AreaEffect, FUN_0051c718 SpellTransport; saves.md 6.12):
+# "o" = an MFC object pointer (usually a back-reference to a unit already written), "p" = a raw u32 pointer key, "b" = u8, "h" = u16
+EFFECT_TAILS = {
+    "SpellEffect": (),
+    "PointEffect": (("o4c", "o"), ("p48", "p")),
+    "AreaEffect": (("b4c", "b"), ("b4d", "b"), ("b4e", "b"), ("b4f", "b"), ("h50", "h"), ("o48", "o")),
+    "SpellTransport": (("o48", "o"), ("o4c", "o"), ("h50", "h")),
+}
+
+
 @dataclass
 class SpellEffectObj:
-    """`FUN_0051c6b5` (class `SpellEffect`): base, u8 `+0x40`, u8 `+0x41`."""
+    """`FUN_0051c6b5` (class `SpellEffect`): base, u8 `+0x40` (done flag), u8 `+0x41` (1).  `kind` is the runtime class actually written: the base class itself, or one of its three derived
+    carriers (`EFFECT_TAILS`), whose own serialisers append the fields in `tail` (name -> value; `o*` entries are the MFC-referenced objects)."""
     base: Base = field(default_factory=Base)
     b40: int = 0
     b41: int = 0
+    kind: str = "SpellEffect"
+    tail: dict = field(default_factory=dict)
 
     def read_body(self, r):
         self.base, self.b40, self.b41 = Base.read(r), r.u8(), r.u8()
+        self.tail = {}
+        for name, code in EFFECT_TAILS[self.kind]:
+            self.tail[name] = r.object(CLASSES) if code == "o" else r.u32() if code == "p" else r.u8() if code == "b" else r.u16()
 
     def write_body(self, w):
         self.base.write(w)
         w.u8(self.b40)
         w.u8(self.b41)
+        for name, code in EFFECT_TAILS[self.kind]:
+            v = self.tail.get(name, None if code == "o" else 0)
+            if code == "o":
+                w.object(v, C_UNIT, _no_new_object)
+            elif code == "p":
+                w.u32(v)
+            elif code == "b":
+                w.u8(v)
+            else:
+                w.u16(v)
+
+
+def _no_new_object(w):
+    raise ValueError("an effect's object reference must point to an object already written")
 
 
 @dataclass
@@ -768,7 +798,10 @@ class Mission:
     def read(r):
         m = Mission()
         m.buildings = read_list(r, CLASSES, "Building")
-        m.effects = read_list(r, CLASSES, "SpellEffect")
+        m.effects = read_list(r, CLASSES)
+        for e in m.effects:
+            if not isinstance(e, SpellEffectObj):
+                raise ArchiveError("class of an effect is not derived from SpellEffect")
         m.map = MapLayer.read(r)
         m.script = ScriptState.read(r)
         m.sacks = read_list(r, CLASSES, "Sack")
@@ -777,7 +810,7 @@ class Mission:
 
     def write(self, w):
         write_list(w, self.buildings, lambda w_, b: w_.object(b, C_BUILDING, b.write_body))
-        write_list(w, self.effects, lambda w_, e: w_.object(e, C_SPELLEFFECT, e.write_body))
+        write_list(w, self.effects, lambda w_, e: w_.object(e, MfcClass(e.kind), e.write_body))
         self.map.write(w)
         self.script.write(w)
         write_list(w, self.sacks, lambda w_, k: w_.object(k, C_SACK, k.write_body))
@@ -836,7 +869,7 @@ CLASSES = {
     "Spell": MfcClass("Spell", 1, Spell, _load_spell),
     "Sack": MfcClass("Sack", 1, SackObj, lambda o, r: o.read_body(r)),
     "Building": MfcClass("Building", 1, BuildingObj, lambda o, r: o.read_body(r)),
-    "SpellEffect": MfcClass("SpellEffect", 1, SpellEffectObj, lambda o, r: o.read_body(r)),
+    **{k: MfcClass(k, 1, (lambda k=k: SpellEffectObj(kind=k)), lambda o, r: o.read_body(r)) for k in EFFECT_TAILS},
     "VirtualCaster": MfcClass("VirtualCaster", 1, VirtualCasterObj, lambda o, r: o.read_body(r)),
 }
 

@@ -171,13 +171,25 @@ BRAIN = Layout("Brain", 0xB8, [
 ])
 
 # --- the unit's embedded sub-blocks (docs/engine/unit-struct.md 2) ----------------------------------------------------------------------------------
-BLK_A6 = Layout("BlkA6", 0x18, [F("skill%d" % k, 2 + 2 * k, "H", "C", "+0xa8 + 2k: general, five school / weapon skills (human params 10-15)") for k in range(6)])
+BLK_A6 = Layout("BlkA6", 0x18, [F("tohit", 0x00, "h", "C", "+0xa6: attack skill / to-hit (monster param 14; humans 0)")]
+                + [F("skill%d" % k, 2 + 2 * k, "H", "C", "+0xa8 + 2k: general, five school / weapon skills (human params 10-15)") for k in range(6)]
+                + [F("dmg_lo", 0x0E, "B", "C", "+0xb4 physical minimum (bit 7: stored / 15)"), F("dmg_sp", 0x0F, "B", "C", "+0xb5 spread"),
+                   F("kind", 0x10, "B", "C", "+0xb6 attack type 0..5 (the weapon's school)"), F("dmg_lo2", 0x11, "B", "C", "+0xb7 second part minimum"), F("dmg_sp2", 0x12, "B", "C", "+0xb8"),
+                   F("elem_lo", 0x13, "B", "C", "+0xb9 elemental minimum"), F("elem_sp", 0x14, "B", "C", "+0xba"), F("elem", 0x15, "B", "C", "+0xbb element 1..5")])
 BLK_114 = Layout("Blk114", 0x18, [F("skill%d" % k, 2 + 2 * k, "H", "C", "+0x116 + 2k: copy of the skills 0..5 (FUN_00514ea1)") for k in range(6)])
-BLK_BE = Layout("BlkBE", 0x16, [F("defence", 0x00, "H", "C", "+0xbe: defence (human param 9), halved at death")])
-BLK_D4 = Layout("BlkD4", 0x40, [
-    F("hp_regen_bonus", 0x0A, "H", "C", "+0xde percent (0x50fd27)"),
-    F("mana_regen_bonus", 0x0E, "H", "C", "+0xe2 percent (0x50fe1b)"),
-])
+# the armour block (unit-struct 11): `+0xbe` the unit's own, `+0xfe` the item bonus copy
+BLK_BE = Layout("BlkBE", 0x16, [F("defence", 0x00, "h", "C", "+0xbe: defence (human param 9; monster 15), halved at death"), F("absorb", 0x02, "h", "C", "+0xc0 absorption")]
+                + [F("prot%d" % k, 0x04 + 2 * k, "h", "C", "+0xc2 + 2k protection phys (never read), fire, water, air, earth, astral") for k in range(6)]
+                + [F("res%d" % k, 0x10 + k, "B", "C", "+0xce + k resistance 0, blade, axe, bludgeon, pike, shooting (percent)") for k in range(6)])
+BLK_D4 = Layout("BlkD4", 0x40, [F("attr%d" % k, k, "B", "C", "+0xd4 + k running attribute totals body, reaction, mind, spirit") for k in range(4)]
+                + [F("speed_bonus", 0x04, "h", "C", "+0xd8"), F("hp_max_bonus", 0x08, "h", "C", "+0xdc"),
+                   F("hp_regen_bonus", 0x0A, "H", "C", "+0xde percent (0x50fd27)"), F("mana_max_bonus", 0x0C, "h", "C", "+0xe0"),
+                   F("mana_regen_bonus", 0x0E, "H", "C", "+0xe2 percent (0x50fe1b)"), F("scan_bonus", 0x10, "h", "C", "+0xe4 scan range x 256"), F("tohit_bonus", 0x12, "h", "C", "+0xe6")]
+                + [F("skill_bonus%d" % k, 0x14 + 2 * k, "h", "C", "+0xe8 + 2k skill bonuses (general, five)") for k in range(6)]
+                + [F("dmg_min_bonus", 0x20, "B", "C", "+0xf4"), F("dmg_max_bonus", 0x21, "B", "C", "+0xf5"),
+                   F("elem_min_bonus", 0x25, "B", "C", "+0xf9"), F("elem_max_bonus", 0x26, "B", "C", "+0xfa"), F("elem_bonus", 0x27, "B", "C", "+0xfb element 1..5")])
+# +0xfe..+0x113 inside BLK_D4 (offset 0x2a, 0x16 bytes) is a second armour block (the equipped items' sum)
+BLK_D4_ARMOUR = 0x2A
 
 # --- the group's AI record `*(group + 0x3c)`, 0x50 bytes (ai.md 2) -------------------------------------------------------------------------------------
 GROUP_AI = Layout("GroupAI", 0x50, [

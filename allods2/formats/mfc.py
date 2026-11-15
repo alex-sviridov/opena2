@@ -3,7 +3,7 @@
 Pure byte layer, little endian.  Primitives, CStrings, counted lists and *object pointers* with MFC's class-tag /
 back-reference scheme (`WriteObject`, FUN_005ac36a): classes and objects share one counter; a new class takes the next
 index when its record is written, the object takes the next one *before* its body is serialised.  The first index is 1
-(index 0 = null; INFERRED, standard MFC: `first_index` overrides it).
+(index 0 = null; CONFIRMED `FUN_005ac4a0`: `archive+0x30 := 1`; `first_index` overrides it).
 
 Writer:  `w.object(obj, CLASS, lambda w: ...body...)`; the same `obj` object again writes a back-reference.
 Reader:  `r.object({"Unit": MfcClass("Unit", create=..., load=...)})`; `create()` makes the empty object, which is
