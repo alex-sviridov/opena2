@@ -53,7 +53,7 @@ def test_graph_edges_stay_inside_the_graph():
         assert a in GRAPH and targets <= set(GRAPH)
     assert GRAPH["startup"] == {"menu"} and GRAPH["menu"] == {"newgame", "load", "quit"} and "options" not in GRAPH
     assert GRAPH["newgame"] == {"menu", "chargen"} and GRAPH["chargen"] == {"newgame", "locations"}                    # L2: the campaign in one window
-    assert GRAPH["locations"] == {"game", "menu", "town"} and GRAPH["game"] == {"menu", "locations"}
+    assert GRAPH["locations"] == {"game", "menu", "town"} and GRAPH["game"] == {"menu", "locations", "game"}
 
 
 def test_every_legal_edge_works_and_every_other_raises():
@@ -66,7 +66,7 @@ def test_every_legal_edge_works_and_every_other_raises():
             if b in GRAPH[a] or b == "quit":
                 sh.go(b)
                 assert sh.name == b
-                assert sh.screens[a].log[-1] == "exit"
+                assert sh.screens[a].log[-1] == "exit" or a == b      # a self-edge (game -> game) re-enters the same screen
             else:
                 with pytest.raises(ShellError):
                     sh.go(b)

@@ -171,7 +171,7 @@ def click_region(sh, region):
         sh.handle(ev)
 
 
-def visit_town_as_player(sh, hire=()):
+def visit_town_as_player(sh, hire=(), shop=False):
     """The player after a mission: on the world map walk to the first available town, open the inn, talk to every NPC (reading every page with Enter), hire the mercenaries
     numbered in `hire`, leave through Exit and the scene's leave region.  Returns the person words clicked."""
     from engine.sim import campaign as C
@@ -203,6 +203,11 @@ def visit_town_as_player(sh, hire=()):
             close_dialogue()
     click(sh, inn.point_of("button", 2))
     assert sh.name == "town"
+    if shop:                                                              # open the shop window and close it with ESC (the trade itself: test_engine_shop)
+        click_region(sh, 1)
+        assert sh.name == "shop"
+        sh.handle(Key("escape"))
+        assert sh.name == "town" and sh.town_core().mask == 0
     click_region(sh, 8)
     assert sh.name == "locations"
     return clicked

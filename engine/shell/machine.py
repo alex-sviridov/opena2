@@ -21,7 +21,7 @@ GRAPH = {
     "inn": {"town"},
     "shop": {"town"},
     "load": {"menu", "game"},
-    "game": {"menu", "locations"},
+    "game": {"menu", "locations", "game"},                  # no town available after a mission: the head mission starts at once (`0x41d`)
     "quit": set(),
 }
 START = "startup"

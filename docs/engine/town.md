@@ -80,9 +80,14 @@ The old plan counted `town` as one block. The research splits it into six steps;
 | **L6 town scenes** (done) | the three scenes: art, animations, hover regions, click -> inn / shop / leave, NPC speech clicks, music ([town-scenes](town-scenes.md): the data recipe is its section 7) | L4 | region table, transitions | everything visual |
 | **L7 inn** (done) | the window: panels, person strip, Hire / Dismiss / Talk / About, hero arrows, dialogue window + speech; the `visit_towns`-equivalence test | L4, L6 | handlers, keys, equivalence with `visit_towns` | layout, captions (open), sounds |
 | **L8 shop** (done) | shop windows, the DLL shop table + stock, trade state machine, gold | L4, L6 | trade rules, stock, messages | layout, animations, sounds |
-| **L9 close-out** | remove the stand-in, play-test list, coverage / CLAUDE.md status | all | the campaign test through the real screens (scripted clicks) | the whole town loop |
+| **L9 close-out** (done) | remove the stand-in, play-test list, coverage / CLAUDE.md status | all | the campaign test through the real screens (scripted clicks) | the whole town loop |
 
 Order: L4, then L5 and L6 (independent), then L7 and L8 (independent), L9. Open research items that block a step are listed per window doc; the ones that block **drawing** (captions, rects, hit regions) are all "layout numbers": they are read from the exe at the start of the step that draws them (L5 / L6 / L7 / L8), not before.
+
+### L9 as built
+
+The last stand-in is gone: `GameScreen.run` passes the outcome of `leave_mission` to `TownCore.mission_over` unchanged, so with no town available after a mission the head mission starts at once and the map is never shown, as in the exe (`0x41d`; shell edge `game -> game`). `locations` is only the map; `visit_towns` stays the headless oracle. `tests/test_engine_shell_campaign.py::test_scripted_menu_run_through_the_first_three_missions` plays menu -> chargen -> intro walk -> missions through the real screens (map clicks, scene regions, inn figures, Exit) with the objective oracle as the fighter.
+**Play-test list (needs eyes / ears), in loop order:** new game -> intro walk (dots, Cross, `map.wav`) -> mission 10 -> win -> map flags / texts -> town scene (hover regions, animations, crowd loop, NPC speech) -> inn (person strip, Hire / Fire / Talk / About, dialogue pages, voices, hero arrows) -> shop (shelves, drag, Buy / Sell / Cancel, totals, `#tips3` / `#tips4`) -> leave (human gate `Var(0x301)`) -> next mission; the black border at 800x600 / 1024x768; the music changes (`b14` / `b15` / `b16`).
 
 ### L4 as built
 

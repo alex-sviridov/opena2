@@ -50,8 +50,9 @@ class GameScreen(Screen):
         out = self.campaign.leave_mission(self.session.world, "won" if reason == "victory" else reason, visit=False)     # the player visits the towns (L7)
         self.shell.log("mission %s %s -> %s" % (self.campaign.mission if reason != "victory" else "done", reason, out.kind))
         core = self.shell.town_core()
-        # DECISION (until the map, L5): with no town available the exe starts the head mission at once; the stand-in shows the choice instead
-        core.mission_over(out if out.kind != "mission" else replace(out, kind="world_map"))
+        core.mission_over(out)                                 # `0x41d`: the map, or (no town available) the head mission at once, as the exe does
+        if out.kind == "mission" and reason == "victory":
+            return "game", {"campaign": self.campaign, "mission": self.campaign.camp.location[1]}
         return "locations" if reason == "victory" and out.kind not in CAMPAIGN_ENDINGS else "menu"
 
     def scene(self):
