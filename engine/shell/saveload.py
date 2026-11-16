@@ -22,7 +22,9 @@ from .scene import Button, Fill, Frame, Image, Scene, Text
 
 SIZE = (488, 360)                           # the snapped size of the constructor rect (100, 0x1e, 600, 0x1c2)
 LEFT = 0x28                                 # every child starts here and ends `0x28` from the right edge (list `0x40`: the scroll bar takes the rest)
-ROW = W.FONT1_PITCH                         # the list's row pitch (INFERRED: font1 pitch 17)
+ROW = W.FONT1_H + 4                         # the list's row pitch (CONFIRMED `FUN_004d82f8`: `+0x60` = font height + 4 = 19; rows = height / pitch)
+ROW_DARK = (8, 8, 8)                        # CONFIRMED paint `0x4d8802`: each row is boxed, top / left lines
+ROW_LIGHT = (0x5e, 0x73, 0x65)              # ... bottom / right lines (the box is pitch - 2 high, its right line at `right - 4`)
 FONT = 1
 EDIT_MAX = 0xFF                             # INFERRED: the description buffer is 256 bytes (`0x43f8da` `local_130[256]`); the exe's edit limit is not read
 BLINK_MS = 500
@@ -326,6 +328,10 @@ class SlotDialog:
         ops += self.head_ops()
         lx, ly, lw, lh = self.abs(self.list.rect)
         ops += [Fill(lx - 1, ly - 1, lw + 2, lh + 2, (90, 70, 40)), Fill(lx, ly, lw, lh, (20, 16, 12))]
+        for k in range(self.list.visible):                    # the exe boxes every visible row, also the empty ones
+            y = ly + k * ROW
+            ops += [Fill(lx + 1, y, lw - 6, 1, ROW_DARK), Fill(lx, y + 1, 1, ROW - 3, ROW_DARK),
+                    Fill(lx + 1, y + ROW - 2, lw - 6, 1, ROW_LIGHT), Fill(lx + lw - 4, y + 1, 1, ROW - 3, ROW_LIGHT)]
         for k in range(self.list.visible):
             i = self.list.top + k
             if i >= len(self.list.rows):
@@ -333,7 +339,7 @@ class SlotDialog:
             y = ly + k * ROW
             if i == self.list.sel:
                 ops.append(Fill(lx, y, lw, ROW, (80, 60, 28)))
-            ops.append(Text(self.fonts.fit(self.list.rows[i], lw - 8), lx + 4, y + 1, FONT, "highlight" if i == self.list.sel else LISTED, 0, 1))
+            ops.append(Text(self.fonts.fit(self.list.rows[i], lw - 8), lx + 4, y, FONT, "highlight" if i == self.list.sel else LISTED, 0, 1))
         n = len(self.list.rows)                               # the scroll bar: a track at the right of the list and a thumb (drawn only when rows scroll)
         sx = lx + lw
         ops.append(Fill(sx, ly, 24, lh, (36, 28, 18)))

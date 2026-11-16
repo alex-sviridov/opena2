@@ -121,110 +121,6 @@
   "20": "3498ef757e17e4dec8ce4f5b4a323410e7193299387cd6aa5e1808357a7e63af",
   "52": "0b82e8ec8cc0121fe9ae855eb527d5a7d3ce88551aa2466fb9e4f8700f043d24"
  },
- "orders": {
-  "crossing_off": {
-   "blocker_moved": false,
-   "cells": {
-    "1": [
-     27,
-     20
-    ],
-    "2": [
-     28,
-     19
-    ],
-    "3": [
-     27,
-     19
-    ],
-    "4": [
-     27,
-     18
-    ],
-    "9": [
-     20,
-     19
-    ]
-   },
-   "ended": 223,
-   "hash": "fd0db9f1cc09c8a6829511e5088e2a97ef02b091d3c1d562a2ffd90a07201e7c",
-   "no_way": 0
-  },
-  "crossing_on": {
-   "blocker_moved": false,
-   "cells": {
-    "1": [
-     27,
-     18
-    ],
-    "2": [
-     29,
-     18
-    ],
-    "3": [
-     27,
-     20
-    ],
-    "4": [
-     29,
-     20
-    ],
-    "9": [
-     20,
-     19
-    ]
-   },
-   "ended": 199,
-   "hash": "544b94cadb7592958f3ca899994fb72597d693fdfd0ea3f003e5144a96e35a34",
-   "no_way": 0
-  },
-  "gap_jam": {
-   "cells": {
-    "1": [
-     27,
-     19
-    ],
-    "2": [
-     29,
-     19
-    ],
-    "3": [
-     27,
-     21
-    ],
-    "4": [
-     29,
-     21
-    ]
-   },
-   "ended": 241,
-   "hash": "7e07ac2272b5f5c28ec2315d5a09e5aec4316cfa783652b949263f1aef849cb3",
-   "no_way": 0
-  },
-  "unreachable": {
-   "cells": {
-    "1": [
-     18,
-     17
-    ]
-   },
-   "ended": 66,
-   "fallback_ring": 9,
-   "hash": "449e32c773a0190359ba0fbfba202eddfe78b3853335f2df6badbaaffd475669",
-   "no_way": 1
-  },
-  "walk_reorder": {
-   "cells": {
-    "1": [
-     12,
-     24
-    ]
-   },
-   "ended": 119,
-   "hash": "2751b9ab34d34ef6294260256c20982a504cca2ebe005d3cfb637c05b993059c",
-   "no_way": 0
-  }
- },
  "orders_slots": {
   "crossing_off": {
    "blocker_moved": false,
@@ -384,10 +280,10 @@
   "chargen": "454b6fed624e811868ae5c10c8b52be88cc9b6ce30adbaa9f192944ecaa12dad",
   "chargen_changed": "8c1535739f41d13678de91a9d3a69aaaa48f6077d900b80be3340f122b0af9c0",
   "chargen_mage_air": "1296d260d378ce2ce157ce9ff86477e8e05265a056b17baff5eed9ae1533e27d",
-  "delete_confirm": "cb7fc7d92be9a27975726bede02e454a6190b0b381c4c63788210161bf2ecad1",
+  "delete_confirm": "b2889e5fd9e2807ccf8d0050a93b04bc4e4e323a38f21caa980ddd4d7803cf11",
   "hall": "33fe820ad5a54ad88ca63549d4091c16f0d8a6dbcb842081c9f2901828f6f228",
   "hall_ok_hover": "0c8a503e8db0aa6f8567655987753fd7abeeb2d436799507b7d3935cb8e8e421",
-  "load_dialog": "5a63fcf4df144640ffee0f34f668bc48859e14830d5db8aacd3ccdca79dd3c41",
+  "load_dialog": "0ab88b160a564a6b843363e357681702ab386442c2395192e3e7ffa7358b2703",
   "menu": "4292d041dbeb1a275c50eb5a5d05c0875aa93700d338386cdbc7aba27d2fb4b9",
   "menu_800_hover_credits": "7b0669fcce83c12f509390ed0581458cb4ee21c9169369e0ce63955127bf750b",
   "menu_disabled_load": "e549f075a939e82b4087fceae1d9be820aaf37880fc63ec3e7ca6880dc87b171",
@@ -401,8 +297,8 @@
   "options_game": "1603fe406e93ff57626e8e53b58c88aff27f379cd59b7136614851dcc1b916fa",
   "options_game_hover": "8ae0459479092e78245445b81777388dec758ee4ef096e378b02d98d5b9012b3",
   "options_sound": "4d3324f8bf4f88c8fb3b9c663825a4e643fd5f0be15116731ff38555801bc7fe",
-  "save_dialog": "2e4579fc9a672dd21f4a6eb6073484366423e67f17216d87f06b77a5ffc2e748",
-  "save_dialog_typed": "0f79014ef2b026925fa15b88a77bc37f11ee177cf65b2de420d339ec158a602b",
+  "save_dialog": "d50f620ab49c5199df3e1613cca2a7a28665f782f083a7cdd59459b2cfcabc2b",
+  "save_dialog_typed": "f5ce6749c3b62c55408ff0555f6dd939b595b9d9d9dc9987d38337c636325d0b",
   "startup": "0b150fd32588b1daca5569992ebe559c0102c837306b1af4c44d35128ec58366"
  },
  "sound": {
