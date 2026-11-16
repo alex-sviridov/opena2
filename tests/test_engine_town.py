@@ -286,3 +286,21 @@ def test_mission_over_clears_the_intro_flag_on_the_map_branch():
     c.mask = T.M_MISSION
     c.mission_over(C.Outcome("world_map"))
     assert not c.intro and c.mask == T.M_MAP
+
+
+def test_scene_tips_window_sections_rect_and_controls():
+    """Town scene tips (callers `0x4ca7e2` / `0x4ce641` / `0x4d0d46`, CONFIRMED): `#tips1`, town 3 `#tips11`, town 2 `#tips12`; rect (0x148, 0)-(0x280, 0xc8); Close removes, the check box writes TipsMode."""
+    from engine.shell import town as ST
+    assert [ST.tips_key(n) for n in (1, 2, 3)] == ["#tips1", "#tips12", "#tips11"]
+    assert ST.TIPS_RECT == (328, 0, 312, 200)
+    from engine.shell.events import Move, Press, Release
+    sh, saves, music = shell_in_map([(C.TOWN, 2)])
+    map_walk(sh, (C.TOWN, 2))
+    sc = sh.current
+    assert sc.hint and sc.tips_key == "#tips12"
+    x, y = sc.tips_win.close[0] + 3, sc.tips_win.close[1] + 3
+    for ev in (Move(x, y), Press(x, y), Release(x, y)):
+        sh.handle(ev)
+    assert not sc.hint and sh.name == "town"                          # Close: the window is gone, the scene did not take the click
+    sh.current.enter()                                               # the scene is rebuilt at every opening: TipsMode is still on
+    assert sc.hint

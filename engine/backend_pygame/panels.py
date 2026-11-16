@@ -8,7 +8,7 @@ from allods2.formats import itemdefs as idefs
 from allods2.graphics import Canvas, SpriteFile, paperdoll
 from allods2.graphics.bmp import load_bmp
 
-from engine.ui import bar, book as book_mod, info, pack as pack_mod, story, tooltip
+from engine.ui import bar, book as book_mod, info, justify, pack as pack_mod, story, tooltip
 from engine.ui.widgets import INFO_BUTTONS, cell_rect
 
 from .text import draw_text, draw_text_exact, game_font, measure
@@ -365,7 +365,7 @@ class Panels:
 
     def draw_dialog(self, window, d, mouse, pressed, ui=None, info_picture=None):
         """One dialog: the frame (11.4), the caption (left, `0x443238`), the text and the buttons.  A dialog with `lines` (message windows, complete) draws them one by one `d.pitch`
-        apart (`FUN_0045e01d`: left at the rect's x, or centred on the rect for `align == "center"`; the justified spacing of wrapped paragraphs is not built); one without
+        apart (`FUN_0045e01d`: left at the rect's x, or centred on the rect for `align == "center"`; the justified spacing of the paragraph's joined lines: `engine/ui/justify.py`); one without
         (story) lets `draw_text` wrap `d.text` to the rect."""
         f = d.frame
         window.blit(self.frame_surface(f.w - 8, f.h - 8), (f.x, f.y))      # body w-8 x h-8, the last 8 px hold the shadow (`FUN_004dbd5f`)
@@ -378,6 +378,10 @@ class Panels:
         if d.lines:
             for i, line in enumerate(d.lines):
                 x, flags = (tr.x + tr.w // 2, 2) if d.align == "center" else (tr.x, 0)
+                if d.align != "center" and i < len(d.joined) and d.joined[i]:          # not the last line of its paragraph: spread over the width (`FUN_0045da67`)
+                    for word, wx in justify.spread(line.rstrip(b"\r" if isinstance(line, bytes) else "\r"), tr.x, tr.w, lambda t: measure(t, 1)):
+                        draw_text_exact(window, word, wx, tr.y + i * d.pitch, d.table, flags, 1, off=1)
+                    continue
                 draw_text_exact(window, line, x, tr.y + i * d.pitch, d.table, flags, 1, off=1)
         elif d.text:
             draw_text(window, d.text, tr.x, tr.y, d.table, "left", font=1, width=tr.w, wrap=True)

@@ -53,14 +53,14 @@ from both places when answered).
 
 ## Interface
 
-- Chat input line (built, [ui-layout](engine/ui-layout.md#open-questions)): the cheat byte `+0xa78` origin (`FUN_0053dd90`, gate of `#show map` in `FUN_004f3d68`), the chat row's text composition (`0x413814`); capture `ClipCursor` rect with an open bar; info-panel quest markers (`main` `0x159`-`0x15e`, `FUN_004180c6`); squad voice samples. Start at `FUN_0040b2b8`, `FUN_004175c7`.
-- Spell book window leftovers: colour key of SpellBook / SpellBack / caps, rounding of the level-4 veil `FUN_004565cd`, `view+0x14` at 800x600, map-row recompute `FUN_0041b121`, the left release's cell cast `FUN_0041918e` (table `0x5f1810`). [ui-layout 11.12](engine/ui-layout.md#1112-spell-book-window-bottom-bar-id-3-class-fun_004c61e7-vtable-0x5cf918-confirmed-unless-marked)
-- Heads panel flags: the meaning of the unit flags `+0x1b8 & 0x10 / & 2 / & 0x20 / & 0x40` and the extra panel's 24 rows at 800x600 (INFERRED black). [ui-layout](engine/ui-layout.md#open-questions), [town-hero 8](engine/town-hero.md#8-open-questions) (`FUN_00472460`)
-- Text windows (pause, failed): justified paragraph drawing (`FUN_0045e01d`, `FUN_0045da67`), the scroll bar (`FUN_004da54d`), the complete path with chapter var `>= 0x78`. [ui-layout 11.4](engine/ui-layout.md#114-in-game-menu-pause-freeze)
-- Tips window of the mission message `0x45b` (`tips:`) and the town / shop / inn `#tips1..4, 11, 12` windows: callers not built (the window itself is `engine/shell/tipswin.py`, rect of `0x45b`: (10, 20, 370, 188)); no install mission uses the tag. [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages)
-- Info-panel knowledge table: character-file load / write-back (`Knowledge(blob)` / `to_blob`) and the exact engine mapping of client relation bit 8 (`FUN_0041e860`). [ui-layout](engine/ui-layout.md#open-questions) (`FUN_004ea6ab`, `0x4141fa`)
-- Info panel: whether the new-game name field accepts `|`. [ui-layout open questions](engine/ui-layout.md#open-questions)
-- Message list: quest-event lines (multiplayer only, no work), alternative message colour tables `0x61fb08` / `0x61fba8`. [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages)
+- Chat input line (built, [ui-layout](engine/ui-layout.md#open-questions)): the relation test `FUN_0054fb7f` against `0x69049c` in the server echo; the open-book cast branch of the chooser has no drag override. Squad voice samples: see [audio](engine/audio.md). Start at `FUN_0040b2b8`, `FUN_004175c7`. (Cheat byte, chat row composition, `ClipCursor`: answered, [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages).)
+- Spell book window leftovers: colour key of SpellBook / SpellBack / caps, rounding of the level-4 veil `FUN_004565cd`, `view+0x14` at 800x600, map-row recompute `FUN_0041b121`, the dispatcher's use of table `0x5f1810` to reach the decoded cell cast `FUN_0041918e`. [ui-layout 11.12](engine/ui-layout.md#1112-spell-book-window-bottom-bar-id-3-class-fun_004c61e7-vtable-0x5cf918-confirmed-unless-marked)
+- Heads panel: the extra panel's 24 rows at 800x600 (INFERRED black) and TextBackL's strip position at 1024. [ui-layout](engine/ui-layout.md#open-questions), [town-hero 8](engine/town-hero.md#8-open-questions) (`FUN_00472460`; the unit flags are answered)
+- Text windows (pause, failed): the scroll bar's sprite file (class `0x5d00e8`, paint `0x4da80f`, structure decoded) and the first-line indent field `+0x80` (INFERRED 0). [ui-layout 11.4](engine/ui-layout.md#114-in-game-menu-pause-freeze)
+- Tips window of the mission message `0x45b` (`tips:`): the receiver builds it (rect (10, 20, 370, 188)); no install mission uses the tag, so not built (the town / shop / inn / chargen / new-game callers are all built). [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages)
+- Info-panel knowledge table: character-file load / write-back (`Knowledge(blob)` / `to_blob`) and the server's composition of the relation word whose bit 8 the client reads (`FUN_0041e860`, client side answered). [ui-layout](engine/ui-layout.md#open-questions) (`FUN_004ea6ab`)
+- Message list: quest-event lines (multiplayer only, no work).
+- Backpack: what releases over the minimap / heads panel / window 8 do, the hero-screen lists' gold cell, window `0x4ba` of message `0x463`. [ui-layout 11.13](engine/ui-layout.md#1113-backpack-window-bottom-bar-id-2-class-fun_004a2bba-vtable-0x5ce978-confirmed-unless-marked)
 
 ## Rendering and engine
 

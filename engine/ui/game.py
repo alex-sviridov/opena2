@@ -21,6 +21,7 @@ QUIT_REASONS = ("menu", "windows", "victory", "defeat", "load")
 # UI sound ids (sfx.reg, docs/engine/audio.md 2.5) and priorities: the UI always gets a voice (`0xdc`), the message line plays at 100
 S_CLICK00, S_CLICK01, S_IBOOK, S_CLICK04, S_MESSAGE, S_COMPLETE, S_FAILED = 1, 2, 7, 8, 15, 14, 16
 UI_PRIORITY, MESSAGE_PRIORITY = 0xDC, 0x64
+CHAPTER_VAR, CHAPTER_END = 0x300, 0x78       # the scenario chapter variable and the value from which a won mission skips the complete window (`FUN_00493da0`)
 CHEAT_TEXT, CHEAT_MS = 0xE1, 5000      # "Player" / "has succesfully entered a cheat code!" (main.txt lines 0xe1, 0xe2), `push 0x1388` at 0x40ea03
 
 
@@ -44,7 +45,7 @@ class GameUi:
         self.panel_mode = info.MODE_PICTURE
         self.book = SpellBookWindow(layout)        # the spell book window (bottom bar id 3), closed at the start (ui-layout 11.12)
         self.chat = ChatLine(layout)               # the chat input line (strip 0x4b0), closed at the start (ui-layout 11.5)
-        self.cheat_level = 0                       # the player's `+0xa78` byte; `#show map` needs > 0x32 (origin of the byte not found: the engine default is off)
+        self.cheat_level = 0                       # the player's `+0xa78` byte; `#show map` needs > 0x32 (origin: a typed cheat-code line, ui-layout 11.5; the engine default is off)
         self.pack = PackWindow(layout)             # the backpack window (bottom bar id 2), closed at the start (ui-layout 11.13)
         self.doll_mask = None                      # (unit) -> the 240x160 hit mask of its paper doll (ids slot + 1, 0 none); the backend supplies it
         self.quit = None                        # a QUIT_REASONS value once the player left the mission
@@ -88,6 +89,7 @@ class GameUi:
         line = self.toggles.press(name, self.main, self.patch)
         if line is None:
             return False
+        self.messages.alternative = bool(self.toggles.colours)          # `FUN_004756c3` runs before the line is shown
         self.messages.show(line, now_ms, messages_mod.OPTION_MS)
         return True
 
@@ -241,7 +243,8 @@ class GameUi:
                 self.sound(S_MESSAGE, MESSAGE_PRIORITY)
             return
         p = self.world.players[self.player_id]
-        self.messages.show("%s: %s" % (p.name, text), now_ms, CHAT_MS, ("player", p.colour))
+        colour = "yellow" if self.messages.alternative else ("player", p.colour)     # `0x41385d`: with `MessageColors` on in a mission the channel's slot is used (channel 0: `0x5f17fc` = `0x620e10`)
+        self.messages.show("%s: %s" % (p.name, text), now_ms, CHAT_MS, colour)
         self.sound(S_MESSAGE, MESSAGE_PRIORITY)     # message `0x91` posts a text line: sfx `message`, priority 0x64
 
     def toggle_pack(self):
@@ -466,6 +469,9 @@ class GameUi:
             if dlg.kind == "complete" and not self._complete_shown:
                 self._complete_shown = True
                 self._close_book_for_result()
+                if w.script is not None and w.script.scenario_vars.get(CHAPTER_VAR, 0) >= CHAPTER_END:
+                    self.quit = "victory"           # `0x486ddb`: chapter var (`FUN_00493da0`) >= 0x78 posts `0x41d` at once: no dialog, no sound (the jump skips `0x486f74`)
+                    return opened
                 self.modals.push(modal.complete_dialog(self.layout, self.main_text, self.dialog_text))
                 self.sound(S_COMPLETE)              # `0x486f74`
                 opened += 1

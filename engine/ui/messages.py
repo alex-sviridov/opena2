@@ -71,8 +71,8 @@ class OptionToggles:
     W retreat mode `view+0xab4` cycles 0 -> 1 -> 2 -> 0 (`FUN_0041f090`, CONFIRMED), text `main 0x5e + mode` (the argument of the text call is
     `FUN_0041f160`, INFERRED = that mode); the exe also sends the mode to the sim (`FUN_0041a4ef`, message `0x46` sub 1): the window queues `SetRetreatMode` after this
     press; the mode is kept here.  N day / night `0x622770` flips, text `main 0x68 + new`; the tint it controls (lighting.md) is not built.  C message
-    colours `0x622818` flips, text `patch 0x55 + new` ("Standard / Alternative message colors"); the alternative tables `0x61fb08` / `0x61fba8` are not decoded,
-    the line keeps the standard tables.  U auto-cast level: `0x62277c & 0x38` cycles 0x08 -> 0x18 -> 0x38 -> 0x08 (`FUN_0041a54a`, CONFIRMED), text
+    colours `0x622818` flips, text `patch 0x55 + new` ("Standard / Alternative message colors"); the alternative tables are the player colour ramps `0x61fac8 + 32 * row` of row 2 (`0x61fb08`, system slot) and row 7 (`0x61fba8`, log slot)
+    (CONFIRMED `FUN_004756c3`; `MessageLine.alternative`).  U auto-cast level: `0x62277c & 0x38` cycles 0x08 -> 0x18 -> 0x38 -> 0x08 (`FUN_0041a54a`, CONFIRMED), text
     `patch 0x73 + level` with level 1 when bit 0x10, 2 when bit 0x20 (CONFIRMED); the start value 0x08 is the registry default (INFERRED, ai.md 14); the byte is
     not sent to the sim here (the sim's party-AI byte is its own)."""
 

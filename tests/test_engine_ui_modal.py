@@ -1,7 +1,7 @@
 """Modal windows and GameUi (docs/engine/ui-layout.md 11.4, 11.5): menu, End Quest, pause, story, result dialogs, freeze, messages.  Synthetic."""
 
 from engine.sim import campaign
-from engine.sim.triggers import MissionComplete, ScriptMessage
+from engine.sim.triggers import MissionComplete, Script, ScriptMessage
 from engine.ui import GameUi, Layout, MainText, MessageLine, modal
 from engine.ui.messages import PickupWatch
 from engine.world import Player
@@ -305,3 +305,16 @@ def test_failed_window_shows_the_reason_of_the_players_death_code():
     w.players[1].death_code = 3
     ui.poll(0)
     assert ui.modals.top.lines == ("Igles", "second line") and ui.modals.top.escape == modal.NOOP
+
+
+def test_mission_complete_with_chapter_var_0x78_skips_the_window_and_ends_the_mission():
+    """`0x486ddb`: `FUN_00493da0` = `ScenarioGetVar(0x300) > 0x77` posts `0x41d` at once (CONFIRMED): no dialog."""
+    ui, w = make()
+    w.script = Script(scenario_vars={0x300: 0x77})
+    w.mission_complete = True
+    assert ui.poll(0) == 1 and ui.modals.kinds() == ("complete",) and ui.quit is None
+    ui, w = make()
+    w.script = Script(scenario_vars={0x300: 0x78})
+    w.mission_complete = True
+    ui.poll(0)
+    assert ui.modals.kinds() == () and ui.quit == "victory"

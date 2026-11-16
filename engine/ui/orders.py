@@ -300,10 +300,15 @@ class MessageLine:
         self.queue = []                         # [text, lifetime ms, colour] oldest first (the exe's three lists)
         self.last = self.age = 0                # +0x40 time of the last ageing, +0x44 age of the first line
         self.max_lines, self.wrap = max_lines, wrap
+        self.alternative = False                # `MessageColors` `0x622818` (Ctrl+C): the slot tables of `FUN_004756c3`, taken at `show` like the exe's pointer copy
+
+    ALT_SYSTEM, ALT_LOG = ("player", 2), ("player", 7)   # `0x61fb08` / `0x61fba8` = `0x61fac8 + 32 * row`: the player colour ramps of rows 2 and 7 (CONFIRMED `FUN_004756c3`)
 
     def show(self, text, now_ms, duration_ms, colour=None):
         if not text:
             return
+        if self.alternative:                    # slot `0x5f17f4` (system, None) and `0x5f17f8` (log, "normal") swap their table; every other colour is explicit
+            colour = self.ALT_SYSTEM if colour is None else self.ALT_LOG if colour == "normal" else colour
         if not self.queue:
             self.last, self.age = now_ms, 0
         for line in (self.wrap(text) if self.wrap else [text]):

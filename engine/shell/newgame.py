@@ -217,7 +217,7 @@ class NewGame(Screen):
                     self.name_text = self.name_text[:-1]
                     self.shell.play(LETTER_SOUND)
                     self._caret()
-            elif ev.char and len(self.name_text) < NAME_MAX:
+            elif ev.char and ev.char >= " " and len(self.name_text) < NAME_MAX:       # `0x4323cf`: only the length (< 10) and `>= 0x20` (`0x4321e9`) are tested: `|` is accepted
                 self.name_text += ev.char
                 self.shell.play(LETTER_SOUND)
                 self._caret()

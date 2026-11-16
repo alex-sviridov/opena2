@@ -69,15 +69,16 @@ class Mask:
             return -1
         return REGION_OF_BYTE.get(int(self.index[y, x]), -1)
 
-    def point_of(self, region):
-        """A point of `region` deep inside its dense area (nearest pixel to the median whose 3x3 neighbourhood is all the same byte), None when the mask has none."""
+    def point_of(self, region, avoid=None):
+        """A point of `region` deep inside its dense area (nearest pixel to the median whose 3x3 neighbourhood is all the same byte), None when the mask has none.
+        `avoid(x, y)` -> True rejects a point (a window drawn over the scene: the tips window)."""
         ys, xs = np.nonzero(self.index == BYTE_OF_REGION[region])
         if len(xs) == 0:
             return None
         mx, my = np.median(xs), np.median(ys)
         for i in np.argsort((xs - mx) ** 2 + (ys - my) ** 2):
             x, y = int(xs[i]), int(ys[i])
-            if 0 < x < W - 1 and 0 < y < H - 1 and (self.index[y - 1:y + 2, x - 1:x + 2] == self.index[y, x]).all():
+            if 0 < x < W - 1 and 0 < y < H - 1 and (self.index[y - 1:y + 2, x - 1:x + 2] == self.index[y, x]).all() and not (avoid and avoid(x, y)):
                 return x, y
         return int(xs[0]), int(ys[0])
 
@@ -93,9 +94,18 @@ class StandInMask:
                 return region
         return -1
 
-    def point_of(self, region):
+    def point_of(self, region, avoid=None):
         r = self.RECTS.get(region)
-        return None if r is None else (r[0] + r[2] // 2, r[1] + r[3] // 2)
+        if r is None:
+            return None
+        cx, cy = r[0] + r[2] // 2, r[1] + r[3] // 2
+        if avoid is None or not avoid(cx, cy):
+            return cx, cy
+        for dy in range(0, r[3] // 2, 4):                      # the centre is covered (the tips window): the nearest free point, upwards first
+            for y in (cy - dy, cy + dy):
+                if r[1] <= y < r[1] + r[3] and not avoid(cx, y):
+                    return cx, y
+        return cx, cy
 
 
 # -- the data of a scene --------------------------------------------------------------------------------------------------------------------

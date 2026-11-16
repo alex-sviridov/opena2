@@ -48,6 +48,7 @@ class Dialog:
     story: object = None            # `StoryState` of a story window
     picture: Rect = None            # the story window's speaker picture widget (None = the layout without `npc`)
     picture_unit: int = None        # engine id of the unit whose portrait it shows (None = blank)
+    joined: tuple = ()              # per line of `lines`: not the last line of its paragraph (drawn justified, `engine/ui/justify.py`); empty = none
     picture_npc: int = None         # the speaker id when no living unit has it: the dummy unit of `FUN_0041d8bb` (ui-layout 11.5), None otherwise
 
     def button_at(self, pos):
@@ -123,6 +124,16 @@ def plain_wrap(text, width):
     return text.split("\n")
 
 
+def wrap_paragraphs(text, width, wrap):
+    """(lines, joined) of `text` wrapped paragraph by paragraph (`\\n` ends one): `joined[i]` = line i is not the last of its paragraph (`FUN_0045e01d`)."""
+    lines, joined = [], []
+    for para in text.split("\n"):
+        ls = list(wrap(para, width))
+        lines += ls
+        joined += [True] * (len(ls) - 1) + [False]
+    return tuple(lines), tuple(joined)
+
+
 def _rect(frame, r):
     return Rect(frame.x + r[0], frame.y + r[1], r[2], r[3])
 
@@ -140,7 +151,9 @@ def pause_dialog(layout, main, wrap=plain_wrap):
     frame = _place(layout, tw)
     ok = _rect(frame, tw.buttons[0])
     tr = _rect(frame, tw.text)
-    return Dialog("pause", frame, (DButton(ok, main(M_OK), True, CLOSE, "o"),), text, tr, tuple(wrap(text, tr.w)), align="left", escape=CLOSE, enter=CLOSE)
+    d = Dialog("pause", frame, (DButton(ok, main(M_OK), True, CLOSE, "o"),), text, tr, tuple(wrap(text, tr.w)), align="left", escape=CLOSE, enter=CLOSE)
+    d.lines, d.joined = wrap_paragraphs(text, tr.w, wrap)
+    return d
 
 
 NEXT = ("story_next",)
@@ -167,7 +180,7 @@ def story_dialog(layout, main, sec="", flags=0, alive=lambda npc: True, wrap=pla
     d = Dialog("story", frame, (DButton(ok, main(M_OK), True, NEXT, "o"),), story_mod.NOTHING_TO_SAY,
                widget_rect(layout, "story.text_npc" if wide else "story.text"), escape=CLOSE, enter=NEXT, table="highlight", align="left",
                story=StoryState(sec, flags, alive, wrap, picture_of), picture=widget_rect(layout, "story.picture") if wide else None)
-    d.lines = tuple(wrap(d.text, d.text_rect.w))
+    d.lines, d.joined = wrap_paragraphs(d.text, d.text_rect.w, wrap)
     advance(d)
     return d
 
@@ -182,7 +195,7 @@ def advance(d):
         return False
     st.page = pg
     d.text = pg.text.replace("\r\n", "\n").rstrip("\n")
-    d.lines = tuple(st.wrap(d.text, d.text_rect.w))
+    d.lines, d.joined = wrap_paragraphs(d.text, d.text_rect.w, st.wrap)
     if pg.tips:
         st.tips = pg.tips
     if pg.has_npc and d.picture is not None:
@@ -215,7 +228,10 @@ def failed_dialog(layout, main, dialogs, reason="", wrap=plain_wrap):
         text, key = split_label(lbl)
         rows.append(DButton(_rect(frame, r), text, en, act, key))
     tr = _rect(frame, tw.text)
-    return Dialog("failed", frame, tuple(rows), reason, tr, tuple(wrap(reason, tr.w)) if reason else (), main(M_FAILED), _rect(frame, tw.caption), "left", escape=NOOP, enter=("quit", "defeat"))
+    d = Dialog("failed", frame, tuple(rows), reason, tr, tuple(wrap(reason, tr.w)) if reason else (), main(M_FAILED), _rect(frame, tw.caption), "left", escape=NOOP, enter=("quit", "defeat"))
+    if reason:
+        d.lines, d.joined = wrap_paragraphs(reason, tr.w, wrap)
+    return d
 
 
 class ModalStack:

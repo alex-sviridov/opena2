@@ -40,3 +40,15 @@ def test_script_message_0xfa_is_patch_line_30s():
     w.events.append(ScriptMessage(1, 0xFA))
     ui.poll(5)
     assert ui.messages.lines(5) == ("p061",) and ui.messages.queue[0][1] == SCRIPT_MS == 30000
+
+
+def test_alternative_message_colours_are_player_ramps_of_rows_2_and_7():
+    """`FUN_004756c3(1)`: system slot `0x61fb08` = `0x61fac8 + 32 * 2`, log slot `0x61fba8` = `0x61fac8 + 32 * 7`; the slot is read at `show` (CONFIRMED)."""
+    ui = GameUi(Layout.for_size(640, 480), world(), 1, MAIN, MainText(), MainText(), patch=PATCH)
+    assert ui.option_key("c", 10)                                      # standard -> alternative
+    ui.messages.show("log", 10, 3000, "normal")
+    ui.messages.show("explicit", 10, 3000, ("player", 4))
+    assert [q[2] for q in ui.messages.queue] == [("player", 2), ("player", 7), ("player", 4)]
+    assert ui.option_key("c", 11)                                      # back to standard: the next lines use the default slots again
+    ui.messages.show("sys", 11, 2000)
+    assert ui.messages.queue[-1][2] is None

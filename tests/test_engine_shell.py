@@ -242,6 +242,10 @@ def test_hero_codes_and_names():
     # a typed (non-default) name is kept when the hero changes; a default name follows the hero
     press(sh, 140)
     assert ng.name_text == "Master Oberic"
+    ng.name_text = "A"
+    for ch in "|B\r\x01":                                          # `0x4323cf` / `0x4321e9`: any char >= 0x20 is added while the length is < 10, so a bar (hero title) is typable
+        sh.handle(Key(ch, char=ch))
+    assert ng.name_text == "A|B"
     ng.name_text = "Sagita"
     press(sh, 120)
     assert ng.name_text == HERO_NAMES[2]

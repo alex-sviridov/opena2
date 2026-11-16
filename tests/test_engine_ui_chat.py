@@ -96,3 +96,13 @@ def test_cheat_commands_are_gated_by_the_cheat_level():
     (text, ms, _), = ui.messages.queue                           # the server's reply `0x92` sub 7: a line (5000 ms) and the `message` sound
     assert text == "Player %s has succesfully entered a cheat code!" % w.players[1].name and ms == 5000
     assert ui.take_sounds() == [(15, 0x64)]
+
+
+def test_chat_line_uses_the_channel_slot_with_alternative_message_colours():
+    """`0x41385d`: `MessageColors` on in a mission = the channel table (channel 0 = slot `0x5f17fc` = yellow `0x620e10` after `FUN_004756c3(1)`)."""
+    ui, w = make()
+    ui.option_key("c", 1)
+    ui.key("return")
+    type_text(ui, "hi")
+    ui.chat_key("return", "", 7)
+    assert ui.messages.queue[-1][2] == "yellow"

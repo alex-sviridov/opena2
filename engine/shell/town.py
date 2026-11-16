@@ -14,10 +14,18 @@ from .events import Key, Move, Press, Release
 from .options import SOUND, OptionsPages, load_texts
 from .scene import Button, Fill, Frame, Image, Scene, Sprite, Text
 from .screen import Screen
+from .tipswin import TipsWindow
 
 W, H = 360, 280
 PAD, ROW, GAP = dialog.CORNER, 24, 6
 CLICK = "sfx/chrgen/ok.wav"
+TIPS_RECT = (0x148, 0, 0x280 - 0x148, 0xC8)       # the scene's tips window `0x4dec24(0x467, 0x148, 0, 0x280, 0xc8, text)` (`0x4ca8b5`, `0x4ce714`, `0x4d0e19`: the three scene classes alike), CONFIRMED
+TIPS_OF_TOWN = {2: 12, 3: 11}                     # scene class of town 2 (Kaarg, `0x4d0d46`) -> `#tips12`, town 3 (druid, `0x4ce641`) -> `#tips11`, every other town (`0x4ca7e2`) -> `#tips1`
+
+
+def tips_key(town):
+    """The `town.txt` section a town scene's tips window shows (`FUN_004ddc9c(n)` at the scene load, CONFIRMED callers; the town to class mapping is town-hero 1)."""
+    return "#tips%d" % TIPS_OF_TOWN.get(town, 1)
 
 
 class TownPanel(Screen):
@@ -174,6 +182,7 @@ class TownScene(Screen):
         self.menu = self.options = None                     # the `0x41f` window / the Sound Options over it
         self.dialog = None                                  # the Save / Load window (L10d), over the scene with the menu gone
         self.story = None                                   # the NPC story window (`storywin.StoryWindow`), modal over the scene
+        self.tips_win, self.tips_lines, self.tips_down, self.hint, self.main = None, [], None, False, None
 
     @property
     def core(self):
@@ -184,9 +193,52 @@ class TownScene(Screen):
         spec, self.mask, self.real = TS.load_scene(self.shell.fs, core.town or 1)
         self.state = TS.SceneState.build(spec, self.shell.rng, self.shell.scene_globals, var=core.camp.get)
         self.menu = self.options = self.dialog = self.story = None
+        self._open_tips(core.town or 1)
         if self.shell.mouse is not None:
             self.state.hover(self._region(*self.shell.mouse))
         self._sounds()
+
+    def _open_tips(self, town):
+        """The scene's tips window: built at every load while TipsMode `0x622774` is on (`0x4ca855`); the check box writes the option, Close (message `0x45a`) removes it."""
+        from allods2.text import decode_text
+        from engine.ui.orders import MainText
+        from .chargen import measure_font2, wrap_font2
+        sh, fs = self.shell, self.shell.fs
+        self.hint, self.tips_down, self.tips_lines = bool(sh.settings.tips), None, []
+        self.main = MainText.load(fs) if fs is not None else MainText()
+        if fs is not None:
+            try:
+                self.tips_lines = decode_text(fs.read(TS.TOWN_TEXT)).split("\r\n")
+            except (KeyError, OSError):
+                pass
+        wrap = (lambda t, w: wrap_font2(sh, t, w)) if fs is not None else (lambda t, w: t.split("\n"))
+        measure = (lambda t: measure_font2(sh, t)) if fs is not None else (lambda t: 7 * len(t))
+        self.tips_win = TipsWindow(TIPS_RECT, self.main, wrap, measure)
+        self.tips_key = tips_key(town)
+
+    def tips_text(self):
+        """The line after the section header (`FUN_004ddc9c`: the text up to the next `#`; one line in the install)."""
+        for i, line in enumerate(self.tips_lines):
+            if line.strip().lower() == self.tips_key:
+                return self.tips_lines[i + 1] if i + 1 < len(self.tips_lines) else ""
+        return ""
+
+    def _tips_event(self, ev):
+        """Close / check box clicks of the tips window (it sits over the scene: a press on one of its two controls is not a scene click).  True when consumed."""
+        ox, oy = self.origin
+        if isinstance(ev, Press) and ev.button == 1:
+            self.tips_down = self.tips_win.hit(ev.x - ox, ev.y - oy)
+            return self.tips_down is not None
+        if isinstance(ev, Release) and ev.button == 1 and self.tips_down is not None:
+            down, self.tips_down = self.tips_down, None
+            if self.tips_win.hit(ev.x - ox, ev.y - oy) == down:
+                if down == "close":
+                    self.hint = False
+                else:
+                    self.shell.settings.tips = self.tips_win.toggle()
+                    self.shell.services.save_settings(self.shell.settings)
+            return True
+        return False
 
     def open_story(self, key):
         """`FUN_0041d15e(key)`: the story window on the `town.txt` section, page 1 voiced at once; without the text file only the voice (`speak_town`) is left."""
@@ -214,7 +266,10 @@ class TownScene(Screen):
 
     def point_of(self, region):
         """Screen coordinates of a point of `region` (tests, scripted clicks); None when the mask has none."""
-        p = self.mask.point_of(region)
+        if self.hint and self.tips_win is not None:          # a point not under the tips window's Close / check box (they take the click first)
+            p = self.mask.point_of(region, lambda x, y: self.tips_win.hit(x, y) is not None)
+        else:
+            p = self.mask.point_of(region)
         return None if p is None else (p[0] + self.origin[0], p[1] + self.origin[1])
 
     def _sounds(self):
@@ -291,6 +346,8 @@ class TownScene(Screen):
         if isinstance(ev, Key) and not ev.ctrl and ev.name == "escape":   # the game's key handler `0x484a76` posts `0x41f` (town-scenes 2.2); Enter does nothing
             self.open_menu()
             return None
+        if self.hint and self.tips_win is not None and self._tips_event(ev):
+            return None
         if isinstance(ev, Move):
             self.state.hover(self._region(ev.x, ev.y))
         elif isinstance(ev, Press) and ev.button == 1:
@@ -329,6 +386,8 @@ class TownScene(Screen):
                 ops += [Fill(ox + x, oy + y, w, h, (60, 50, 40) if self.state.region != region else (110, 90, 60)), Text(label, ox + x + w // 2, oy + y + h // 2, 1, "normal", 2 | 8, 1)]
         else:
             ops = ops_of(self.state.draw_ops(), ox, oy)
+        if self.hint and self.tips_win is not None:
+            ops += self.tips_win.ops(self.tips_text(), None, self.tips_down if self.tips_down in ("close", "tips") else None, ox, oy)
         if self.story is not None:
             ops += self.story.ops()
         elif self.dialog is not None:
