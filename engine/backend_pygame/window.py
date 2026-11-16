@@ -230,15 +230,16 @@ def game_options(opts, s):
                                health_bars=s.show_health, flying_damage=s.flying_damage)
 
 
-def party_option_commands(player_id, s, formation, retreat, autocast):
-    """The party options of the settings that differ from what the game has now: `SetFormation` / `SetRetreatMode` / `SetAutoCast` (messages `0x46`
-    sub 2 / 1 / 3, `FUN_0041a617`, `0x41a4ef`, `0x41a5b9`); an equal value sends nothing (a fresh mission keeps the template thresholds at Never)."""
+def party_option_commands(player_id, s, formation, retreat, autocast, always=False):
+    """The party options as messages `0x46` sub 1 / 2 / 3 (`FUN_0041a4ef`, `0x41a617`, `0x41a5b9`, in the exe's order). The game start sends all three
+    unconditionally (`FUN_0048c8a3` `0x48cb3e`-`0x48cb7a`, CONFIRMED: `always=True`; the retreat message also rewrites the wimpy / withdraw HP of monsters the
+    player already owns); after Game Options OK only the values that differ from what the game has now go out (an equal value sends nothing)."""
     out = []
-    if s.formation != formation:
-        out.append(SetFormation(player_id, s.formation))
-    if s.retreat != retreat:
+    if always or s.retreat != retreat:
         out.append(SetRetreatMode(player_id, s.retreat))
-    if s.autocasting != autocast:
+    if always or s.formation != formation:
+        out.append(SetFormation(player_id, s.formation))
+    if always or s.autocasting != autocast:
         out.append(SetAutoCast(player_id, s.autocasting))
     return out
 
@@ -292,7 +293,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
         queue.put(cmd)
     player = world.players[player_id]
     if settings is not None:                                # the party options of the Game Options (the client sends them at the game's start, ai.md 12.8)
-        for cmd in party_option_commands(player_id, settings, player.formation, 0, player.autocast):
+        for cmd in party_option_commands(player_id, settings, player.formation, 0, player.autocast, always=True):
             queue.put(cmd)
     items = build_draw_list(world, camera, world.tick, assets, options, debug, player.selection, ai_info=ai_overlay(world, debug, player.selection))
     selecting = SelectionInput(player_id, layout.screen.w, lambda: items.hover_picks,
