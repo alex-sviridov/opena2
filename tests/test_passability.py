@@ -132,3 +132,13 @@ def test_shipped_costs_and_the_five_missing_tiles():
         if n:
             bad[m.name] = n
     assert bad == {"74.alm": 5}                      # the 5 cells that name a tile past their strip
+
+
+def test_move_mask_unknown_class_keeps_constructor_default():
+    """FUN_00557a89 sets 0x41 / 0x44 / 0x82 for classes 1 / 2 / 3 only; 0, -1 (humans) and 4+ keep the constructor's 0x41."""
+    assert [P.move_mask(m) for m in (1, 2, 3)] == [0x41, 0x44, 0x82]
+    assert [P.move_mask(m) for m in (0, -1, 4, 99)] == [0x41] * 4
+    import numpy as np
+    blk = np.array([[0x01, 0x04, 0x02]], dtype=np.uint8)
+    assert P.walkable(blk, -1).tolist() == [[False, True, True]]
+    assert P.walkable(blk, 3).tolist() == [[True, True, False]]

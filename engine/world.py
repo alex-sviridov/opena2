@@ -856,7 +856,7 @@ class World:
         """True if the cell is blocked for `mover`; cells outside the map are."""
         if not (0 <= x < self.width and 0 <= y < self.height):
             return True
-        return bool(self._block[y, x] & pas.MOVE_MASK[mover])
+        return bool(self._block[y, x] & pas.move_mask(mover))
 
     def objects_at(self, x, y):
         """Ids of the entities with a present footprint cell at (x, y)."""

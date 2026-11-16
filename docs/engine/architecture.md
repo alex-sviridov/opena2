@@ -334,5 +334,9 @@ Open: see [open-questions](../open-questions.md#rendering-and-engine).
   scrolling 17.8 / 6 of 739; numpy blends instead of C: 13.4 and 13 frames over 33 ms (still). What remains is the ~25 ms full redraw of a tick
   frame (about 1200 items through `draw_items`: per-item `SpriteCache.get` key, a blit or a C call each) and the per-frame Python of
   `SceneMemo.compose` / `_dirty` (~1.5 ms); the next step would be one C call per frame over a packed item list.
-- Removing a structure: the exe clears every present cell, also those held by another structure
-  (`FUN_0055995a`); the engine releases only the cells the structure holds.
+- Removing a structure (CONFIRMED, REA): the unregister `FUN_0055995a` (per cell: record lookup, structure slot `+0x54038 := 0`, `FUN_00550a53`
+  rebuild, `FUN_00550966` restore when no other record content remains) runs over **every present cell without an owner test**, driven by
+  `FUN_00559aaf`, whose only caller is the structure base destructor `FUN_005200bd` (guarded by the path finder global `0x670e48`; reached only
+  through the deleting-destructor vtable slots). A neighbour's cell in the footprint is freed and never re-registered; the engine's
+  `World.remove_object` re-registers (equals a rebuild). No single-player path in the engine deletes a structure (destroyed = flag only), so the quirk
+  is not modelled. Open: whether any mission-time path deletes a structure object (see open-questions).

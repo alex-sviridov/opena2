@@ -184,9 +184,12 @@ centre budget is `scanRange << ScanShift` (type `+0xa5`; `map.reg` Scanning,
 minus a distance table and **`H[cell] − H[viewer]`** (higher ground costs
 sight, lower ground gives some back); a cell is seen while the budget is
 above 0. Inputs are therefore only the heights and the scan range;
-objects are not consulted (the `FUN_00552c28` variant gates cells with
-`FUN_00559536`, untraced). The exact tables are INFERRED from the
-decompile and not reproduced (open question).
+objects are not consulted. CONFIRMED: `FUN_00552929` is dead code (no caller,
+no reference of any kind; it is the variant without the `+64`). The live flood is
+`FUN_00552c28` (the AI's sight: tables, ring loop, gate and the engine's
+`engine/sim/ai/perception.py` are in [ai §4.1](../engine/ai.md#41-sight-flood-fun_00552c28--fun_00552af8-confirmed));
+its gate `FUN_00559536(x, y)` is the plain rectangle test `x0 <= x <= x1 && y0 <= y <= y1` on the path
+finder's playable rectangle `+0x58eb8..bb` = (8, 8, w-9, h-9) (its only caller).
 
 ### Passability: derived, not stored
 
@@ -253,13 +256,16 @@ vtable `+0x20` result, constructor default 0x41 `FUN_00551346`):
 
 | m | Units (data) | mask | Stopped by |
 |---|---|---|---|
-| 1 | 155 monsters (walkers, catapults); humans (assumed) | `0x41` | bit 0 (water, mountain, dirt, object, border), bit 6 |
+| 1 | 155 monsters (walkers, catapults); humans (default 0x41, CONFIRMED) | `0x41` | bit 0 (water, mountain, dirt, object, border), bit 6 |
 | 2 | Ghost, Bee (+ `.2`–`.5`) | `0x44` | bit 2 (objects, border), bit 6: crosses water, mountain, dirt |
 | 3 | Bat_Sonic, Dragon, Succubus (+ `.2`–`.5`) | `0x82` | bit 1 (border), bit 7: only the map border and each other |
 
-The mapping `movementType` → m is INFERRED (the vtable slot was not
-followed per class; the type 2/3 split by name matches ghosts/bees and
-fliers). The other bits are stamped at run time (INFERRED from `FUN_00550a96`:
+The mapping is CONFIRMED (`FUN_00557a89`, called from the creature
+constructors `FUN_00511959` and `FUN_005121e1`; `FUN_0055f330` = vtable `+0x20` =
+the data.bin `movementType`, `+0x4a`): class 1 -> `0x41`, 2 -> `0x44`, 3 -> `0x82`; any other value
+(0, −1 = the 605 humans and hero classes, 4+) writes nothing and keeps the
+constructor default `0x41` (`FUN_00551346`), i.e. walkers. Structures answer 0 (`0x541ff0`).
+`allods2.formats.passability.move_mask`. The other bits are stamped at run time (INFERRED from `FUN_00550a96`:
 bit `0x20` marks a cell with an occupant record; an object with a footprint
 mask gets 5 on its solid cells and has bits 0 and 2 cleared, and the cost set
 to Cracked, on the rest) and are not part of the file-derived grid.
@@ -283,8 +289,6 @@ local only).
 - Does a unit's sight really shrink behind a hill (higher `H` than the
   viewer along the ray)? Compare the fog around a unit on a ridge and in a
   hollow.
-- Which type a unit `movementType` selects for humans (−1 in the data) and
-  for the hero classes: assumed walker (1).
 
 ## Part 4. Objects
 
@@ -416,10 +420,16 @@ section 4 record order (INFERRED: the runtime builder `FUN_004a449c` walks the
 list in order). Registration is in row-major order, bit `i` of `BuildingPresent`
 (the same `i` counts absent cells). `FUN_005599df` is also called with a
 record that exists but holds no structure (created earlier for a unit): that branch
-stores the structure and does **not** refresh the cell (`0x5598cf`..`0x5598ef`);
-at map load no such record is known to exist (INFERRED). Unregistering
-(`FUN_00559aaf` -> `FUN_0055995a`) clears `+0xc` of every present cell without
-checking the owner (a destroyed structure would free a neighbour's cell: not modelled).
+stores the structure and does **not** refresh the cell (`0x5598cf`..`0x5598ef`).
+CONFIRMED order at load (`FUN_005606aa`): path finder `FUN_0054d2d9`, then `FUN_00561422` builds every
+structure / shop / pointer of the file in list order (registration `FUN_005599df` from the constructors `FUN_0051fd8c` /
+`FUN_0051fe15`, sole caller of the registration), and only afterwards `FUN_00561bf9` and `FUN_00562745` / `FUN_00564072`
+(script, units). The other creators of a cell record (`FUN_005508a0` callers `FUN_005503af` unit
+place, `FUN_005538c7`, `FUN_0055a37a`, `FUN_0055ba36` trap effect, `FUN_0055bbfd`, `FUN_0055c2ce` stamp
+slot) are unit / effect-time routines, so no record exists before the structures (INFERRED for those five, not each traced);
+the skip branch does not occur at load. Unregistering
+(`FUN_00559aaf` -> `FUN_0055995a`, only from the base destructor `FUN_005200bd`) clears the structure slot of every present cell without
+checking the owner (a deleted structure would free a neighbour's cell: not modelled, no single-player deletion in the engine; [architecture](../engine/architecture.md#open-questions)).
 
 **Refresh order (CONFIRMED, `FUN_00550a96`).** The refresh first rewrites the layers from
 the two baseline bytes the cell record took when it was created (`FUN_005508a0` copies
@@ -451,7 +461,7 @@ free. Units and the cost layer are not reproduced.
 The **dirt flag is not the structure foundation**: only 11 of the 1,654
 dirt cells in the files lie inside any footprint. CONFIRMED pipeline: the
 server's block bit `0x10` is set by `FUN_00559c28(x, y)` (live and reset
-layers), cleared by `FUN_00559ce5`, read by `FUN_00559cb3`. The setter's
+layers), cleared by `FUN_00559ce5` (CONFIRMED dead code: no caller, no data reference, so the mark never disappears), read by `FUN_00559cb3`. The setter's
 callers are the **spell area-effect objects**: `FUN_00518024` picks by the
 spell record's `Distribution system` (data.bin spell param 8; 4 = wall:
 Wall of Fire, Wall of Earth …) the wall or the area routine
@@ -805,16 +815,9 @@ client's CRT `rand`). Music playback itself: out of the engine's scope for now.
 
 ## Open questions
 
-- Dirt: the caller of `FUN_00559ce5` (clear), and when the mark disappears.
-- Line of sight: the distance tables (`+0x22000` steps, `+0x28000`
-  `ftol` of a power of `dx² + dy²`) and the `FUN_00559536` gate of
-  `FUN_00552c28`; callers (`FUN_00552929` has no direct caller: vtable?).
-- Whether the world-map-load order really creates cell records only through structures
-  (a record made earlier by a unit makes `FUN_00559890` skip the refresh, see part 4);
-  (section 7 names structures by uid: kind 9, part 6).
-- Block bits 3–7 and the dynamic stamping (`FUN_00550a96`,
-  `FUN_0055c500`), the per-class `movementType` result (vtable `+0x20`),
-  (the search itself is answered: [simulation §7](../engine/simulation.md#7-pathfinding-phase-h2)).
+- Block bits 3–7 and the dynamic stamping are answered in [simulation §7](../engine/simulation.md#7-pathfinding-phase-h2)
+  (stamp slots 0x40 / 0x80, bit 0x10 = spell dirt, no mover mask contains 0x20 / 0x10); the `movementType` mapping is answered above.
+- Section 7 names structures by uid (kind 9, part 6).
 - Part 5: (the `behaviour` bits 1, 2, 4 are answered: quest-target flags of `FUN_005303ed`, [items 14](../data/items.md#14-quests-and-the-item-upgrade-message-0x38)).
   Answered in [items](../data/items.md): gold pickup (hero `+0x3c`, never `Player.money`, §12), `+0x1c` = price,
   the `(41, v)` remap to `0x31` (= 49 `damageBonus`; a pair cannot carry castSpell).

@@ -153,8 +153,9 @@ REA results (objdump of the GOG exe 1.01, routine addresses in map.md part 4):
   `0x4a59fd`; server `0x52b2ac`, `0x52c1d7`); ids < 0x6000 are allocated dynamically (bitmap
   `0x6c9628`). A section 3 cell has no exe id. INFERRED (unchanged): trigger references use
   `0x6000 + uid` only; open.
-- Not modelled: unregistering clears cells held by others (`FUN_0055995a`); the "record exists, no
-  structure" branch of `FUN_00559890` skips the refresh. Both listed in open questions.
+- Not modelled: unregistering clears cells held by others (`FUN_0055995a`; only the structure destructor calls it, the engine deletes no
+  structure, architecture.md open questions); the "record exists, no structure" branch of `FUN_00559890` skips the refresh (answered: it does
+  not occur at load, the structures are built before any unit, map.md part 4).
 
 Deviations and choices:
 - `World` accepts non-square arrays (decision 8 said raise) because the G1 view tests use 24 x 20

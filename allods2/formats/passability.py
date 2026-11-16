@@ -45,6 +45,12 @@ B_BORDER = 0x1F         # the 8-cell border of the map
 # Succubus: only the border and other flyers block).
 MOVE_MASK = {1: 0x41, 2: 0x44, 3: 0x82}
 
+
+def move_mask(movement_type):
+    """`FUN_00557a89` (CONFIRMED): the mask of the vtable `+0x20` class; any other value (0, -1 humans, 4+) leaves the constructor
+    default 0x41 (`FUN_00551346`)."""
+    return MOVE_MASK.get(movement_type, 0x41)
+
 BORDER = 8              # cells of border on each side
 COST_NONE = 0xFF
 
@@ -119,9 +125,9 @@ def cost_layer(terrain, costs=DEFAULT_COSTS):
 
 
 def walkable(block, movement_type=1):
-    """Boolean (h, w): cells a mover of `movement_type` (1..3) may enter,
+    """Boolean (h, w): cells a mover of `movement_type` (1..3; others as 1) may enter,
     judged on the static layer."""
-    return (block & MOVE_MASK[movement_type]) == 0
+    return (block & move_mask(movement_type)) == 0
 
 
 def costs_from_reg(reg):

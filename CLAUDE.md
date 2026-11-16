@@ -145,7 +145,7 @@ export FILE DEST [--palette P] [--index N | --sheet]`, `anim preview KEY DEST`,
   = walkable). `owner` = 1-based section 5 record index (CONFIRMED); dirt =
   server block bit 0x10 set by spell area effects (message 155). Draw order (`FUN_00406f43`): terrain, flat
   structures, then per cell structure → unit → object. `Map.structures`,
-  `.placed_objects()`, `.passability(m, stats)`, `anim/scene.py`. Open: dirt meaning/clear.
+  `.placed_objects()`, `.passability(m, stats)`, `anim/scene.py`. The dirt clear `FUN_00559ce5` is dead code (the mark never disappears).
   map.md part 4
 - Engine G1 (skeleton) done: `engine/` world, sim (tick table CONFIRMED), view
   (Camera, coords, per-cell numpy compositing reusing `graphics.terrain`),

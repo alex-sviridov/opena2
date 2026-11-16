@@ -70,14 +70,11 @@ from both places when answered).
 - K9 drawing (arrows, status effects, flights, Teleport, the lens: built, CONFIRMED), leftovers in [rendering](engine/rendering.md#open-questions): a move / turn message arriving during a cast or attack animation replaces it (CONFIRMED: `0x6b` / `0x6d` start unconditionally), so the ShootDelay event would not fire (not modelled; the busy test of attack / shoot / cast and the busy clock are built and answered), and the by-eye VERIFY IN GAME list of [Arrows and shots](engine/rendering.md#arrows-and-shots-k9) (not compared yet).
 - (answered) Unit flag `+0x1b8 & 0x80` at the mission start: `FUN_0052be01` sends nothing, see [rendering](engine/rendering.md#open-questions).
 - Renderer speed: the densest 1024x768 view is now ~19.5 ms mean (terrain layer cache and per-object item memo; was 26.5), still 11 ms, scrolling ~26 ms; shadow batching was measured and gives nothing (cost is per covered pixel, overlapping pairs). A static-scene cache is left. [architecture](engine/architecture.md#open-questions)
-- Unregistering a structure (`FUN_0055995a`) clears cells held by another structure; the engine releases only its own cells. [architecture](engine/architecture.md#open-questions)
+- Who deletes a structure object in single player (the unregister `FUN_005200bd` is its destructor; the engine never removes one, so the cell-clearing quirk is not modelled). Starting point: the vtable slot holding the deleting destructors (`0x5d12ac`, `0x5d12ec`). [architecture](engine/architecture.md#open-questions)
 
 ## Formats and not started
 
 - Section 12 music: answered in [sound §5](formats/sound.md#5-music-confirmed-unless-noted) (`0x4754e9` picks the nearest zone and writes `0x5f1a08`); left: nothing for the music (never reset after use, sound §5); section 11 inn / shop fields (multiplayer only). [map](formats/map.md#open-questions)
-- Line of sight tables and the `FUN_00559536` gate; block-layer dynamic bits and per-class `movementType` (`FUN_00557a89`, vtable `+0x20`). [map](formats/map.md#open-questions)
-- Dirt mark: caller of the clear `FUN_00559ce5` (the `+0x5c` byte is answered: damage spread, [spells](data/spells.md#4-effect-handlers)). [map](formats/map.md#open-questions)
-- Structure registration at load: does a unit-made cell record exist before the structures (then `FUN_00559890` skips the refresh)? `FUN_005508a0` callers. [map](formats/map.md#open-questions)
 - Text conventions of `main/text/*.txt` (line lists, `#key` sections, `mission%d.txt`). [inventory §6](inventory.md#6-plan-custom-formats-to-reverse-in-order)
 
 ## Saves
