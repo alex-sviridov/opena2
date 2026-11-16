@@ -305,6 +305,7 @@ def run(world, terrain_view, camera, layout=None, speed=DEFAULT_SPEED, title="Al
                           lambda: selection_item_mask(world, player.selection) if selection_state(world, player_id) == "own" else 0,
                           lambda uid: uid in world.units and is_hero(world.units[uid]))
     ordering.book = ui.book
+    ordering.unit_fn = lambda e: e in world.units
     if settings is not None:
         ordering.formation, ui.toggles.retreat, ui.toggles.autocast = settings.formation, settings.retreat, settings.autocasting
     caches = Caches(SurfaceCache(terrain_view), SpriteCache(assets))

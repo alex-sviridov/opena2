@@ -19,6 +19,18 @@ L_SPEED, L_RESISTANCE, L_SIGHT, L_MAX_PROB, L_RAYS, L_MIN_PROB, L_ABSORPTION = 0
 HASTE, DARKNESS, LIGHT = 21, 14, 15
 
 
+# `FUN_004c72c5`: the flag of the armed cast, table `0x5f1810[slot]` for a book spell and `0x5f1990[spell - 1]` for a scroll (CONFIRMED: both tables agree on
+# every spell that has a slot).  1 = the cast needs a unit under the pointer (`FUN_004195fa`, 0x1e / 0x25), 0 = it goes to a cell (`FUN_0041918e`, 0x1f / 0x26).
+# By spell number; 9, 14, 15, 28, 29 (no slot) from the scroll table.
+_UNIT_TARGET = {1: 1, 2: 0, 3: 0, 4: 1, 5: 1, 6: 0, 7: 0, 8: 1, 9: 0, 10: 1, 11: 1, 12: 1, 13: 1, 14: 0, 15: 0, 16: 1, 17: 0, 18: 1, 19: 1, 20: 1, 21: 1, 22: 0,
+                23: 0, 24: 1, 25: 1, 26: 1, 27: 1, 28: 1, 29: 1}
+
+
+def needs_unit_target(spell):
+    """`FUN_004c72c5` for the spell number `spell` (see `_UNIT_TARGET`)."""
+    return bool(_UNIT_TARGET.get(spell, 1))
+
+
 def spell_of_slot(slot):
     """The spell number of a button slot (0..23); the command's `button` is `slot + 1` (`FUN_004195fa`)."""
     return SLOT_SPELLS[slot]

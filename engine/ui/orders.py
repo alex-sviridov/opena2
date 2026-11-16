@@ -41,6 +41,7 @@ class OrderInput:
         self.item_mask_fn = item_mask_fn    # () -> `view+0x150`, the slot mask of the selection's scrolls (None: no scrolls modelled)
         self.player_id, self.screen_w = player_id, screen_w
         self.selection_fn, self.state_fn = selection_fn, state_fn
+        self.unit_fn = None                 # (hovered id) -> True when the object is a unit (`FUN_005a1edf(CUnit)`); None: every hovered id is a unit
         self.hero_fn = hero_fn              # (unit id) -> True for a hero-type unit (`unit+0x1b8 & 1`); None: every unit counts
         self.spell_fn = spell_fn            # () -> the spell number the selection can cast now, 0 for none (`castable_spell`): the stand-in for the spellbook window's choice
         self.mask_fn = mask_fn              # () -> the slot mask of the selection (`view+0x148`, `spellbook.selection_slot_mask`); None: not modelled
@@ -219,13 +220,8 @@ class OrderInput:
                 cmd = AttackUnit(self.player_id, sel, hover_unit)
         elif cursor is S.SWARM and movable:         # cmd 0x1a at the cell under the pointer, also over a unit (R 1.3)
             cmd = Swarm(self.player_id, sel, cell)
-        elif cursor is S.CAST and self.scroll >= 0:  # cmd 0x25 on the hovered unit (`0x419700`): the primary unit casts the scroll of its pack entry
-            if self.state_fn() == "own" and sel and isinstance(hover_unit, int) and not isinstance(hover_unit, bool):
-                cmd = CastScroll(self.player_id, self.scroll_unit if self.scroll_unit is not None else sel[0], self.scroll, target_id=hover_unit)
-        elif cursor is S.CAST:                      # cmd 0x1e on the hovered unit (FUN_004195fa); a cell cast (0x1f) is phase K
-            if (self.spell and self.state_fn() == "own" and sel and isinstance(hover_unit, int) and not isinstance(hover_unit, bool)
-                    and self._slot_allows(self.spell)):
-                cmd = CastSpell(self.player_id, sel, self.spell, hover_unit)
+        elif cursor is S.CAST and self.state_fn() == "own" and sel and self.spell:
+            cmd = self._cast_release(sel, cell, hover_unit)
         elif cursor is S.PICKUP and movable:        # cmd 0x21 at the cell under the pointer (FUN_004180c6 flag 0x40); the sim ignores a cell without a sack
             cmd = PickUp(self.player_id, sel[-1:], cell)
         elif cursor is S.TOWN and self.state_fn() == "own" and sel and isinstance(hover_unit, int) and not isinstance(hover_unit, bool):
@@ -233,6 +229,26 @@ class OrderInput:
         # patrol, defend: no order yet
         self.pending = 0
         return "order", cmd
+
+    def _cast_release(self, sel, cell, hover):
+        """The cast cursor's release (`FUN_004175c7`, last branch; table flag `FUN_004c72c5` = `spellbook.needs_unit_target`): a hovered **unit** with a unit-target spell
+        goes to `FUN_004195fa` (0x1e, or 0x25 for the pending scroll); a unit-target spell with nothing under the pointer sends nothing; every other case is the cell
+        cast `FUN_0041918e` at the clicked cell (0x1f, 0x26 for a scroll): a cell-target spell over anything, any spell over a hovered object that is not a unit.
+        The book cast is also refused without the slot's mask bit (`FUN_004c70b9`)."""
+        hovered = hover is not None and hover is not False
+        is_unit = hovered and isinstance(hover, int) and not isinstance(hover, bool) and (self.unit_fn is None or self.unit_fn(hover))
+        unit_flag = spellbook.needs_unit_target(self.spell)
+        if is_unit and unit_flag:
+            if self.scroll >= 0:
+                return CastScroll(self.player_id, self.scroll_unit if self.scroll_unit is not None else sel[0], self.scroll, target_id=hover)
+            return CastSpell(self.player_id, sel, self.spell, hover) if self._slot_allows(self.spell) else None
+        if not hovered and unit_flag:
+            return None
+        if cell is None:
+            return None
+        if self.scroll >= 0:
+            return CastScroll(self.player_id, self.scroll_unit if self.scroll_unit is not None else sel[0], self.scroll, cell=cell)
+        return CastSpell(self.player_id, sel, self.spell, cell=cell) if self._slot_allows(self.spell) else None
 
     def _slot_allows(self, spell):
         """`FUN_004195fa` sends nothing unless the selection's mask has the bit of the chosen slot (`FUN_004c70b9`).  Without a mask function: allowed."""

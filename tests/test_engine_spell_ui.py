@@ -109,3 +109,21 @@ def test_only_the_prototype_missiles_are_offered():
     u = mage(w, 50, book=1 << 10)
     selected(w, u)
     assert castable_spell(w, 1) == 0
+
+
+def test_the_cast_release_follows_the_unit_target_flag_table():
+    """`FUN_004175c7` last branch + `FUN_004c72c5`: a unit-target spell needs a unit under the pointer; a cell spell (Fire Ball 2) casts at the clicked cell, also over a unit;
+    anything over a hovered object that is not a unit is a cell cast."""
+    o = inp(spell=1)                                                    # Fire Arrow: unit target
+    o.key("c")
+    assert o.release(S.CAST, (5, 6), False) == ("order", None)          # nothing hovered: nothing sent
+    o.key("c")
+    assert o.release(S.CAST, (5, 6), 0x6002) == ("order", CastSpell(1, (0x6001,), 1, 0x6002))
+    o.key("c")
+    o.unit_fn = lambda e: e == 0x6002
+    assert o.release(S.CAST, (5, 6), 0x6100) == ("order", CastSpell(1, (0x6001,), 1, cell=(5, 6)))        # a structure is not a unit
+    o2 = inp(spell=2)                                                   # Fire Ball: cell target
+    o2.key("c")
+    assert o2.release(S.CAST, (5, 6), False) == ("order", CastSpell(1, (0x6001,), 2, cell=(5, 6)))
+    o2.key("c")
+    assert o2.release(S.CAST, (5, 6), 0x6002) == ("order", CastSpell(1, (0x6001,), 2, cell=(5, 6)))

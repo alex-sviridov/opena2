@@ -11,10 +11,10 @@ script helpers `give_item` / `remove_item` / `take_all`), `engine/sim/triggers.p
 |---|---|---|
 | cursor | `FUN_004180c6` flag `0x40` | the pointer is on a cell whose item grid entry is non-zero and fully visible (`Projection.hover_cell`, `fog.cell_visible`); `pickup` needs exactly one selected hero-type unit (ui-layout §6) |
 | release | `0x4177d4` (cursor global `0x626cd8` = pickup) -> `FUN_00419d8e(view+0x9ac, view+0x9b0)` | the **click cell** (the same one a move uses) goes to the sender |
-| message | `FUN_00419d8e` | builds command `0x21` (`msg+9`), player id, the cell `(+0xa, +0xc)`, the pack index `+0xe := unit +0xe4`, `+0x12 := 0`, once **per selected unit** that has a client object (`unit+0x80 != 0`, `FUN_0041eb40`); `FUN_00419d8e` takes no range or "is there a sack" test: the server does |
+| message | `FUN_00419d8e` | builds **one** command `0x21` (`msg+9`, buffer `0x6904b8`): player id, the cell `(+0xa, +0xc)`, `+0x12 := 0`; then loops over the selection list (`view+0x9d0`) and, for every unit that has a client object (`unit+0x80 != 0`, `FUN_0041eb40`), copies `+0xe := unit +0xe4` (so the **last** unit's word stays) and adds the unit id as a recipient (`FUN_0050bbb8`); one send (`FUN_0050164f`) at the end (CONFIRMED asm `0x419d8e`-`0x419e48`; the earlier "one message per unit" was wrong). `unit +0xe4` = the pack insert index: the **only** writes of that word in the view-unit classes are the base ctor `0x45fa00` (`:= 0`, `0x45fc0c`) and the copy ctor (`0x45ff22`); no other instruction in the exe stores to `[unit+0xe4]` of this class (disp32 scan of the whole `.text`), so it is 0 (INFERRED: a block copy could not be excluded). The server stores it in the pack object (`unit+0x7c` `+0x1c := msg+0xe`, `0x4f5617`), and `FUN_00529ac2` inserts every item at that index (`FUN_00529e5b` does not advance it): **a click pickup files the sack at the front of the pack**, one by one (reversed order for several items), engine: `PickUp.index` defaults to 0 |
 | intake | server `FUN_004f515d` case `0x21` | "Sack not found" (nothing happens) when `FUN_00553ab3(x, y)` finds no pile; else the **last** unit of the intake gets order 2 (`FUN_0056da98`), destination = the cell |
 | approach | group pass `FUN_00569321` order 2 -> `FUN_0056c8da` | on the sack's cell: Brain mode 7; else Brain mode 1 (**a plain walk to the sack's own cell: range 0**, no "in reach" radius) |
-| take | creature tick state 2 (`FUN_0050f12c` case 2) -> `FUN_005108fa` | the **whole pile**: gold to the player (`FUN_00516238`; the message `0x67` is INFERRED from ui-layout §11.5), every item through `FUN_00529e5b` into the pack while it holds fewer than `0x400` entries (**a full pack loses the rest**, the pile is deleted anyway), items flagged new, then a call to `FUN_00504b3a` (INFERRED: the item notice); no sound call in the server routine |
+| take | creature tick state 2 (`FUN_0050f12c` case 2) -> `FUN_005108fa` | the **whole pile**: gold to the player (`FUN_00516238`; the message `0x67` is INFERRED from ui-layout §11.5), every item through `FUN_00529e5b` into the pack while it holds fewer than `0x400` entries (**a full pack loses the rest**, the pile is deleted anyway), items flagged new, then `FUN_00504b3a` = message `0x6a` (the sack's id) to every player whose mask matches (`FUN_0050d8fc`; in single player always): the client case `0x41356d` removes the pile from its view (it is **not** a text notice); the "Picked up" line comes from the item list message `0x76` (section 2); no sound anywhere (audio.md 2.1) |
 | after | mode 7 again | state already 2: `FUN_0056dbc6` stop -> order `0xc` |
 
 The pile is one object per cell, so "a sack or one item" is the same thing: a single dropped item is a pile of one. Stackable entries (potions, scrolls, any
@@ -40,8 +40,11 @@ piece; 38 the same for every unit; 20 drops the pack as a pile on the unit's cel
   re-sync (`take_item` of `triggers.py` is gone). Weight and the speed penalty follow (`recompute`).
 - **Info panel (ENGINE ADDITION, not in the original).** The own hero's carried quest items (special items that are no potion, scroll or book) are listed
   in sage under the stats: at most two lines from `(0x2A, 0xDC)`, `name` or `name xN` for a stack. The original shows them only in the pack window.
-- **Message.** The pickup line is `PickupWatch` (ui-layout §11.5). Sound: none found in the server routine; the client sound on the item notice
-  `FUN_00504b3a` was not researched (the item notice has no `SoundEvent`: [audio.md](audio.md) 2.1 says pick-up has none): open question.
+- **Message and sound (CONFIRMED, answered).** The line "Picked up <item> (now N pieces)" is printed by the client's item-list handler (case `0x76` of the pump `FUN_0040d9b2`,
+  `0x411758`-`0x411848`: an item whose wire flag `0x40` is set clears the bit and prints main `0x55` + name, with `(0x56 N 0x57)` when the stack is above 1, log colour, 3000 ms);
+  the gold line is case `0x67` (`0x414a5c`). Neither has a sound call (audio.md 2.1: all 58 callers of the play routine listed); the notice `FUN_00504b3a` is message `0x6a`,
+  which only removes the pile from the client view. `PickupWatch` (ui-layout §11.5) stands in for both and now clears the mark after the line like the exe
+  ([item-new-rea](item-new-rea.md) 2).
 
 ## 3. The seven maps (debug run, `tests/test_engine_pickup.py::test_quest_item_can_be_reached_and_its_checks_hold`)
 
@@ -91,10 +94,8 @@ Engine: `pack.hidden_slot`, `info.equipped_items(hidden=)`, `herolook.look_key(h
 - A click on a sack with the pickup cursor: the hero walks onto the cell and the line "Picked up ..." appears; a click on a sack under a unit.
 - A hero with a full pack (0x400 entries, not reachable in practice) loses the rest of the pile.
 - Two heroes selected: the cursor is not `pickup` (needs exactly one).
+- A click pickup of a sack with an item while the pack already holds items: the new item shows at the **front** of the pack strip (view `+0xe4` = 0, INFERRED); a `P` pickup files at the pack's last insert index.
 
 ## Open questions
 
-- The client sound for the item notice `FUN_00504b3a` and the gold message (`0x67`).
-- `unit +0xe4` (the pack index the client sends in `0x21`): INFERRED to be the 0x7FFF default; the engine sends 0x7FFF.
-- Two or more selected units on a pickup: the cursor forbids it, but `FUN_00419d8e` would send one message per unit; only the last of the intake walks.
-- The 16-bit cell wrap of the P scan at the map edge; the window `0x4ba` that message `0x463` (Quest Documents dropped on a doll slot, map 10 only) opens (`FUN_0048b1f9`: client mode `|= 0x4000`, a modal view).
+- The 16-bit cell wrap of the P scan at the map edge; the window `0x4ba` that message `0x463` (Quest Documents dropped on a doll slot, map 10 only) opens: the opener `FUN_0048b1f9` is decoded (releases a capture, default cursor `0x47b8f5`, `FUN_004d3a64(client+0x3c4)` + vtable `+0x80` of that modal window, child `+0xcc` vtable `+0x34`, `client+0x44c := 0`, mode `|= 0x4000`); what the window shows (its text, its buttons) is not decoded.

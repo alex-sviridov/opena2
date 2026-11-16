@@ -10,8 +10,8 @@ Facts are marked CONFIRMED (GOG allods2.exe 1.01 via REA) / INFERRED / DECISION.
   fills two 16-bit surfaces on the minimap view object: `+0x60` base image, `+0x64` fogged copy;
   `+0x68` = scale shift `k`. CONFIRMED.
 - Colour per cell: `v = cell & 0x1fff` (dirt and fog bits off), `pixel = table[13 - (v & 0xf)][v >> 4]`
-  in memory order of `graphics\interface\MiniMapData.bmp` (52x14, 24 bit; the loader flips DIB rows,
-  so the row in `Bitmap.rgb` is `13 - (v & 0xf)`). A fixed colour per strip id and tile row, not an
+  in memory order of `graphics\interface\MiniMapData.bmp` (52x14, 24 bit; **corrected 2026-11**: the table is a "Bitmap 64k" object that does NOT flip DIB rows, so memory
+  is bottom-up and the picture row from the top is `v & 0xf`; `load_color_table` returns memory order, see docs/engine/minimap-water-rea.md). A fixed colour per strip id and tile row, not an
   average of the tile art. Cells `8 <= col < w-8`, `8 <= row < h-8` only. CONFIRMED
   (`0x4abb45`-`0x4abc3a`); max strip id 51 and row 13 in every map checked.
 - Scale from the longer side `m = max(w, h)` (full size, border included): `m > 144` -> `k = -1`

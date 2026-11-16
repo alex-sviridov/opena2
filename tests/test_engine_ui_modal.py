@@ -251,6 +251,8 @@ def test_gold_and_item_pickup_lines():
     h.pack = (S.Item(0x104, 1, 0, (), True),)
     got = watch.poll(w, MAIN)
     assert got == [("m55 item 0x104", "normal", 3000)]             # no item table in a synthetic world: the code stands in for the name
+    assert not any(it.new for it in h.pack)                         # the mark is a one-shot (item-new-rea 2): cleared once the line is made
+    assert watch.poll(w, MAIN) == []
     h.pack = (S.Item(0x104, 3, 0, (), True),)
     assert watch.poll(w, MAIN) == [("m55 item 0x104 (m56 3 m57)", "normal", 3000)]
     h.pack = (S.Item(0x104, 3, 0, (), False), S.Item(0x105, 1, 0, ()))        # items that are not flagged new (equip, drop) say nothing

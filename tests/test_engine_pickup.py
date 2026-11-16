@@ -71,6 +71,17 @@ def test_pickup_then_script_check_sees_the_item_and_remove_takes_it_back():
     assert not T._has_item(u, code_of("Boots"))
 
 
+def test_a_click_pickup_files_at_the_front_of_the_pack_and_the_default_index_is_the_view_ctor_word():
+    """`FUN_00419d8e` sends the view unit's `+0xe4`, written only by the ctor `0x45fa00` (0): the server sets the pack insert index `+0x1c` to it (`0x4f561a`)."""
+    w, u = world_with_hero()
+    gear.give_item(w, u, code_of("Helm"))
+    w.place_pile(24, 20, 0, [code_of("Boots")])
+    sim = Simulation(w)
+    sim.step([PickUp(1, (u.id,), (24, 20))])
+    run(sim, 200)
+    assert [i.code for i in u.pack] == [code_of("Boots"), code_of("Helm")]
+
+
 def test_pickup_out_of_range_walks_in_and_files_the_whole_sack():
     w, u = world_with_hero()
     w.place_pile(36, 30, 0, [code_of("Boots"), code_of("Helm")])

@@ -28,7 +28,7 @@ from both places when answered).
 
 ## Spells
 
-- Backpack window leftovers (K5b answered: text flag 8, message `0x46e`, the doll item on the cursor, Ctrl+F): the open sound, releases over the minimap / heads / window 8, the window `0x4ba` of message `0x463` (map 10), the hero-screen lists' gold cell (phase K, hero_ui). [ui-layout 11.13](engine/ui-layout.md#open-questions)
+- Backpack window leftovers: the open sound, the hero-screen lists' gold cell (phase K, hero_ui), the content of the window `0x4ba` of message `0x463` (map 10; opener decoded). [ui-layout 11.13](engine/ui-layout.md#open-questions)
 
 ## Town mode
 
@@ -43,19 +43,18 @@ from both places when answered).
 
 ## Movement and orders
 
-- Player commands `0x1b` (follow / defend) and `0x1d` (patrol), use `0x24`, cast at a cell `0x1f`, town: simulation side built ([ai §14.2](engine/ai.md#142-the-unit-orders-of-the-scripted-sub-commands-10-11-14-15-confirmed)), no engine command or UI issue yet (the item commands `0x21` pickup, `0x22` move item, `0x23` drop gold are built: `PickUp`, `MoveItem`, `DropGold`; the pickup click issues `PickUp` (K5, [items](engine/items.md)); the pack window issues the others); the squad voice; the consolidated VERIFY IN GAME list. [simulation](engine/simulation.md#open-questions), [simulation §9](engine/simulation.md#9-handoff-to-combat-phase-i)
+- Player commands `0x1b` (follow / defend) and `0x1d` (patrol), use `0x24`, town: simulation side built ([ai §14.2](engine/ai.md#142-the-unit-orders-of-the-scripted-sub-commands-10-11-14-15-confirmed)), no engine command or UI issue yet (the item commands `0x21` pickup, `0x22` move item, `0x23` drop gold are built: `PickUp`, `MoveItem`, `DropGold`; the pickup click issues `PickUp` (K5, [items](engine/items.md)); the pack window issues the others); the squad voice; the consolidated VERIFY IN GAME list. [simulation](engine/simulation.md#open-questions), [simulation §9](engine/simulation.md#9-handoff-to-combat-phase-i)
 - Click to move: heap block after the `+0xb8` table (`FUN_00582a10`; last-row read of `FUN_00417f31`); the per-order voice slots. [research §9](engine/click-to-move-research.md#9-open-questions)
 
 ## Interface
 
 - Chat input line (built, [ui-layout](engine/ui-layout.md#open-questions)): the relation test `FUN_0054fb7f` against `0x69049c` in the server echo; the open-book cast branch of the chooser has no drag override. Squad voice samples: see [audio](engine/audio.md). Start at `FUN_0040b2b8`, `FUN_004175c7`. (Cheat byte, chat row composition, `ClipCursor`: answered, [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages).)
-- Spell book window leftovers: colour key of SpellBook / SpellBack / caps, rounding of the level-4 veil `FUN_004565cd`, `view+0x14` at 800x600, map-row recompute `FUN_0041b121`, the dispatcher's use of table `0x5f1810` to reach the decoded cell cast `FUN_0041918e`. [ui-layout 11.12](engine/ui-layout.md#1112-spell-book-window-bottom-bar-id-3-class-fun_004c61e7-vtable-0x5cf918-confirmed-unless-marked)
+- Spell book window leftovers: colour key of SpellBook / SpellBack / caps, the content of shade-table row 4 behind the veil `FUN_004565cd` (the formula is decoded), whether `view+0x14` is H at 800x600 (map-row recompute `FUN_0041b121` decoded). [ui-layout 11.12](engine/ui-layout.md#1112-spell-book-window-bottom-bar-id-3-class-fun_004c61e7-vtable-0x5cf918-confirmed-unless-marked)
 - Heads panel: the extra panel's 24 rows at 800x600 (INFERRED black) and TextBackL's strip position at 1024. [ui-layout](engine/ui-layout.md#open-questions), [town-hero 8](engine/town-hero.md#8-open-questions) (`FUN_00472460`; the unit flags are answered)
 - Text windows (pause, failed): the scroll bar's sprite file (class `0x5d00e8`, paint `0x4da80f`, structure decoded) and the first-line indent field `+0x80` (INFERRED 0). [ui-layout 11.4](engine/ui-layout.md#114-in-game-menu-pause-freeze)
 - Tips window of the mission message `0x45b` (`tips:`): the receiver builds it (rect (10, 20, 370, 188)); no install mission uses the tag, so not built (the town / shop / inn / chargen / new-game callers are all built). [ui-layout 11.5](engine/ui-layout.md#115-on-screen-messages)
 - Info-panel knowledge table: character-file load / write-back (`Knowledge(blob)` / `to_blob`) and the server's composition of the relation word whose bit 8 the client reads (`FUN_0041e860`, client side answered). [ui-layout](engine/ui-layout.md#open-questions) (`FUN_004ea6ab`)
 - Message list: quest-event lines (multiplayer only, no work).
-- Backpack: what releases over the minimap / heads panel / window 8 do, the hero-screen lists' gold cell, window `0x4ba` of message `0x463`. [ui-layout 11.13](engine/ui-layout.md#1113-backpack-window-bottom-bar-id-2-class-fun_004a2bba-vtable-0x5ce978-confirmed-unless-marked)
 
 ## Rendering and engine
 
@@ -77,12 +76,10 @@ from both places when answered).
 - Save / Load / Delete windows (L10d, [save-ui](engine/save-ui.md#open-questions)): the selected-row colours and the scroll bar's sprite file (list geometry / frame colours and the menu closing are answered, [save-ui 6](engine/save-ui.md#6-answered-by-the-rea-round-of-the-open-questions-confirmed-unless-marked)); VERIFY IN GAME list: [save-ui 5](engine/save-ui.md#5-verify-in-game-users-real-game-check).
 - Saves, L10f ([save](engine/save.md#open-questions)): VERIFY IN GAME only: [save 10](engine/save.md#10-verify-in-game-one-list-the-users-real-game-check) (the exe's main-menu return after a failed load is kept as a DECISION, [save-ui 6](engine/save-ui.md#6-answered-by-the-rea-round-of-the-open-questions-confirmed-unless-marked)).
 - Mission saves, L10e-B ([saves 7.1](formats/saves.md#71-l10e-b-the-mission-save-mapping-enginemissionsavepy-tests-testenginemissionsavepy-testenginemissionsaveshellpy), starting routine `FUN_004ec732` / `FUN_0048c2e9`): built and tested here; VERIFY IN GAME that the exe loads its own mission saves and that the DECISION words (group `+0x1c`, unit `+0x44`) do no harm there (the engine side is tested: save -> load -> step equals an uninterrupted run). Single player never writes a `.a2c` ([ui-layout 11.4](engine/ui-layout.md#114-in-game-menu-pause-freeze)).
-- [Items K5](engine/items.md#open-questions): the client sound of the item notice `FUN_00504b3a` / gold message `0x67`; `unit +0xe4` (the pack index of message `0x21`, INFERRED 0x7FFF); several selected units on a pickup.
+- [Items K5](engine/items.md#open-questions): the 16-bit cell wrap of the `P` scan at the map edge; the content of the window `0x4ba` (message `0x463`, opener `FUN_0048b1f9`).
 
 ## Structures
 
 - Using a structure ([structures](engine/structures.md#open-questions)): verify in game the use-walk stop cells, a far use click failing (structures 2.1, answered in the exe) and that the hovered well's panel redraws as the charges fall (8.1).
 - Cutscenes, m1 ([cutscenes](engine/cutscenes.md#open-questions), [REA notes](engine/cutscenes-rea.md#open-questions)): the audio channel order / cache markers are checked by stream ends only; the list's double click / wheel (`0x5cffc8`), the 640x360 blit rectangle, frame dropping in `smackw32.dll`, message `0x436`, town 2 / 3 leave codes; VERIFY IN GAME: [cutscenes 7](engine/cutscenes.md#7-verify-in-game-nothing-watched-yet).
 - Shop, second round ([shop-rea2](engine/shop-rea2.md#open-questions)): the writer of the `0x80` identify box (INFERRED dead), the Kaarg fire bitmap order (lite / burn / cicle INFERRED); VERIFY IN GAME: the human shelf clips, idle and Yes / No clips, the Kaarg brazier, price numbers.
-- Item sparkle ([item-new-rea](engine/item-new-rea.md)): where the client reads wire bit `0x40` (the pickup mark), whether trades / hero-death drops / script items also write server `+8`; `PickupWatch` still counts `Item.new`, which nothing clears.
-- Minimap water ([minimap-water-rea](engine/minimap-water-rea.md)): white is the exe's result from the table; whether it is intended art needs an original screenshot.

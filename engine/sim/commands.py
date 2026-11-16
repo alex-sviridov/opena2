@@ -203,7 +203,7 @@ class PickUp(Command):
     player_id: int
     unit_ids: tuple
     cell: tuple
-    index: int = 0x7FFF
+    index: int = 0        # the client sends the word `unit+0xe4`, written only by the view ctor `0x45fa00` (0): the sack's items go to the pack's front (items.md 1)
 
     def __post_init__(self):
         object.__setattr__(self, "unit_ids", tuple(self.unit_ids))

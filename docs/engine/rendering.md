@@ -165,7 +165,7 @@ rectangle), `engine/ui/minimap.py` (click/drag), `python -m engine minimap MAP D
 |---|---|---|
 | Generated at load, nothing in the `.alm`; builder | `FUN_004ab96c` (from `FUN_004ab896`) | CONFIRMED |
 | Surfaces on the view object: base `+0x60`, fogged copy `+0x64`, shift `k` `+0x68` | same | CONFIRMED |
-| Cell colour `table[13 - (v & 0xf)][v >> 4]`, `v = cell & 0x1fff`; table = `graphics\interface\MiniMapData.bmp`, 52 x 14, global `0x626cb0`, path `0x5f2260` | `0x4abb45`-`0x4abc3a` | CONFIRMED |
+| Cell colour `mem[13 - (v & 0xf)][v >> 4]`, `v = cell & 0x1fff`, `mem` = the table in memory order (bottom row first: a "Bitmap 64k" object, no flip) = picture row `v & 15` from the top; table = `graphics\interface\MiniMapData.bmp`, 52 x 14, global `0x626cb0`, path `0x5f2260` | `0x4abb45`-`0x4abc3a`, ctor `0x477e39` | CONFIRMED ([minimap-water-rea](minimap-water-rea.md) 4) |
 | Cells `8 <= x < w-8`, `8 <= y < h-8` only | `0x4abb53`, `0x4abb79` | CONFIRMED |
 | `k` from `max(w, h)`: `> 0x90` -1, `> 0x50` 0, `> 0x30` 1, else 2; image `((w-16) << k, (h-16) << k)`, for -1 `(w-16) >> 1` with a 2x2 average | `0x4abc44`-`0x4abd82`, `0x4abe65`-`0x4ac01d` | CONFIRMED |
 | 80x80 and 144x144 maps give 128x128; 256x256 gives 120x120 | same | CONFIRMED (computed) |
@@ -369,4 +369,4 @@ ones (order INFERRED: structures, then missiles). **Light / Darkness cell flags*
 - Item-only piles: the item field `+0x1c` (pile frame), see [map.md](../formats/map.md#open-questions).
 - Interface (G3b): structure pick rects, bottom bars and command-bar contents, portraits: see [ui-layout open questions](ui-layout.md#open-questions).
 
-- Minimap water (REA [minimap-water-rea](minimap-water-rea.md)): the white lakes are what the exe produces: the water columns 32..47 of `MiniMapData.bmp` are pure white for `v & 15` = 0..5, there is no water special case and no recolouring pass; the engine matches. Open: whether the white is intended art (needs an original screenshot).
+- Minimap water (REA [minimap-water-rea](minimap-water-rea.md)): answered. The white lakes were an engine bug: the table is bottom-up in the exe's memory (64k bitmap class, no flip), so the exe reads picture row `v & 15` from the top and water is the dark blue-grey ramp; fixed in `load_color_table`.

@@ -313,9 +313,12 @@ class GameUi:
             return True, pk.drop_in_pack(w, pid, c.index if c.kind == 2 else -1)
         if self.layout.info_panel.rect.contains(*pos):
             return True, pk.equip_carried(w, pid, ordering)
-        if self.layout.bar_panel.rect.contains(*pos):
-            pk.cancel_carry()
+        if self.layout.bar_panel.rect.contains(*pos) or self.layout.minimap.contains(*pos):
+            pk.cancel_carry()                       # the minimap's release `0x4ad506` (vtable `0x5cee10` +0x58): default cursor `0x47b8f5` + the cancel `FUN_0048ae1e`
             return True, ()
+        ep = self.layout.extra_panel
+        if ep is not None and ep.rect.contains(*pos):
+            return True, ()                         # window 8 (vtable `0x5cef88`): +0x58 is the empty stub `0x437f10`, the item stays on the cursor (INFERRED)
         if self.layout.viewport.contains(*pos):
             u = pk.unit_obj(w)
             return True, pk.drop_on_ground(w, pid, (u.x, u.y)) if u is not None else (pk.cancel_carry(), ())[1]

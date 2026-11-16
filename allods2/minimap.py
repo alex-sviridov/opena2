@@ -56,11 +56,13 @@ def load_structure_sizes(fs=None):
 
 
 def load_color_table(fs=None):
-    """The (14, 52, 3) uint8 colour table, top row first (the loader flips DIB rows)."""
+    """The (14, 52, 3) uint8 colour table in the exe's **memory order**, bottom picture row first: the table is a "Bitmap 64k" object (`FUN_00424e4b`, ctor call
+    `0x477e39`), which keeps the DIB's row order (docs/formats/bitmaps.md), and `FUN_004ab96c` reads buffer row `H - 1 - (v & 15)` = picture row `v & 15` from the
+    top.  `minimap_rgb` indexes this array with `13 - (v & 15)`."""
     rgb = load_bmp(TABLE_PATH, fs).rgb
     if rgb.shape[:2] != (14, 52):
         raise ValueError("unexpected MiniMapData.bmp size %r" % (rgb.shape,))
-    return rgb
+    return np.ascontiguousarray(rgb[::-1])
 
 
 def _words(rgb):

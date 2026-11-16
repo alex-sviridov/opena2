@@ -5,6 +5,8 @@ the player's gold rising, and a hero's pack gaining items that carry the `new` f
 Texts: `"%s %d %s"` = main 0x58 "Picked up", the amount, 0x59 "gold"; `"%s %s"` = 0x55 "Picked up" + the item name, with
 `" (%s %d %s)"` = 0x56 "now", N, 0x57 "pieces" when the stack holds more than one.  Slot: log (normal table), lifetime 3000 ms."""
 
+from dataclasses import replace
+
 from engine.sim import gear as gear_mod
 
 LOG = "normal"                  # message colour slot `0x5f17f8` = table `0x620928`
@@ -42,8 +44,17 @@ class PickupWatch:
         for k, n in sorted(now.items()):
             if n > self.new.get(k, 0):
                 msgs.append((self._item_line(world, k, n, text), LOG, PICKUP_MS))
-        self.new = now
+        self._clear_marks(world)
+        self.new = {}
         return msgs
+
+    def _clear_marks(self, world):
+        """The mark is a one-shot (item-new-rea 2): the server's serialiser `FUN_005241bf` sends it once and clears `+8`; the client's message `0x76`
+        handler prints the line and clears its own bit (`0x411758`).  Once the line is made the engine clears the flag of the player's pack items."""
+        for u in world.units.values():
+            if u.owner != self.player_id or not u.pack or not any(it.new for it in u.pack):
+                continue
+            u.pack = type(u.pack)(replace(it, new=False) if it.new else it for it in u.pack)
 
     @staticmethod
     def _item_line(world, key, n, text):

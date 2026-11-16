@@ -252,6 +252,18 @@ def test_a_release_on_the_command_bar_forgets_the_carried_item_and_on_the_book_p
     assert ui.item_release(pos) == (True, ()) and ui.pack.carried is None              # `FUN_004c76bc`: back to its place (a pack source: no message needed)
 
 
+def test_a_release_on_the_minimap_cancels_the_carry_and_on_window_8_it_stays_on_the_cursor():
+    w, u = hero_world()
+    ui = ui_for(w)
+    ui.pack_mouse_move(cell_pos(ui, 1), True)
+    mm = ui.layout.minimap
+    assert ui.item_release((mm.x + 5, mm.y + 5)) == (True, ()) and ui.pack.carried is None        # `0x4ad506`: default cursor + `FUN_0048ae1e`
+    ui2 = ui_for(w, (1024, 768))
+    ui2.pack_mouse_move(cell_pos(ui2, 1), True)
+    ep = ui2.layout.extra_panel.rect
+    assert ui2.item_release((ep.x + 5, ep.y + 5)) == (True, ()) and ui2.pack.carried is not None  # window 8 has no release handler
+
+
 def test_nothing_is_picked_or_released_under_a_modal():
     w, u = hero_world()
     ui = ui_for(w)
