@@ -75,4 +75,4 @@ Main menu button 2 (enabled whenever videos play; the exe enables it by the CD /
 ## Open questions
 
 - Audio details not checked against the DLL: the channel order of stereo, the cache rule of rarely used markers (frames decode to the exact stream end, which a wrong rule would break).
-- The rest of [cutscenes-rea.md "Open questions"](cutscenes-rea.md): list double click / wheel, the exact 640x360 blit rectangle, frame dropping in `smackw32.dll`, the origin of message `0x436`, the town-leave codes of towns 2 and 3.
+- The rest of [cutscenes-rea.md "Open questions"](cutscenes-rea.md): list double click / wheel, the exact 640x360 blit rectangle, frame dropping in `smackw32.dll`.

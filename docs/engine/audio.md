@@ -71,8 +71,7 @@ Returns without a voice unless `client+0x5d8 == 2` and the voice option `DAT_006
 (`FUN_0041eb40`) with HP `+0x104 > 0`, files each into one of **three arrays** (CONFIRMED `0x41dae4`-`0x41db7f`) and picks **one random member**
 (`size * rand() / 0x7fff`, so the last index is almost never reached) from the first non-empty of A, B, C:
 A = flag `+0x1b8 & 1`; else, while A is still empty, a unit with flag `+0x1b8 & 0x10`: into B when `view+0x188 != 0`, into C when `+0x188 == 0` and B is still empty;
-every other unit (A not empty yet, or no `0x10`) with type `+0x1dc` in 1..0x14 goes into B. (The order of the walk matters; what `+0x188` and the flag bits
-1 / 0x10 are is open: the engine's "heroes first, then classes" is the stand-in.) It calls the unit's voice slot:
+every other unit (A not empty yet, or no `0x10`) with type `+0x1dc` in 1..0x14 goes into B. (The order of the walk matters. Meaning, answered from [ui-layout 11](ui-layout.md) and [town-hero 8](town-hero.md): flag bit 1 = a hero of the human class, bit 0x10 = a monster-class unit (class < 0x1a); `view+0x188` is client equipment entry 0 = the wielded weapon item pointer, written only in the human branch of `FUN_004699d2` (a monster's stays 0, INFERRED zero-init). So A = heroes, B = armed `0x10` units and every other type 1..0x14 unit once a hero is in A or the unit has no `0x10`, C = unarmed `0x10` units when B is empty. Only units with a voice bank can speak (bank types 1-6, 21-23), so the engine's "heroes first, then classes" stand-in `Voices.pick` is equal for every unit the install produces; kept.) It calls the unit's voice slot:
 
 | Command (sender, cmd byte) | Voice slot -> routine | Bank samples | Skip rule |
 |---|---|---|---|
@@ -345,5 +344,4 @@ Files: `engine/backend_pygame/audio.py` (`NullAudio`, `Audio`, `MusicPlayer`, `w
 ## Open questions
 
 - Gapless track change at a track end (the next track is loaded on the end event); whether `Channel.set_volume(l, r)` of SDL_mixer reproduces DirectSound's pan law at the screen edge (both by ear).
-- What `view+0x1b8` bits 1 / 0x10 and `view+0x188` are (which hero lands in which of the three arrays of `FUN_0041da16`, 2.3).
 - The `0xb9` "Diplomacy changed" line and the cheat-code activation / other cheat codes (`message` sub 5, 6): they need the diplomacy matrix and the cheat-code parser.

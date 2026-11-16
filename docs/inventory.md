@@ -153,8 +153,7 @@ Small bounded formats first, dependencies before dependants. Done:
 `.res`, sprites, palettes, BMP, `.reg`, fonts, the `human.pal` "remap"
 (= shade tables + player palettes), `data.bin` container and columns.
 
-1. **`main/text` conventions**: line-indexed vs `#key` sections; needed by
-   UI, items, quests, mission briefings.
+1. **`main/text` conventions**: done, [text](formats/text.md).
 2. **`itemname.bin` / `.pkt`**: done, see [items](data/items.md).
 3. **`.alm` sections 0, 4–12**: structures, units, players, triggers of
    the 46 campaign maps; the server reader `FUN_00534ad4` switches on the

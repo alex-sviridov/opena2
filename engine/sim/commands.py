@@ -237,6 +237,19 @@ class DropGold(Command):
 
 
 @dataclass(frozen=True)
+class Defend(Command):
+    """Exe command `0x1b` (client `FUN_00418fc1`, object target `+0xe`; server `FUN_004f515d` -> `FUN_00570c84(group, leader, 0)`): every unit of the group gets
+    the defend / follow-a-unit order 8 on unit `target_id` (range 0 = the default 3, `follow.defend_group`).  The client sends it for the defend cursor (key `D`,
+    pending mode 4) over a unit."""
+    player_id: int
+    unit_ids: tuple
+    target_id: int
+
+    def __post_init__(self):
+        object.__setattr__(self, "unit_ids", tuple(self.unit_ids))
+
+
+@dataclass(frozen=True)
 class UseStructure(Command):
     """Exe command `0x24` (`FUN_0041a0b5`, object target `+0xe`): the last unit of the selection walks to the structure and uses it (switch / lever / altar:
     toggles its HP 0 <-> 1; sim/structures.py).  `unit_ids` as for the other orders; the client sends it for the `town` cursor (one hero selected)."""

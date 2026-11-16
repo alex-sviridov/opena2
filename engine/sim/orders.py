@@ -7,7 +7,7 @@ comments; routine addresses there).  Layer 4: reads and writes `engine.world` on
 
 from engine.world import OrderGroup
 
-from .commands import (AttackUnit, CastScroll, CastSpell, DropGold, Guard, MoveItem, MoveUnits, PickAll, PickUp, Retreat, SetAutoCast, SetAutoSpell, SetFormation, SetRetreatMode, StandStill, Stop,
+from .commands import (AttackUnit, CastScroll, CastSpell, Defend, DropGold, Guard, MoveItem, MoveUnits, PickAll, PickUp, Retreat, SetAutoCast, SetAutoSpell, SetFormation, SetRetreatMode, StandStill, Stop,
                        Swarm, UseStructure)
 from .combat import can_order_attack, find_target, refresh_attack, set_attack
 from .movement import (ATTACK_ORDER, CENTRE, RETREAT_ORDER, MoveTo, _in_map, _set_action, IDLE, cancel, fail_stop, live_cells, path_grid,
@@ -316,6 +316,11 @@ def orders_system(world, commands):
             target = find_target(world, cmd.target_id)   # a corpse or a structure is a legal target (combat.md 12.2, 5.5)
             if g is not None and target is not None:
                 attack_group(world, g, target)
+        elif isinstance(cmd, Defend):                   # message 0x1b: the same target prelude as 0x19 (0x4f52a1), then FUN_00570c84(group, leader, 0)
+            g = intake(world, cmd.player_id, cmd.unit_ids)
+            leader = world.find_unit(cmd.target_id)     # a structure id would hand the exe a structure object as leader; the UI never sends it (not modelled)
+            if g is not None and leader is not None:
+                follow.defend_group(world, g, leader, 0)
         elif isinstance(cmd, CastSpell) and cmd.cell is not None:
             g = intake(world, cmd.player_id, cmd.unit_ids)      # command 0x1f (docs/engine/ai.md 12.6)
             if g is not None and world.spell_table is not None:

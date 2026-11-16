@@ -528,7 +528,7 @@ player's (and broadcast id 0) messages and drops the rest (`drain_no_way`).
 ## 9. Open questions
 
 1. The per-order voice slots beyond the unit pick: built in K11 ([audio §2.3](audio.md)); the pick itself is §6.2.
-2. `FUN_00582a10` heap: the block after the `+0xb8` table (`(H+10)(W+6)` dwords); the last-row read of `FUN_00417f31` for panel column `W+3`/`W+4` (INFERRED skipped, result `H+4`).
+2. (answered as far as a static read can) `FUN_00582a10` is the CRT `malloc` wrapper (CONFIRMED: it only calls `FUN_00582a30(size, DAT_006cc42c)`, the same call that sizes the text buffers in `FUN_004741ad`); the one-entry read past the `+0xb8` table at the last row of `FUN_00417f31` hits the next CRT heap block's header, whose value depends on the run-time heap, so no static answer exists. DECISION: skipped (result `H + 4`, as built); stays in VERIFY IN GAME item 4.
 
 ## 10. Corrections to the existing docs (applied)
 

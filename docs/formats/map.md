@@ -821,6 +821,5 @@ client's CRT `rand`). Music playback itself: out of the engine's scope for now.
 - Part 5: (the `behaviour` bits 1, 2, 4 are answered: quest-target flags of `FUN_005303ed`, [items 14](../data/items.md#14-quests-and-the-item-upgrade-message-0x38)).
   Answered in [items](../data/items.md): gold pickup (hero `+0x3c`, never `Player.money`, §12), `+0x1c` = price,
   the `(41, v)` remap to `0x31` (= 49 `damageBonus`; a pair cannot carry castSpell).
-- Section 12: the reader of the next-theme global `0x5f1a08` (the music player) and the callers of
-  `FUN_004754e9` (`0x40bd8b`, `0x492688`: camera move?).
+- (Section 12: answered in [sound §5](sound.md#5-music-confirmed-unless-noted).)
 - Section 11 lists A / B (multiplayer inns and shops): what the copied fields mean (none in the campaign).

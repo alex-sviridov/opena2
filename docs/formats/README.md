@@ -21,6 +21,7 @@ file) or INFERRED, with the routines they came from.
 | `.alm` maps: container, General block (header), Tiles/Altitudes/Objects layers, heights and derived passability, objects and structures | [map.md](map.md) | CONFIRMED header, terrain, heights, passability inputs, objects (section 3), structures (section 4, footprints, draw order), players, units, item groups and records (sections 5, 6, 8, 9; part 5) (all 46 campaign maps); scenario sections 7 (triggers), 10 (repop), 11 (inns, shops, signposts), 12 (music zones), part 6 |
 | Paper doll: inventory figure layer order | [paperdoll.md](paperdoll.md) | CONFIRMED |
 | `fontN.dat` + `.16`/`.16a` fonts, `~` hotkeys | [fonts.md](fonts.md) | CONFIRMED, all 4 fonts |
+| `main/text/*.txt`: line lists and `#key` sections, loaders | [text.md](text.md) | CONFIRMED loaders, measured on every file |
 | `.reg` registry | [reg.md](reg.md) | CONFIRMED, all 17 files |
 | `.a2c` characters, `famehall.dat`, `game%d.sav` saved games (client `.reg` tree, Scenario.dll block, server stream head) | [saves.md](saves.md) | CONFIRMED in the exe (readers and writers); `famehall.dat` decodes exactly; no `.a2c` / `.sav` in the install (synthetic tests) |
 | Sound and music: RIFF `.wav` PCM / MS ADPCM, `sfx.reg` id table, hero banks, speech names, music playlists (`allods2/formats/sound.py`, `soundtable.py`) | [sound.md](sound.md) | CONFIRMED, all 1,599 files decode exactly; engine side read with REA |

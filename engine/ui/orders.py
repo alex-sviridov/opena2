@@ -4,7 +4,7 @@ clicks, hotkeys and minimap clicks into commands.  The pending target mode is `v
 A left release with a click on a non-empty selection dispatches on the cursor chosen at the release (R 1.2);
 the pending mode is reset after every such dispatch, also when nothing was ordered."""
 
-from engine.sim import AttackUnit, CastScroll, CastSpell, Guard, MoveUnits, PickAll, PickUp, Retreat, SelectUnits, SetAutoSpell, SetFormation, StandStill, Stop, Swarm, UseStructure
+from engine.sim import AttackUnit, CastScroll, CastSpell, Defend, Guard, MoveUnits, PickAll, PickUp, Retreat, SelectUnits, SetAutoSpell, SetFormation, StandStill, Stop, Swarm, UseStructure
 from allods2.text import decode_text
 
 from . import spellbook
@@ -226,7 +226,8 @@ class OrderInput:
             cmd = PickUp(self.player_id, sel[-1:], cell)
         elif cursor is S.TOWN and self.state_fn() == "own" and sel and isinstance(hover_unit, int) and not isinstance(hover_unit, bool):
             cmd = UseStructure(self.player_id, sel[-1:], hover_unit)     # cmd 0x24 on the hovered usable structure (FUN_0041a0b5)
-        # patrol, defend: no order yet
+        elif cursor is S.DEFEND and self.state_fn() == "own" and sel and isinstance(hover_unit, int) and not isinstance(hover_unit, bool):
+            cmd = Defend(self.player_id, sel, hover_unit)       # cmd 0x1b on the hovered unit (FUN_00418fc1); patrol (mode 8) is unreachable in the exe
         self.pending = 0
         return "order", cmd
 

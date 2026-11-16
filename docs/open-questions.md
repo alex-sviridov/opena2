@@ -14,8 +14,8 @@ from both places when answered).
 
 ## Combat and death
 
-- Sound ([sound](formats/sound.md#open-questions)): the unreferenced / missing speech names (59 expected names without a file, 90 files the rule never produces), the zone theme draw `rand(3)` range, the host window of the `0x467` track-change message.
-- Audio K11 ([audio](engine/audio.md#open-questions), starting routines `FUN_0041da16`, `FUN_0041b311`): what `view+0x1b8` bits 1 / 0x10 and `view+0x188` are (the three selection arrays of the order voice); the `0xb9` diplomacy line and the cheat-code activation / other codes (`message` sub 5 / 6); by ear: the DirectSound pan law and the 74 % default against the real mixer, the exact gapless music switch.
+- Sound ([sound](formats/sound.md#open-questions)): the host window of the `0x467` track-change message.
+- Audio K11 ([audio](engine/audio.md#open-questions), starting routines `FUN_0041da16`, `FUN_0041b311`): the `0xb9` diplomacy line and the cheat-code activation / other codes (`message` sub 5 / 6); by ear: the DirectSound pan law and the 74 % default against the real mixer, the exact gapless music switch.
 
 ## Campaign
 
@@ -43,8 +43,8 @@ from both places when answered).
 
 ## Movement and orders
 
-- Player commands `0x1b` (follow / defend) and `0x1d` (patrol), use `0x24`, town: simulation side built ([ai §14.2](engine/ai.md#142-the-unit-orders-of-the-scripted-sub-commands-10-11-14-15-confirmed)), no engine command or UI issue yet (the item commands `0x21` pickup, `0x22` move item, `0x23` drop gold are built: `PickUp`, `MoveItem`, `DropGold`; the pickup click issues `PickUp` (K5, [items](engine/items.md)); the pack window issues the others); the squad voice; the consolidated VERIFY IN GAME list. [simulation](engine/simulation.md#open-questions), [simulation §9](engine/simulation.md#9-handoff-to-combat-phase-i)
-- Click to move: heap block after the `+0xb8` table (`FUN_00582a10`; last-row read of `FUN_00417f31`); the per-order voice slots. [research §9](engine/click-to-move-research.md#9-open-questions)
+- Player commands: built (`0x1b` defend, `0x24` use, `0x1f` cast at a cell; patrol `0x1d` is unreachable from the exe's UI); left: the consolidated VERIFY IN GAME list. [simulation](engine/simulation.md#open-questions), [simulation §9](engine/simulation.md#9-handoff-to-combat-phase-i)
+- Click to move: none open (the heap read is a DECISION, [research §9](engine/click-to-move-research.md#9-open-questions); the voice slots are built in K11).
 
 ## Interface
 
@@ -62,12 +62,11 @@ from both places when answered).
 - K9 drawing (arrows, status effects, flights, Teleport, the lens: built, CONFIRMED), leftovers in [rendering](engine/rendering.md#open-questions): a move / turn message arriving during a cast or attack animation replaces it (CONFIRMED: `0x6b` / `0x6d` start unconditionally), so the ShootDelay event would not fire (not modelled; the busy test of attack / shoot / cast and the busy clock are built and answered), and the by-eye VERIFY IN GAME list of [Arrows and shots](engine/rendering.md#arrows-and-shots-k9) (not compared yet).
 - (answered) Unit flag `+0x1b8 & 0x80` at the mission start: `FUN_0052be01` sends nothing, see [rendering](engine/rendering.md#open-questions).
 - Renderer speed: the densest 1024x768 view is now ~19.5 ms mean (terrain layer cache and per-object item memo; was 26.5), still 11 ms, scrolling ~26 ms; shadow batching was measured and gives nothing (cost is per covered pixel, overlapping pairs). A static-scene cache is left. [architecture](engine/architecture.md#open-questions)
-- Who deletes a structure object in single player (the unregister `FUN_005200bd` is its destructor; the engine never removes one, so the cell-clearing quirk is not modelled). Starting point: the vtable slot holding the deleting destructors (`0x5d12ac`, `0x5d12ec`). [architecture](engine/architecture.md#open-questions)
+- Who deletes a structure object in single player (the unregister `FUN_005200bd` is its destructor; the engine never removes one, so the cell-clearing quirk is not modelled). Narrowed: the deleting destructors `0x543630` / `0x543660` (slot 1 of vtables `0x5d12a8` / `0x5d12e8`) are only called virtually, hundreds of shared call sites; needs a run. [architecture](engine/architecture.md#open-questions)
 
 ## Formats and not started
 
 - Section 12 music: answered in [sound §5](formats/sound.md#5-music-confirmed-unless-noted) (`0x4754e9` picks the nearest zone and writes `0x5f1a08`); left: nothing for the music (never reset after use, sound §5); section 11 inn / shop fields (multiplayer only). [map](formats/map.md#open-questions)
-- Text conventions of `main/text/*.txt` (line lists, `#key` sections, `mission%d.txt`). [inventory §6](inventory.md#6-plan-custom-formats-to-reverse-in-order)
 
 ## Saves
 
@@ -81,5 +80,5 @@ from both places when answered).
 ## Structures
 
 - Using a structure ([structures](engine/structures.md#open-questions)): verify in game the use-walk stop cells, a far use click failing (structures 2.1, answered in the exe) and that the hovered well's panel redraws as the charges fall (8.1).
-- Cutscenes, m1 ([cutscenes](engine/cutscenes.md#open-questions), [REA notes](engine/cutscenes-rea.md#open-questions)): the audio channel order / cache markers are checked by stream ends only; the list's double click / wheel (`0x5cffc8`), the 640x360 blit rectangle, frame dropping in `smackw32.dll`, message `0x436`, town 2 / 3 leave codes; VERIFY IN GAME: [cutscenes 7](engine/cutscenes.md#7-verify-in-game-nothing-watched-yet).
+- Cutscenes, m1 ([cutscenes](engine/cutscenes.md#open-questions), [REA notes](engine/cutscenes-rea.md#open-questions)): the audio channel order / cache markers are checked by stream ends only; the list's double click / wheel (`0x5cffc8`), the 640x360 blit rectangle, frame dropping in `smackw32.dll`; VERIFY IN GAME: [cutscenes 7](engine/cutscenes.md#7-verify-in-game-nothing-watched-yet).
 - Shop, second round ([shop-rea2](engine/shop-rea2.md#open-questions)): the writer of the `0x80` identify box (INFERRED dead), the Kaarg fire bitmap order (lite / burn / cicle INFERRED); VERIFY IN GAME: the human shelf clips, idle and Yes / No clips, the Kaarg brazier, price numbers.

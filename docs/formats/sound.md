@@ -230,8 +230,9 @@ is **not read by the game** (no such string in `allods2.exe`); the map editor re
 
 ## Open questions
 
-- Whether the zone theme draw `rand(3)` (`0x4756a3`) yields 0..2 or 0..3 (a fourth theme slot at `zone+0x18` may never be picked): `FUN_0051fa25(n)` is inclusive elsewhere (0..n), so 0..3 is expected (INFERRED).
-- The 59 dialogue names with no file and the files the rule never produces (§4.3).
+(Answered: the zone theme draw `rand(3)` at `0x4756a3` is `FUN_0051fa25(3)` = 0..3 inclusive (CONFIRMED, [unit-struct](../engine/unit-struct.md) rand definition): all four theme slots `zone+0xc .. +0x18` can be picked, and the loop `0x475691`-`0x4756bc` redraws while the chosen slot is -1, so an empty slot is never played; the zone must hold at least one theme or the loop would not end.)
+
+(Answered as data, not a routine: the exe voices a page only if the built file exists, so the 59 names without a file are silent (CONFIRMED rule, §4.3), and the 90 files the rule never produces belong to keys / tags the install's texts do not use (INFERRED: unused or cut content); nothing to build.)
 - The host window of the `0x467` track-change message (`0x43d8a4`) and the exact screen of `0x48bbc0` (INFERRED town; `0x48b419` = the world map, answered).
 
 Answered in K11 round 2: `0x5f1a04` is the registry value `Using VxD` = the cut-scene "seen" bit mask ([cutscenes-rea 4](../engine/cutscenes-rea.md)); `0x6226a8` (the 16-tick music zone roll test

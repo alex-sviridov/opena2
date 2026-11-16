@@ -475,3 +475,14 @@ def test_level_up_line():
     w.fight_log = [LevelUp(3, 7, 1, 2)]                                 # another player's hero: nothing
     m2 = MessageLine()
     assert not level_up_messages(w, ME, m2, 0, t) and m2.current(0) is None
+
+
+def test_defend_cursor_orders_the_selection_to_defend_the_unit_under_the_pointer():
+    from engine.sim import Defend
+    oi, box = make()
+    oi.pending = 4
+    assert oi.release(S.DEFEND, (20, 30), 0x6007) == ("order", Defend(ME, (10, 11), 0x6007))
+    assert oi.pending == 0
+    assert oi.release(S.DEFEND, (20, 30), False) == ("order", None)       # nothing under the pointer: nothing sent (FUN_004175c7: `9a8 != 0`)
+    box["state"] = "foreign"
+    assert oi.release(S.DEFEND, (20, 30), 0x6007) == ("order", None)

@@ -216,3 +216,12 @@ def test_revive_snaps_the_unit_to_the_cell_centre():
     m.sub_x, m.sub_y = 10, 200
     spells.revive(w, m)
     assert (m.sub_x, m.sub_y) == (128, 128)
+
+
+def test_the_player_command_0x1b_gives_the_group_the_defend_order_on_the_unit_with_the_default_range():
+    from engine.sim import Defend
+    w, a, b, g = two()
+    orders.orders_system(w, [Defend(1, (a.id,), b.id)])
+    assert (a.order, a.leader, a.follow_range) == (8, b.id, 3)
+    orders.orders_system(w, [Defend(1, (a.id,), 0x7777)])   # an unknown target: nothing happens, the order stays
+    assert a.order == 8 and a.leader == b.id

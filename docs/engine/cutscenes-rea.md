@@ -69,9 +69,9 @@ Corrections to shell.md 2 / 6 are in section 7.
 |---|---|---|
 | Start-up | `0x48f919(0)` after the publisher + nival chain returned 1 and none of the three skip switches is present | `0x480c8d` (`0x4818f1` region) |
 | Mission victory, message `0x41d` | `code` = out-parameter of **`ScenarioLeaveLocation(&code)`** (Scenario.dll ordinal 6, pointer `0x627160`); played when **`code >= 0`** (`cmp [..], 0; jl`), after `SetPartyPoint`, the recruit and before the ending test `0x493da0` | `0x486c40-0x486cc8` |
-| **Town leave, message `0x42d`** (NOT "world-map entry"): only when **`GetCurrentLocation` is a town (`0x473a20 == 2`)**: `SetPartyPoint`, `ScenarioLeaveLocation(&code)`, **`code >= 0` -> `0x48f919(code)`**, then if the town id is 1 `window+0x1b0 := 1` (the intro walk) | `0x487d34-0x487dd5` (call at `0x487daf`) |
+| **Town leave, message `0x42d`** (NOT "world-map entry"): only when **`GetCurrentLocation` is a town (`0x473a20 == 2`)**: `SetPartyPoint`, `ScenarioLeaveLocation(&code)`, **`code >= 0` -> `0x48f919(code)`** (answered: `ScenarioLeaveLocation` writes a code only for the mission cases of [triggers 11](triggers.md), a town leave leaves `code = -1`, so towns 2 and 3 play no video: CONFIRMED from the DLL routine, triggers.md), then if the town id is 1 `window+0x1b0 := 1` (the intro walk) | `0x487d34-0x487dd5` (call at `0x487daf`) |
 | Cut Scenes list Ok | `0x48f919(selected row)` (section 5) | `0x48a7fb` |
-| Message `0x436` | `0x48f919(0)` then `WM_CLOSE`: posted from one switch case at `0x485f5a` (a network-side path, not decoded; INFERRED out of scope) | `0x4878e9-0x4878f1` |
+| Message `0x436` | `0x48f919(0)` then `WM_CLOSE`: posted from one switch case at `0x485f5a` of `FUN_004852d8`: CONFIRMED the case of message `0x432` (byte map `0x488821`, table `0x488731`, entry `0x488791`); no code pushes or loads the constant `0x432` (objdump grep and byte search find none), so only an external post could reach it: INFERRED dead in single player, nothing to build | `0x4878e9-0x4878f1` |
 
 Which codes the DLL returns: [triggers 11.5](triggers.md#115-end-of-mission-flow) (10 -> 1, 30 -> 2, 70 / 80 -> 3 for the second of the pair, 110 -> 4 or 5). The town-leave site gets whatever the DLL returns for a town (no town case has been read there; INFERRED: always -1).
 
@@ -89,5 +89,3 @@ Which codes the DLL returns: [triggers 11.5](triggers.md#115-end-of-mission-flow
 - Exact on-screen blit destination of the 640x360 clips (setters decoded; the `SmackBlit` argument registers `+0x358/0x35c` -> `x, y` mapping inferred): compare one real frame against the picture.
 - Frame dropping inside `smackw32.dll` when late (the DLL is packed; the exe never skips).
 - Music after a video from the Cut Scenes list: nothing restarts it until the menu `0x421` (INFERRED from the call graph); check in a real game.
-- What the town-leave `ScenarioLeaveLocation(&code)` returns for towns 2 and 3 (any chapter video there?).
-- Source of message `0x436` (play intro + close).
