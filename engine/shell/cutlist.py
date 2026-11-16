@@ -74,7 +74,7 @@ class CutList(Screen):
             self.hot = hit
             if hit is not None and hit == down:
                 return self._ok() if hit == 0 else "menu"
-        elif isinstance(ev, Wheel):
+        elif isinstance(ev, Wheel):                             # DECISION: the exe has no wheel code (no `0x20a` anywhere); kept as a modern convenience
             self.list.scroll(-1 if ev.dy > 0 else 1)
         elif isinstance(ev, Key) and not ev.ctrl:
             if ev.name == "escape":
@@ -84,6 +84,8 @@ class CutList(Screen):
             if ev.name in ("up", "down") and self.rows:
                 self.list.sel = max(0, min(self.list.sel + (1 if ev.name == "down" else -1), len(self.rows) - 1))
                 self.list.show()
+            elif ev.name in ("pageup", "pagedown") and self.rows:      # list slot `0x4d8fdb`: PageUp / PageDown / Up / Down only; Home / End / Left / Right do nothing
+                (self.list.page_up if ev.name == "pageup" else self.list.page_down)()
         return None
 
     # -- drawing -------------------------------------------------------------------------------------------------------------------

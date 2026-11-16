@@ -233,7 +233,9 @@ is **not read by the game** (no such string in `allods2.exe`); the map editor re
 (Answered: the zone theme draw `rand(3)` at `0x4756a3` is `FUN_0051fa25(3)` = 0..3 inclusive (CONFIRMED, [unit-struct](../engine/unit-struct.md) rand definition): all four theme slots `zone+0xc .. +0x18` can be picked, and the loop `0x475691`-`0x4756bc` redraws while the chosen slot is -1, so an empty slot is never played; the zone must hold at least one theme or the loop would not end.)
 
 (Answered as data, not a routine: the exe voices a page only if the built file exists, so the 59 names without a file are silent (CONFIRMED rule, §4.3), and the 90 files the rule never produces belong to keys / tags the install's texts do not use (INFERRED: unused or cut content); nothing to build.)
-- The host window of the `0x467` track-change message (`0x43d8a4`) and the exact screen of `0x48bbc0` (INFERRED town; `0x48b419` = the world map, answered).
+- The exact screen of `0x48bbc0` (INFERRED town; `0x48b419` = the world map, answered).
+
+(Answered: the `0x467` message is a `PostMessageA` from the music stream's fill step (`0x45939b`, only while the player's `+0x68` flag is set; arguments wParam = player `+0x58`, lParam = `0x45b540()`) to the **main window** `[0x61f66c]`; the window procedure hands it to the top window. The only window class with a case for it is Sound Options (`0x43d8a4`, jump-table case 0 of messages `0x467`-`0x478`): it returns 1 and does nothing, every other window takes the default. CONFIRMED; nothing to build.)
 
 Answered in K11 round 2: `0x5f1a04` is the registry value `Using VxD` = the cut-scene "seen" bit mask ([cutscenes-rea 4](../engine/cutscenes-rea.md)); `0x6226a8` (the 16-tick music zone roll test
 `0x40bd5c`) and `0x6226ac` (set by the options handler `0x43d97b` / cleared at `0x43d967`) are the music-on and sound state flags; the unchanged-HP blow

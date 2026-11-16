@@ -15,7 +15,7 @@ from .text import draw_text_exact
 
 KEY_NAMES = {pygame.K_ESCAPE: "escape", pygame.K_RETURN: "return", pygame.K_KP_ENTER: "return", pygame.K_TAB: "tab",
              pygame.K_LEFT: "left", pygame.K_RIGHT: "right", pygame.K_UP: "up", pygame.K_DOWN: "down", pygame.K_SPACE: "space",
-             pygame.K_BACKSPACE: "backspace"}
+             pygame.K_BACKSPACE: "backspace", pygame.K_PAGEUP: "pageup", pygame.K_PAGEDOWN: "pagedown"}
 
 
 def key_event(ev):

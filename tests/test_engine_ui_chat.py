@@ -10,7 +10,7 @@ from test_engine_death import world
 
 def make(size=(800, 600)):
     w = world()
-    main = MainText([""] * 0xE1 + ["Player", "has succesfully entered a cheat code!"])
+    main = MainText([""] * 0xDD + ["Player", "has decided to become super-lame and cheat!", "", "", "Player", "has succesfully entered a cheat code!"])
     return GameUi(Layout.for_size(*size), w, 1, main, MainText(), MainText()), w
 
 
@@ -106,3 +106,19 @@ def test_chat_line_uses_the_channel_slot_with_alternative_message_colours():
     type_text(ui, "hi")
     ui.chat_key("return", "", 7)
     assert ui.messages.queue[-1][2] == "yellow"
+
+
+def test_cipher_code_switches_the_cheats_on():
+    """`FUN_00567618` + ctor `0x5674dc`: the one cipher row decodes to the first 7 characters `##Cowar`; it sets the cheat byte 0x6a (sub 5 line); other '#' lines are silent at level 0."""
+    ui, w = make()
+    ui.key("return")
+    type_text(ui, "##Cow")
+    ui.chat_key("return", "", 0)
+    assert ui.cheat_level == 0 and ui.messages.queue == []
+    ui.key("return")
+    type_text(ui, "##Coward")
+    ui.chat_key("return", "", 0)
+    assert ui.cheat_level == 0x6A
+    (text, ms, _), = ui.messages.queue
+    assert text == "Player %s has decided to become super-lame and cheat!" % w.players[1].name and ms == 5000
+    assert ui.take_sounds() == [(15, 0x64)]

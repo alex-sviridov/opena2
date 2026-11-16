@@ -14,8 +14,7 @@ from both places when answered).
 
 ## Combat and death
 
-- Sound ([sound](formats/sound.md#open-questions)): the host window of the `0x467` track-change message.
-- Audio K11 ([audio](engine/audio.md#open-questions), starting routines `FUN_0041da16`, `FUN_0041b311`): the `0xb9` diplomacy line and the cheat-code activation / other codes (`message` sub 5 / 6); by ear: the DirectSound pan law and the 74 % default against the real mixer, the exact gapless music switch.
+- Audio K11 ([audio](engine/audio.md#open-questions), starting routines `FUN_0041da16`, `FUN_0041b311`): the `0xb9` diplomacy line (needs the run-time diplomacy matrix); by ear: the DirectSound pan law and the 74 % default against the real mixer, the exact gapless music switch.
 
 ## Campaign
 
@@ -62,7 +61,7 @@ from both places when answered).
 - K9 drawing (arrows, status effects, flights, Teleport, the lens: built, CONFIRMED), leftovers in [rendering](engine/rendering.md#open-questions): a move / turn message arriving during a cast or attack animation replaces it (CONFIRMED: `0x6b` / `0x6d` start unconditionally), so the ShootDelay event would not fire (not modelled; the busy test of attack / shoot / cast and the busy clock are built and answered), and the by-eye VERIFY IN GAME list of [Arrows and shots](engine/rendering.md#arrows-and-shots-k9) (not compared yet).
 - (answered) Unit flag `+0x1b8 & 0x80` at the mission start: `FUN_0052be01` sends nothing, see [rendering](engine/rendering.md#open-questions).
 - Renderer speed: the densest 1024x768 view is now ~19.5 ms mean (terrain layer cache and per-object item memo; was 26.5), still 11 ms, scrolling ~26 ms; shadow batching was measured and gives nothing (cost is per covered pixel, overlapping pairs). A static-scene cache is left. [architecture](engine/architecture.md#open-questions)
-- Who deletes a structure object in single player (the unregister `FUN_005200bd` is its destructor; the engine never removes one, so the cell-clearing quirk is not modelled). Narrowed: the deleting destructors `0x543630` / `0x543660` (slot 1 of vtables `0x5d12a8` / `0x5d12e8`) are only called virtually, hundreds of shared call sites; needs a run. [architecture](engine/architecture.md#open-questions)
+- Who deletes a structure object in single player (the unregister `FUN_005200bd` is its destructor; the engine never removes one, so the cell-clearing quirk is not modelled). Narrowed: the deleting destructors `0x543630` / `0x543660` (slot 1 of vtables `0x5d12a8` / `0x5d12e8`) are only called virtually, hundreds of shared call sites; needs a run; the creature loop `FUN_0052b459` is units only (corpse list, no delete). [architecture](engine/architecture.md#open-questions)
 
 ## Formats and not started
 
@@ -80,5 +79,5 @@ from both places when answered).
 ## Structures
 
 - Using a structure ([structures](engine/structures.md#open-questions)): verify in game the use-walk stop cells, a far use click failing (structures 2.1, answered in the exe) and that the hovered well's panel redraws as the charges fall (8.1).
-- Cutscenes, m1 ([cutscenes](engine/cutscenes.md#open-questions), [REA notes](engine/cutscenes-rea.md#open-questions)): the audio channel order / cache markers are checked by stream ends only; the list's double click / wheel (`0x5cffc8`), the 640x360 blit rectangle, frame dropping in `smackw32.dll`; VERIFY IN GAME: [cutscenes 7](engine/cutscenes.md#7-verify-in-game-nothing-watched-yet).
+- Cutscenes, m1 ([cutscenes](engine/cutscenes.md#open-questions), [REA notes](engine/cutscenes-rea.md#open-questions)): the audio channel order / cache markers are checked by stream ends only (the DLL is packed); the 640x360 blit's source x / y (needs eyes); frame dropping in `smackw32.dll`; VERIFY IN GAME: [cutscenes 7](engine/cutscenes.md#7-verify-in-game-nothing-watched-yet).
 - Shop, second round ([shop-rea2](engine/shop-rea2.md#open-questions)): the writer of the `0x80` identify box (INFERRED dead), the Kaarg fire bitmap order (lite / burn / cicle INFERRED); VERIFY IN GAME: the human shelf clips, idle and Yes / No clips, the Kaarg brazier, price numbers.

@@ -160,6 +160,17 @@ class SlotList:
         elif self.sel >= self.top + self.visible:
             self.top = self.sel - self.visible + 1
 
+    def page_up(self):
+        """Key PageUp (`0x4d86c6`): the selection goes to the top visible row, or a page above it when it is already there."""
+        self.sel = max(0, self.top if self.sel != self.top else self.top - self.visible)
+        self.show()
+
+    def page_down(self):
+        """Key PageDown (`0x4d8720`): the selection goes to the bottom visible row, or a page below it when it is already there."""
+        bottom = self.top + self.visible - 1
+        self.sel = max(0, min(bottom if self.sel != bottom else bottom + self.visible, len(self.rows) - 1))
+        self.show()
+
     def scroll(self, d):
         self.top = max(0, min(self.top + d, max(0, len(self.rows) - self.visible)))
 

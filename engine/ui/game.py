@@ -22,6 +22,7 @@ QUIT_REASONS = ("menu", "windows", "victory", "defeat", "load")
 S_CLICK00, S_CLICK01, S_IBOOK, S_CLICK04, S_MESSAGE, S_COMPLETE, S_FAILED = 1, 2, 7, 8, 15, 14, 16
 UI_PRIORITY, MESSAGE_PRIORITY = 0xDC, 0x64
 CHAPTER_VAR, CHAPTER_END = 0x300, 0x78       # the scenario chapter variable and the value from which a won mission skips the complete window (`FUN_00493da0`)
+CHEAT_CODE_PREFIX, CHEAT_ON_LEVEL, CHEAT_ON_TEXT = "##Cowar", 0x6A, 0xDD     # the activation code (ctor `0x5674dc`, check `FUN_00567618`), `FUN_0053ddb0(0x6a)`, sub 5 lines 0xdd / 0xde
 CHEAT_TEXT, CHEAT_MS = 0xE1, 5000      # "Player" / "has succesfully entered a cheat code!" (main.txt lines 0xe1, 0xe2), `push 0x1388` at 0x40ea03
 
 
@@ -232,6 +233,15 @@ class GameUi:
     def send_chat(self, text, now_ms):
         """The single-player path of message `0x91` (`FUN_0041ace5` -> local channel -> server `FUN_004f515d`): `#` = command, else the echo line."""
         if text.startswith("#"):
+            if self.cheat_level <= CHEAT_LEVEL:
+                # `FUN_004f3d68` with `FUN_0053dd90` false: the only thing a '#' line can do is the cipher code (`FUN_00567618` == 1: the first 7 characters equal);
+                # it sets the cheat byte to 0x6a and posts sub 5 (line 0xdd + name + line 0xde, 5000 ms, `message` sound); anything else is silent
+                if text.startswith(CHEAT_CODE_PREFIX):
+                    self.cheat_level = CHEAT_ON_LEVEL
+                    p = self.world.players[self.player_id]
+                    self.messages.show(" ".join((self.main_text(CHEAT_ON_TEXT).strip(), p.name, self.main_text(CHEAT_ON_TEXT + 1).strip())), now_ms, CHEAT_MS)
+                    self.sound(S_MESSAGE, MESSAGE_PRIORITY)
+                return
             value = CHEAT_COMMANDS.get(text)
             if value is not None and self.cheat_level > CHEAT_LEVEL and self.world.fog is not None:
                 from engine.sim import vision

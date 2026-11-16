@@ -139,7 +139,7 @@ files by path (`FUN_004384f0`, [town-scenes](town-scenes.md)). So the table's id
 **The `message` (15) sites in single player (CONFIRMED by sender and handler):** all `0x92` sites test `client+0x404 & 1` (a mission) and play at priority 100.
 Fire: sub 2 (skill-up: built), **sub 5 / 6 / 7** (the typed cheat codes of the chat line, `FUN_004f3d68`: 5 `main.txt[0xde]` "Player X has decided to become
 super-lame and cheat!", 6 `[0xe0]` "... is grasping at straws! This is not a code...try again.", 7 `[0xe2]` "... has succesfully entered a cheat code!"; the engine builds
-sub 7 for `#show map` / `#hide map`: line (5000 ms) + sound; the cheat activation and the other codes are not modelled), `0x91` (chat echo: built). Never in single
+sub 7 for `#show map` / `#hide map`: line (5000 ms) + sound; sub 5 is built too: the typed cipher code sets the cheat level and posts it, [ui-layout 11.5](ui-layout.md); the other `#` commands are not modelled), `0x91` (chat echo: built). Never in single
 player: sub 8 (an "Enemy N Mercenary" network line, `0x4f70e2`), sub `0x10` / `0x20` / `0x40` / `0x80` (quest events: the queue `0x68d360` is fed by the
 multiplayer-only quest code `0x52f8e2`, [items 14](../data/items.md#14-quests-and-the-item-upgrade-message-0x38)), `0x93` (sent by `FUN_00505697` only inside the
 `server+0x74 != 0` branch of the chat handler and by the "kicked from server" client routine `0x492a3a`: multiplayer). `0xb9` (the "Diplomacy changed: A > B" line, three
@@ -344,4 +344,4 @@ Files: `engine/backend_pygame/audio.py` (`NullAudio`, `Audio`, `MusicPlayer`, `w
 ## Open questions
 
 - Gapless track change at a track end (the next track is loaded on the end event); whether `Channel.set_volume(l, r)` of SDL_mixer reproduces DirectSound's pan law at the screen edge (both by ear).
-- The `0xb9` "Diplomacy changed" line and the cheat-code activation / other cheat codes (`message` sub 5, 6): they need the diplomacy matrix and the cheat-code parser.
+- The `0xb9` "Diplomacy changed" line: it needs the diplomacy matrix (relation words changing at run time) and script instant 10, both unbuilt. Answered and built this round: the cheat-code activation (sub 5; the one cipher code, [ui-layout 11.5](ui-layout.md)); sub 6 belongs to failed `#` commands (INFERRED), never to the code branch.

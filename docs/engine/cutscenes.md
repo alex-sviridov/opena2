@@ -56,7 +56,7 @@ Engine flow: `TownCore` events `("cutscene", code)` -> `Shell.pending_cuts` (`dr
 
 ## 5. The CUT SCENES window (`engine/shell/cutlist.py`, REA 5)
 
-Main menu button 2 (enabled whenever videos play; the exe enables it by the CD / registry check only). A 392x360 dialog centred over the menu picture: heading `dialogs 0x99` ("View Cutscenes"), list = one row per set bit of the mask in ascending order titled by `cutscene.txt` line = bit number, Ok at `w/7 .. 3w/7` and Cancel at `4w/7 .. 6w/7` (y `h-0x3c`, height 24). Row 0 is selected at first, then the last Ok's row. Ok plays a video and re-opens the list, Cancel / Esc = the menu. **QUIRK kept:** Ok passes the **row index**, not the bit number (`ROW_IS_CODE`), so with the sparse mask of the druids' ending (bits 0-3, 5) row 4 replays the knights. Enter = Ok, Up / Down move the selection (INFERRED: the list class's key slots are not decoded), the wheel scrolls.
+Main menu button 2 (enabled whenever videos play; the exe enables it by the CD / registry check only). A 392x360 dialog centred over the menu picture: heading `dialogs 0x99` ("View Cutscenes"), list = one row per set bit of the mask in ascending order titled by `cutscene.txt` line = bit number, Ok at `w/7 .. 3w/7` and Cancel at `4w/7 .. 6w/7` (y `h-0x3c`, height 24). Row 0 is selected at first, then the last Ok's row. Ok plays a video and re-opens the list, Cancel / Esc = the menu. **QUIRK kept:** Ok passes the **row index**, not the bit number (`ROW_IS_CODE`), so with the sparse mask of the druids' ending (bits 0-3, 5) row 4 replays the knights. Up / Down / PageUp / PageDown move the selection (CONFIRMED, list slot `0x4d8fdb`, [REA 5](cutscenes-rea.md)); a double click only selects (the `0x444` it posts has no handler here); Enter = Ok (INFERRED: not a list key, so the default button); the exe has no wheel code, the engine's wheel scroll is a DECISION (convenience).
 
 ## 6. Decisions
 
@@ -74,5 +74,5 @@ Main menu button 2 (enabled whenever videos play; the exe enables it by the CD /
 
 ## Open questions
 
-- Audio details not checked against the DLL: the channel order of stereo, the cache rule of rarely used markers (frames decode to the exact stream end, which a wrong rule would break).
-- The rest of [cutscenes-rea.md "Open questions"](cutscenes-rea.md): list double click / wheel, the exact 640x360 blit rectangle, frame dropping in `smackw32.dll`.
+- Audio details cannot be checked against the exe or the DLL (`smackw32.dll` is packed and the exe only hands it the file): the channel order of stereo (left / right, VERIFY BY EAR) and the cache rule of rarely used markers (frames decode to the exact stream end, which a wrong rule would break: that check stands).
+- The rest of [cutscenes-rea.md "Open questions"](cutscenes-rea.md): the 640x360 blit's `srcx` / `srcy` (needs eyes) and frame dropping in `smackw32.dll` (not answerable from the exe).

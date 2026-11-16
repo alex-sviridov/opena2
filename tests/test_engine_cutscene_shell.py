@@ -194,3 +194,23 @@ def test_cut_scenes_stays_disabled_without_a_video_backend():
     sh = Shell(as_fs(INSTALL), (640, 480), Settings(), Services())
     sh.start("menu")
     assert not sh.screens["menu"].enabled(2)
+
+
+def test_list_page_keys_follow_the_exe_slots():
+    """`0x4d86c6` / `0x4d8720`: PageUp = the top visible row, else a page above; PageDown = the bottom visible row, else a page below (clamped)."""
+    from engine.shell.saveload import SlotList
+    lst = SlotList((0, 0, 100, 19 * 4), ["r%d" % i for i in range(20)])
+    assert lst.visible == 4
+    lst.page_down()
+    assert (lst.sel, lst.top) == (3, 0)
+    lst.page_down()
+    assert (lst.sel, lst.top) == (7, 4)
+    lst.sel, lst.top = 7, 4
+    lst.page_up()
+    assert (lst.sel, lst.top) == (4, 4)
+    lst.page_up()
+    assert (lst.sel, lst.top) == (0, 0)
+    lst.sel = 19
+    lst.show()
+    lst.page_down()
+    assert lst.sel == 19
