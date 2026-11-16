@@ -56,12 +56,8 @@ STEPS = {s.id: s for s in (
     Step("use_more", "Use a structure, the rest: signpost messages, wells, King's graves, altars (research of each class)", 2),
     Step("tilefx", "Cell effects for scripts: check 25 reads the cell layers, instants 29 / 30 set spell durations", 1, backlog=3),
     Step("draw", "Draw what is simulated: status effects of units, arrows of shooters", 2, backlog=2),
-    # the global steps, in the order docs/prototype.md argues for (dependencies, not cost): each later one needs the state the earlier one builds
-    # "campaign" (L1: new-game state, mission chain, roster carry-over, hero recruit, the Scenario.dll variables) is built: `engine/campaign.py`, FEATURES["campaign.spine"]
-    Step("shell", "Shell: start menu, character creation, options, in-game menu entries, the campaign in one window", 4, glob=True, backlog=4),
-    Step("town", "Town mode: world map, town scenes, hero screen (stats, skills, paper doll), item shops, inn", 6, glob=True, backlog=4),
-    Step("save", "Save / load: game%d.sav (or an own format, a decision) and the Save / Load / Delete windows", 3, glob=True, backlog=5),
-    Step("cutscenes", "Cutscenes: a Smacker decoder and the five scenario codes (intro, chapter ends)", 3, glob=True, backlog=4),
+    # the global steps are all built (L1 campaign, L2 shell, L3-L9 town, L10 save / load, m1-m3 cutscenes / credits / hall): `engine/campaign.py`,
+    # `engine/shell/`, `engine/town.py`, `engine/missionsave.py`, `engine/cutscene.py`; nothing global is left to order
 )}
 
 # Features that are not script kinds.  Per-map counts come from `scan`.

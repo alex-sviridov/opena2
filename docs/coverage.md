@@ -197,17 +197,13 @@ Steps the maps do not need to be completed but a finished game does; each touche
 
 | Step | Effort | Backlog item |
 |---|---|---|
-| `shell` Shell: start menu, character creation, options, in-game menu entries, the campaign in one window | 4 | 4 |
-| `town` Town mode: world map, town scenes, hero screen (stats, skills, paper doll), item shops, inn | 6 | 4 |
-| `save` Save / load: game%d.sav (or an own format, a decision) and the Save / Load / Delete windows | 3 | 5 |
-| `cutscenes` Cutscenes: a Smacker decoder and the five scenario codes (intro, chapter ends) | 3 | 4 |
 
 ### Smoke observations
 
 - no crashes.
 - script kinds the engine does not know (`not implemented`): none.
 - script no-ops the engine counted (`Script.unbuilt`): none; unbuilt spell releases: none.
-- the idle party (nothing ordered) is **lost** within 1600 ticks on maps 43, 60, 70, 92, 102, 110: a fresh level-1 party standing still; not checked against the original, not a blocker. A party levelled by the campaign's grind phase (`campaign --grind`, campaign.md 3.1) standing still is lost there too.
+- the idle party (nothing ordered) is **lost** within 1600 ticks on maps 43, 60, 70, 92, 102, 110: a fresh level-1 party standing still; not checked against the original, not a blocker.
 
 ### Proposed step order
 
@@ -215,12 +211,12 @@ First the steps that unblock maps (greedy: the next one completes the most block
 
 | # | Step | Effort | Maps newly playable | Playable after | Maps touched | Backlog item |
 |---|---|---|---|---|---|---|
-| 1 | `shell` Shell: start menu, character creation, options, in-game menu entries, the campaign in one window | 4 | - | 46 | 46 | 4 |
-| 2 | `town` Town mode: world map, town scenes, hero screen (stats, skills, paper doll), item shops, inn | 6 | - | 46 | 46 | 4 |
-| 3 | `save` Save / load: game%d.sav (or an own format, a decision) and the Save / Load / Delete windows | 3 | - | 46 | 46 | 5 |
-| 4 | `cutscenes` Cutscenes: a Smacker decoder and the five scenario codes (intro, chapter ends) | 3 | - | 46 | 46 | 4 |
 
 <!-- coverage:end -->
+
+**Status after L10 / m3 (2026-11-16).** The four global steps of the empty tables above (`shell`, `town`, `save`, `cutscenes`) are built and left `STEPS` in `engine/coverage.py`
+(shell L2, town L3-L9, save / load L10, cutscenes / credits / hall m1-m3); the sections below are the K12 re-plan as written then. What is open now is evidence, not code: the play-through of
+map 32, map 77's escort fight, the idle-lost maps against the original, and the "needs eyes / ears" lists (town.md 5, audio.md, cutscenes.md, save.md 10).
 
 ## Re-plan with the objective run (K12, 2026-11-10)
 

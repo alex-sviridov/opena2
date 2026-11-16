@@ -173,6 +173,7 @@ class TownScene(Screen):
         self.state, self.mask, self.real = None, TS.StandInMask(), False
         self.menu = self.options = None                     # the `0x41f` window / the Sound Options over it
         self.dialog = None                                  # the Save / Load window (L10d), over the scene with the menu gone
+        self.story = None                                   # the NPC story window (`storywin.StoryWindow`), modal over the scene
 
     @property
     def core(self):
@@ -182,10 +183,24 @@ class TownScene(Screen):
         core = self.core
         spec, self.mask, self.real = TS.load_scene(self.shell.fs, core.town or 1)
         self.state = TS.SceneState.build(spec, self.shell.rng, self.shell.scene_globals, var=core.camp.get)
-        self.menu = self.options = self.dialog = None
+        self.menu = self.options = self.dialog = self.story = None
         if self.shell.mouse is not None:
             self.state.hover(self._region(*self.shell.mouse))
         self._sounds()
+
+    def open_story(self, key):
+        """`FUN_0041d15e(key)`: the story window on the `town.txt` section, page 1 voiced at once; without the text file only the voice (`speak_town`) is left."""
+        from allods2.text import decode_text
+        from engine.ui.orders import MainText
+        from .storywin import StoryWindow
+        fs = self.shell.fs
+        try:
+            text = decode_text(fs.read(TS.TOWN_TEXT))
+            main = MainText.load(fs)
+        except (AttributeError, KeyError, OSError):
+            self.shell.speak_town(key)
+            return
+        self.story = StoryWindow(self.shell, text, key, main)
 
     def exit(self):
         """The scene's close hook `0x4caaed` (town-scenes 6): every slot is released (loops and one-shots cut), the window is hidden, the object stays."""
@@ -264,6 +279,11 @@ class TownScene(Screen):
         return None
 
     def event(self, ev):
+        if self.story is not None:
+            self.story.event(ev)
+            if self.story.closed:
+                self.story = None
+            return None
         if self.dialog is not None:
             return self._dialog_event(ev)
         if self.menu is not None:                           # a modal window: nothing reaches the scene
@@ -280,8 +300,8 @@ class TownScene(Screen):
             if out[0] == "menu":                            # region `0x10`: message `0x41f`
                 self.open_menu()
                 return None
-            if out[0] == "speech":                          # `FUN_0041d15e(key)`: the story window; page 1's voice is played (speak_town)
-                self.shell.speak_town(out[1])
+            if out[0] == "speech":                          # `FUN_0041d15e(key)`: the story window, page 1 voiced
+                self.open_story(out[1])
                 return None
             c = self.core
             if out[0] == "inn":
@@ -309,7 +329,9 @@ class TownScene(Screen):
                 ops += [Fill(ox + x, oy + y, w, h, (60, 50, 40) if self.state.region != region else (110, 90, 60)), Text(label, ox + x + w // 2, oy + y + h // 2, 1, "normal", 2 | 8, 1)]
         else:
             ops = ops_of(self.state.draw_ops(), ox, oy)
-        if self.dialog is not None:
+        if self.story is not None:
+            ops += self.story.ops()
+        elif self.dialog is not None:
             ops += self.dialog.scene_ops()
         elif self.menu is not None:
             ops += self.options.scene().ops if self.options is not None else self.menu.scene_ops()

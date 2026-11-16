@@ -39,7 +39,7 @@ from both places when answered).
 
 ## Town mode
 
-- Town scenes ([town-scenes 8](engine/town-scenes.md#8-open-questions), starting routine `0x41d15e` story window): the scene's NPC click still only voices page 1 (the dialogue window exists since L7: `engine.inn.Dialogue`, to be hosted by `TownScene`); whether the exe keeps the scene loop under the main menu after Exit to Main Menu (no close hook on that path).
+- Town scenes ([town-scenes 8](engine/town-scenes.md#8-open-questions), starting routine `0x41d15e` story window): the scene's NPC click opens the story window (`engine/shell/storywin.py`, page 1 voiced, Ok pages; speakers = roster heroes / dummy doll only, the scene has no person list); whether the exe keeps the scene loop under the main menu after Exit to Main Menu (no close hook on that path).
 
 - **Guessed for now (town.md 7), still to verify:** info panel position at 800x600 / 1024x768; `backinv*` colour meaning (which of g / b / s a cell takes); the map path-edge tracer (the shop's numbers, grid draw, shelf rects and prices are answered: town-shop 9).
 

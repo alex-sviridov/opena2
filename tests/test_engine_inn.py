@@ -624,3 +624,26 @@ def test_shell_draws_the_druid_and_kaarg_objects_and_the_figure_release_does_not
     sh2.handle(Press(x, y))
     sh2.handle(Release(*cur2.point_of("figure", npc)))
     assert cur2.state.sel == npc and cur2.dialogue is not None
+
+
+# -- the NPC story window over the town scene --------------------------------------------------------------------------------------------
+
+@needs_install
+def test_scene_npc_click_opens_a_modal_story_window_with_ok_pages():
+    from allods2.common import as_fs
+    from engine.shell.events import Key
+    sh, rec = shell_in_inn(2, 60, fs=as_fs(GFS))
+    sh.current.exit()
+    sh.start("town")
+    scene = sh.current
+    click(sh, scene.point_of(4))                         # the Kaarg woman: `FUN_0041d15e("kaargwoman<Var 0x300>")`
+    w = scene.story
+    assert w is not None and w.dialogue.key.startswith("kaargwoman") and w.dialogue.text
+    ops = scene.scene().ops
+    assert any(type(o).__name__ == "Button" for o in ops)
+    first = w.dialogue.n
+    sh.handle(Key("return"))                             # Ok: the next page, or the window closes
+    assert scene.story is None or scene.story.dialogue.n == first + 1
+    if scene.story is not None:
+        sh.handle(Key("escape"))                         # ESC closes the window, not the scene
+        assert scene.story is None and scene.menu is None
