@@ -381,3 +381,52 @@ def test_casting_squads_are_deterministic_and_replay_regenerates_the_same_casts(
     assert a.dump_hash() == b.dump_hash()
     assert any(isinstance(c, CastSpell) for _, c in sa.log)
     assert [e for e in a.fight_log if isinstance(e, CastStarted)]
+
+
+# --- the Teleport flee (FUN_0056cb8c / FUN_0056cef3, ai.md 12.6) ----------------------------------------------------------------
+
+def _teleporter(w, **kw):
+    kw.setdefault("known", mask(spells.TELEPORT))
+    kw.setdefault("mana", 100)
+    m = monster(w, 1, 20, 20, **kw)
+    return m
+
+
+def test_wimpy_retreat_casts_teleport_scan_plus_one_cells_away_within_five_cells():
+    from engine.sim.ai import reaction
+    w = world()
+    m = _teleporter(w, scan=6, slots=())
+    far = hero(w, 2, 28, 20)                                    # 8 cells: inside the foot flee radius 10, outside the Teleport scan 5
+    reaction.teleport_flee(w, m)
+    assert not [c for c in emitted(w) if isinstance(c, CastSpell)]
+    near = hero(w, 3, 23, 20)
+    reaction.teleport_flee(w, m)
+    (cmd,) = [c for c in emitted(w) if isinstance(c, CastSpell)]
+    assert cmd.spell_id == spells.TELEPORT and cmd.cell[0] == 20 - 7 and far and near      # scan 6 + 1 cells beyond, away from the hostile
+
+
+def test_withdraw_teleport_uses_scan_minus_one_and_radius_two_and_foot_flee_without_mana():
+    from engine.sim.ai import reaction
+    w = world()
+    m = _teleporter(w, scan=6)
+    hero(w, 2, 21, 20)
+    reaction.teleport_flee(w, m, withdraw=True)
+    (cmd,) = [c for c in emitted(w) if isinstance(c, CastSpell)]
+    assert cmd.cell[0] == 20 - 5
+    assert reaction.can_teleport(w, m)
+    m.mana = 0
+    assert not reaction.can_teleport(w, m)
+
+
+def test_post_step_wimpy_unit_with_teleport_casts_instead_of_walking_and_without_it_walks():
+    from engine.sim.ai import reaction
+    from engine.sim.commands import MoveUnits
+    w = world()
+    m = _teleporter(w, scan=6)
+    m.wimpy_hp, m.withdraw_hp = 100, 0
+    hero(w, 2, 24, 20)
+    reaction.post_step(w, None, m)
+    assert [type(c) for c in emitted(w)] == [CastSpell]
+    m.mana = 0
+    reaction.post_step(w, None, m)
+    assert [type(c) for c in emitted(w)] == [MoveUnits]

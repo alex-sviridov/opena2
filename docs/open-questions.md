@@ -25,7 +25,7 @@ from both places when answered).
 
 ## AI
 
-- Retreat of a unit that can cast Teleport (`FUN_0056cb8c`, range `unit+0xa5`; engine flees on foot); the game start does not send the option messages `0x46` (`FUN_0048c8a3`). [simulation 8.3a](engine/simulation.md#83a-retreat-key-r-bar-button-8-and-the-retreat-mode-ctrl-w)
+- The game start does not send the option messages `0x46` (`FUN_0048c8a3`; the Teleport retreat is answered and built). [simulation 8.3a](engine/simulation.md#83a-retreat-key-r-bar-button-8-and-the-retreat-mode-ctrl-w)
 - Party options message `0x46`: sub `0x80` (`FUN_00578910`) is not built; the registry default of `AutoCasting` on a first run. [ai](engine/ai.md#open-questions)
 - Caster follow branch `FUN_00569968`: the word `+0xa0` (a spell-list unit under defend heals the leader; engine: plain scan). [ai](engine/ai.md#open-questions)
 - AI casting ([ai §12](engine/ai.md#12-casters-and-special-attacks-confirmed-unless-marked-engine-127)): whether `FUN_00519483` scales the book wrapper in place (`+9` range; also [spells](data/spells.md#11-open-questions)); `FUN_005551d6` in the revive `FUN_00510534`. [ai](engine/ai.md#open-questions)

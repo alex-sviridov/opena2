@@ -806,8 +806,10 @@ CONFIRMED (client `FUN_00419e72`, server `FUN_00570c31`, `FUN_0056da4f`, executo
   ai.md 9); none of them alive (HP > 0) -> the guard scan `FUN_0056afac(u, 0)` (an in-range enemy is attacked in Brain mode, the order stays `0x16`); else Brain mode 1
   towards `FUN_00558b92(u, mean hostile position, 3)` = 3 cells beyond the unit on the ray hostile -> unit, clamped to [8, size-9] (ai.md 9). The order never ends by
   itself: while hostiles are near the unit walks 3 cells further at every pass (2.4 s at most apart), with none near it stands (guard scan). Only a new command
-  (any other order issuer cancels and replaces order `0x16`) or death ends it. A Teleport-capable unit takes `FUN_0056cb8c` (casts Teleport 1 + `unit+0xa5` cells away):
-  not built, DECISION: it flees on foot (no shipped unit knows Teleport, ai.md 12.6).
+  (any other order issuer cancels and replaces order `0x16`) or death ends it. A unit with a spell list (`+0x140`) that can cast Teleport (castable 0x17 wrapper, mana >= cost) takes `FUN_0056cb8c` (CONFIRMED, REA; only caller `0x56c9bc`;
+  built, `ai.reaction.teleport_flee`): hostiles within `mover+8` = 5 cells (`FUN_00567988`, NOT the +5 of the foot flee), none alive -> guard scan `FUN_0056afac(u, 0)`;
+  else `brain+0x60 := 1` and Brain mode 9 (cast Teleport at a cell) at `FUN_00558b92(u, mean position, byte(unit+0xa5 + 1))` (clamped as on foot). The withdraw twin
+  `FUN_0056cef3` (via `FUN_0056ce0f`): radius 2 (any hostile), cells byte(`+0xa5` - 1), empty -> `FUN_0056a1fb`. The Invisibility / foot fall-backs after the Teleport test are dead code.
 - **Engine.** `Retreat` -> `intake`, `retreat_group` (cancel, `set_retreat` per member); `_pass_orders` runs `ai.retreat_exec` for order `0x16` (the guard scan only
   with the AI on, like the other executors).
 - **Retreat mode** (`SetRetreatMode`, message `0x46` sub 1, operand 0 / 1 / 2 -> x = 0 / 10 / 30; Ctrl+W cycles it, `FUN_0041f090`, and sends it, `FUN_0041a4ef`): for **every unit
@@ -817,7 +819,7 @@ CONFIRMED (client `FUN_00419e72`, server `FUN_00570c31`, `FUN_0056da4f`, executo
   `HP <= wimpy` and a hostile within 10 cells flees as above, replacing its move / attack mode (its order is untouched, so it resumes only if a later pass restores the mode:
   a move group restarts it towards the group target at the next pass). Mode 0 is `0` (never). The text of the toggle is `main 0x5e + mode` (`FUN_0041f160` is the plain getter of
   `view+0xab4`, CONFIRMED). `ai.post_step` now runs after the move / orders / stand passes of command groups too (it was only called for squads), DECISION: only for units that have retreat-mode thresholds (a player-owned monster's data.bin thresholds stay inert in command groups, as before; the 46-map orders test depends on it).
-- DECISION: the game start does not send the three option messages (`FUN_0048c8a3` does); the retreat mode starts at 0 in the sim, which differs only for monsters the player already owns
+- DECISION (the exe sends them at game start, `FUN_0048c8a3` `0x48cb3e`-`0x48cb7a`, CONFIRMED): the engine does not send the three option messages; the retreat mode starts at 0 in the sim, which differs only for monsters the player already owns
   (their data.bin thresholds survive until the first Ctrl+W).
 - Tests: `tests/test_engine_retreat.py` (command fields, flee cell and clamp, repeat, range 10, dead hostile, mode thresholds, wounded unit leaves its walk, keys, bar cell, replay hash at 30 / 60 fps and in batch).
 
@@ -1087,4 +1089,4 @@ cell and layer (rendering.md 2, `_unregistered_units`), the later walked object 
 ## Open questions
 
 1. The player commands `0x1b` (follow / defend a unit) and `0x1d` (patrol), `0x24` use, `0x1f` (cast at a cell) and the town order (the item commands `0x21` pickup, `0x22` move item and `0x23` drop gold are built: `PickUp`, `MoveItem`, `DropGold`, [items §15](../data/items.md#15-equip-use-pack-and-ground-items-confirmed-engine-sim-gearpy); the pickup cursor click does not issue `PickUp` yet): the simulation side of follow / patrol is built ([ai §14.2](ai.md#142-the-unit-orders-of-the-scripted-sub-commands-10-11-14-15-confirmed), `engine/sim/follow.py`), but the engine has no `Command` for them and `OrderInput.release` issues nothing (the cursor modes exist; mode 8 patrol is unreachable in the exe, [research §1.4](click-to-move-research.md)). Also the squad voice ([audio.md](audio.md) 2.3) and the consolidated VERIFY IN GAME list of §9 (items 1-11).
-2. Retreat ([8.3a](#83a-retreat-key-r-bar-button-8-and-the-retreat-mode-ctrl-w)): a Teleport-capable unit (`FUN_0056cb8c`, range `unit+0xa5`) flees on foot here; the game start does not send the option messages `0x46`. Start `0x56c9bc`, `0x48cb3e`.
+2. Retreat ([8.3a](#83a-retreat-key-r-bar-button-8-and-the-retreat-mode-ctrl-w)): the game start does not send the option messages `0x46` (the exe does, `FUN_0048c8a3`; the operands come from the registry options, e.g. the first-run retreat mode, not read yet). Start `0x48cb3e`.

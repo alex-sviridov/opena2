@@ -2,12 +2,13 @@
 
 import struct
 from engine.world import DEAD
-from .. import combat as cb, movement as mv
+from .. import combat as cb, movement as mv, spells
 from ..pathfinding import chebyshev, follow_distance, foot
 from .actions import idle
-from .autocast import _members_of
+from .autocast import _members_of, castable
+from .casting import cast_cell
 from .brain import attack, go
-from .perception import NO_TARGET, _detected, _hostiles_on, _visible, at_war, pos16, reach_gap, word
+from .perception import NO_TARGET, _scan_range, unword, _detected, _hostiles_on, _visible, at_war, pos16, reach_gap, word
 from .targeting import score
 
 
@@ -180,13 +181,37 @@ def enemies_around(world, u, cx, cy, r):
     return [c for c in out if at_war(world, u.owner, c.owner) and (not c.hidden or _detected(c, detectors))]
 
 
-def flee_cell(world, u, near):
+def flee_cell(world, u, near, cells=FLEE_CELLS):
     """`FUN_00558b92(u, mean position of the hostiles, 3)`: 3 cells beyond u on the ray from their centre through u, along the dominant
     axis (float32 slope), clamped to the playable area."""
     n = len(near)
     px = sum(pos16(c)[0] for c in near) // n
     py = sum(pos16(c)[1] for c in near) // n
-    return away_cell(world, u, px, py, FLEE_CELLS)
+    return away_cell(world, u, px, py, cells)
+
+
+TELEPORT_WIMPY_RADIUS = WIMPY_RADIUS - 5        # FUN_00567988: the square of radius mover+8 (5), no "+ 5" as in FUN_0056c9bc
+
+
+def teleport_flee(world, u, withdraw=False):
+    """`FUN_0056cb8c` (wimpy / order 0x16) and `FUN_0056cef3` (withdraw), reached from `FUN_0056c9bc` / `FUN_0056ce0f` for a unit with a spell list that
+    can cast Teleport (23, cost <= mana): the hostiles within 5 (wimpy; only the living count) or 2 (withdraw; any) cells; none -> the guard scan;
+    else cast Teleport (mode 9, ai cast) at `FUN_00558b92(u, mean position, cells)` with cells = byte(`+0xa5` + 1) (wimpy) / byte(`+0xa5` - 1) (withdraw)."""
+    if withdraw:
+        near = _enemies(world, u, WITHDRAW_RADIUS)
+    else:
+        near = [c for c in _enemies(world, u, TELEPORT_WIMPY_RADIUS) if c.hp > 0]
+    if not near:
+        guard_scan(world, u)
+        return
+    scan = _scan_range(u, world)
+    cell = flee_cell(world, u, near, (scan - 1 if withdraw else scan + 1) & 0xFF)
+    cast_cell(world, u, unword(cell), spells.TELEPORT)
+
+
+def can_teleport(world, u):
+    """The test of `FUN_0056c9bc` / `FUN_0056ce0f`: a spell list (`+0x140`) and Teleport castable (wrapper known, mana >= cost)."""
+    return castable(world, u, spells.TELEPORT) is not None
 
 
 def away_cell(world, u, px, py, cells):
@@ -227,8 +252,14 @@ def post_step(world, g, m):
     if wimpy <= 0 and withdraw <= 0:                                               # HP > 0 never reaches a threshold of 0
         return
     if m.hp <= wimpy and _enemies(world, m, WIMPY_RADIUS):
+        if can_teleport(world, m):
+            teleport_flee(world, m)
+            return
         near = [c for c in _enemies(world, m, WIMPY_RADIUS) if c.hp > 0]          # FUN_0056c9bc counts the living
     elif m.hp <= withdraw and _enemies(world, m, WITHDRAW_RADIUS):
+        if can_teleport(world, m):
+            teleport_flee(world, m, withdraw=True)
+            return
         near = _enemies(world, m, WITHDRAW_RADIUS)                                 # FUN_0056ce0f: any
     else:
         return
@@ -241,7 +272,11 @@ def post_step(world, g, m):
 def retreat_exec(world, u):
     """`FUN_0056c9bc`, the executor of order 0x16 (the R key) in the group pass of order 0: the hostiles within `mover+8 + 5` = 10 cells; none alive
     -> the guard scan; else Brain mode 1 towards the flee cell 3 beyond the unit (the order stays 0x16, so it repeats at every pass).  A unit that can
-    cast Teleport takes `FUN_0056cb8c` in the exe: not built (no shipped unit knows it), it flees on foot."""
+    cast Teleport takes `FUN_0056cb8c` (`teleport_flee`)."""
+    if can_teleport(world, u):
+        if world.ai_on:
+            teleport_flee(world, u)
+        return
     near = [c for c in _enemies(world, u, WIMPY_RADIUS) if c.hp > 0]
     if not near:
         if world.ai_on:
