@@ -530,8 +530,8 @@ puts the 12 items through `+0x44` in record order (a refused or replaced one lan
 
 ## Client suitability test `FUN_0046a9c2` (CONFIRMED asm, answers the old "client-side drop test")
 
-Not a drop test: `FUN_0046a9c2(item)` on a client unit returns 1 ("unsuitable") when the item's flag byte `+8` has bit 2 and the unit's `+0x1b8` has no bit 2
-(not a mage), or the item has bit 4 and the unit is a mage; else 0. Its two callers are the info panel's carried-item release (`0x4b037f`, `0x4b1c56`):
+Not a drop test: `FUN_0046a9c2(item)` on a client unit returns 1 (**"suits the unit"**, corrected: the earlier note read it inverted) when the item's flag byte `+8` has bit 2 (fighter) and the unit's `+0x1b8` has no bit 2
+(not a mage), or the item has bit 4 (mage) and the unit is a mage; else 0 (`engine.ui.pack.usable_by`). Its two callers are the info panel's carried-item release (`0x4b037f`, `0x4b1c56`):
 the dragged item is only accepted on a unit it suits (the server repeats the test in `FUN_00512573`, §15, so the engine needs nothing more). The same
 release posts message `0x463` (to the client object `FUN_0041e3f0`) when the carried item has flags `& 6 == 0` and code `0xe4d` (**Quest Documents**, used
 only by map 10): the game window handles it in a mission (`0x48784e` -> `FUN_0048b1f9`: client mode `|= 0x4000`, which freezes the simulation like a modal window, and window `0x4ba` is shown); what that window says is not researched (map 10 only).

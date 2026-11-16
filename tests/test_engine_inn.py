@@ -602,6 +602,11 @@ def test_render_each_inn_and_play_the_dialogue_with_the_real_text(town):
     click(sh, cur.point_of("figure", 0))
     px = scene_screenshot(cur.scene(), (640, 480), painter)
     Image.fromarray(np.asarray(px, np.uint8)).save(OUT / ("inn_%d_sel.png" % town))
+    cur.info_text = True                            # the info panel's text mode: the hero's rows (name, attributes, Sight, Weight ...)
+    ops = cur.scene().ops
+    assert any(getattr(o, "text", "") == "Sight" for o in ops)
+    px = scene_screenshot(cur.scene(), (640, 480), painter)
+    Image.fromarray(np.asarray(px, np.uint8)).save(OUT / ("inn_%d_text.png" % town))
 
 
 def test_shell_draws_the_druid_and_kaarg_objects_and_the_figure_release_does_not_need_its_press():
@@ -647,3 +652,59 @@ def test_scene_npc_click_opens_a_modal_story_window_with_ok_pages():
     if scene.story is not None:
         sh.handle(Key("escape"))                         # ESC closes the window, not the scene
         assert scene.story is None and scene.menu is None
+
+
+@needs_install
+def test_left_sheet_shows_every_detail7_row_for_every_person_world_free():
+    """Town-inn 6: the owner is player 0 -> detail 7: Sight / Speed / Dmg / Attack / Absorb / Defence / resistances / skills (and Weight / XP only for a hero unit)."""
+    from allods2.assets import AssetCache
+    from allods2.common import INSTALL
+    from engine.ui.orders import MainText
+    assets = AssetCache(INSTALL)
+    types = assets.unit_stats()
+    main = MainText.load(GFS, "main/text/main.txt")
+    names = MainText.load(GFS, "main/text/unitname.txt")
+    items, spells = assets.items(), assets.spells()
+    seen = 0
+    for chapter in (10, 60, 110):
+        for town in (1, 2, 3):
+            g = game(town, chapter, {n: (1 + n % 2, town) for n in range(1, 8)})
+            g.camp.vars.update({0x306: 1, 0x302: 1, 0x303: 1})
+            for p in I.InnState(g, town, types=types).persons:
+                rows = I.person_rows(p, main, names, items, spells)
+                ys = {(r[1], r[2]) for r in rows}
+                assert (6, 0x7A) in ys and (0x4A, 0x7A) in ys, (chapter, town, p)       # skills and resistances (detail > 5)
+                assert (0x28, 200) in ys and (0x28, 0xD2) in ys                           # Sight, Speed
+                assert (0x4A, 0x58) in ys and (0x4A, 0x62) in ys                          # Absorb, Defence
+                assert (6, 0x2C) in ys and (0x73, 0x2C) in ys                             # attributes, Health
+                assert ((0x48, 0x12) in ys) == (p.kind == "merc"), (chapter, town, p.kind, p.a, p.template.kind, p.template.name)
+                seen += 1
+    assert seen > 20
+
+
+def test_info_panel_mode_button_toggles_text_mode_with_the_click_sound():
+    from engine.shell.events import Move, Press, Release
+    sh, rec = shell_in_inn(2, 60)
+    scr = sh.current
+    assert scr.info_text is False
+    x, y, w, h = I.MODE_BUTTON
+    ox, oy = scr.origin
+    for ev in (Move(ox + x + 5, oy + y + 5), Press(ox + x + 5, oy + y + 5, 1), Release(ox + x + 5, oy + y + 5, 1)):
+        scr.event(ev)
+    assert scr.info_text is True
+    scr.scene()                                     # draws without an install too
+    for ev in (Press(ox + x + 5, oy + y + 5, 1), Release(ox + x + 5, oy + y + 5, 1)):
+        scr.event(ev)
+    assert scr.info_text is False
+
+
+@needs_install
+def test_hero_text_rows_show_name_and_every_stat_row():
+    from allods2.assets import AssetCache
+    from allods2.common import INSTALL
+    from engine.ui.orders import MainText
+    assets = AssetCache(INSTALL)
+    g = game(2, 60)
+    rows = I.hero_rows(assets, g.roster[0], MainText.load(GFS, "main/text/main.txt"), MainText.load(GFS, "main/text/unitname.txt"))
+    ys = {(r[1], r[2]) for r in rows}
+    assert (0x48, 0x12) in ys and (6, 0x2C) in ys and (0x28, 200) in ys and (0x10, 0xAE) in ys      # name, attributes, Sight, Weight (the hero rows)

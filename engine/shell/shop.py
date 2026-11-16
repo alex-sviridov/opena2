@@ -401,11 +401,11 @@ class Shop(Screen):
                 self.portrait_cache[key] = None
         return self.portrait_cache[key]
 
-    def _cell(self, ops, rect, item, back, side, ox, oy):
+    def _cell(self, ops, rect, item, back, side, ox, oy):       # `back` = the panel kind; a shop-owned item (stock, a "buy" lot) is a shelf item (`+0x18` 5..8, INFERRED for the lot)
         """One item cell, everything one pixel below the cell top as the exe draws it (`FUN_004b18e2`): the background, the picture, the price bar (60 x 10 at the cell's right end, frame
         from the full price), the price number right-aligned on it (gold, font2, `,` per thousand, the hero's own items at half), the stack count."""
         x, y = ox + rect[0], oy + rect[1] + 1
-        ops.append(Image(BASE + back + ".bmp", x, y))
+        ops.append(Image(BASE + self.state.cell_back(item, back == "stock" or side == "buy") + ".bmp", x, y))
         if item is None:
             return
         ops.append(Sprite(idefs.icon_path(item.code), 0, x, y))
@@ -426,7 +426,7 @@ class Shop(Screen):
         items = st.shelf_items()
         for i in range(P.STOCK_COLS * P.STOCK_ROWS):
             k = st.scroll["stock"] + i
-            self._cell(ops, P.stock_cell(i), items[k] if k < len(items) else None, "backinvg", "buy", ox, oy)
+            self._cell(ops, P.stock_cell(i), items[k] if k < len(items) else None, "stock", "buy", ox, oy)
         for k, (x, y, w, h) in enumerate(P.STOCK_ARROWS):
             ops.append(Image(self.art + "shoparrow%d.bmp" % (1 if k == 0 else 3), ox + x, oy + y, True))
         # the pack (+0x6c) and the table (+0x70): five cells each
@@ -435,10 +435,10 @@ class Shop(Screen):
         pack = st.pack()
         for k in range(P.STRIP_COLS):
             i = st.scroll["pack"] + k
-            self._cell(ops, P.strip_cell(P.PACK_PANEL, k), pack[i] if i < len(pack) else None, "backinvb", "sell", ox, oy)
+            self._cell(ops, P.strip_cell(P.PACK_PANEL, k), pack[i] if i < len(pack) else None, "pack", "sell", ox, oy)
             j = st.scroll["table"] + k
             lot = st.lots[j] if j < len(st.lots) else None
-            self._cell(ops, P.strip_cell(P.TABLE_PANEL, k), lot.item if lot else None, "backinvb", lot.side if lot else "sell", ox, oy)
+            self._cell(ops, P.strip_cell(P.TABLE_PANEL, k), lot.item if lot else None, "table", lot.side if lot else "sell", ox, oy)
         for panel, key in ((P.TABLE_PANEL, "table"), (P.PACK_PANEL, "pack")):
             for k, (x, y, w, h) in enumerate(P.STRIP_ARROWS[key]):
                 ops.append(Image(INV_ARROWS[k], ox + panel[0] + x, oy + panel[1] + y, True))

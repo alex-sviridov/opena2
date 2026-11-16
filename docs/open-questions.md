@@ -32,13 +32,8 @@ from both places when answered).
 
 ## Town mode
 
-- Town scenes ([town-scenes 8](engine/town-scenes.md#8-open-questions), starting routine `0x41d15e` story window): the scene's NPC click opens the story window (`engine/shell/storywin.py`, page 1 voiced, Ok pages; speakers = roster heroes / dummy doll only, the scene has no person list); whether the exe keeps the scene loop under the main menu after Exit to Main Menu (no close hook on that path).
-
-- **Guessed for now (town.md 7), still to verify:** info panel position at 800x600 / 1024x768; `backinv*` colour meaning (which of g / b / s a cell takes); the map path-edge tracer (the shop's numbers, grid draw, shelf rects and prices are answered: town-shop 9).
-
-
-- Inn dialogue ([town-inn 5](engine/town-inn.md#5-open-questions)): the left sheet's derived stat rows for a person (the exe shows every `FUN_0046aa1d` row at detail 7; the engine shows the template's four attributes / HP / mana / defence: a world-free `CombatStats` builder is missing).
-- Hero panels = the Inn windows ([town-hero 8](engine/town-hero.md#8-open-questions)): the info panel's name / book / mode rows in the campaign inn and its final rect at 800x600 / 1024x768 (`0x49e451`, ctor `0x4adf45`: the shift `640 - width` is CONFIRMED, the mission-time rect and mode flag are run-time state); (figure cells and "HIRED": answered in L7, town-inn 6).
+- Town scenes ([town-scenes 8](engine/town-scenes.md#8-open-questions), starting routine `0x41d15e` story window): the scene's NPC click opens the story window (`engine/shell/storywin.py`, page 1 voiced, Ok pages; speakers = roster heroes / dummy doll only, the scene has no person list).
+- Hero panels ([town-inn 6](engine/town-inn.md#6-l7-round-rea-0x497adf-0x499783), narrowed, needs a run of the exe): whether the info panel's mode flag toggled with Tab in a mission is what the next inn shows (the exe keeps `+0x70` across; the engine's inn always opens in picture mode).
 
 ## Triggers and scenario
 

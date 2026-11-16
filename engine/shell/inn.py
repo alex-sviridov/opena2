@@ -7,7 +7,7 @@ for a mercenary, Talk for an NPC), ESC = Exit, the hero arrows wrap; while the d
 through `TownCore` (`close_window` = the `0x445` -> `0x44c` -> `0x42e` chain).
 
 DECISIONs (INFERRED, town.md 5 "L7 as built"): the info panel shows the hero's paper doll and the two arrows only (no name rows, no book / mode buttons); the left sheet's rows are
-the template's (`engine.inn.person_rows`); the druid / Kaarg centre panels draw their water / taverner objects (`Ambient.objects`, CONFIRMED positions); a missing install falls back to the labels."""
+every `FUN_0046aa1d` row at detail 7 over a world-free unit (`engine.inn.person_rows`); the druid / Kaarg centre panels draw their water / taverner objects (`Ambient.objects`, CONFIRMED positions); a missing install falls back to the labels."""
 
 from allods2.text import decode_text
 
@@ -26,6 +26,8 @@ from .tipswin import TipsWindow
 D = "graphics/interface/inn/"
 CENTRE_BACK = {1: D + "centerarea.bmp", 2: "graphics/interface/inn_kaarg/tavernmain.bmp", 3: "graphics/interface/inn_druid/tavernmain.bmp"}
 HERO_BACK = "graphics/interface/HumanBackR.bmp"
+HERO_BACK_TEXT = "graphics/interface/TextBackR.bmp"
+MODE_FILES = ("graphics/interface/TextMode.bmp", "graphics/interface/HumanMode.bmp")        # drawn in text mode / picture mode at (0x80, 4) of the panel (`0x4af659`-`0x4af6d3`)
 ARROW_FILES = ("graphics/interface/ar1.bmp", "graphics/interface/ar2.bmp")
 CLICK_UI = 1                                        # the info panel's arrow click (`0x4aebc8`: `FUN_00420eb0(1)` = sfx.reg id 1 = Click00, priority `0xdc`): CONFIRMED
 STEP_MS = 125                                       # `0x4980b0`: the selected figure's frame step
@@ -90,6 +92,7 @@ class Inn(Screen):
                 self.assets = None
         self.state = I.InnState(sh.campaign, core.town, types="auto" if self.assets is not None else None)
         self.hover = self.pressed = None
+        self.info_text = False                          # the info panel's mode flag `+0x70` (ctor 1 = picture; mission run-time state is not carried: INFERRED default)
         self.dialogue = None
         self.wrap = Wrapper(sh)
         self.clock = self.stamp = 0                      # ms; `0x6275c8` the shared frame-step stamp
@@ -167,6 +170,8 @@ class Inn(Screen):
         for k, r in enumerate(I.ARROWS):
             if I.rect_has(r, x, y):
                 return ("arrow", k)
+        if I.rect_has(I.MODE_BUTTON, x, y):
+            return ("mode",)
         f = I.cell_at(x, y, self.state.count)
         return None if f is None else ("figure", f)
 
@@ -254,6 +259,10 @@ class Inn(Screen):
                 self.shell.play(CLICK_UI)
                 self.state.hero_prev() if h[1] == 0 else self.state.hero_next()
                 return None
+            if h[0] == "mode" and down == h:                 # `0x4aebc8` `0x4aef0a`: mode & 0x600 == 0 (the inn is mode 4) -> message `0x412`: sound id 1 (prio 0xdc), `+0x70` toggles
+                self.shell.play(CLICK_UI)
+                self.info_text = not self.info_text
+                return None
             if h[0] == "figure" and (down is None or down[0] in ("figure", "arrow")):    # `0x49a197` -> `0x49a347`: the release re-runs the hit test at its own point; a press elsewhere does not matter
                 self._apply(self.state.figure_release(h[1]))
                 return None
@@ -307,6 +316,25 @@ class Inn(Screen):
                 self.portrait_cache[key] = None
         return self.portrait_cache[key]
 
+    def _tables(self):
+        """The item and spell tables for the left sheet's derived rows (None, None without an install)."""
+        if self.assets is None:
+            return None, None
+        try:
+            return self.assets.items(), self.assets.spells()
+        except Exception:                               # noqa: BLE001  the rows then show the template's plain numbers
+            return None, None
+
+    def _hero_rows(self, entry):
+        """The info panel's text mode: `FUN_0046aa1d` rows of the shown hero (cached per hero state)."""
+        key = ("hr", entry.number, id(entry.state), id(entry.spec))
+        if key not in self.portrait_cache:
+            try:
+                self.portrait_cache[key] = I.hero_rows(self.assets, entry, self.main, self.unit_names) if self.assets is not None else []
+            except Exception:                           # noqa: BLE001  decoration only
+                self.portrait_cache[key] = []
+        return self.portrait_cache[key]
+
     def scene(self):
         ox, oy = self.origin
         st = self.state
@@ -318,7 +346,7 @@ class Inn(Screen):
         if p is None:
             ops += [Text(self.main.line(I.MAIN_NO_UNITS), ox + 88, oy + 54, 1, "label", 2, 1), Text(self.main.line(I.MAIN_SELECTED), ox + 88, oy + 66, 1, "label", 2, 1)]
         else:
-            for text, x, y, flags, table in I.person_rows(p, self.main, self.unit_names):
+            for text, x, y, flags, table in I.person_rows(p, self.main, self.unit_names, *self._tables()):
                 ops.append(Text(text, ox + 12 + x, oy + y, 2, table, flags, 1))
             spec = self._portrait(("p", st.sel, p.a), lambda: I.person_portrait(self.assets, p))
             if spec is not None:
@@ -356,9 +384,13 @@ class Inn(Screen):
             ops.append(Image(path, ox + x, oy + y, True))
         # the unit info panel (window 7) at (480, 238)
         ix, iy, _, _ = I.INFO_PANEL
-        ops.append(Image(HERO_BACK, ox + ix, oy + iy))
+        ops.append(Image(HERO_BACK_TEXT if self.info_text else HERO_BACK, ox + ix, oy + iy))
+        ops.append(Image(MODE_FILES[0 if self.info_text else 1], ox + ix + 0x80, oy + iy + 4, True))
         entry = st.shown_hero()
-        if entry is not None:
+        if entry is not None and self.info_text:
+            for text, x, y, flags, table in self._hero_rows(entry):
+                ops.append(Text(text, ox + ix + x, oy + iy + y, 2, table, flags, 1))
+        elif entry is not None:
             spec = self._portrait(("h", entry.number, id(entry.state)), lambda: I.hero_portrait(self.assets, entry))
             if spec is not None:
                 ops.append(Portrait(spec, ox + ix, oy + iy + 2))

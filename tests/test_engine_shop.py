@@ -530,3 +530,30 @@ def test_a_lost_mission_does_not_touch_the_dlls_shop_table():
     before = repr((g.camp.shop, g.camp.vars))
     assert g.leave_mission(None, "lost").kind == "main_menu"
     assert repr((g.camp.shop, g.camp.vars)) == before
+
+
+def test_cell_background_rule_of_the_exe():
+    """town-shop 8 item 3 (`FUN_004b18e2` `0x4b1bb6`-`0x4b1d7b`): a shelf item is `backinvs` when it suits the hero and the gold covers its price, else `backinvg`; a pack / table / doll item that
+    suits the hero is the plain `backinv`; `backinvb` is never drawn."""
+    from types import SimpleNamespace
+    from engine import shop as SH
+    from engine.ui import pack as UP
+    st = SH.ShopState.__new__(SH.ShopState)
+    st.game = SimpleNamespace(gold=100, assets=None)
+    st.table = object()
+    st.entries, st.hero = [], 0
+    item = SimpleNamespace(code=1, price=50, count=1, mods=())
+    orig = (UP.item_flags, SH.price_of)
+    try:
+        UP.item_flags = lambda table, it: 2             # a fighter item
+        SH.price_of = lambda table, it: it.price
+        st.hero_is_mage = lambda: False
+        assert st.cell_back(item, True) == "backinvs"
+        st.game.gold = 49
+        assert st.cell_back(item, True) == "backinvg"            # not affordable
+        assert st.cell_back(item, False) == "backinv"            # suits, not a shelf item
+        st.hero_is_mage = lambda: True
+        assert st.cell_back(item, True) == "backinvg" and st.cell_back(item, False) == "backinvg"     # a fighter item for a mage
+        assert st.cell_back(None, True) == "backinvg"
+    finally:
+        UP.item_flags, SH.price_of = orig

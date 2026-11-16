@@ -9,7 +9,7 @@ on the shelf whose block takes its group (armour `0x1000000`, weapon `0x400000`,
 The stock is regenerated at every arrival in a town (`TownCore.visit`), not at every opening of the window.
 
 CONFIRMED in the L8 REA round (town-shop 9): a drag moves one piece, Shift (`0x6227dc`) the whole stack (`0x4b242d`); the table holds 5 lots (`0x4b5a63`); a sold item goes to the block of
-`Stock.block_for` (never gone).  Third round (town-shop 11): the pack's hover rule `0x4b5156` allows a carried item whose `+0x18` is 1 or 2 only (hero-owned), so a bought lot cannot go to a pack (the
+`Stock.block_for` (never gone).  Third round (town-shop 8 item 3): the pack's hover rule `0x4b5156` allows a carried item whose `+0x18` is 1 or 2 only (hero-owned), so a bought lot cannot go to a pack (the
 server's mixed `0x22` path that would file it unpaid is unreachable from the UI); a drop on the doll runs the info panel's rules `0x4aebc8` -> `0x4b028d` and the server's `put` (`equip_plan`, `_equip`);
 a returned item is appended to its shelf, or merged into the first equal stackable (`0x52151c`), and a shelf-tagged item (`+0x4d`) goes back to its own block (`0x521d4c`).
 DECISIONs (INFERRED): a hero without a carried state has no doll model (refused as a target); a hero that was never in a world has only the items he bought (`RosterEntry.bought`) to sell; one
@@ -286,6 +286,28 @@ class ShopState:
 
     def price(self, item):
         return price_of(self.table, item)
+
+    def hero_is_mage(self):
+        """The shown hero's client flag `+0x1b8 & 2`: a carried state's template has mana, else the data.bin template of the roster entry (never built: no state)."""
+        e = self.entry()
+        if e is None:
+            return False
+        if e.state is not None:
+            return gear.is_mage(e.state)
+        assets = getattr(self.game, "assets", None)
+        t = assets.unit_stats().lookup(e.human, e.server_id) if assets is not None else None
+        return bool(t is not None and (t.get("mana_max", -1) or 0) > 0)
+
+    def cell_back(self, item, shelf):
+        """The background of an item cell (`FUN_004b18e2` `0x4b1bb6`-`0x4b1d7b`, CONFIRMED; town-shop 8 item 3): a hidden / unknown item (`FUN_004a4170`) `backinvg`; a shelf item (`+0x18` 5..8,
+        `shelf` True) `backinvs` when the party's gold covers its price **and** `FUN_0046a9c2` (the item suits the hero's class: fighter bit 2 for a non-mage, mage bit 4 for a mage) holds, else
+        `backinvg`; any other item (pack, table, doll) the plain `backinv` when it suits the hero, else `backinvg`.  `backinvb` is loaded but never drawn."""
+        if item is None or not item.code:
+            return "backinvg"
+        suits = UP.usable_by(UP.item_flags(self.table, item), self.hero_is_mage()) if self.table is not None else False
+        if shelf:
+            return "backinvs" if suits and self.gold >= self.price(item) else "backinvg"
+        return "backinv" if suits else "backinvg"
 
     def totals(self):
         """`FUN_004b960c`: (gold, minus the buy prices, the sell values, the gold after the deal)."""

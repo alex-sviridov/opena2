@@ -21,6 +21,7 @@ BUTTONS = ((484, 44, 140, 46), (484, 91, 140, 46), (484, 138, 140, 46))     # Hi
 ARROWS = ((481, 443, 32, 32), (599, 443, 32, 32))                          # ar1 / ar2 at (1, 0xcd) / (0x77, 0xcd) of the info panel
 CELL_W, CELL_H, COLUMNS = 48, 64, 6                                         # figure cells (`0x497840`): 3 rows x 6 columns, row 0 at the bottom
 LEFT_BITMAPS = (("graphics/interface/inn/leftstats.bmp", 0, 0), ("graphics/interface/inn/leftpicture.bmp", 0, 238))     # `0x495e81`: INFERRED which is which
+MODE_BUTTON = (608, 238, 32, 36)                                            # the mode button's hit rect (0x80, 0)-(160, 36) of the info panel (`0x4aebc8`)
 PORTRAIT_AT = (11, 240)
 CENTRE_AT = (160, 0)
 # the centre panel's edge strips (CONFIRMED `0x4983b9`, the common tail of `0x497adf`; each a keyed blit of the whole 16 px wide bitmap): LUOver (160, 0) 16x238, LDOver (160, 238) 16x242,
@@ -600,15 +601,44 @@ def person_portrait(assets, p):
     return ("bmp", "graphics/infowindow/%s%s.bmp" % (name, face if face > 1 else ""))
 
 
-def person_rows(p, main, unit_names):
-    """Text rows `(text, x, y, flags, table)` of the left sheet, panel-relative (the exe draws `FUN_0046aa1d` at (12, 0)): the type name, the Mercenary line, the four attributes,
-    Health / Mana and Defence from the template.  INFERRED reduction: the exe formats the client unit's derived fields (damage, absorption, speed, skills ...), which the town
-    has no world for; the rows and positions are the ones of `info.text_rows` (ui-layout 11.1)."""
-    from engine.ui.info import CENTRE, GOLD, LEFT, RIGHT, SAGE
+def person_unit(p):
+    """A world-free client unit of the person (owner 0): what `World._load_units` builds for a fresh template (human: the recomputed HP / mana / skills of `progression`, level 1,
+    no equipment beyond the template's strings; monster: the template's HP, mana for a mage).  Players need no world: `info.text_rows` reads only this unit and a stub world."""
+    from engine.world import Unit
+    from allods2.formats import progression as prog
     t = p.template
-    rows = []
+    human = t.kind == "human"
+    hp, mana = prog.derived_vitals(t) if human else (t.hp_max, max(0, t.get("mana_max", -1) or 0))
+    u = Unit(0x6000, t.unit_type, 0, 0, 0, hp=hp, hp_max=hp, human=human, server_id=t.server_id, move_type=t.movement_type, face=t.face, stats=t, known=True)
+    if human:
+        u.skills = prog.skills_of(t)
+        u.mana = u.mana_max = mana
+        u.xp, u.xp_total = prog.start_pools(u.skills)
+    else:
+        u.mana = u.mana_max = mana
+    return u
+
+
+def person_rows(p, main, unit_names, items=None, spells=None):
+    """Text rows `(text, x, y, flags, table)` of the left sheet, panel-relative (the exe draws `FUN_0046aa1d` at (12, 0), detail 7: the owner is player 0): **every** row of
+    `info.text_rows` (ui-layout 11.1) for `person_unit` over a stub world (`items` / `spells` = the item and spell tables for the gear numbers and a mage's Dmg; without them
+    the template strings give no armour).  The Mercenary line is the mercenary list's only (INFERRED: the exe's war test of player 0 is run-time state)."""
+    from types import SimpleNamespace
+    from engine.ui import info
+    t = p.template
     if t is None:
-        return rows
+        return []
+    u = person_unit(p)
+    world = SimpleNamespace(item_table=items, spell_table=spells, players={}, units={})
+    merc_line = main.line(info.MERCENARY)
+    out = []
+    for r in info.text_rows(world, u, main, unit_names.lines, 1, know_all=True):
+        if r.text == merc_line and r.y == 0x12 and p.kind != "merc":
+            continue
+        out.append((r.text, r.x, r.y, r.flags, r.table))
+    if p.kind == "merc" and not any(r[2] == 0x12 and r[1] == 0x48 for r in out):       # a monster-class mercenary too (`0x46ab2c`: `+0x1b8 & 0x11`)
+        out.insert(0, (merc_line, 0x48, 0x12, info.CENTRE, info.GOLD))
+    return out
     if unit_names.line(t.unit_type):
         rows.append((unit_names.line(t.unit_type), 0x48, 0x1C, CENTRE, GOLD))
     if p.kind == "merc":
@@ -627,3 +657,39 @@ def person_rows(p, main, unit_names):
     if f.get("defence", -1) >= 0:
         rows += [(main.line(0x1A), 0x4A, 0x62, LEFT, GOLD), ("%d" % f["defence"], 0x8C, 0x62, RIGHT, SAGE)]
     return rows
+
+
+def hero_unit(assets, entry, owner=1):
+    """A world-free client unit of a party hero for the info panel's text mode (town-hero 8): the template's unit, then the carried `state` (`party.restore`: gear recompute, HP / mana
+    at the maxima) or the creation `spec` (`party.apply_spec`) over a stub world with the item / spell tables.  None without data."""
+    from types import SimpleNamespace
+    from allods2.formats import progression as prog
+    from engine import party
+    from engine.world import Unit
+    t = assets.unit_stats().lookup(entry.human, entry.server_id)
+    if t is None:
+        return None
+    human = t.kind == "human"
+    world = SimpleNamespace(item_table=assets.items(), spell_table=assets.spells(), players={}, units={}, tick=0)
+    hp, mana = prog.derived_vitals(t) if human else (t.hp_max, max(0, t.get("mana_max", -1) or 0))
+    u = Unit(0x6000, t.unit_type, owner, 0, 0, hp=hp, hp_max=hp, human=human, server_id=t.server_id, move_type=t.movement_type, face=t.face, stats=t, known=True)
+    if human:
+        u.skills = prog.skills_of(t)
+        u.mana = u.mana_max = mana
+        u.xp, u.xp_total = prog.start_pools(u.skills)
+    if entry.state is not None:
+        party.restore(world, u, entry.state)
+    elif entry.spec is not None:
+        party.apply_spec(world, u, entry.spec)
+    return u
+
+
+def hero_rows(assets, entry, main, unit_names, hero_name="Hero"):
+    """The text mode of the info panel (`FUN_004af3bf` -> `FUN_0046aa1d`, ui-layout 11.1; the viewer owns the hero: detail 7, the name row, Weight / XP)."""
+    from types import SimpleNamespace
+    from engine.ui import info
+    u = hero_unit(assets, entry)
+    if u is None:
+        return []
+    world = SimpleNamespace(item_table=assets.items(), spell_table=assets.spells(), players={}, units={}, tick=0)
+    return [(r.text, r.x, r.y, r.flags, r.table) for r in info.text_rows(world, u, main, unit_names.lines, 1, hero_name, know_all=True)]
