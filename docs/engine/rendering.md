@@ -368,3 +368,5 @@ ones (order INFERRED: structures, then missiles). **Light / Darkness cell flags*
   - **Looks.** What only the running game can show: the VERIFY IN GAME list of "Arrows and shots" above (an archer volley, a poisoned unit, an invisible unit, a Sonic Bat's lens, Teleport's two flashes); not compared yet.
 - Item-only piles: the item field `+0x1c` (pile frame), see [map.md](../formats/map.md#open-questions).
 - Interface (G3b): structure pick rects, bottom bars and command-bar contents, portraits: see [ui-layout open questions](ui-layout.md#open-questions).
+
+- Minimap water (REA [minimap-water-rea](minimap-water-rea.md)): the white lakes are what the exe produces: the water columns 32..47 of `MiniMapData.bmp` are pure white for `v & 15` = 0..5, there is no water special case and no recolouring pass; the engine matches. Open: whether the white is intended art (needs an original screenshot).

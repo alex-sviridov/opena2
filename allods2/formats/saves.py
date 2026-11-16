@@ -116,6 +116,11 @@ class Item:
     new: bool = False               # flag 0x40, written when the item was unseen; the reader ignores it
 
     @property
+    def magic(self):
+        """Client flag `0x20` (CONFIRMED `FUN_004387b2` / `FUN_0052457c`, docs/engine/item-new-rea.md): the item has an effect list (a non-skipped modifier); the pack's sparkle shows exactly these."""
+        return any(m[0] != K_SKIPPED for m in self.mods)
+
+    @property
     def cls(self):
         return (self.code >> 8) & 15
 

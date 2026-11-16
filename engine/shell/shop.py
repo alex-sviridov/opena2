@@ -19,8 +19,14 @@ from engine import shop as P
 from engine import townscene as TS
 from engine.ui.orders import MainText
 
+from engine import shopkeeper as K
+
 from .events import Key, Move, Press, Release
-from .scene import Image, Portrait, Scene, Sprite, Text
+from engine.ui import pack as UP
+from engine.ui.tooltip import TooltipTimer
+
+from .chargen import measure_font2
+from .scene import Image, Portrait, Scene, Sprite, Text, Tooltip
 from .screen import Screen
 from .tipswin import TipsWindow
 
@@ -39,8 +45,6 @@ AMBIENT = {1: "sfx/town/shop/inshop.wav", 2: "sfx/town_kaarg/inn/kvox5.wav", 3: 
 CLICK_UI = 1
 TIPS_RECT = (0, 162, 312, 136)                             # `0x4b8cbe`: SetRect (0, 0xa2, 0x138, 0x12a) = 312 x 136
 TIPS_TABLE = 4                                             # `#tips4` the first time an item lies on the table (`0x4b9144`)
-COUNT_DX, COUNT_DY = 3, -14                                # the pack cell's stack count (ui-layout 11.13)
-BAR_AT = (10, 66)                                          # the price bar (60 x 10) inside a cell: INFERRED
 HOLD_AT = 40                                               # the carried item's hot spot (40, 40)
 
 
@@ -53,6 +57,8 @@ class Shop(Screen):
         self.state = None
         self.hover = self.pressed = None
         self.clip = None
+        self.pointer = None
+        self.tip_timer = TooltipTimer()
 
     @property
     def core(self):
@@ -80,6 +86,7 @@ class Shop(Screen):
         stock = P.open_stock(core, sh.campaign, core.town, sh.rng)
         self.state = P.ShopState(sh.campaign, core.town, stock, table)
         self.hover = self.pressed = self.clip = None
+        self.keeper = K.Keeper(core.town, sh.rng)
         self.art = ART[core.town]
         self.portrait_cache, self.mask_cache = {}, {}
         self.tips_shown_table = False
@@ -179,8 +186,8 @@ class Shop(Screen):
                         return ("cell", kind, st.scroll[key] + k)
                 return ("region", kind)
         sx, sy, _, _ = P.SHOPKEEPER_PANEL
-        for i, r in enumerate(P.SHELF_RECTS):
-            if P.rect_has((sx + r[0], sy + r[1], r[2], r[3]), x, y):
+        for i, r in enumerate(P.SHELF_RECTS_BY_TOWN[self.core.town]):
+            if P.rect_has((sx + r[0], sy + r[1], r[2], r[3]), x, y) and st.shelf_open(i):       # a refused shelf (the druid's fourth) lets the test go on (`0x4bfdf1`)
                 return ("shelf", i)
         return None
 
@@ -200,7 +207,7 @@ class Shop(Screen):
                 r = P.strip_cell(P.TABLE_PANEL if kind == P.KIND_TABLE else P.PACK_PANEL, k)
         elif what == "shelf":
             sx, sy, _, _ = P.SHOPKEEPER_PANEL
-            q = P.SHELF_RECTS[args[0]]
+            q = P.SHELF_RECTS_BY_TOWN[self.core.town][args[0]]
             r = (sx + q[0], sy + q[1], q[2], q[3])
         elif what == "stock_arrow":
             r = P.STOCK_ARROWS[args[0]]
@@ -212,9 +219,77 @@ class Shop(Screen):
             r = P.INFO_PANEL
         return ox + r[0] + r[2] // 2, oy + r[1] + r[3] // 2
 
+    def update(self, dt_ms):
+        self.keeper.update(dt_ms)
+        self.tip_timer.update(dt_ms, self.pointer, self.tooltip_text, lambda t: measure_font2(self.shell, t), (640, 480))
+        return None
+
+    # -- tooltips (shop-tooltips-rea.md, CONFIRMED slot 5 of each panel) ----------------------------------------------------------------
+    def _item_tip(self, item):
+        if item is None or not item.code:
+            return ""
+        table = self.state.table
+        if table is None:
+            return ""
+        try:
+            spells = self.assets.spells() if self.assets is not None else None
+            return UP.item_name(SimpleNamespace(item_table=table, spell_table=spells), item, self.main)
+        except Exception:                                # noqa: BLE001  an item the text builder cannot describe shows nothing
+            return ""
+
+    def tooltip_text(self, pos):
+        """The text under the screen point `pos`, '' for none.  The stock, table, pack and info panels are silent while an item is carried; the shopkeeper panel and the buttons
+        (never a tooltip) are not gated on it."""
+        x, y = self._local(*pos)
+        st, line = self.state, self.main.line
+        sx, sy, _, _ = P.SHOPKEEPER_PANEL
+        if P.rect_has(P.SHOPKEEPER_PANEL, x, y):
+            for i, r in enumerate(P.SHELF_RECTS_BY_TOWN[self.core.town]):          # no open test: the druid's elven shelf answers while locked
+                if P.rect_has((sx + r[0], sy + r[1], r[2], r[3]), x, y):
+                    return line(P.SHELF_TIP[self.core.town] + i)
+            r = P.KEEPER_RECT[self.core.town]
+            return line(P.T_KEEPER) if P.rect_has((sx + r[0], sy + r[1], r[2], r[3]), x, y) else ""
+        if st.carried is not None:
+            return ""
+        if P.rect_has(P.STOCK_PANEL, x, y):
+            for i in range(P.STOCK_COLS * P.STOCK_ROWS):
+                if P.rect_has(P.stock_cell(i), x, y):
+                    return self._item_tip(st.item_at(P.KIND_SHELF + st.shelf, st.scroll["stock"] + i))
+            for k, r in enumerate(P.STOCK_ARROWS):
+                if P.rect_has(r, x, y):
+                    return line((P.T_UP, P.T_DOWN)[k])
+            return line(P.T_STOCK)
+        for panel, kind, key, other in ((P.TABLE_PANEL, P.KIND_TABLE, "table", P.T_TABLE), (P.PACK_PANEL, P.KIND_PACK, "pack", P.T_PACK)):
+            if P.rect_has(panel, x, y):
+                for k in range(P.STRIP_COLS):
+                    if P.rect_has(P.strip_cell(panel, k), x, y):
+                        return self._item_tip(st.item_at(kind, st.scroll[key] + k))
+                if key == "pack":                                                   # the table's own arrows have no test: its text covers them
+                    for k, r in enumerate(P.STRIP_ARROWS[key]):
+                        if P.rect_has((panel[0] + r[0], panel[1] + r[1], r[2], r[3]), x, y):
+                            return line((P.T_LEFT, P.T_RIGHT)[k])
+                return line(other)
+        for k, r in enumerate(P.ARROWS):
+            if P.rect_has(r, x, y):
+                return line((P.T_PREV, P.T_NEXT)[k])
+        if P.rect_has(P.INFO_PANEL, x, y):
+            s = self.doll_slot(x, y)
+            return self._item_tip(st.item_at(P.KIND_EQUIP, s)) if s is not None else ""
+        return ""
+
+    def tooltip_op(self):
+        tip = self.tip_timer.tip
+        if tip is None:
+            return []
+        ox, oy = self.origin
+        return [Tooltip(tip.lines, tip.x + ox, tip.y + oy, tip.right + ox, tip.bottom + oy)]
+
     # -- input -----------------------------------------------------------------------------------------------------------------------
     def event(self, ev):
         st = self.state
+        if hasattr(ev, "x"):
+            self.pointer = (ev.x, ev.y)
+            self.tip_timer.moved(self.pointer)
         if isinstance(ev, Move):
             self.hover = self.hit(ev.x, ev.y)
         elif isinstance(ev, Press) and ev.button == 3:
@@ -306,8 +381,15 @@ class Shop(Screen):
         for e in effects:
             if e.kind == "sound":
                 self.shell.play(DEPART[self.core.town] if e.value == "depart" else SOUNDS[e.value])
-            elif e.kind in ("yes", "refuse"):
-                self.clip = e.kind                        # the shopkeeper's Yes / No clip is not built (INFERRED names, town-shop 3.3)
+            elif e.kind == "shelf":
+                self.keeper.select(e.value)
+                self.keeper.yes()                         # the press handler's Yes reaction after an accepted shelf (human only: `Keeper.yes`)
+            elif e.kind == "yes":
+                self.clip = e.kind
+                self.keeper.yes()
+            elif e.kind == "refuse":
+                self.clip = e.kind
+                self.keeper.no()
         if effects:
             self.shell.log("shop: " + " ".join("%s=%s" % (e.kind, e.value) for e in effects))
 
@@ -321,17 +403,20 @@ class Shop(Screen):
         return self.portrait_cache[key]
 
     def _cell(self, ops, rect, item, back, side, ox, oy):
-        """One item cell: the background, the picture, the price bar, the stack count."""
-        x, y = ox + rect[0], oy + rect[1]
+        """One item cell, everything one pixel below the cell top as the exe draws it (`FUN_004b18e2`): the background, the picture, the price bar (60 x 10 at the cell's right end, frame
+        from the full price), the price number right-aligned on it (gold, font2, `,` per thousand, the hero's own items at half), the stack count."""
+        x, y = ox + rect[0], oy + rect[1] + 1
         ops.append(Image(BASE + back + ".bmp", x, y))
         if item is None:
             return
         ops.append(Sprite(idefs.icon_path(item.code), 0, x, y))
-        frame = P.price_bar_frame(self.state.price(item) if side == "buy" else (self.state.price(item) + 1) // 2)
+        price = self.state.price(item)
+        frame = P.price_bar_frame(price)
         if frame is not None:
-            ops.append(Image(BASE + ("costs" if side == "buy" else "costm") + "%d.bmp" % (frame + 1), x + BAR_AT[0], y + BAR_AT[1], True))
+            ops.append(Image(BASE + ("costs" if side == "buy" else "costm") + "%d.bmp" % (frame + 1), x + P.BAR_AT[0], y + P.BAR_AT[1], True))
+            ops.append(Text(P.price_text(price if side == "buy" else (price + 1) // 2), x + CELL_H - P.PRICE_RIGHT, y, 2, "label", 1, 1))
         if item.count > 1:
-            ops.append(Text("%d" % item.count, x + COUNT_DX, y + CELL_H + COUNT_DY, 2, "label", 0, 2))
+            ops.append(Text(P.price_text(item.count), x + P.COUNT_AT[0], y + CELL_H + P.COUNT_AT[1], 2, "label", 0, 1))
 
     def scene(self):
         ox, oy = self.origin
@@ -360,8 +445,17 @@ class Shop(Screen):
                 ops.append(Image(INV_ARROWS[k], ox + panel[0] + x, oy + panel[1] + y, True))
         # the shopkeeper panel (+0x74)
         sx, sy, _, _ = P.SHOPKEEPER_PANEL
-        ops.append(Image(MAIN_PIC[self.core.town], ox + sx + 14, oy + sy + 7))
+        ops.append(Image(MAIN_PIC[self.core.town], ox + sx + P.PICTURE_AT[0], oy + sy + P.PICTURE_AT[1]))
         ops.append(Sprite(self.art + "shopframe.256", 0, ox + sx, oy + sy))
+        if self.core.town == 3 and st.game.camp.get(P.DRUID_GATE):                      # the elven goods are part of the picture once the gate variable is set (`0x4bf908`)
+            ops.append(Image(self.art + "elven.bmp", ox + sx + K.ELVEN_AT[0], oy + sy + K.ELVEN_AT[1], True))
+        for pic in self.keeper.highlight_pics():
+            ops.append(Image(pic.path, ox + sx + pic.x, oy + sy + pic.y, True))
+        kp = self.keeper.keeper_pic()
+        ops.append(Image(kp.path, ox + sx + kp.x, oy + sy + kp.y, True))
+        fp = self.keeper.fire_pic()
+        if fp is not None:
+            ops.append(Image(fp.path, ox + sx + fp.x, oy + sy + fp.y, True))
         # the buttons panel (+0x78): the menu picture holds the four buttons up; the `ShopButton` pictures are the pressed look (`0x4bcd05`, CONFIRMED); every button has its caption
         # and, under it, one of the four numbers (gold, minus the buy prices, the sell value, the gold after the deal)
         ops.append(Image(self.art + "shopmenu.bmp", ox + P.BUTTONS_PANEL[0], oy))
@@ -394,6 +488,7 @@ class Shop(Screen):
         if st.carried is not None and self.shell.mouse is not None:
             mx, my = self.shell.mouse
             ops.append(Sprite(idefs.icon_path(st.carried.item.code), 0, mx - HOLD_AT, my - HOLD_AT))
+        ops += self.tooltip_op()
         return Scene(ops)
 
 

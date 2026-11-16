@@ -37,7 +37,24 @@ BUTTONS_PANEL = (464, 0, 176, 238)
 BUTTONS = ((494, 15, 120, 52), (483, 67, 140, 46), (483, 114, 140, 46), (494, 160, 120, 52))      # R0..R3 = Cancel, Buy, Sell, Exit (INFERRED assignment, town-shop 2.2)
 B_CANCEL, B_BUY, B_SELL, B_EXIT = range(4)
 INFO_PANEL, ARROWS = I.INFO_PANEL, I.ARROWS         # the unit info panel and its hero arrows are the inn's (town-shop 2.1: moved to (480, 238) the same way)
-SHELF_RECTS = ((190, 110, 105, 185), (5, 110, 105, 185), (150, 5, 140, 100), (8, 5, 142, 100))      # panel-relative A, B, C, D = shelf 0..3 (CONFIRMED: `0x4bbfa6` tests the fields `+0x60 + 0x10 i`, the ctor `0x4b9cf5` fills them A, B, C, D)
+SHELF_RECTS = ((190, 110, 105, 185), (5, 110, 105, 185), (150, 5, 140, 100), (8, 5, 142, 100))      # town 1: panel-relative A, B, C, D = shelf 0..3 (CONFIRMED: `0x4bbfa6` tests the fields `+0x60 + 0x10 i`, the ctor `0x4b9cf5` fills them A, B, C, D)
+# The Kaarg (`0x4c0ee5`) and druid (`0x4beccf`) panels overwrite the four rects (after their `OffsetRect(5, 5)`); shelf i is block i in every town (shop-rea2.md 2).  Panel-relative (l, t, w, h).
+SHELF_RECTS_BY_TOWN = {1: SHELF_RECTS,
+                       2: ((5, 5, 60, 202), (65, 63, 48, 150), (65, 5, 124, 58), (195, 5, 98, 260)),
+                       3: ((5, 109, 88, 112), (5, 49, 96, 60), (121, 33, 72, 112), (93, 169, 96, 104))}
+# Tooltips (shop-tooltips-rea.md, CONFIRMED slot 5 of every panel): main.txt lines; the keeper rect (panel-relative l, t, w, h) answers `T_KEEPER` outside the shelves.
+KEEPER_RECT = {1: (110, 110, 80, 185), 2: (125, 113, 72, 96), 3: (197, 89, 72, 164)}
+SHELF_TIP = {1: 0x3E, 2: 0x116, 3: 0x112}                         # + shelf index
+T_KEEPER, T_STOCK, T_UP, T_DOWN, T_TABLE, T_PACK, T_LEFT, T_RIGHT, T_PREV, T_NEXT, T_MONEY = 0x3D, 0x3C, 0x38, 0x39, 0x3B, 0x3A, 0x36, 0x37, 0x34, 0x35, 0x4A
+PICTURE_AT = (5, 8)                                             # the shopkeeper picture inside the panel (`+0x49`), CONFIRMED in all three classes
+BAR_AT = (20, 0)                                                # the price bar inside a cell, from the item sprite origin (cell left, top + 1): `(right - 60, top + 1)` (`FUN_004b18e2`)
+PRICE_RIGHT = 6                                                 # the price number's right edge is `right - 6`
+COUNT_AT = (10, -15)                                            # the stack count: (left + 10, bottom - 15)
+
+
+def price_text(n):
+    """The exe's `"%d"` through `FUN_00475263` (a `,` every three digits)."""
+    return "{:,}".format(int(n))
 CELL = 80
 STOCK_COLS, STOCK_ROWS, STOCK_LEFT, STOCK_TOP = 2, 3, 1, 31       # CONFIRMED `0x4b35b0`: cell (i, j) = (x + 80 i + 1, arrow bottom + 80 j - 1), the arrow rects end at y = 32
 STOCK_ARROWS = ((46, 0, 72, 32), (46, 271, 72, 32))             # CONFIRMED `0x4b35b0`: (0x2e, 0)-(0x76, 0x20) and (0x2e, 0x10f)-(0x76, 0x12f)
@@ -77,7 +94,8 @@ def rect_has(r, x, y):
 
 
 def price_bar_frame(price):
-    """The price bar's frame (60 x 10, `costs1..7` / `costm1..7`): `min(trunc(log10(price)), 6)` (sprites.md); price 0 has none."""
+    """The price bar's frame (60 x 10, `costs1..7` / `costm1..7`): `min(trunc(log10(price)), 6)` (sprites.md; the exe caps at 7, a price of 10^7 reads past the files); the FULL price, also for
+    the hero's own items (the number shows the half, the bar does not, shop-rea2.md 6); price 0 has none."""
     if price < 1:
         return None
     n = 0
@@ -238,6 +256,7 @@ class ShopState:
         self.entries = hero_entries(game)
         self.hero = 0
         self.shelf = 0
+        self.selected = None                    # the clicked shelf (`window+0x132`, 100 = none at the first opening): the same shelf again does nothing
         self.lots = []
         self.carried = None
         self.scroll = {"stock": 0, "table": 0, "pack": 0}
@@ -290,9 +309,9 @@ class ShopState:
 
     def select_shelf(self, i):
         """A click on a shelf: the stock panel shows it from the start; `[]` when refused."""
-        if not 0 <= i < SHELVES or not self.shelf_open(i):
+        if not 0 <= i < SHELVES or not self.shelf_open(i) or i == self.selected:       # the same shelf again: `+0xa4` returns 0, nothing happens (shop-rea2.md 3)
             return []
-        self.shelf = i
+        self.shelf = self.selected = i
         self.scroll["stock"] = 0
         return [Effect("sound", "depart"), Effect("shelf", i)]
 

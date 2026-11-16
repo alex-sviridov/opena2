@@ -160,3 +160,4 @@ Each stays in [open-questions.md](../open-questions.md) (marked "guess in town.m
 | druid / Kaarg ambient events | same cadence as the human one: `D = rand / 16 + 3000` ms between events, a sound fires at **frame 30** of its animation, water / dish sounds one random of four per 100 ms step when the frame is 0 | the slot table and the human scheduler |
 | world-map path-edge tracer | use the specified headless emulation (DFS cheapest route, cover check `2766 = 2552 + 2 x 107`) | [town-worldmap 3.3](town-worldmap.md#33-the-path-graph-fun_00471a75-confirmed-structure-bookkeeping-inferred) |
 
+**L8 play-test fixes:** see [town-shop 10](town-shop.md#10-second-rea-round-play-test-fixes); the "no animations / highlights" DECISION above is replaced by `engine/shopkeeper.py`.

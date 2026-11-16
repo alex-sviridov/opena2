@@ -70,7 +70,7 @@ class CellView(NamedTuple):
     rect: Rect                  # the 80x80 cell
     item: object                # saves.Item with the displayed count
     key: int                    # the F-key (4..12) bound to the item, 0 for none
-    new: bool                   # item flag `0x20`: the "new" twinkle (`twinkle_pixels`)
+    new: bool                   # item flag `0x20` = the item has modifiers (magic, item-new-rea.md): its sparkle (`twinkle_pixels`); NOT the pickup mark `Item.new`
 
 
 class PackView(NamedTuple):
@@ -301,7 +301,7 @@ class PackWindow:
             if i >= len(pack) or not pack[i].code:
                 continue
             it = pack[i]
-            cells.append(CellView(k, i, self.cell_rect(k), it, self.key_of(it), bool(it.new)))
+            cells.append(CellView(k, i, self.cell_rect(k), it, self.key_of(it), it.magic))
         la, ra, r, p = self.left_arrow_rect(), self.right_arrow_rect(), self.rect, pad(self.layout)
         left = right = None
         if off != 0:                                # `0x4a2cf8`: the arrow art is blitted 2 px below the top, 32 x 88 px, lit while the pointer is in the arrow rect
