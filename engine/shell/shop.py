@@ -449,10 +449,11 @@ class Shop(Screen):
         ops.append(Sprite(self.art + "shopframe.256", 0, ox + sx, oy + sy))
         if self.core.town == 3 and st.game.camp.get(P.DRUID_GATE):                      # the elven goods are part of the picture once the gate variable is set (`0x4bf908`)
             ops.append(Image(self.art + "elven.bmp", ox + sx + K.ELVEN_AT[0], oy + sy + K.ELVEN_AT[1], True))
+        human = self.core.town == 1                                                   # the human draw `0x4bb3d7` blits clips and keeper with vtable `+0x18` = opaque (CONFIRMED); druid / Kaarg stay keyed (draws not read)
         for pic in self.keeper.highlight_pics():
-            ops.append(Image(pic.path, ox + sx + pic.x, oy + sy + pic.y, True))
+            ops.append(Image(pic.path, ox + sx + pic.x, oy + sy + pic.y, not human))
         kp = self.keeper.keeper_pic()
-        ops.append(Image(kp.path, ox + sx + kp.x, oy + sy + kp.y, True))
+        ops.append(Image(kp.path, ox + sx + kp.x, oy + sy + kp.y, not human))
         fp = self.keeper.fire_pic()
         if fp is not None:
             ops.append(Image(fp.path, ox + sx + fp.x, oy + sy + fp.y, True))

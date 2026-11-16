@@ -67,7 +67,7 @@ Shelf `i` plays `graphics\interface\shopanim\%.2d\%d.bmp` with `%.2d = 4 - i`, f
 | 2 | `02` | 132 x 88 | (149, 20) | upper right (magic) |
 | 3 | `01` | 112 x 88 | (37, 20) | upper left (potions, books) |
 
-Step (every 100 ms while the bit is set): `counter += 1`; `== 9` -> `3` (loop); `== 10` -> bit cleared, frames freed. So the clip shows file numbers `counter + 1`: **1, 2, 3, then 4..9 looping**; files 10, 11 exist and are never drawn. A deselected shelf's counter is set to 9 so it ends on the next step. Frames are keyed bitmaps drawn over the picture (black = transparent: INFERRED from `bitmaps.md` key mask; verify).
+Step (every 100 ms while the bit is set): `counter += 1`; `== 9` -> `3` (loop); `== 10` -> bit cleared, frames freed. So the clip shows file numbers `counter + 1`: **1, 2, 3, then 4..9 looping**; files 10, 11 exist and are never drawn. A deselected shelf's counter is set to 9 so it ends on the next step. Frames are drawn **opaque** over the picture (**CONFIRMED** `0x4bb3d7`: clips, the keeper and the base pictures all use vtable `+0x18` = `FUN_004254ea`, the opaque whole-bitmap blit of the `0x424e4b` class, bitmaps.md; no colour key). Druid / Kaarg draws (`0x4bf908`, `0x4c28c6`) not read for this; the engine keeps them keyed.
 
 ### 3.2 Druid / Kaarg: static highlight (`0x4bf908`, `0x4c28c6`)
 Drawn every frame while `+0x132 == i`, no animation (positions `P`-relative; sizes are the bitmaps'):
@@ -140,8 +140,11 @@ Hover tooltips (500 ms, ui-layout 11.6b) of the keeper panel: shelf `i` and keep
 The `0x80` box (`0x4bb3d7`, press `0x4bbfa6`): a filled rect J (220, 20)-(455, 115) window-relative with main `0x4f` "Do you want to identify this item", `0x50` "for %d gold coins?" and two text buttons main `0x4b` "Yes" / `0x4c` "No" (gold when hovered); an identify-for-gold confirm. Nothing in the single-player shop code read sets bit `0x80` (INFERRED dead / multiplayer).
 
 ## Open questions
-1. Does the window load reset `window+0x132` to 100 at every opening (then the first click on shelf 0 plays Yes + highlight) or keep the previous visit's value? (`0x4b8b98`, `0x4be7d6`, `0x4c04e8`, ctor value `0x4b8e6c`.)
-2. Is the keeper / clip blit (`+0x18`, vtable of the `0x424e4b` bitmap) colour-keyed on black like the price bar, or alpha? (`0x424e4b`; compare `bitmaps.md` key mask.)
-3. Item tooltips of the stock panel (`0x4b37f7`) and the table / pack panels; the writer of the `0x80` identify box.
-4. Kaarg fire list order `lite` -> 0..5, `burn` -> 6..11, `cicle` -> 12..17 is inferred from the string xref order and the draw's loop bounds (`0x4c12ca`, blocks at `0x4c162c` / `0x4c1ac1` / `0x4c1efb`).
-5. `FUN_004a0fd0(2)` really `rand() % 2`? (`0x4a0fd0`.)
+1. Item tooltips of the stock panel's text branch (`0x4b37f7`, **partly CONFIRMED**: empty while the identify box is not allowed (`+0x148 == 0`) or an item is carried (`client+0x3f4`); a hit-test of slot `+0x8c` returning `>= 0` gives the item text `FUN_004b14d4`; otherwise main `0x38`, `0x39` or `0x3c` by two rect tests `FUN_0041e3d0`: not mapped to which rects) and the table / pack panels; the writer of the `0x80` identify box.
+2. Kaarg fire list order `lite` -> 0..5, `burn` -> 6..11, `cicle` -> 12..17 is inferred from the string xref order and the draw's loop bounds (`0x4c12ca`, blocks at `0x4c162c` / `0x4c1ac1` / `0x4c1efb`).
+3. Are the druid / Kaarg keeper and highlight draws (`0x4bf908`, `0x4c28c6`) opaque (`+0x18`) like the human one?
+
+### Answered (REA 2026-11-16)
+- **Window load resets the shelf: CONFIRMED.** `0x4b8b98` writes `window+0x132 = 100` on every load (after the keeper lists are rebuilt), so the first click on shelf 0 of each opening plays Yes + highlight.
+- **`FUN_004a0fd0(n)` = `((rand() * n) / 0x7fff) % n`: CONFIRMED** (`rand` = CRT `0x583290`, LCG `0x343fd`, `0x269ec3`, bits 16..30). For `n = 2` that is not `rand() % 2` but `0` for `rand < 0x4000` or `== 0x7fff`, else `1`; the engine's `randrange(n)` has the same distribution except one value in 32768 (not modelled).
+- **Keeper / clip colour key: none, opaque** (see 3.1).
