@@ -6,13 +6,13 @@ layer's own `Rng` makes every random choice.
     plays = d.frame(now_ms, world, view, commands)     # drains world.sound_events (set `keep_sound_events=True` on the Simulation, the Director clears the list)
     plays += d.ui(2)                                   # a UI click
 
-Results are the mixer's (`played`, `stolen:N`, `dropped:busy`, `dropped:voices`) plus `dropped:fog`, `dropped:cooldown` (the 1500 ms wound throttle, the hero
+Results are the mixer's (`played`, `stolen:N`, `dropped:busy`, `dropped:voices`) plus `dropped:cooldown` (the 1500 ms wound throttle, the hero
 cooldowns) and `dropped:missing` (a null table slot or a missing file: the exe plays nothing).  Loops report `played`, `updated`, `stopped`."""
 
 from engine.rng import Rng
 
 from . import events as ev
-from .ambience import Ambience
+from .ambience import PRIORITY, Ambience
 from .mix import UI_PRIORITY, Mix, View, flat, positional, volume_mb
 from .mixer import LOOP, Played, VoiceMixer
 from .music import MusicState
@@ -20,9 +20,8 @@ from .settings import Settings
 from .voices import COMMAND_VOICE, Voices, voice_path
 
 HURT_THROTTLE_MS = 1500             # `FUN_00467e42`: kinds 1 and 2 per unit (`view+0x1bc`)
-SEEN = 0x4000                       # fog tile bit: in sight now (docs/engine/vision.md)
+WALK_STATE = 1                      # the view's state byte `+0x8c` = 1 while a unit walks (`unit.state`); `view+0x78` copies it at every animate (`0x466d5f`)
 SKILLUP_PRIORITY = 100              # `0x40e689`: flat, priority 100
-UNIT_KINDS = (ev.SWING, ev.CAST, ev.HURT, ev.DEATH)      # sounds of unit view objects: fog gated (audio.md 3.4)
 CELL_PX = 32
 
 
@@ -48,6 +47,7 @@ class Director:
         self.ambience = Ambience(self.rng, getattr(table, "ids", None))
         self.log, self.viewer = log, viewer
         self.hurt_stamp = {}
+        self.walking = frozenset()                  # uids that walked at the end of the previous frame (the view's `+0x78 == 1`, docs/engine/audio.md 2.3)
         self.ui_playing = {}                        # `ui` sound id -> channels it was started on (`stop_ui`)
         self.loops = {}                             # ambience name -> channel of the running loop
         self.now = 0
@@ -81,18 +81,8 @@ class Director:
         return p
 
     # -- sim events -------------------------------------------------------
-    def _seen(self, world, e):
-        """Audio.md 3.4 (INFERRED): a unit event of another player's unit plays only on a cell in sight; the viewer's own units are always seen."""
-        fog = getattr(world, "fog", None)
-        if fog is None or e.owner == self.viewer:
-            return True
-        x, y = e.x >> 8, e.y >> 8
-        return not (0 <= y < fog.shape[0] and 0 <= x < fog.shape[1]) or bool(fog[y, x] & SEEN)
-
     def event(self, e, world, view):
         """One `SoundEvent` -> a `Played`."""
-        if e.kind in UNIT_KINDS and not self._seen(world, e):
-            return self._drop(e.tick, "sim", e.kind, e, "dropped:fog")
         if e.kind == ev.SKILLUP:
             if e.owner != self.viewer:
                 return None
@@ -119,7 +109,7 @@ class Director:
         if name not in COMMAND_VOICE or getattr(cmd, "ai", False) or getattr(cmd, "player_id", None) != self.viewer:
             return None
         units = [u for u in (world.units.get(i) for i in getattr(cmd, "unit_ids", ())) if u is not None]
-        u, sound, res = self.voices.voice(name, units, self.now, skip)
+        u, sound, res = self.voices.voice(name, units, self.now, skip, self.walking)
         if sound is None:
             if res == "dropped:cooldown":
                 p = Played(self.now, None, 0, 0, 0, -1, res)
@@ -187,12 +177,12 @@ class Director:
                 if ch is not None and self.mixer.busy[ch] and self.mixer.snd[ch] == a.sound:
                     out.append(Played(self.now, a.sound, self.mixer.prio[ch], vol, a.pan, ch, "updated", True))
                 else:
-                    p = self._play(world.tick, "amb", a.name, 0, a.sound, ev.SFX, Mix(a.att, a.pan, (10000 - abs(a.att)) // 100), loop=True)
+                    p = self._play(world.tick, "amb", a.name, 0, a.sound, ev.SFX, Mix(a.att, a.pan, PRIORITY), loop=True)
                     if p.audible:
                         self.loops[a.name] = p.channel
                     out.append(p)
             else:
-                out.append(self._play(world.tick, "amb", a.name, 0, a.sound, ev.SFX, Mix(0, a.pan, 100)))
+                out.append(self._play(world.tick, "amb", a.name, 0, a.sound, ev.SFX, Mix(0, a.pan, PRIORITY)))
         return out
 
     def stop_ambient(self):
@@ -211,6 +201,7 @@ class Director:
             p = self.command(c, world, view, skip_voice)
             if p is not None:
                 out.append(p)
+        self.walking = frozenset(u.uid for u in world.units.values() if getattr(u, "state", 0) == WALK_STATE)
         if ambient:
             out += self.ambient(world, view)
         return out

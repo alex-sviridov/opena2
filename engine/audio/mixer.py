@@ -12,7 +12,7 @@ LOOP = None                     # `duration` of a looping play: until `stop`
 @dataclass
 class Played:
     """One request and its fate.  `result`: `played`, `stolen:<channel>` (played, a lower-priority voice was cut), `dropped:busy` (all 16
-    duplicates of the sound are playing), `dropped:voices` (no voice free, none of lower priority); the Director adds `dropped:fog` / `dropped:cooldown`."""
+    duplicates of the sound are playing), `dropped:voices` (no voice free, none of lower priority); the Director adds `dropped:cooldown`."""
     now: int
     sound: object
     priority: int

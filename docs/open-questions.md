@@ -14,8 +14,8 @@ from both places when answered).
 
 ## Combat and death
 
-- Sound (K10 answered the tables, the attenuation, the registry options, the speech names and the music zones; [sound](formats/sound.md#open-questions)): the server events behind the unchanged-HP blow sound, the shop-speech trigger, the unreferenced / missing speech names, `0x5f1a04`; the engine plays sound and music (K11, [audio](engine/audio.md)): open items in the next line.
-- Audio K11 ([audio](engine/audio.md#open-questions), starting routines `FUN_0041da16`, `0x467e42`, `FUN_0041b311`): the callers of table ids 3-6 / 11-13 and which `message` (15) sites fire in single player; fog gating of unit sounds and the view state `+0x78 == 1`; which object defs are n44 / n34 / n58 and the first `rand` of the ambience; the town window sounds and the speech test sample; the pickup / retreat / swarm bank offsets; the hurt kind from the old or the new HP (`0x467e42` / `0x467f60`); the DirectSound pan law and the 74 % default against the real mixer (by ear); the exact gapless music switch.
+- Sound ([sound](formats/sound.md#open-questions)): the unreferenced / missing speech names (59 expected names without a file, 90 files the rule never produces), the zone theme draw `rand(3)` range, the host window of the `0x467` track-change message.
+- Audio K11 ([audio](engine/audio.md#open-questions), starting routines `FUN_0041da16`, `FUN_0041b311`): what `view+0x1b8` bits 1 / 0x10 and `view+0x188` are (the three selection arrays of the order voice); the `0xb9` diplomacy line and the cheat-code activation / other codes (`message` sub 5 / 6); by ear: the DirectSound pan law and the 74 % default against the real mixer, the exact gapless music switch.
 
 ## Campaign
 

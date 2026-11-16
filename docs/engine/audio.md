@@ -29,10 +29,26 @@ play adds the bus volume. Flat = pan 0, no attenuation.
 |---|---|---|---|---|---|
 | swing / shot lands (animate modes 3 and 7 at the type's hit frame `type+0x120`) | `0x46617c` -> `0x467cd2` | `units.reg Sound` slot [attack] (blow slot is the victim's) | none | SFX | slot non-null |
 | cast animation frame (mode 8) | `0x46617c` -> `0x467da8` | `sfx[500 + spell id]` (`view+0xac`) | none | SFX | slot non-null |
-| blow that cost no HP (`0x73` with equal HP) | `0x412a6c` -> `0x467e42(0)` | slot [blow] | none | SFX | never throttled |
+| blow that cost no HP (`0x73` with equal HP) | `0x412a6c` -> `0x467e42(0)` | slot [blow] | none | SFX | never throttled; sources in 2.1a |
 | HP changed, old HP > -10, old >= max/2 (k=1) / < max/2 (k=2) | `0x467e42(1/2)` -> `0x467f60` | slot [easy] / [hard]; heroes: bank `easy` / `hard` | none | speech | 1500 ms per unit (`view+0x1bc`) |
 | death animation starts (`k=3`) | `0x4106be` -> `0x467e42(3)` | slot [dead]; heroes: bank `dead` | none | speech | none |
-| skill-up (`0x92` sub-type 2) | `0x40e689` | table id 15 `message` | none | SFX flat, prio 100 | option word `[client+0x404] & 1` |
+| skill-up (`0x92` sub-type 2) | `0x40e689` | table id 15 `message` | none | SFX flat, prio 100 | `client+0x404 & 1` (CONFIRMED: the screen mask's mission bit, [shell](shell.md), not an option word; always set in a mission) |
+
+#### 2.1a The wound kind and the unchanged-HP blow (CONFIRMED, K11 round 2)
+
+`0x412a41`-`0x412ace` compares the message's HP (`msg+0xc`) with the view's HP (`view+0x104`, the **old** value; the new one is stored only at `0x412ace`):
+equal -> `0x467e42(0)`; else old HP <= -10 -> nothing; else old < `(max - sign) / 2` -> `(2)` hard, else `(1)` easy (`0x467e42` is the whole routine,
+`0x467f60` is only an address inside it; `param + 1` indexes the units.reg Sound list, so 0 = slot [1] blow, 1 = easy, 2 = hard, 3 = dead; the hero
+branch tests `view+0x1b8 & 0x11` or type `+0x1dc <= 0x17`). `engine.audio.events.hurt_kind` already does exactly this.
+
+**The server events behind message `0x73`** (the only builder is `FUN_00504b1d(creature, damage)` -> `FUN_00503672(.., 0x73)`; it ignores the damage argument,
+the HP in the message is the creature's current HP): the melee / shot hit `FUN_00516ceb` (sends when the target was alive or is now above -10 **whatever the
+damage was**, so a blow of damage 0 = a miss or a fully absorbed hit gives HP == view HP: the blow sound), the structure-target hit `FUN_00516ea0`, the spell /
+projectile hit `FUN_0051e65b` (only when the damage is > 0), the poison / state tick `FUN_0051d175` (only when the amount is non-zero), a debug command
+`0x4f826f` (`DAT_0066832c` set: HP - 1 and a refresh). So the unchanged-HP blow sound plays for every swing whose damage is 0; the engine's `combat.log`
+emits a `Damage` entry for such swings (`res.damage == 0`), which gives `hurt_kind` 0: matches.
+**In single player the server filters nothing by sight**: `FUN_00503672` sends `0x73` when `creature+0x1a4 & player+0x30` or when `server+0x74 == 0`, and
+`FUN_004eb356(p)` stores `+0x74 = (p < 2)` with `p = client+0x5d8 = 2` in a single-player game (callers `0x48c112`, `0x48db9c`).
 
 Footsteps: **none**; the walk mode (`0x46617c` mode 1) has no sound call. Item pick-up and gold: **no sound** (message `0x67` and the item notice `0x6a`
 have none; the only audible reaction is the hero's pickup voice, §2.3). Structure uses: none ([structures §4](structures.md)). Loot drop: none
@@ -51,12 +67,16 @@ the cast frame and the object's `0x86` sound at creation (same id `500 + n`; CON
 
 ### 2.3 Order and selection voices (`FUN_0041da16`, 13 senders)
 
-Returns without a voice unless `client+0x5d8 == 2` and the voice option `DAT_00622778 != 0`. It picks **one random alive selected unit** (`size * rand() / 0x7fff`)
-from the first non-empty of three arrays (A flag `+0x1b8 & 1`, B humans `& 0x10`, C unit type `+0x1dc` in 1..0x14), calls the unit's voice slot:
+Returns without a voice unless `client+0x5d8 == 2` and the voice option `DAT_00622778 != 0`. It walks the view list `+0x9d0`, keeps the selected views
+(`FUN_0041eb40`) with HP `+0x104 > 0`, files each into one of **three arrays** (CONFIRMED `0x41dae4`-`0x41db7f`) and picks **one random member**
+(`size * rand() / 0x7fff`, so the last index is almost never reached) from the first non-empty of A, B, C:
+A = flag `+0x1b8 & 1`; else, while A is still empty, a unit with flag `+0x1b8 & 0x10`: into B when `view+0x188 != 0`, into C when `+0x188 == 0` and B is still empty;
+every other unit (A not empty yet, or no `0x10`) with type `+0x1dc` in 1..0x14 goes into B. (The order of the walk matters; what `+0x188` and the flag bits
+1 / 0x10 are is open: the engine's "heroes first, then classes" is the stand-in.) It calls the unit's voice slot:
 
 | Command (sender, cmd byte) | Voice slot -> routine | Bank samples | Skip rule |
 |---|---|---|---|
-| move `0x418bc3` (0x16) | `+0x6c` -> `0x4682a6` | `move/N` | skipped when the view's `+0x78 == 1` (asm `0x418c99`) |
+| move `0x418bc3` (0x16) | `+0x6c` -> `0x4682a6` | `move/N` | skipped when the chosen view's `+0x78 == 1` (asm `0x418c99`): the unit was **already walking** (below) |
 | swarm `0x418d78` (0x1a) | `+0x70` -> `0x468383` | `swarm/N` | same skip |
 | patrol `0x4190be` (0x1d), use structure `0x41a0b5` (0x24) | `+0x6c` | `move/N` | no skip test |
 | attack unit `0x418cb3` (0x19) | `+0x68` -> `0x4681c9` | `attack/N` | |
@@ -68,7 +88,10 @@ from the first non-empty of three arrays (A flag `+0x1b8 & 1`, B humans `& 0x10`
 Players: `now - view+0x1bc >= 3000 ms` (select **2000 ms**), else nothing; the stamp is rewritten **before** the sample lookup, so an empty slot still starts
 the cooldown, and all seven voices **share one stamp per unit**. Sample = `bank[list + rand(count-1)]`; playback positional at the unit, volume + speech bus,
 priority from the attenuation. Bank = `FUN_00468094` (`soundtable`, [sound §4.2](../formats/sound.md#42-hero-and-class-voices)); a unit with no
-bank (generic `m_fighter`...) is silent. Bank offsets for pickup / retreat / swarm were read from 3 of 7 players only (INFERRED layout).
+bank (generic `m_fighter`...) is silent. The bank layout read by the seven players is CONFIRMED (constructor `0x4c5038` and each player, [sound §4.2](../formats/sound.md#42-hero-and-class-voices)).
+**The skip test `+0x78 == 1` (CONFIRMED):** `view+0x78` is overwritten at the end of every animate (`0x466d5f`) with the byte `view+0x8c` (the unit state, 1 = walking),
+so the move / swarm voice is skipped when the chosen unit was **already walking** at the last tick; the skip happens in the caller, before the voice routine, so it
+stamps no cooldown. The engine keeps the set of walking units at the end of each Director frame (`Director.walking`) and `Voices.voice(walking=)` tests the pick.
 
 ### 2.4 Ambience (`FUN_0041b311`, from the game-view draw `0x406f43` every frame, and message `0x485`)
 
@@ -78,12 +101,20 @@ Work only when the camera cell changed or the timer `view+0x49c0` expired. Scan 
 |---|---|---|---|---|
 | river | terrain type `(tile & 0x1fff) >> 6` in 8..11 | `sfx[50]` | yes | `max over cells of -(exp(floor(d / 8)) - 1) * 100` (`d` = integer cell distance from the view centre, `FUN_00583260` = exp) + SFX; pan = mean of `clamp((x - cx) * 2000 / vw, +-2000) * v_i / 10000` |
 | fire wall | cell record flag `& 8` (`FUN_004203e0(view+0xa08)`) | `sfx[90]` | yes | same |
-| trees / objects | object def tests `+0x44 < 0 && +0x40 == -2` (n44), else `+0x14 >= 2` (n34), else n58 | random one-shot below | no | SFX only (**no attenuation**), pan = mean |
+| trees / objects | object def (objects.reg, `+0x44` DeadObject, `+0x40` FireObject, `+0x14` Phases): `DeadObject < 0 && FireObject == -2` = n44, other `DeadObject < 0` = **nothing**, `DeadObject >= 0`: `Phases >= 2` = n34, else n58 | random one-shot below | no | SFX only (**no attenuation**), pan = mean of `trunc(pan_i * v_i / 10000)` |
 
 Loops are kept between passes: a playing loop only gets new volume / pan, and stops when its source count is 0; all stop at the mission teardown
-(`0x41bddd` from `0x48da92`). One-shot id: `base = 600`; `if n34 <= rand(10): base = 620`; `if n34 + n58 <= rand(10): base += 20`; night (`hour < 4 || hour > 19`, hour
-`= (((clock >> 4) + 360) / 60) % 24`, clock = `client+0x408`) adds 10; `id = base + rand(10)` re-rolled until the slot exists (ids 600-609 / 610-619 forest day / night, 620-629 /
-630-635 steppe, 640-647 / 650-658 north). Next one-shot at `now + 5000 + rand/7` ms. INFERRED: the first `rand` is `rand(10)`; which object defs are n44 (probably fire / burning trees).
+(`0x41bddd` from `0x48da92`). **Every ambience play passes priority `0xdc`** (`push 0xdc` at `0x41bbcb`, `0x41bd80`; the old formula from the attenuation was wrong).
+Per source cell: `d = trunc(sqrt(dx^2 + dy^2))` from the view centre `(vx + (vw >> 1), vy + (vh >> 1))`, `v = max(0, trunc(10000 - (exp(d >> 3) - 1) * 100))`
+(constants `1.0`, `100.0`, `10000.0` at `0x5cb138`/`40`/`50`), attenuation of a loop = `max(v_i - 10000)`, pan_i = `clamp(trunc(dx * 2000 / vw), +-2000)`, loop pan =
+`trunc(sum(trunc(pan_i * v_i / 10000)) / count)` (CONFIRMED; the cell tests above are the exe's, `v` is 0 from 5 `d >> 3` on, so only the 40 nearest cells are audible).
+The objects are counted **only on a timer pass** (`view+0x49c0` expired), the one-shot needs `total = n34 + n58 + n44 != 0`, and the timer is re-armed only
+then (`0x41bdb0`; with no object in the window the exe rescans every frame, the engine retries every 250 ms, DECISION). One-shot id (CONFIRMED `0x41bc84`-`0x41bd7c`):
+`r = rand(total - 1)` (inclusive, `FUN_0051fa25`); `base = 600; if n34 <= r: base = 620; if n34 + n58 <= r: base += 20` (forest 600 = n34 animated trees, 620 = n58
+static bushes, 640 = n44 dead trees, each in proportion to its count); night (`hour < 4 || hour > 19`, hour `= (((clock >> 4) + 360) / 60) % 24`, clock = `client+0x408`)
+adds 10; `id = base + rand(10)` with `push 0xa`, **inclusive 0..10** (a day roll can reach the block's first night id, 610 / 630 / 650), re-rolled until the slot exists
+(ids 600-609 / 610-619 forest day / night, 620-629 / 630-635 steppe, 640-647 / 650-658 north). Pan = `trunc(sum of every counted object's weighted pan / total)`
+(the argument order of the play is volume = SFX bus, pan, loop 0, priority `0xdc`). Next one-shot at `now + 5000 + rand/7` ms.
 
 ### 2.5 UI and message sounds (flat, priority `0xdc` unless marked)
 
@@ -96,17 +127,51 @@ Loops are kept between passes: a playing loop only gets new volume / pan, and st
 | `0x486f74` (msg `0x430`) | mission-complete dialog opens (not when already playing; skipped when `Var 0x300 >= 0x78`) | 14 `mcomplet` |
 | `0x48707e` (msg `0x431`, `state+0x176 == 2`) | mission-failed dialog opens (not when already playing) | 16 `mfailed` |
 | `0x485ff7` / `0x48604a` / `0x48609d` (msg `0x433` wParam `0xfe` / `0xfd` / `0xfa`) | script sub-objective failed / done / new-mission note | 16 / 14 / 14 (`campaign.message_action` already returns `("sound", slot, 0xDC)`) |
-| `FUN_0040d9b2` cases `0x92` (sub 2, 5-8, `0x10`...), `0x91`, `0x93`, `0xb9` | a message-line text is posted | 15 `message`, **priority 0x64**; sub 1 "No way", 3, 4 and the gold line are silent |
+| `FUN_0040d9b2` cases `0x92` (sub 2, 5-8, `0x10`...), `0x91`, `0x93`, `0xb9` | a message-line text is posted | 15 `message`, **priority 0x64**; sub 1 "No way", 3, 4 and the gold line are silent; which fire in single player: below |
 | `0x43d8a4` msg `0x474` | options slider test buttons | SFX: 100 (`units/sword`), prio `0xdc` |
 
-Table ids 3-6 and 11-13 (`click02`, `click03`, `click_ok`, `error`, `letter1-3`) have no direct caller (open question: probably literal-path
-wrappers of the town / dialog windows, out of scope).
+**Table ids 3-6 and 11-13 (`click02`, `click03`, `click_ok`, `error`, `letter1-3`) are never played (CONFIRMED).** All 59 callers of the lookup `FUN_00420eb0` on
+the table `0x627740` were listed: the constant ids are 1, 7, 8, 14, 15, 16, 50, 90, 100 and the sets `500 + n` / `600..658`; the variable ones are the generic button
+class `0x4d5c41`, the projectile ids of `0x4151b7` / `0x4156c5` / `0x415ae7` and the ambience. The button class has a compiler quirk: its `switch (+0x70)` maps
+`0x445` -> 4 (`click03`) and `0x45a` -> 1 (`click00`) but **every case falls through** (`0x4d5c71`-`0x4d5c7f` have no `break`), so the id is always the default **2**
+(`click01`): `click03`, `click00` for those two window ids and the rest are dead. No town window uses the table ids either: the town scenes load their own
+files by path (`FUN_004384f0`, [town-scenes](town-scenes.md)). So the table's ids 3-6 and 11-13 have no caller in the GOG exe.
+
+**The `message` (15) sites in single player (CONFIRMED by sender and handler):** all `0x92` sites test `client+0x404 & 1` (a mission) and play at priority 100.
+Fire: sub 2 (skill-up: built), **sub 5 / 6 / 7** (the typed cheat codes of the chat line, `FUN_004f3d68`: 5 `main.txt[0xde]` "Player X has decided to become
+super-lame and cheat!", 6 `[0xe0]` "... is grasping at straws! This is not a code...try again.", 7 `[0xe2]` "... has succesfully entered a cheat code!"; the engine builds
+sub 7 for `#show map` / `#hide map`: line (5000 ms) + sound; the cheat activation and the other codes are not modelled), `0x91` (chat echo: built). Never in single
+player: sub 8 (an "Enemy N Mercenary" network line, `0x4f70e2`), sub `0x10` / `0x20` / `0x40` / `0x80` (quest events: the queue `0x68d360` is fed by the
+multiplayer-only quest code `0x52f8e2`, [items 14](../data/items.md#14-quests-and-the-item-upgrade-message-0x38)), `0x93` (sent by `FUN_00505697` only inside the
+`server+0x74 != 0` branch of the chat handler and by the "kicked from server" client routine `0x492a3a`: multiplayer). `0xb9` (the "Diplomacy changed: A > B" line, three
+sites `0x414342`, `0x4144cd`, `0x414658`, sender `FUN_00504e87`) is reachable: at player start (`0x4f21a8`) and from script instant 10 "Change diplomacy"
+([triggers](triggers.md)); it prints only for a player that is not computer controlled and whose stored relation word changed. The engine has no diplomacy matrix
+and the instant is a no-op, so `0xb9` stays unbuilt.
+**Item pick-up and gold (CONFIRMED, exhaustive):** the 58 callers of the play routine `0x45aa2f` were all listed; none belongs to the client cases `0x67` (gold: a text line
+through `0x4021fe` only) or `0x6a` (`0x41356d`: removes the view entry; its server sender is `FUN_00504b3a`). The only audible reaction is the hero's pickup voice (2.3).
+**The options speech-test button (`0x43da49`, wParam 8):** plays the sound object at `[0x627d48]`, which is `select/2` of the generic bank `m_fighter` (the array of two 0x6c
+banks `0x627d40` built by `0x4c4bf1`-`0x4c4d5d` from `sfx\characters\<m|f>_fighter\...`); that folder does not exist in the install, so the **speech test is silent in the GOG
+game** (a missing file fails silently, 3.1). The SFX test (wParam 7) plays table id 100 `units/sword`.
 
 ### 2.6 Not built (documented)
 
-Town scenes and shops (`0x438570` / `0x4a0ff0` loops, enter / leave sounds, NPC speech `0x4dc84c`, shop speech `0x4b5ffa`): there are no town scenes yet (phase K
+Town scenes and shops (`0x438570` / `0x4a0ff0` loops, enter / leave sounds, NPC speech `0x4dc84c`, shop speech `0x4b5ffa`; the town-window sounds are in 2.7): there are no town scenes yet (phase K
 backlog; the shop sound slots and their files are in [town-shop 6](town-shop.md#6-sounds-music-and-tips)); the speech *names* are specified in [sound §4.3](../formats/sound.md#43-speech) and the player will reuse the same mixer. Script instant 37
 "set music node" does nothing in the exe ([triggers §instants](triggers.md)).
+
+### 2.7 Town window sounds and the shop speech (CONFIRMED)
+
+* **`0x4be6b0` (druid shop load, vtable slot 32) and `0x4c03c2` (Kaarg shop load)** end like the human load: they start the scene sound `FUN_00438570` / loop `FUN_004a0ff0`
+  and play the window sound object `+0xb0` once through `0x45aa2f` (speech volume `[0x6226a0]`, priority `0x80`) unless it is already playing (`0x4bebef`,
+  `0x4c0901`); `+0xb0` is the shop's "start" clip (human `Shop\start.wav`, [town-shop 6](town-shop.md#6-sounds-music-and-tips)). **`0x4b978f`** (human shop, vtable slot 82)
+  is the keeper idle player already described there: once 30 s + `FUN_004a0fd0(30000)` have passed since the last play (and no shelf animation `+0x240 & 0x70` runs) it replays `+0xb0`
+  (same priority / bus) and arms the next with `FUN_004a0fd0(10000)`.
+* **Shop speech `FUN_004b5ffa`** is the stock panel's override (vtable slot `0xa0`, panel vtable `0x5d0044`) of the base class's "take an item from this panel" virtual,
+  called by the pick-up routines `0x4b242d` (`0x4b2544`) and `0x4b27ad` (`0x4b282b`): **picking up an item from a shelf** (carried item kind `+0x18` in 5..8, client
+  mode `+0x5d8 == 2`) speaks with a **30 % chance** (`FUN_004a0fd0(100) < 30`, the CRT-backed draw): the folder by the town (`shop_kaarg` when the hero's town word equals
+  `window+0x20ac`, `shop_druid` for `+0xfc`, else `shop`) and the first of `effects\%.2d` (`FUN_00438f3a`, an item's effect number), `books\%.2d` (`FUN_004b10b0`, a book's number), else
+  `s%.2di%.2dp%d` (item class `FUN_0041e9e0` / index `FUN_00439e90`, `p = rand(3) + 1`); the previous speech object `window+0x20b0` is cut first, the new one plays at priority
+  `0x80` on the speech bus, then the click slot `+0x20b4` plays. (INFERRED only that the virtual is the pick-up hook; the sequence is CONFIRMED.) `books\NN` is therefore a book number.
 
 ## 3. Playback rules
 
@@ -132,12 +197,13 @@ Three buses: SFX `[0x622698]`, speech `[0x6226a0]`, music (the player's volume o
 `MusicEnabled` 1. A bus value is added to every play (§3.1). Pause, modal dialogs, the ESC menu and the result dialogs **do not stop** sounds or music; the ambience
 keeps running while the simulation is frozen. No focus-loss handling. **No in-play volume or mute key exists** (the hotkey table has none).
 
-### 3.4 Gating by visibility (INFERRED)
+### 3.4 Gating by visibility (CONFIRMED: none)
 
-The exe's sounds come from client view objects. Sounds of unit events (swing, cast frame, hit, death, order / select voices) are played only while the unit
-exists as a drawn view object; the engine's rule: a unit event is dropped when its cell is **not currently seen** (fog bit `0x4000`, [vision](vision.md)); the
-player's own units are always seen. Spell-object sounds (§2.2) come from server messages and are never fog-gated. There is no on-screen test: a sound far
-off screen is only attenuated (-41 dB at 30 cells). VERIFY BY EAR.
+Unit sounds are **not fog gated** in single player. The client calls the view-unit `animate` (vtable `+0x3c` = `0x46617c`) on every view of the object map
+`view+0x9d0` each tick (`0x40bddb`); neither it nor its sound routines (`0x467cd2` swing, `0x467da8` cast frame, `0x467e42` wound / death) read the visibility `S`
+(`view+0x7c`, set by the separate `+0x4c` = `0x468762` pass), and the server sends `0x73` for every creature (2.1a). A fight in the fog is heard, attenuated by the
+distance only (no distance cutoff, no on-screen test: -41 dB at 30 cells). Spell-object sounds (2.2) come from server messages and are never gated either.
+The engine plays every unit event (the former `dropped:fog` rule is gone).
 
 ## 4. Music
 
@@ -180,7 +246,7 @@ World.sound_events  ------->  Director.drain(world, camera)   Voicebank / soundt
   drain it must not grow it: `Simulation` keeps the last tick's events only, `keep_sound_events=False` default drops them at the next step). Kinds: `swing`, `cast`, `spell`
   (object creation), `blizzard`, `hurt` (k 0-3, hero flag in the event), `death`, `skillup`. Position = unit / object position in 1/256 units, `uid`, `sound` = a table id (int) or a bank key
   `("hero", bank, slot)`. The sim never draws random numbers for sound (every sim-side sound has exactly one candidate; variants belong to the audio layer).
-* **Director** (`engine/audio/director.py`, pure): per frame it takes the events, the camera, the fog and a clock, applies §3.4 gating, the 1500 ms hurt throttle, the
+* **Director** (`engine/audio/director.py`, pure): per frame it takes the events, the camera and a clock, applies no fog gating (§3.4), the 1500 ms hurt throttle, the
   hero cooldowns (shared stamp, select 2000 ms), converts voice commands, computes volume / pan / priority (§3.2), and feeds the `VoiceMixer`. Replay and the live game share it:
   the clock is the wall clock live and `tick * 1000 / ticks_per_second` in a replay; the replay camera is centred on the player's party (DECISION: the log has no camera).
 * **View / UI** emits UI sounds with `Director.ui(id, priority)`: `GameUi` button presses, backpack / book toggles, dialog opens, message-line posts (`MessageLine.show` callers that play
@@ -202,7 +268,7 @@ An unreadable or missing file = defaults; writes are atomic (temp file + rename)
 
 `python -m engine replay SESSION --audio-log out/audio_log.csv`: headless replay through the Director + `VoiceMixer` with a `NullAudio` and the replay clock (§5). CSV columns:
 `tick,time_ms,source,event,uid,sound,file,x,y,volume_mB,pan,priority,channel,result` where `result` is `played`, `stolen:<channel>` (a lower-priority voice was cut), `dropped:busy` (no free
-duplicate) or `dropped:voices` (no voice), `dropped:fog`, `dropped:cooldown`. A `#` header line records the session, seed and that UI sounds are absent.
+duplicate) or `dropped:voices` (no voice), `dropped:cooldown`. A `#` header line records the session, seed and that UI sounds are absent.
 
 ## 8. Tests (headless, `SDL_AUDIODRIVER=dummy`)
 
@@ -226,18 +292,18 @@ Built (slice 1, no device): `engine/audio/{events,mix,mixer,voices,music,ambienc
   cell centre: `sfx[513]`); id 23 is skipped. Other area / field impacts send no `0x86` of their own in the engine. `blizzard`: `effects.field_tick` when `world.tick - c.born == 8` (our step 8; exact tick, a missile-delivered
   Blizzard would miss it), at the carrier's centre cell. `hurt`: `combat.log` for every `Damage` entry on a unit (all message-`0x73` sources: blows, spells, poison, Drain Life) and every `Healed` with amount > 0
   (an amount-0 heal sends nothing, INFERRED), old HP = `hp + amount` / `hp - amount`, kind by `events.hurt_kind`. **`hurt_kind` decides by the view's OLD HP (CONFIRMED K11 REA `0x412a77`-`0x412aa4`; the new HP is stored only at `0x412ace`), so the §2.1 row is right.** `death`: `death.dying_tick` at the first dying tick. `skillup`: `xp.level_up` (the Director plays it for the viewer's own heroes only; the
-  option word `client+0x404 & 1` is not modelled). `sound_events` is not dumped; `Simulation` clears it at the start of each step unless `keep_sound_events=True` (then the consumer clears it: `Director.drain`).
+  mission bit `client+0x404 & 1` is always set in a mission). `sound_events` is not dumped; `Simulation` clears it at the start of each step unless `keep_sound_events=True` (then the consumer clears it: `Director.drain`).
 * **Sound sets.** `units.reg Sound` through `world.assets.unit_types()` (Parent inheritance already applied), cached in `World.sound_sets`; a world with no assets emits no unit-slot events. Slots <= 0 are empty.
 * **Voice bank (`voices.bank_of`).** Reduced server id (`10210 -> 21`, unit-struct `+0x14c`): 1-6 = xbow, knight, druid, troll, orc, mage; 22 (`Fighter_Hero`) = igles; 23 (`Mage_Hero`) = dina; 21 (`Start_*`)
   by the template name `Start_<M|F><F|M>`: MF aldor, FF sagita, MM hildarius, FM galinel (the exe reads flag bits; the name letters are our stand-in). Wound / death use the bank for every human with type word
   1..0x17; with no bank (types 7-20: the generic `Man_*`) they are **silent** (the exe's `<= 0x17` test, no fallback to `Sound`). Real data check: `Man_Unarmed` has server id 1, so it speaks with the xbow bank
   (VERIFY BY EAR: generic humans in the campaign).
-* **Order voices.** Candidates = the command's alive units with a bank; heroes (type >= 21) first, else the classes (stand-in for the three flag arrays); index `min(size - 1, size * rand15 // 0x7fff)` from the audio RNG.
-  The skip rule `+0x78 == 1` is the caller's `skip_voice` flag (default off). Only the viewer's own, non-AI commands speak; a select command speaks for its `unit_ids`.
-* **Ambience.** Object classes from the `objects.reg` fields: n44 = `DeadObject < 0 and FireObject == -2` (the 21 dead-tree records), n34 = `Phases >= 2` (45 animated trees / bushes), n58 = the rest (126 stones etc.);
-  only n34 / n58 enter the one-shot formula, any of the three makes a one-shot possible. Fire wall = a `cell_fx` entry with slot 0. Window bounds inclusive, clamped `[8, size - 8]`. Pan weight and the one-shot's pan:
-  see `ambience.py` (weight `(10000 - |v|) / 10000`, one-shot pan 0). One-shot id offset `rand(9)` (ids come in blocks of 10). One timer serves the pass and the one-shot (`next = now + 5000 + rand15 // 7`).
-* **Director.** View in cells from the camera: `x // 32`, `view_w // 32` (floored). Fog gating by `event.owner != viewer` and the tile's `0x4000` bit (no fog = everything heard). `dropped:missing` is a play with a null
+* **Order voices.** Candidates = the command's alive units with a bank; heroes (type >= 21) first, else the classes (stand-in for the three arrays of 2.3); index `min(size - 1, size * rand15 // 0x7fff)` from the audio RNG.
+  The skip rule `+0x78 == 1` = the chosen unit was walking at the end of the previous frame (`Director.walking`, CONFIRMED meaning, 2.3); the `skip_voice` flag stays as an override. Only the viewer's own, non-AI commands speak; a select command speaks for its `unit_ids`.
+* **Ambience.** Rules and constants are CONFIRMED in 2.4 (K11 round 2 replaced the earlier guesses: the classes, `rand(total - 1)`, `rand(10)` for the id offset, the pan mean, priority `0xdc`,
+  objects counted only on timer passes). Object classes from the `objects.reg` fields (`ambience.object_class`): n44 21 records, n34 43, n58 22, the other 106 count for nothing. Fire wall = a `cell_fx` entry with slot 0. Window bounds
+  inclusive, clamped `[8, size - 8]`. One timer serves the pass and the one-shot (`next = now + 5000 + rand15 // 7`, re-armed only when an object was counted; 250 ms retry otherwise, DECISION).
+* **Director.** View in cells from the camera: `x // 32`, `view_w // 32` (floored). No fog gating (3.4). `dropped:missing` is a play with a null
   table slot or a file with no duration (no voice taken, as the exe). Mute is not applied by the model: the backend silences when `settings.mute` (the log shows the unmuted volume). Loop results: `played`, `updated`,
   `stopped`. A replay passes `replay_ms(tick, rate)`; the replay camera rule of §5 is the caller's.
 * **Music zones** use the view centre in 1/256 cell units and `rand(3)` = 0..3 (inclusive, like every `FUN_0051fa25`); `stop` forgets the playlist.
@@ -266,7 +332,7 @@ Files: `engine/backend_pygame/audio.py` (`NullAudio`, `Audio`, `MusicPlayer`, `w
 ## VERIFY BY EAR
 
 1. Hero voice gaps: after a move order, another order within 3 s is silent (shared stamp); select 2 s.
-2. Fog gating (§3.4): do fighting units in fog make noise in the original? (our rule: no)
+2. ~~Fog gating~~ answered (3.4: the original plays unit sounds in fog); listen that a distant fight in the fog is just quiet.
 3. The double sound of a unit-target cast (caster frame + object creation, same id).
 4. Ambience: river loudness against the camera distance, fire-wall loop, forest one-shots (night), the 5 s spacing.
 5. Wound sounds: the 1500 ms throttle, heroes use the voice bus, the death sound once.
@@ -278,10 +344,6 @@ Files: `engine/backend_pygame/audio.py` (`NullAudio`, `Audio`, `MusicPlayer`, `w
 
 ## Open questions
 
-- Table ids 3-6, 11-13 callers (`click02`, `click03`, `click_ok`, `error`, `letter1-3`): probably town / dialog wrappers; which of the `message` (id 15) sites fire in single player.
-- Whether sounds of units in fog play in the original (§3.4); the meaning of the view state `+0x78 == 1` that skips the move / swarm voice; the three arrays of `FUN_0041da16`.
-- Which object defs count as n44 / n34 / n58 in the ambience scan, and the exact `rand` of its first draw.
-- The town windows `0x4b978f`, `0x4be6b0`, `0x4c03c2` and the speech-test sample of the options dialog.
-- Pickup / retreat / swarm bank offsets (INFERRED from the layout).
-- Gapless track change at a track end (the next track is loaded on the end event); whether `Channel.set_volume(l, r)` of SDL_mixer reproduces DirectSound's pan law at the screen edge.
-- The remaining `message` (id 15) sites (`0x93`, `0xb9`, sub-types 5-8 / `0x10` of `0x92`): they need message sources the engine does not have (quests, trade).
+- Gapless track change at a track end (the next track is loaded on the end event); whether `Channel.set_volume(l, r)` of SDL_mixer reproduces DirectSound's pan law at the screen edge (both by ear).
+- What `view+0x1b8` bits 1 / 0x10 and `view+0x188` are (which hero lands in which of the three arrays of `FUN_0041da16`, 2.3).
+- The `0xb9` "Diplomacy changed" line and the cheat-code activation / other cheat codes (`message` sub 5, 6): they need the diplomacy matrix and the cheat-code parser.

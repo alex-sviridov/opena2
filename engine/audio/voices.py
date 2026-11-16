@@ -8,7 +8,7 @@ SELECT_COOLDOWN_MS = 2000       # the select voice `0x468460`
 BANK_DIR = "sfx/characters/%s/"
 
 # command class name -> (voice category, skip rule applies).  CONFIRMED audio.md 2.3: move / swarm are skipped when the view's `+0x78 == 1`
-# (asm `0x418c99`; its meaning is open: the caller passes `skip`); patrol / use-structure play move with no skip test.
+# (asm `0x418c99`; CONFIRMED meaning: the chosen unit is already walking, `Voices.voice(walking=)`); patrol / use-structure play move with no skip test.
 COMMAND_VOICE = {
     "MoveUnits": ("move", True), "Swarm": ("swarm", True), "UseStructure": ("move", False), "AttackUnit": ("attack", False),
     "Guard": ("defend", False), "Stop": ("defend", False), "StandStill": ("defend", False), "Retreat": ("retreat", False),
@@ -65,14 +65,16 @@ class Voices:
             return None
         return pool[min(len(pool) - 1, len(pool) * self.rng.rand15() // 0x7FFF)]
 
-    def voice(self, command, units, now_ms, skip=False):
+    def voice(self, command, units, now_ms, skip=False, walking=()):
         """-> `(unit, sound or None, result)`: `result` is `ok`, `dropped:cooldown`, or `silent` (no unit / no bank sample / the move skip rule).  `command` is the
-        command class name.  The stamp is written before the sample lookup, so an empty slot still starts the cooldown."""
+        command class name.  The stamp is written before the sample lookup, so an empty slot still starts the cooldown.  The move / swarm skip rule (CONFIRMED
+        `0x418c99`, after the pick): the chosen unit's view state `+0x78` is 1, i.e. it was already walking at the previous animate (`walking` = those uids, or
+        `skip`); the skip happens before the voice routine, so it stamps nothing."""
         cat, skippable = COMMAND_VOICE[command]
-        if skippable and skip:
-            return None, None, "silent"
         u = self.pick(units)
         if u is None:
+            return None, None, "silent"
+        if skippable and (skip or u.uid in walking):
             return None, None, "silent"
         gap = SELECT_COOLDOWN_MS if cat == "select" else COOLDOWN_MS
         if now_ms - self.stamp.get(u.uid, -(1 << 31)) < gap:

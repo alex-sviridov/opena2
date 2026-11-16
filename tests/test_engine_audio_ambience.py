@@ -5,12 +5,12 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from engine.audio.ambience import Ambience, hour_of, is_night, loop_mix, object_class
+from engine.audio.ambience import Ambience, cell_mix, hour_of, is_night, loop_mix, object_class
 from engine.audio.mix import View
 from engine.rng import Rng
 
 RECS = {1: {"Phases": 7, "FireObject": -1, "DeadObject": 2}, 2: {"Phases": 7, "FireObject": -2, "DeadObject": -1},
-        3: {"Phases": 1, "FireObject": -1, "DeadObject": -1}}
+        3: {"Phases": 1, "FireObject": -1, "DeadObject": 5}, 4: {"Phases": 1, "FireObject": -1, "DeadObject": -1}}
 
 
 def world(n=60, water=(), fire=(), objs=()):
@@ -30,6 +30,7 @@ V = View(20, 20, 20, 15)
 
 def test_object_classes_from_objects_reg_fields():
     assert object_class(RECS[1]) == 34 and object_class(RECS[2]) == 44 and object_class(RECS[3]) == 58
+    assert object_class(RECS[4]) is None                                               # no dead version and not a dead one: counts for nothing (stones)
 
 
 def test_hour_and_night():
@@ -44,11 +45,16 @@ def test_loop_volume_is_the_nearest_cell_and_pan_the_weighted_mean():
     att, pan = loop_mix([(cx, cy)], V)
     assert att == 0 and pan == 0
     att, _ = loop_mix([(cx + 16, cy), (cx + 9, cy)], V)
-    assert att == -int((math.exp(1) - 1) * 100) == -171                               # d = 9 -> floor(9 / 8) = 1
+    assert att == int(10000 - (math.exp(1) - 1) * 100) - 10000 == -172                # d = 9 -> 9 >> 3 = 1; `ftol(10000 - x)` truncates the positive value
     att, pan = loop_mix([(cx + 40, cy)], V)
-    assert att == -10000 and pan == 0                                                  # silent: a loudness weight of 0
+    assert att == -10000 and pan == 0                                                  # silent: a loudness of 0
     _, pan = loop_mix([(cx + 4, cy), (cx + 4, cy)], V)
     assert pan == 400                                                                  # (4 * 2000 / 20)
+    assert cell_mix(cx + 4, cy, V) == (400, 10000 - int((math.exp(0) - 1) * 100))
+    _, pan = loop_mix([(cx + 8, cy), (cx - 8, cy + 8)], V)                             # d = 8 and 11: v = 4633 / 4633 ... trunc(pan * v / 10000) summed, then trunc / 2
+    p1, v1 = cell_mix(cx + 8, cy, V)
+    p2, v2 = cell_mix(cx - 8, cy + 8, V)
+    assert pan == int((int(p1 * v1 / 10000) + int(p2 * v2 / 10000)) / 2)
 
 
 def test_river_loop_starts_updates_and_stops_with_the_source_count():
@@ -95,18 +101,31 @@ def test_one_shots_come_every_5_to_9_seconds_and_only_with_objects():
 def test_one_shot_id_ranges_follow_the_counts_and_the_clock():
     ids = set(range(600, 660))
 
-    def pick(n34, n58, clock, seeds=200):
-        out = set()
-        for s in range(seeds):
-            out.add(Ambience(Rng(s), ids).oneshot_id(n34, n58, clock))
-        return out
-    assert pick(500, 0, 0) <= set(range(600, 610))                                     # many trees, day: forest 600-609
-    assert pick(500, 0, 16 * 60 * 14) <= set(range(610, 620))                          # night adds 10
-    assert pick(0, 500, 0) <= set(range(620, 630)) | set(range(640, 650))
-    assert pick(0, 0, 0) <= set(range(640, 650)) and pick(0, 0, 0)
+    def pick(n34, n58, n44, clock, seeds=300):
+        return {Ambience(Rng(s), ids).oneshot_id(n34, n58, n44, clock) for s in range(seeds)}
+    assert pick(500, 0, 0, 0) <= set(range(600, 611))                                  # many trees, day: forest 600-610 (the id draw is rand(10), inclusive)
+    assert 610 in pick(500, 0, 0, 0)                                                   # a day roll can reach the first night id of the block
+    assert pick(500, 0, 0, 16 * 60 * 14) <= set(range(610, 621))                       # night adds 10
+    assert pick(0, 500, 0, 0) <= set(range(620, 631))                                  # static bushes: 620 block
+    assert pick(0, 0, 500, 0) <= set(range(640, 651)) and pick(0, 0, 500, 0)           # dead trees: 640 block
+    a = Ambience(Rng(5), ids)
+    mixed = {a.oneshot_id(10, 10, 10, 0) // 10 * 10 for _ in range(300)}
+    assert {600, 620, 640} <= mixed                                                    # each class by its share of the total count
 
 
 def test_missing_slots_are_rerolled_and_an_empty_table_gives_up():
     a = Ambience(Rng(1), ids={605})
-    assert a.oneshot_id(500, 0, 0) == 605
-    assert Ambience(Rng(1), ids={}).oneshot_id(500, 0, 0) is None
+    assert a.oneshot_id(500, 0, 0, 0) == 605
+    assert Ambience(Rng(1), ids={}).oneshot_id(500, 0, 0, 0) is None
+
+
+def test_the_timer_is_rearmed_only_by_a_one_shot_pass_and_objects_count_only_then():
+    a = Ambience(Rng(3), ids=set(range(600, 660)))
+    w = world(objs=[(30, 30, 1)])
+    assert a.update(0, world(), V, 0) == [] and a.next == 250                          # no object: a short retry (DECISION), no 5 s wait
+    (shot,) = [x for x in a.update(250, w, V, 0) if x.action == "oneshot"]
+    assert a.next >= 250 + 5000 and shot.att == 0
+    assert a.update(1000, w, View(21, 20, 20, 15), 0) == []                            # a camera pass off the timer counts no objects: no one-shot
+    cx, cy = V.x + (V.w >> 1), V.y + (V.h >> 1)
+    pan, v = cell_mix(30, 30, V)
+    assert shot.pan == int(int(pan * v / 10000) / 1) and cx > 0 and cy > 0             # one object: its own weighted pan

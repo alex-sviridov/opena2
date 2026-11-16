@@ -10,7 +10,8 @@ from test_engine_death import world
 
 def make(size=(800, 600)):
     w = world()
-    return GameUi(Layout.for_size(*size), w, 1, MainText(), MainText(), MainText()), w
+    main = MainText([""] * 0xE1 + ["Player", "has succesfully entered a cheat code!"])
+    return GameUi(Layout.for_size(*size), w, 1, main, MainText(), MainText()), w
 
 
 def type_text(ui, text):
@@ -91,4 +92,7 @@ def test_cheat_commands_are_gated_by_the_cheat_level():
     ui.key("return")
     type_text(ui, "#show map")
     ui.chat_key("return", "", 0)
-    assert (w.fog & vision.v.IN_SIGHT).all() and ui.messages.queue == []
+    assert (w.fog & vision.v.IN_SIGHT).all()
+    (text, ms, _), = ui.messages.queue                           # the server's reply `0x92` sub 7: a line (5000 ms) and the `message` sound
+    assert text == "Player %s has succesfully entered a cheat code!" % w.players[1].name and ms == 5000
+    assert ui.take_sounds() == [(15, 0x64)]

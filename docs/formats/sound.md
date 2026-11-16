@@ -133,8 +133,9 @@ random choice among consecutive ids**: `metal1..3`, `easy1..4` are different uni
 
 Heroes (`view+0x1b8 & 0x11` or type word `+0x1dc <= 0x17`) take easy / hard / dead from the hero bank (§4.2) instead. Arguments: `0x41b1f8`
 at `(view+8, view+0xc)`, volume = attenuation + `[0x622698]` (`[0x6226a0]` on the wound / dead path), priority per §3.1, no frequency. A null
-object or an empty Sound list is skipped. No per-sound volume or priority exists in the data. Which server events send a "Take damage" with
-unchanged HP is not traced (the slot-[1] sound is rare).
+object or an empty Sound list is skipped. No per-sound volume or priority exists in the data. **Which server events send a "Take damage" with
+unchanged HP (CONFIRMED, K11 round 2):** every melee / shot hit whose damage is 0 (`FUN_00516ceb`, a miss or a fully absorbed hit; the other senders are listed in
+[audio 2.1a](../engine/audio.md#21a-the-wound-kind-and-the-unchanged-hp-blow-confirmed-k11-round-2)); the slot-[1] sound is therefore the "blow" sound of every swing that deals nothing.
 
 ### 4.2 Hero and class voices
 
@@ -145,7 +146,9 @@ variant count is the number of consecutive files on disk (`sounds.json["hero_ban
 Bank order (CONFIRMED): aldor, sagita, hildarius, galinel, igles, dina, xbow, knight, druid, troll, orc, mage. Chooser `0x468094` on the
 unit type `+0x1dc`: types 1-6 = xbow, knight, druid, troll, orc, mage; 21 = the hero by flags `+0x1b8` (bit 4 / bit 2 select aldor,
 sagita, hildarius, galinel), 22 = igles, 23 = dina; other units use generic `m`/`f` + `_fighter` / `_mage` / `_peasant` banks (no such
-folders exist: silent, INFERRED). Players: `0x4681c8` attack, `0x4682a6` move, `0x468383` swarm, `0x468460` select, `0x46853d` defend,
+folders exist: silent, INFERRED). **Bank layout (CONFIRMED, constructor `0x4c5038` and the seven players, K11 round 2):** `+4..+0x10` select list (4 slots), `+0x14..` attack, `+0x24..` move, `+0x34..` swarm, `+0x44` retreat,
+`+0x48` pickup, `+0x4c` defend, `+0x50` easy, `+0x54` hard, `+0x58` dead, counts `+0x5c` select, `+0x60` attack, `+0x64` move, `+0x68` swarm (the single-sample voices have no count).
+Players: `0x4681c8` attack, `0x4682a6` move, `0x468383` swarm, `0x468460` select, `0x46853d` defend,
 `0x4685f4` retreat, `0x4686ab` pickup; each has a per-unit cooldown at `unit+0x1bc` (3000 ms; select 2000 ms); `0x467f60(1|2|3)` plays
 easy / hard / dead of a hero bank.
 
@@ -227,13 +230,13 @@ is **not read by the game** (no such string in `allods2.exe`); the map editor re
 
 ## Open questions
 
-- The meaning of the DWORD at `0x5f1a04` (value name `0x5f075c`) loaded next to the sound options, and of `0x6226a8` / `0x6226ac` beyond
-  "sound / music on" (`0x43c978`, `0x459ec5`).
-- Whether the zone theme draw `rand(3)` (`0x4756a3`) yields 0..2 or 0..3 (a fourth theme slot at `zone+0x18` may never be picked).
-- Which server events send a "Take damage" with unchanged HP (the slot-[1] blow sound), and what the shop window action is that triggers
-  the 30 % shop speech (`0x4b5ffa`).
-- The 59 dialogue names with no file and the files the rule never produces (§4.3); whether `books/NN` is a spell id.
+- Whether the zone theme draw `rand(3)` (`0x4756a3`) yields 0..2 or 0..3 (a fourth theme slot at `zone+0x18` may never be picked): `FUN_0051fa25(n)` is inclusive elsewhere (0..n), so 0..3 is expected (INFERRED).
+- The 59 dialogue names with no file and the files the rule never produces (§4.3).
 - The host window of the `0x467` track-change message (`0x43d8a4`) and the exact screen of `0x48bbc0` (INFERRED town; `0x48b419` = the world map, answered).
+
+Answered in K11 round 2: `0x5f1a04` is the registry value `Using VxD` = the cut-scene "seen" bit mask ([cutscenes-rea 4](../engine/cutscenes-rea.md)); `0x6226a8` (the 16-tick music zone roll test
+`0x40bd5c`) and `0x6226ac` (set by the options handler `0x43d97b` / cleared at `0x43d967`) are the music-on and sound state flags; the unchanged-HP blow
+([§4.1](#41-the-id-table-confirmed)); the shop speech is triggered by picking an item from a shop shelf, 30 % ([audio 2.7](../engine/audio.md#27-town-window-sounds-and-the-shop-speech-confirmed)); `books/NN` is a book number.
 
 ## VERIFY BY EAR
 

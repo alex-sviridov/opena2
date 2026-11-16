@@ -21,6 +21,7 @@ QUIT_REASONS = ("menu", "windows", "victory", "defeat", "load")
 # UI sound ids (sfx.reg, docs/engine/audio.md 2.5) and priorities: the UI always gets a voice (`0xdc`), the message line plays at 100
 S_CLICK00, S_CLICK01, S_IBOOK, S_CLICK04, S_MESSAGE, S_COMPLETE, S_FAILED = 1, 2, 7, 8, 15, 14, 16
 UI_PRIORITY, MESSAGE_PRIORITY = 0xDC, 0x64
+CHEAT_TEXT, CHEAT_MS = 0xE1, 5000      # "Player" / "has succesfully entered a cheat code!" (main.txt lines 0xe1, 0xe2), `push 0x1388` at 0x40ea03
 
 
 class GameUi:
@@ -233,6 +234,11 @@ class GameUi:
             if value is not None and self.cheat_level > CHEAT_LEVEL and self.world.fog is not None:
                 from engine.sim import vision
                 (vision.reveal_all if value else vision.hide_all)(self.world)
+                # `0x4f4f1e` / `0x4f4f81`: `FUN_005052d2(7)` -> client `0x92` sub 7 (`0x40e99e`): main.txt[0xe1] + player name + main.txt[0xe2] in the message list
+                # (5000 ms), and the `message` sound at priority 0x64 (`0x40ea41`; the exe tests the mission bit `client+0x404 & 1`, always set here)
+                p = self.world.players[self.player_id]
+                self.messages.show(" ".join((self.main_text(CHEAT_TEXT).strip(), p.name, self.main_text(CHEAT_TEXT + 1).strip())), now_ms, CHEAT_MS)
+                self.sound(S_MESSAGE, MESSAGE_PRIORITY)
             return
         p = self.world.players[self.player_id]
         self.messages.show("%s: %s" % (p.name, text), now_ms, CHAT_MS, ("player", p.colour))

@@ -1,4 +1,4 @@
-"""K11: the Director (docs/engine/audio.md 3.4, 5, 7): fog gating, the 1500 ms wound throttle, positional play, order voices, UI sounds, the audio log, replay clock."""
+"""K11: the Director (docs/engine/audio.md 3.4, 5, 7): no fog gating, the 1500 ms wound throttle, positional play, order voices, UI sounds, the audio log, replay clock."""
 
 import io
 from types import SimpleNamespace
@@ -7,7 +7,7 @@ import numpy as np
 
 from engine.audio import events as ev
 from engine.audio.audiolog import COLUMNS, AudioLog
-from engine.audio.director import SEEN, Director, replay_ms, view_of
+from engine.audio.director import Director, replay_ms, view_of
 from engine.audio.mix import View
 from engine.audio.settings import Settings
 from engine.sim.commands import AttackUnit, MoveUnits, SelectUnits
@@ -53,18 +53,13 @@ def test_buses_come_from_the_settings_and_speech_has_its_own_volume():
     assert (a.volume, b.volume) == (0, -10000)
 
 
-def test_fog_gates_unit_events_of_other_players_only():
+def test_unit_sounds_are_not_fog_gated():
+    """CONFIRMED (audio.md 3.4): the single-player server sends every creature's messages and the view animate path has no visibility test."""
     fog = np.zeros((40, 40), np.uint16)
     d = director()
     w = world(fog=fog)
-    w.sound_events += [swing(owner=2), swing(owner=1)]
-    a, b = d.frame(0, w, V)
-    assert a.result == "dropped:fog" and b.result == "played"                         # own units are always seen
-    fog[CY >> 8, CX >> 8] |= SEEN
-    w.sound_events.append(swing(owner=2))
-    assert d.frame(0, w, V)[0].result == "played"
-    w.sound_events.append(ev.SoundEvent(3, ev.SPELL, 0, 0, 0, 100))
-    assert d.frame(0, w, V)[0].result == "played"                                     # spell objects are never fog gated
+    w.sound_events += [swing(owner=2), swing(owner=1), ev.SoundEvent(3, ev.SPELL, 0, 0, 0, 100)]
+    assert [p.result for p in d.frame(0, w, V)] == ["played"] * 3
 
 
 def test_hurt_throttle_is_1500_ms_per_unit_for_kinds_1_and_2_only():
@@ -100,14 +95,15 @@ def test_ui_sound_is_flat_with_priority_0xdc_and_steals_a_full_mixer():
     w = world()
     for i in range(16):
         w.sound_events.append(ev.SoundEvent(0, ev.SPELL, 0, CX, CY, 100 + i))
+    saved = dict(TABLE.ids)
     TABLE.ids.update({100 + i: "sfx/x%d.wav" % i for i in range(16)})
     try:
         d.frame(0, w, V)
         p = d.ui(15, now_ms=1)
         assert p.priority == 0xDC and p.result.startswith("stolen")
     finally:
-        for i in range(16):
-            TABLE.ids.pop(100 + i, None)
+        TABLE.ids.clear()
+        TABLE.ids.update(saved)
 
 
 def test_missing_files_and_null_slots_take_no_voice():
@@ -130,18 +126,35 @@ def test_order_voice_plays_at_the_unit_on_the_speech_bus_with_cooldown_and_ignor
     assert d.frame(20000, w, V, [MoveUnits(1, (1,), (5, 5))], skip_voice=True) == []                                               # the skip rule
 
 
+def test_move_voice_is_skipped_when_the_chosen_unit_was_already_walking():
+    """`0x418c99`: `view+0x78 == 1` is the unit's state at the previous animate; the skip stamps nothing."""
+    h = unit(1)
+    h.state = 0
+    d = director()
+    w = world([h])
+    (p,) = d.frame(0, w, V, [MoveUnits(1, (1,), (5, 5))])
+    assert p.result == "played"
+    h.state = 1                                                                       # the order started it walking
+    assert d.frame(100, w, V) == []                                                   # (the snapshot is taken at the end of each frame)
+    assert d.frame(9000, w, V, [MoveUnits(1, (1,), (6, 6))]) == []                    # walking: no move voice, no stamp
+    assert d.voices.stamp[1] == 0
+    h.state = 0
+    d.frame(9200, w, V)
+    (q,) = d.frame(9300, w, V, [MoveUnits(1, (1,), (7, 7))])
+    assert q.result == "played"
+
+
 def test_audio_log_rows_and_the_header():
     out = io.StringIO()
     d = director(log=AudioLog(out, ["session x", "seed 1", "UI sounds are not in a replay"]))
     w = world([unit(1)])
     w.sound_events.append(swing(owner=2))
-    w.fog = np.zeros((40, 40), np.uint16)
     d.frame(250, w, V, [SelectUnits(1, (1,))])
     d.ui(15, now_ms=300)
     lines = out.getvalue().splitlines()
     assert lines[0] == "# session x" and lines[2].startswith("# UI sounds") and lines[3] == ",".join(COLUMNS)
     rows = [l.split(",") for l in lines[4:]]
-    assert rows[0][2:4] == ["sim", "swing"] and rows[0][-1] == "dropped:fog" and rows[0][1] == "250"
+    assert rows[0][2:4] == ["sim", "swing"] and rows[0][-1] == "played" and rows[0][1] == "250"
     assert rows[-1][2] == "ui" and rows[-1][-1] == "played" and rows[-1][6] == "sfx/message.wav"
     assert len(rows[0]) == len(COLUMNS)
 
