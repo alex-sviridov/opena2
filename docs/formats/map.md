@@ -594,7 +594,7 @@ Version 1300 layout:
 | 8 | u16 | +8 | `type` | units.reg ID (1–26 humans and the catapult, 64–107 monsters). The server ignores it; the client picks the view class from it (`units.reg[id]+0x124 ≠ 0` → hero view `FUN_0046bfa6`, else `FUN_00462a4a`, `0x4a5050`). Equals the data.bin `typeID` except NPC variants (editor copy). All 53 ids resolve |
 | 10 | u16 | +0xc | `tier` | 1–6, read and never used (CONFIRMED: no reader of object `+0xc`); matches the record name's `.N` suffix (INFERRED) |
 | 12 | u32 | +0x48 | `flags` | bit 0x10 = human (data.bin humans, 0x254-byte object), else monster (0x208). 605 humans flagged; 5 catapults (type 26) are monsters |
-| 16 | u32 | +0x50 | `behaviour` | bits 1, 2, 4, 8 → booleans at creature `+0x194`, `+0x19c`, `+0x198`, `+0x1a0` (`0x561f0f`–`0x561f77`); only bit 8 occurs (8 units of `10.alm`). CONFIRMED by scanning every access: bit 8 (`+0x1a0`) = **summoned creature, no loot** (death handler `FUN_00510a70` skips the loot roll and empties the pack) **and no XP** (`FUN_005128cb`); the summon/clone spells set it (`FUN_00519db8`). Bits 1, 2, 4 (`+0x194`, `+0x19c`, `+0x198`) are read only by the event generator `FUN_005303ed` (candidate classes of three message events); the AI never reads any of them |
+| 16 | u32 | +0x50 | `behaviour` | bits 1, 2, 4, 8 → booleans at creature `+0x194`, `+0x19c`, `+0x198`, `+0x1a0` (`0x561f0f`–`0x561f77`); only bit 8 occurs in the 46 campaign maps (8 units of `10.alm`; bits 1, 2, 4 occur only in the multiplayer maps of the install root, e.g. `CROSS2.ALM`, `SHALLOW.ALM`, `Inout.alm`: CONFIRMED by scanning all 4,212 campaign units and the eleven root maps). CONFIRMED by scanning every access: bit 8 (`+0x1a0`) = **summoned creature, no loot** (death handler `FUN_00510a70` skips the loot roll and empties the pack) **and no XP** (`FUN_005128cb`); the summon/clone spells set it (`FUN_00519db8`). Bits 1, 2, 4 (`+0x194`, `+0x19c`, `+0x198`) are read only by the event generator `FUN_005303ed` (quest-target flags, [items 14](../data/items.md#14-quests-and-the-item-upgrade-message-0x38)); the AI never reads any of them |
 | 20 | u32 | +0x10 | `server_id` | key into data.bin: monsters group 5 where `serverID` (param 55) matches, humans group 6 where `serverID` (param 24) matches (`FUN_004fd62f` / `FUN_004fd5ad`); the unit is then built from that record's name. 4,212 / 4,212 resolve (`entities.template`) |
 | 24 | u32 | +0x14 | `owner` | 1-based section 5 record, 1..player_count in all 4,212 units |
 | 28 | u32 | +0x44 | `group` | 1-based section 8 group (0 = none; read as −1 / index − 1, −1 again if ≥ `n_sec8`); at load the unit's uid is written into the group (`0x535a3e`–`0x535a7c`). 32 units |
@@ -815,8 +815,7 @@ client's CRT `rand`). Music playback itself: out of the engine's scope for now.
 - Block bits 3–7 and the dynamic stamping (`FUN_00550a96`,
   `FUN_0055c500`), the per-class `movementType` result (vtable `+0x20`),
   (the search itself is answered: [simulation §7](../engine/simulation.md#7-pathfinding-phase-h2)).
-- Part 5: the event classes of `behaviour` bits 1, 2, 4 (`FUN_005303ed`)
-  (note: `FUN_005303ed` is the quest generator, [items §14](../data/items.md#14-quests-and-the-item-upgrade-message-0x38)).
+- Part 5: (the `behaviour` bits 1, 2, 4 are answered: quest-target flags of `FUN_005303ed`, [items 14](../data/items.md#14-quests-and-the-item-upgrade-message-0x38)).
   Answered in [items](../data/items.md): gold pickup (hero `+0x3c`, never `Player.money`, §12), `+0x1c` = price,
   the `(41, v)` remap to `0x31` (= 49 `damageBonus`; a pair cannot carry castSpell).
 - Section 12: the reader of the next-theme global `0x5f1a08` (the music player) and the callers of

@@ -44,8 +44,7 @@ from both places when answered).
 
 ## Triggers and scenario
 
-- [Triggers](engine/triggers.md#open-questions): the owner race of the two gate-animation readers of Var(0x301) (`0x4cd0fb`, `0x4cdd0a`, decoded: gate animation only; the shop's `window+0x160` and `Var(0x302)` are answered in [town-shop](engine/town-shop.md)); (the hire price: none, answered). Instants 29 / 30 stay documented no-ops (the effect system exists now: [effects](engine/effects.md)).
-- Scenario event classes: unit `behaviour` bits 1, 2, 4 and the three scenario booleans `+0x194` / `+0x198` / `+0x19c` (`FUN_005303ed`). [map](formats/map.md#open-questions), [unit-struct](engine/unit-struct.md#open-questions)
+- [Triggers](engine/triggers.md#open-questions): (the owner race of the `Var(0x301)` readers: answered, all human scene; the shop's `window+0x160` and `Var(0x302)` are answered in [town-shop](engine/town-shop.md)); (the hire price: none, answered). Instants 29 / 30 stay documented no-ops (the effect system exists now: [effects](engine/effects.md)).
 
 - Shop windows ([town-shop 8 / 9](engine/town-shop.md#9-l8-rea-round-2026-11-15), built in L8): the Yes / No shopkeeper clips, shelf highlights and shelf-turn animations (`0x4baa98`, `0x4bae3e`, `0x4baf3f`, `0x4bb040`), the shop tooltips (`0x4b37f7`, `0x4bb2c4`, `0x4bccf8`), the equip path of a drop on the doll (server `0x4f5d27`; refused for now), the insert order of a returned item inside its shelf (`0x52151c`) and the two lists per block, the pack region's hover rule (`+0x144`), the druid / Kaarg animation tables, a lost mission's DLL shop update (the L1 flow).
 

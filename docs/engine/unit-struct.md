@@ -116,7 +116,7 @@ Offsets from the constructors 0x50d493, 0x50dc2b, init 0x50e173, copy 0x50e48e (
 | +0x14c | 2 | **server/type id** (data param "serverID": human 24, monster 55; humans only: values >10000 reduced by (v/10)%1000, monsters stored raw) | CONFIRMED 0x4a4b8f, 0x4a4bb2, 0x4f3420 |
 | +0x150 | 4 | client update mask: stat classes changed since the last update (`FUN_0051ce12` zeroes it, `FUN_0051d436` ORs, `FUN_00502019(unit, 0, +0x150, 0xffb)` sends it) | CONFIRMED |
 | +0x154 | 0x40 | zeroed buffer | UNKNOWN |
-| +0x194,+0x198,+0x19c,+0x1a0 | 4 each | scenario flags from mapunit+0x50 bits 0,2,1,3 (file+16); +0x1a0 also set to 1 at 0x51a7cf/0x560c20 | CONFIRMED set. `+0x1a0` = summoned: no loot (`FUN_00510a70`), no XP (`FUN_005128cb`), set by summon/clone spells (`FUN_00519db8`). The other three only gate candidates of the event generator `FUN_005303ed` (not AI). See [map.md](../formats/map.md#units-section-6) |
+| +0x194,+0x198,+0x19c,+0x1a0 | 4 each | scenario flags from mapunit+0x50 bits 0,2,1,3 (file+16); +0x1a0 also set to 1 at 0x51a7cf/0x560c20 | CONFIRMED set. `+0x1a0` = summoned: no loot (`FUN_00510a70`), no XP (`FUN_005128cb`), set by summon/clone spells (`FUN_00519db8`). The other three only gate quest-target candidates of the generator `FUN_005303ed` (not AI; classes in [items 14](../data/items.md#14-quests-and-the-item-upgrade-message-0x38); no campaign map sets them, single player never runs the generator). See [map.md](../formats/map.md#units-section-6) |
 | +0x1a4,+0x1a6 | 2 | word pair (read by messaging 0x502019, 0x52b368) | UNKNOWN |
 | +0x1a8 | ~0x18 | object (ctor 0x59f003) | UNKNOWN |
 | +0x1c0 | 4 | ptr **Mover** (0xb4 bytes, ctor 0x551346, zeroed then +5=0x41, +8=5, +9=0xff, +0xa=0x10); +0 and +1 are facing bytes (init `0x40+rand(0x80)`, 0x50e2ac), +0xa turn rate (monsters param 9; humans: the recompute `FUN_0051366b` copies the low byte of the speed `+0x8c` at `0x513ffc`-`0x514005`, simulation.md 4.3) | CONFIRMED init; semantics partly INFERRED |
@@ -394,4 +394,3 @@ Cell record effect `+0x34..+0x39`: `FUN_0055ba36(cell, effect6)` (`0x55ba36`) co
 
 ## Open questions
 
-- Meaning of the event classes of the three scenario booleans `+0x194`, `+0x198`, `+0x19c` (`FUN_005303ed`).
