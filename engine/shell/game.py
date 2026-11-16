@@ -6,7 +6,7 @@ session and with it the World: menus never see one.
 A **campaign mission** (`params["campaign"]` = the shell's `CampaignGame`, `params["mission"]`): the session is made from `CampaignGame.start_mission`; a
 victory ends it with `leave_mission(world, "won")` (carry-over, Scenario.dll's completion, recruits; the towns are visited by the player through the inn screen, L7) and goes on to the `locations`
 screen; a defeat or the menu is the main menu (`leave_mission` for anything else: no carry-over, as the original's `0x41e` / `0x431` end the game);
-the last mission's ending also goes to the menu (the credits are not built)."""
+the last mission's ending goes to the credits (m2), which lead back to the menu (the hall of fame is not built)."""
 
 from dataclasses import replace
 
@@ -14,7 +14,7 @@ from .scene import Scene
 from .screen import Screen
 
 BACK_TO_MENU = {"menu", "victory", "defeat", "complete"}
-CAMPAIGN_ENDINGS = ("ending",)          # `sim.campaign.Outcome.kind` of the last mission: the credits are not built, the shell goes to the menu
+CAMPAIGN_ENDINGS = ("ending",)          # `sim.campaign.Outcome.kind` of the last mission: the shell goes to the credits (`0x41d` -> `0x428`)
 
 
 class GameScreen(Screen):
@@ -62,13 +62,15 @@ class GameScreen(Screen):
         out = self.campaign.leave_mission(self.session.world, "won" if reason == "victory" else reason, visit=False)     # the player visits the towns (L7)
         self.shell.log("mission %s %s -> %s" % (self.campaign.mission if reason != "victory" else "done", reason, out.kind))
         if out.kind in CAMPAIGN_ENDINGS:
-            self.shell.record_ending(self.campaign)             # `FUN_004a8d28` at `0x486ce2` (the credits and hall screens are not built)
+            self.shell.record_ending(self.campaign)             # `FUN_004a8d28` at `0x486ce2` (the hall screen is not built)
         core = self.shell.town_core()
         core.mission_over(out)                                 # `0x41d`: the map, or (no town available) the head mission at once, as the exe does
         self.shell.drain_town()                                # the chapter video of `ScenarioLeaveLocation` plays before the next screen (`Shell.go`)
         if out.kind == "mission" and reason == "victory":
             return "game", {"campaign": self.campaign, "mission": self.campaign.camp.location[1]}
-        return "locations" if reason == "victory" and out.kind not in CAMPAIGN_ENDINGS else "menu"
+        if out.kind in CAMPAIGN_ENDINGS:
+            return "credits"
+        return "locations" if reason == "victory" else "menu"
 
     def scene(self):
         return Scene([], cursor=False)

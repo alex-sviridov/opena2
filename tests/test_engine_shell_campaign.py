@@ -304,7 +304,7 @@ def test_a_defeat_or_leaving_goes_to_the_main_menu_without_carry_over():
 
 
 @needs_graphics
-def test_the_last_missions_ending_goes_to_the_menu(monkeypatch):
+def test_the_last_missions_ending_goes_to_the_credits(monkeypatch):
     from engine.sim import campaign as C
     rec, played = Recorder(), []
     rec.services.start_game = lambda params: OracleSession(params, sh, played)
@@ -314,7 +314,7 @@ def test_the_last_missions_ending_goes_to_the_menu(monkeypatch):
     map_walk(sh)
     monkeypatch.setattr(type(sh.campaign), "leave_mission", lambda self, world, result="won", visit=True: C.Outcome("ending"))
     sh.apply(sh.current.run())
-    assert sh.name == "menu"                                                  # the credits are not built
+    assert sh.name == "credits"
 
 
 def _lit(cur):

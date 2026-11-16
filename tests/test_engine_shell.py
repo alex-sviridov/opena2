@@ -51,9 +51,9 @@ def dummy_shell():
 def test_graph_edges_stay_inside_the_graph():
     for a, targets in GRAPH.items():
         assert a in GRAPH and targets <= set(GRAPH)
-    assert GRAPH["startup"] == {"menu"} and GRAPH["menu"] == {"newgame", "load", "cutlist", "quit"} and "options" not in GRAPH
+    assert GRAPH["startup"] == {"menu"} and GRAPH["menu"] == {"newgame", "load", "cutlist", "credits", "quit"} and "options" not in GRAPH
     assert GRAPH["newgame"] == {"menu", "chargen"} and GRAPH["chargen"] == {"newgame", "locations"}                    # L2: the campaign in one window
-    assert GRAPH["locations"] == {"game", "menu", "town"} and GRAPH["game"] == {"menu", "locations", "game", "town"}
+    assert GRAPH["locations"] == {"game", "menu", "town"} and GRAPH["game"] == {"menu", "locations", "game", "town", "credits"} and GRAPH["credits"] == {"menu"}
 
 
 def test_every_legal_edge_works_and_every_other_raises():

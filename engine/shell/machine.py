@@ -13,7 +13,8 @@ from engine.ui import story
 
 GRAPH = {
     "startup": {"menu"},
-    "menu": {"newgame", "load", "cutlist", "quit"},
+    "menu": {"newgame", "load", "cutlist", "credits", "quit"},
+    "credits": {"menu"},                                # any key / click or the end of the text (the hall of fame `0x429` is not built)
     "cutlist": {"menu", "cutlist"},                     # the Cut Scenes window: Cancel, or Ok -> the video -> the window again
     "newgame": {"menu", "chargen"},
     "chargen": {"newgame", "locations"},
@@ -22,7 +23,7 @@ GRAPH = {
     "inn": {"town"},
     "shop": {"town"},
     "load": {"menu", "game", "town", "locations"},               # the main menu's Load window: back, or into the loaded game (a town save; a mission save is L10e / L10f)
-    "game": {"menu", "locations", "game", "town"},                  # no town available after a mission: the head mission starts at once (`0x41d`)
+    "game": {"menu", "locations", "game", "town", "credits"},                  # no town available after a mission: the head mission starts at once (`0x41d`)
     "cutscene": set(),                  # leaves for the `then` screen it was given (checked when it was entered)
     "quit": set(),
 }
@@ -95,7 +96,8 @@ class Shell:
             from .town import TownScene
             from .cutscene import Cutscene
             from .cutlist import CutList
-            screens = (Startup, MainMenu, NewGame, CharGen, Locations, LoadGame, GameScreen, TownScene, Inn, Shop, Cutscene, CutList)
+            from .credits import Credits
+            screens = (Startup, MainMenu, NewGame, CharGen, Locations, LoadGame, GameScreen, TownScene, Inn, Shop, Cutscene, CutList, Credits)
         for cls in screens:
             self.screens[cls.name] = cls(self)
 

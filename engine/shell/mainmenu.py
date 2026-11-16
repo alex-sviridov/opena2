@@ -23,7 +23,7 @@ CAPTION_AT = (0xE8, 200)                    # the middle tablet (0x4a7b3f)
 BUTTONS = (("NEW GAME",     (204, 52, 104, 96), "newgame"),
            ("MULTI PLAYER", (124, 156, 108, 76), None),
            ("CUT SCENES",   (124, 252, 96, 88), "cutlist"),
-           ("CREDITS",      (208, 340, 100, 100), None),
+           ("CREDITS",      (208, 340, 100, 100), "credits"),
            ("LOAD GAME",    (340, 52, 88, 100), "load"),
            ("SERVER",       (424, 152, 84, 88), None),
            ("HALL OF FAME", (412, 260, 96, 84), None),
@@ -31,7 +31,7 @@ BUTTONS = (("NEW GAME",     (204, 52, 104, 96), "newgame"),
 N = len(BUTTONS)
 # DECISION: what is not built yet is disabled in the original's own way (no highlight, no click); bit n = button n.  LOAD GAME (bit 4) is enabled while the saved-game
 # folder holds a `game*.sav` (CONFIRMED `FUN_0043ff4a`, `FindFirstFile("\\game*.sav")`; `Shell.slots`, none = disabled).
-DISABLED = 0b01111110                       # all but New game (bit 0) and Exit (bit 7)
+DISABLED = 0b01110110                       # all but New game (bit 0), Credits (bit 3, m2) and Exit (bit 7)
 LOAD_BIT = 0b00010000
 CUT_BIT = 0b00000100                        # CUT SCENES (`0x43b`) is enabled by the CD / registry check only (`0x48b569`, REA cutscenes-rea.md 5): here, when the backend plays videos
 
