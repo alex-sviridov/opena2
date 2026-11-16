@@ -97,7 +97,7 @@ def look_around(world, u):
     face = m.target_facing
     if u.facing != face or m.turning:
         mv._set_action(world, u, mv.TURN)
-    mv._turn_toward(u, face)
+    mv._turn_toward(world, u, face)
     u.state = mv.MOVE_STATE
 
 

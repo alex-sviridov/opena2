@@ -602,6 +602,7 @@ class Unit:
     effects: list = field(default_factory=list)     # +0x20 the effect list (Effect), list order
     effect_mask: int = 0            # +0x144 bit 1 << id of every active effect
     fx: EffectStats = field(default_factory=EffectStats)    # the stat changes of the effects
+    client_busy_until: int = 0      # client view +0xa8 > 0 while world.tick < this (movement.set_client_busy); client only, not dumped
 
     def set_mode(self, go=False, attack=False, look=False, cast=False, cell=False, follow=False):
         """Assign all six Brain-mode flags at once (an omitted flag is cleared)."""

@@ -850,8 +850,8 @@ def spawn_bolt(world, caster, pid, targets):
     target (Lightning) or the `+0xb0` list of message 0x8a (Spray); a delay past the sequence never fires.  A hidden caster (type word 0, a
     script's trap) sends 0x8c for the Spray instead: projectile 30 at once on the caster's cell centre, age -1 (handler `0x415812`); its Lightning
     message finds no caster view (`0x4151f8`: the lookup fails, nothing is made).  The first target must still exist on the spawn tick
-    (`bolt_system`; `FUN_0046707e` returns when the `+0x8e` lookup fails).  Not modelled: a caster still busy in an earlier action (`+0xa8 != 0`)
-    ignores the message (INFERRED from `0x415258`)."""
+    (`bolt_system`; `FUN_0046707e` returns when the `+0x8e` lookup fails).  A caster still busy in an earlier action (`+0xa8 != 0`)
+    ignores the message (CONFIRMED `0x415258`): `spells.cast_start` does not call this then."""
     from engine.world import Bolt
     if not targets:
         return

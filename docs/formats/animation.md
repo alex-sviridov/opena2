@@ -726,9 +726,10 @@ warriors, 50/52/46/48 female warriors, 48/46/52/50 male mages, 46/48/50/52
 female mages (warrior = `+0x4c & 4` clear; female = `+0xe` 0x22/0x24,
 INFERRED). Example: Long Sword (20), Reaction 30 → `hero_delay = 1`;
 Reaction 20 → 5. Sound (client `AttackDelay`) and hit are on different ticks: hero
-swordsman sound at tick 4, damage at 7 with a Long Sword (8 unarmed default). INFERRED: a cycle longer than the
-animation shows stand frames between swings; a shorter one restarts at
-phase 0 (handler zeroes `+0x9c`) (VERIFY #4).
+swordsman sound at tick 4, damage at 7 with a Long Sword (8 unarmed default). A cycle longer than the
+animation shows stand frames between swings (INFERRED); a shorter one does **not** restart it: the `0x71` / `0x72` handlers start the action only when the
+view's `+0xa8` (the AttackAnim length, counted down once per tick) is 0 and ignore the message otherwise, so the swing that arrives mid-animation draws
+nothing (CONFIRMED `0x4132d2` / `0x413427`, [rendering](../engine/rendering.md#open-questions) "Busy caster"; VERIFY #4: whether it looks right).
 
 ### 3.5 Summary of loop, once and hold
 

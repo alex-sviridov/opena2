@@ -379,7 +379,7 @@ def cell_mode(world, u):
     if dist <= u.range:                 # FUN_00555411 at a centre, within the stop distance: only the turn (range 0 never gets here: dist 0 is in range)
         if u.facing != face or m.turning:
             mv._set_action(world, u, mv.TURN)
-        mv._turn_toward(u, face)
+        mv._turn_toward(world, u, face)
     else:
         if m.goal != tuple(cell):
             m.goal = tuple(cell)
@@ -434,13 +434,16 @@ def cast_start(world, u, c, st):
     flight = client_flight_ticks(spell, bx - ax, by - ay)
     sounds.spell_object(world, ax, ay, 2 * spell.number + 8, u.id)      # the cast message 0x86 / 0x8b / 0x8c makes the spell object: `sfx[500 + 2n + 8]` (audio.md 2.2)
     log(world, CastStarted(world.tick, u.id, t.id if t is not None else None, c.spell, flight))
-    if spell.number in (LIGHTNING, PRISMATIC_SPRAY) and t is not None:      # the client message starts action 8; its ShootDelay tick makes the bolt
+    busy = u.type_id != 0 and mv.client_busy(world, u)    # `0x4151c1` / `0x415258`: a caster whose view is still in an earlier action (`+0xa8 != 0`)
+    if not busy:                                          # starts no cast action: no bolt, flight or flash (the `0x8b` form of a hidden caster has no view test)
+        if spell.number in (LIGHTNING, PRISMATIC_SPRAY) and t is not None:      # the client message starts action 8; its ShootDelay tick makes the bolt
+            from . import effects
+            effects.spawn_bolt(world, u, 28 if spell.number == LIGHTNING else 30, (t.id,) if spell.number == LIGHTNING else (c.chain or ()))
         from . import effects
-        effects.spawn_bolt(world, u, 28 if spell.number == LIGHTNING else 30, (t.id,) if spell.number == LIGHTNING else (c.chain or ()))
-    from . import effects
-    effects.spawn_cast_fx(world, u, spell.number, t, c.cell, flight)       # Teleport / Drain Life: the one-shot client sprites (the other flights are carriers)
+        effects.spawn_cast_fx(world, u, spell.number, t, c.cell, flight)       # Teleport / Drain Life: the one-shot client sprites (the other flights are carriers)
+        u.action, u.action_start_tick = mv.ATTACK, world.tick      # client action 8 plays the shared attack block (animation.md 2.4)
+        mv.set_client_busy(world, u, mv.attack_ticks(world, u))    # `+0xa8 := T+0x68`
     u.step_end = world.tick         # the client message `FUN_005041d6` stores the server tick in unit +0x138
-    u.action, u.action_start_tick = mv.ATTACK, world.tick      # client action 8 plays the shared attack block (animation.md 2.4)
     return True
 
 

@@ -167,13 +167,35 @@ def _turn_step(u):
         u.facing = (u.facing - rate) & 255
 
 
-def _turn_toward(u, target):
+def set_client_busy(world, u, ticks):
+    """A client action start sets the view's `+0xa8` to its length in ticks (`FUN_0046617c` counts it down once per view step, `0x466d65`): the
+    unit is busy while `world.tick < client_busy_until` (a message of tick t that sets N is followed by a free view at tick t + N)."""
+    u.client_busy_until = world.tick + ticks
+
+
+def client_busy(world, u):
+    """The view's `+0xa8 != 0`: the attack / shoot / cast handlers (`0x71` `0x4132d2`, `0x72`, `0x86` `0x415258`, `0x8a`) start nothing then (move
+    `0x6b` and turn `0x6d` override it unconditionally)."""
+    return world.tick < u.client_busy_until
+
+
+def attack_ticks(world, u):
+    """`T+0x68`: the AttackAnim length, the client duration of actions 3 / 7 / 8; 0 without a unit set (test doubles never busy)."""
+    assets = getattr(world, "assets", None)
+    aset = assets.unit_set(u.type_id) if assets is not None and hasattr(assets, "unit_set") else None
+    seq = getattr(getattr(aset, "t", None), "sequence", None)
+    return len(seq("Attack")) if seq is not None else 0
+
+
+def _turn_toward(world, u, target):
     """Start or continue a turn (FUN_00556454).  Within 45 degrees a fresh turn snaps (1 tick);
-    otherwise one `turn_rate` step per tick, `turn_ticks` = ceil(angle / rate)."""
+    otherwise one `turn_rate` step per tick, `turn_ticks` = ceil(angle / rate).  A fresh turn sends message `0x6d`
+    (`msg[+0xd] = mover+0xa4`), whose client duration is `turn_ticks`."""
     m = u.mover
     m.target_facing = target
     d = _fold(u.facing, target)
-    if not m.turning:
+    fresh = not m.turning
+    if fresh:
         m.turn_done = 0
     if not m.turning and d <= SNAP_TURN:
         u.facing = target
@@ -181,6 +203,8 @@ def _turn_toward(u, target):
     else:
         _turn_step(u)
         m.turn_ticks = -(-d // turn_rate(u))
+    if fresh:
+        set_client_busy(world, u, m.turn_ticks & 0xFF)  # msg[+0xd] is a byte
     m.turning = True
     m.turn_done += 1
     if u.facing == target:
@@ -234,7 +258,7 @@ def _start_step(world, u):
     if u.facing != face:
         u.state = MOVE_STATE
         _set_action(world, u, TURN)
-        _turn_toward(u, face)
+        _turn_toward(world, u, face)
         return
     u.path.pop(0)
     u.state = MOVE_STATE
@@ -245,6 +269,7 @@ def _start_step(world, u):
     m.step_ticks = step_ticks(m.dx, m.dy)
     m.steps = 0
     u.step_end = world.tick + m.step_ticks              # +0x138 (message 0x6b): the regeneration rest test
+    set_client_busy(world, u, m.step_ticks & 0xFF)      # message 0x6b: +0xa8 := msg[+0xd] (a byte: the step's ticks)
     _set_action(world, u, MOVE)
     _advance(world, u)
 
@@ -467,7 +492,7 @@ def _begin_wait(world, u, cell):
     m.waiting = True
     u.state = MOVE_STATE
     _set_action(world, u, TURN)
-    _turn_toward(u, face)
+    _turn_toward(world, u, face)
 
 
 def _tick_wait(world, u):
@@ -476,7 +501,7 @@ def _tick_wait(world, u):
     m = u.mover
     if u.facing != m.target_facing:
         u.state = MOVE_STATE
-        _turn_toward(u, m.target_facing)
+        _turn_toward(world, u, m.target_facing)
         return
     u.state = IDLE_STATE
     m.waiting, m.parked = False, True
@@ -750,7 +775,7 @@ def follow_drive(world, u, t):
         face = combat.octant(foot(u), foot(t))          # FUN_00556d78 = FUN_00556454(unit, FUN_005568e4(unit, target))
         if u.facing != face or m.turning:
             _set_action(world, u, TURN)
-        _turn_toward(u, face)
+        _turn_toward(world, u, face)
         return False
     m.since_hop = (m.since_hop + 1) & 255               # byte at mover+0x78
     if m.follow != t.id:                                # a new object: force the static re-plan

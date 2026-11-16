@@ -325,9 +325,11 @@ def swing_tick(world, u):
             from . import effects                                       # FUN_00516b2f: `FUN_005106d2(0xc)` -> the Invisibility effects get `+0x42 := 1`
             effects.end_invisibility(u)
             extra = attack_extra(attack_gap(foot(u), foot(t)) if ob is None else structure_gap(u, ob))
-            if st.range > 1:                                            # message 0x72: the client's shoot action releases the arrow at ShootDelay
-                effects.spawn_arrow(world, u, t if t is not None else ob)
-            u.action, u.action_start_tick = mv.ATTACK, world.tick       # message 0x71: the client restarts the attack animation
+            if not mv.client_busy(world, u):                            # 0x71 / 0x72 (`0x4132d2`, `0x413427`): a view still in an earlier action (`+0xa8 != 0`) ignores the message
+                if st.range > 1:                                        # message 0x72: the client's shoot action releases the arrow at ShootDelay
+                    effects.spawn_arrow(world, u, t if t is not None else ob)
+                u.action, u.action_start_tick = mv.ATTACK, world.tick   # message 0x71: the client starts the attack animation
+                mv.set_client_busy(world, u, mv.attack_ticks(world, u)) # `+0xa8 := T+0x68`
             rest = st.windup + st.recovery                              # FUN_00504ab8: +0x138 = tick + +0x134 + +0x135 (the rest test, combat.md 12.5)
             u.step_end = world.tick + (rest if st.range > 1 else rest & 0xFF)   # +0x12c > 1: message 0x72 (dword); else 0x71 (byte argument)
         u.done = False

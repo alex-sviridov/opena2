@@ -104,7 +104,7 @@ def use_mode(world, u):
         face = combat.octant(foot(u), Foot(d[0], d[1]))
         if u.facing != face or u.mover.turning:
             mv._set_action(world, u, mv.TURN)
-        mv._turn_toward(u, face)
+        mv._turn_toward(world, u, face)
         return
     mv.go_tick(world, u)
     if u.mover.arrived:                                 # the plan ended short of the range (`mover+0x90`): the order ends
