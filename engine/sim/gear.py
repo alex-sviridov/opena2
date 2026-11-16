@@ -194,15 +194,21 @@ def vitals(world, u, st=None):
     return prog.derived_vitals(u.stats, u.skills, bonus_hp=st.hp_bonus, bonus_mana=st.mana_bonus, total=u.xp_total, attrs=attrs)
 
 
-def recompute(world, u):
+def recompute(world, u, load_only=False):
     """The recompute (vtable `+0x58`, `FUN_0051366b`) after a change of the loadout, the pack or an attribute: drops the cached combat stats, takes
     the equipment's attribute / skill bonus, the speed stat (load penalty included) and the maximum HP / mana (HP and mana are clamped to them, never
     raised)."""
     from .combat import combat_stats
     if not u.human or u.stats is None:
         return
+    old = u.combat
     u.combat = None
     st = combat_stats(world, u)
+    # Darkness's direct part of the scan word (`+0xa4`, effects.md 5) lasts until a recompute rewrites `+0xa4 = base + bonus`.  Triggers (CONFIRMED,
+    # callers of vtable `+0x58`): level-up `FUN_005128cb` (`0x512e4d`), equip / unequip `FUN_005290cc` etc. (`0x5292c4`, `0x5294e0`), and the load
+    # change `FUN_0050f065` (`0x50f123`), which recomputes only when `load // capacity` (`+0x90 / +0x92`) changed (`load_only`: pack moves, pickups).
+    if not load_only or (old is not None and old.load // old.capacity != st.load // st.capacity):
+        u.fx.scan_direct = 0
     if st.attrs is not None:
         base = prog.attributes(u.stats)
         u.attr_bonus = tuple(a - b for a, b in zip(st.attrs, base))
@@ -387,7 +393,7 @@ def move_item(world, u, src_kind, dst_kind, src_index, dst_index, count=1):
     else:
         _file(world, u, item, src_index)                # not a destination of the game: keep the item
     sync_carried(u)
-    recompute(world, u)
+    recompute(world, u, load_only=KIND_SLOT not in (src_kind, dst_kind))
     return True
 
 
@@ -434,7 +440,7 @@ def pick_up(world, u, pile):
             _file(world, u, replace(it, new=True))
     world.remove_item(pile.id)
     sync_carried(u)
-    recompute(world, u)
+    recompute(world, u, load_only=True)
 
 
 # --- script items (instants 11, 12, 13, 20, 28, 38): the same pack as the pickup ---------------------------------------------------
@@ -450,7 +456,7 @@ def give_item(world, u, code, mods=()):
         return
     _file(world, u, S.Item(code, 1, 0, tuple(mods)), APPEND)
     sync_carried(u)
-    recompute(world, u)
+    recompute(world, u, load_only=True)
 
 
 def remove_item(world, u, code):
@@ -472,7 +478,7 @@ def remove_item(world, u, code):
             taken = pack_take(pack, i, 1)
             u.pack = tuple(pack)
             sync_carried(u)
-            recompute(world, u)
+            recompute(world, u, load_only=True)
             return taken
     return None
 
@@ -486,7 +492,7 @@ def take_all(world, u):
     items = list(u.pack)
     u.pack = ()
     sync_carried(u)
-    recompute(world, u)
+    recompute(world, u, load_only=True)
     return items
 
 

@@ -479,3 +479,49 @@ def test_check_25_layers_past_the_slots_read_the_rest_of_the_record():
     effects.release(w, m, sp(w, 17), 30, cell=(20, 20))
     carriers_pass(w)
     assert [_check25(w, 19, 20, k) for k in (3, 8, 9)] == [1, 0, 1]                                  # a wall cell: slot 3, no trap, index word
+
+
+# --- structures as carrier targets (effects.md 6.2: FUN_00559b7f, FUN_0051e65b structure branch) ---------------------------------------------
+
+def _tower(w, x, y, hp=500, hp_max=500):
+    from engine.world import MapObject
+    ob = MapObject(0x6800 + x * 64 + y, "structure", 21, x, y, owner=3, hp=hp, hp_max=hp_max, uid=0x800 + x * 64 + y, footprint=((0, 0, True),))
+    w.add_object(ob)
+    return ob
+
+
+def test_fire_ball_hits_a_structure_in_the_square_with_the_elemental_part_minus_five_and_no_xp():
+    w = world(3)
+    m = monster(w, 1, 10, 20)
+    ob = _tower(w, 21, 20)                                                      # inside the radius-1 square round (20, 20)
+    far = _tower(w, 30, 30)
+    t = monster(w, 3, 20, 20, owner=3, hp=300)
+    c = cast_unit(w, m, 2, t)
+    carriers_pass(w, c.ticks_left)
+    hits = [e for e in w.fight_log if isinstance(e, Damage) and e.target == ob.id]
+    assert len(hits) == 1 and 0 < hits[0].amount and ob.hp == 500 - hits[0].amount
+    assert far.hp == 500                                                        # outside the square
+
+
+def test_area_damage_floors_a_structure_at_zero_and_skips_indestructible_ones_without_a_draw():
+    w = world(3)
+    m = monster(w, 1, 10, 20)
+    low = _tower(w, 21, 20, hp=1)
+    stone = _tower(w, 19, 20, hp=1000, hp_max=0)
+    t = monster(w, 3, 20, 20, owner=3, hp=300)
+    c = cast_unit(w, m, 2, t)
+    carriers_pass(w, c.ticks_left)
+    assert low.hp == 0                                                          # not negative, unlike a melee hit
+    assert stone.hp == 1000
+
+
+def test_wall_of_earth_and_effect_carriers_do_not_reach_a_structure():
+    w = world(3)
+    m = monster(w, 1, 10, 20)
+    ob = _tower(w, 20, 20)
+    c = effects.release(w, m, sp(w, 17), 30, cell=(20, 20))
+    carriers_pass(w, 3)
+    assert ob.hp == 500
+    for c in w.carriers:
+        effects.reach_structure(w, c, ob)
+    assert ob.hp == 500

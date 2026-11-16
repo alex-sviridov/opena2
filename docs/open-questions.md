@@ -17,7 +17,6 @@ from both places when answered).
 
 - Sound (K10 answered the tables, the attenuation, the registry options, the speech names and the music zones; [sound](formats/sound.md#open-questions)): the server events behind the unchanged-HP blow sound, the shop-speech trigger, the unreferenced / missing speech names, `0x5f1a04`; the engine plays sound and music (K11, [audio](engine/audio.md)): open items in the next line.
 - Audio K11 ([audio](engine/audio.md#open-questions), starting routines `FUN_0041da16`, `0x467e42`, `FUN_0041b311`): the callers of table ids 3-6 / 11-13 and which `message` (15) sites fire in single player; fog gating of unit sounds and the view state `+0x78 == 1`; which object defs are n44 / n34 / n58 and the first `rand` of the ambience; the town window sounds and the speech test sample; the pickup / retreat / swarm bank offsets; the hurt kind from the old or the new HP (`0x467e42` / `0x467f60`); the DirectSound pan law and the 74 % default against the real mixer (by ear); the exact gapless music switch.
-- Attack order aimed at a structure: answered (accepted, fought like a creature; [combat 5.5](engine/combat.md)); only the mage / spell-carrier branch against a structure is untraced.
 
 ## Campaign
 
@@ -30,7 +29,7 @@ from both places when answered).
 
 ## Spells
 
-- [Effects](engine/effects.md#open-questions): the structure branch of the carriers (`vtable +0x34`, `FUN_00559b7f`); the human scan's recompute triggers besides the stat switch; the client effect messages (`FUN_005044ba`, `FUN_00504498`, `FUN_005045a5`).
+- [Effects](engine/effects.md#open-questions): the client effect messages (`FUN_005044ba`, `FUN_00504498`, `FUN_005045a5`).
 - Backpack window leftovers (K5b answered: text flag 8, message `0x46e`, the doll item on the cursor, Ctrl+F): the open sound, releases over the minimap / heads / window 8, the window `0x4ba` of message `0x463` (map 10), the hero-screen lists' gold cell (phase K, hero_ui). [ui-layout 11.13](engine/ui-layout.md#open-questions)
 
 ## Town mode

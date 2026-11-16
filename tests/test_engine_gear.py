@@ -334,3 +334,21 @@ def test_template_two_handed_weapon_and_shield_leave_the_weapon_in_the_pack():
     u.stats = replace(u.stats, equipment=("Great Sword", "Buckler", "", "", "", "", "", "", "", ""))
     gear.ensure_loadout(w, u)
     assert sorted(gear.slots_of(u)) == [2] and [i.code & 0xFFF for i in u.pack] == [code_of("Great Sword")]
+
+
+# --- Darkness's direct scan part ends at the human recompute triggers (effects.md 5) -------------------------------------------------
+
+def test_darkness_direct_scan_part_ends_on_equip_and_level_up_but_a_pack_move_only_when_the_load_step_changes():
+    w, u = world_with_hero()
+    fill(u, item("Sword"), item("Potion Healing"))
+    combat_stats(w, u)
+    u.fx.scan_direct = -2
+    assert mv(w, u, 2, 2, 1, 0)                                   # a pack reorder: load // capacity unchanged, no recompute in the exe
+    assert u.fx.scan_direct == -2
+    assert mv(w, u, 2, 1, 0, 0)                                   # equip the sword: the equip method recomputes
+    assert u.fx.scan_direct == 0
+    u.fx.scan_direct = -2
+    gear.recompute(w, u, load_only=True)
+    assert u.fx.scan_direct == -2
+    gear.recompute(w, u)                                          # the level-up path (xp.level_up calls this)
+    assert u.fx.scan_direct == 0

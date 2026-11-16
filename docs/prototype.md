@@ -79,7 +79,7 @@ is drawn from its equipment (orange cloak, [animation §1.3](formats/animation.m
 - Sound and music play through pygame.mixer ([audio.md](engine/audio.md), K11): not yet judged by ear (VERIFY BY EAR list); no town / shop speech (no towns yet).
 - No save / load; no campaign flow between missions ([campaign](engine/triggers.md#11-the-end-of-mission-flow)): hero recruit, roster carry-over.
 - Interface: the Heads panel is only a picture (no hero windows), no town / shop windows, menu entries of later phases disabled.
-- Spells: structures are not modelled as spell targets (attack orders on structures are accepted and fought like creatures);
+- Spells: area damage (Fire Ball, Blizzard, Acid Stream) hits structures, nothing else targets them (attack orders on structures are accepted and fought like creatures);
   the Prismatic Spray chain, Lightning / Spray bolts and the Fire Ball explosion (lights, steam, burnt ground, burning trees)
   are built, but the status effects of units other than Invisibility and Stone Curse (poisoned, blessed, hasted, ...) have no drawing of their own.
 - Triggers: 37 (set music) and the unnamed kinds are not implemented

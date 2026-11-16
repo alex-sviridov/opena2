@@ -453,7 +453,7 @@ def point_tick(world, c):
 
 def _occupants(world, x, y, both):
     """The units of the cell record: the ground occupant (`rec+4`, `FUN_0055201a` / `FUN_00551edb`) and, with `both`, the air occupant
-    (`rec+8`, `FUN_00552079`).  Structures (`FUN_00559b7f`) are not modelled as targets."""
+    (`rec+8`, `FUN_00552079`).  The structure of the cell (`FUN_00559b7f`) is `_structure_at`."""
     from engine.cellslots import pack
     idx = pack(x, y)
     out = []
@@ -465,6 +465,34 @@ def _occupants(world, x, y, both):
         if a is not None and a in world.units:
             out.append(world.units[a])
     return out
+
+
+def _structure_at(world, x, y):
+    """`FUN_00559b7f(x, y)`: the cell record's structure (`rec+0xc`, CONFIRMED asm `0x559bfd`) = the registered structure of the cell (`World._claim`), or None."""
+    i = world._claim.get((x, y))
+    ob = world.objects.get(i) if i is not None else None
+    return ob if ob is not None and ob.kind in ("structure", "bridge") else None
+
+
+def reach_structure(world, c, ob):
+    """`FUN_00518681(structure)` (effects.md 6.2; CONFIRMED).  Wall of Earth: nothing.  A damage carrier runs `FUN_0051e65b`, whose structure branch
+    (vtable `+0x2c` = 0, `+0x34` = 1) is `FUN_005201b2` with the spell's record: `d = emin + rand(espread) - 5` floored at 0, nothing at all for an
+    indestructible structure (no draw); then `HP(+0x42) -= d` **floored at 0** (the melee hit of combat 5.4 is not floored) and the HP message `0x73`
+    when `d > 0`.  No XP credit, no last attacker, no hit reaction (the structure class answers vtable `+0x20` = 0).  An effect carrier would call the
+    effect's apply on the structure object, which reads and writes creature fields past its 0x6c bytes (memory corruption): no data does it (the area
+    / field carriers that reach structures are all damage spells), the engine ignores it."""
+    from . import spells as sp
+    from .combat import log, structure_damage
+    from engine.world import Damage
+    if ob is None or c.spell == WALL_OF_EARTH or c.effect is not None:
+        return
+    if ob.hp_max == 0 or getattr(ob, "indestructible", False):
+        return
+    rec = sp.spell_record(world.spell_table.get(c.spell), c.level)
+    d = structure_damage(rec, world.rng)
+    ob.hp = max(0, s16(ob.hp - d))
+    if d > 0:
+        log(world, Damage(world.tick, c.caster if c.caster is not None else 0, ob.id, d, ob.hp))
 
 
 def _damage(world, c, t, record):
@@ -674,6 +702,7 @@ def area_tick(world, c):
             for t in _occupants(world, x, y, True):
                 if t.id in world.units:
                     reach(world, c, t)
+            reach_structure(world, c, _structure_at(world, x, y))
             if dmg:
                 _interact(world, c.spell, x, y)
         return True
@@ -719,6 +748,7 @@ def field_tick(world, c):
             for t in _occupants(world, x, y, True):
                 if t.id in world.units:
                     reach(world, c, t)
+            reach_structure(world, c, _structure_at(world, x, y))
     c.step = (c.step + 1) & 0xFF
     return total <= c.step
 
