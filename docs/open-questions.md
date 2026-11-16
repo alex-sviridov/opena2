@@ -6,7 +6,6 @@ from both places when answered).
 
 ## data.bin and items
 
-- Human and structure fields in code (`FUN_004a65b0`, `FUN_004a65d0` users; column names known). [databin](formats/databin.md#open-questions)
 - Items: none open. Related and not started: the `Scenario.dll` state machine beyond the shop table and the save block. [items](data/items.md#open-questions)
 
 ## Progression
@@ -29,7 +28,6 @@ from both places when answered).
 
 ## Spells
 
-- [Effects](engine/effects.md#open-questions): the client effect messages (`FUN_005044ba`, `FUN_00504498`, `FUN_005045a5`).
 - Backpack window leftovers (K5b answered: text flag 8, message `0x46e`, the doll item on the cursor, Ctrl+F): the open sound, releases over the minimap / heads / window 8, the window `0x4ba` of message `0x463` (map 10), the hero-screen lists' gold cell (phase K, hero_ui). [ui-layout 11.13](engine/ui-layout.md#open-questions)
 
 ## Town mode
@@ -88,7 +86,7 @@ from both places when answered).
 
 ## Structures
 
-- Using a structure ([structures](engine/structures.md#open-questions)): verify in game the use-walk stop cells, a far use click failing (structures 2.1, answered in the exe) and that the hovered well's panel redraws as the charges fall (8.1); the "Saving Place" branch (`FUN_0044fff0(0x68f628) == 4`, `FUN_0050155f`). `FUN_0050f12c` case `0xf`.
+- Using a structure ([structures](engine/structures.md#open-questions)): verify in game the use-walk stop cells, a far use click failing (structures 2.1, answered in the exe) and that the hovered well's panel redraws as the charges fall (8.1).
 - Cutscenes, m1 ([cutscenes](engine/cutscenes.md#open-questions), [REA notes](engine/cutscenes-rea.md#open-questions)): the audio channel order / cache markers are checked by stream ends only; the list's double click / wheel (`0x5cffc8`), the 640x360 blit rectangle, frame dropping in `smackw32.dll`, message `0x436`, town 2 / 3 leave codes; VERIFY IN GAME: [cutscenes 7](engine/cutscenes.md#7-verify-in-game-nothing-watched-yet).
 - Shop, second round ([shop-rea2](engine/shop-rea2.md#8-tooltips-confirmed-where-read)): whether the window load resets the selected shelf at each opening, whether the keeper bitmaps are colour-keyed on black, the stock panel's item tooltip (`0x4b37f7`), the Kaarg fire bitmap order (lite / burn / cicle INFERRED), `FUN_004a0fd0(2)` = `rand() % 2` (INFERRED); the shelf / keeper tooltips are not built; VERIFY IN GAME: the human shelf clips, idle and Yes / No clips, the Kaarg brazier, price numbers.
 - Item sparkle ([item-new-rea](engine/item-new-rea.md)): where the client reads wire bit `0x40` (the pickup mark), whether trades / hero-death drops / script items also write server `+8`; `PickupWatch` still counts `Item.new`, which nothing clears.

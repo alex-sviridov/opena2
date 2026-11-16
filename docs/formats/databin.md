@@ -160,9 +160,25 @@ attack 7 + 4.
 [animation §3.4](animation.md#34-where-the-speeds-come-from). All 22 params, the modifier text and their readers:
 [spells](../data/spells.md#2-fields).
 
+## Users of the human and structure records (CONFIRMED, REA)
+
+`FUN_004a65b0(i)` = humans record `i` (list at the database `+0x90`, objects `0x68f590` / `+0xa0`), `FUN_004a65d0(i)` = structure record `i` (`0x68f5b8`); the record's name is at `+4`, the params at `+8` (`FUN_0041e7e0(k)`). Every param column has a reader in the single-player code; the same routines run for the server (units / structures in the world) and the client (the view's own copy built by the mission loader `FUN_004a449c`).
+
+**Structures** (6 params; id = the map's structure type byte):
+
+| P | Column | Server `FUN_0051ff33` (ctor, by `+0x40` type byte) | Client `FUN_004a449c` (`0x4a49ca`-`0x4a4a73`) |
+|---|---|---|---|
+| 0, 1 | `sizeX`, `sizeY` | `+0x60`, `+0x61` footprint (a sized placement, e.g. bridges, overrides with the placed size) | - |
+| 2 | `scanRange` | `+0x48` | `+0x10a = scan << 8` (sight) |
+| 3 | `healthMax` | `+0x44` max and `+0x42` HP | `+0x108` / `+0x104` (0 becomes 1000; `+0x104 = 0` when the map entry's `intact` is 0) |
+| 4, 5 | `Passability`, `BuildingPresent` | `+0x64`, `+0x68` masks, stamped once by `FUN_005599df` (a sized placement: `0` and `0xffffffff` instead) | - |
+
+Other structure-table users: `FUN_00543430` (name search, last to first, for the loaders), `FUN_0052029c` (the save writer: type byte, HP, max HP, scan), the validator / dump routines of the loader `FUN_004f90f4`, `FUN_004fac89`, `FUN_004fb5cc` (text export; not reached in play).
+
+**Humans** (26 params + 10 equipment strings; field map in [units §2](../data/units.md#humans-26-params--10-equipment-strings)): the one constructor is `FUN_005145d1(name, flag, ...)` (loop `FUN_004a65b0(i)` for `i = 1..n-1`, compare the record name `+4` with the requested name), whose stream routine `FUN_00514cf2` reads params 0-23. The rest is read in `FUN_005145d1` itself: param 18 (gender, else the name's `f` suffix), 24 (`serverID`, `+0x14c`), 25 (`knownSpells` bit mask `1 << n`, n = 1..29, only when max mana > 0: spell objects `FUN_0051906d` filed by `FUN_0051c29e`), and the strings (index 0 a weapon object `FUN_00528808` 0x88 bytes, 1 an item `FUN_00527e23` 0x6c bytes, 2-9 items `FUN_005273f0` 0x6c bytes; each handed to the unit's vtable `+0x44` = equip, so the slot is chosen by the item's own class `Slot`, INFERRED; empty strings skipped; skipped when the flag says "no equipment", i.e. the hired mercenaries). Callers: the map loader `FUN_00561bf9` (human units, flag `0x10`: record via `FUN_004fd5ad(serverID)`, constructor `FUN_005143e4`); the client loader `FUN_004a449c` (`0x4a4b4c`: the view's unit uses the same record: `+0x3c` template, `FUN_00514cf2`, `serverID`, the equipment objects for drawing); the recruit at a mission end `FUN_004f312a` and the party `FUN_004f36c0` (record by `serverID`, the name builds the hired unit). Not single player: `FUN_004f515d` (`0x4f7dc0`, the network "party options" message `0x46`: record by index from the message, the unit created by name), `FUN_004fa928` (the lookup of a record by unit type: humans param 16 `typeID`, then monsters param 29, used by the quest accept `FUN_0052f8e2`, multiplayer only), `FUN_0053ebe0` (name search by the loaders, last to first), `FUN_004fd758` (no caller), `FUN_0052d87b` (no direct caller; a vtable method of a client view object: type `< 0x21` takes the record `+0xc`, else record 5, INFERRED).
+
+The special-item byte (`+0x1c`) is never read in play. The columns `Skill.*`, `typeID`, `face` and the others have the meaning given by their label (the labels agree with the readers above, [column names](#column-names)).
+
 ## Open questions
 
-- Human and structure fields in code (loaders via `FUN_004a65b0`,
-  `FUN_004a65d0`; the column names above give their meaning). The 7 × i16
-  of item classes (material masks per quality), `castSpell`/`damage*`
-  values and the `stats` columns are answered in [items](../data/items.md); the special-item byte is not read.
+None open here. The 7 x i16 of item classes (material masks per quality), `castSpell` / `damage*` values and the `stats` columns are answered in [items](../data/items.md).

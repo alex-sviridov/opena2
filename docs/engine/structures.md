@@ -118,7 +118,7 @@ Branches on the result of A, in order:
 | IsKindOf shop class (`0x5f90e0`) | multiplayer shops | client message `0x83` (`FUN_00505347`, type byte `+0x40`, owner `+0x14` of the unit); out of scope |
 | IsKindOf inn class (`0x5f91b8`) | multiplayer inns | message `0x84` (type byte, structure `+4`, owner); out of scope |
 | IsKindOf "Pointer" (`0x5f90b0`) | signposts 70-75 | `if (+0x6c > 0) FUN_00574f3f(+0x6c)` (the instant runtime index; `0` = nothing, quirk, map.md section 11). Every use runs it again; no flag. All 40 install records send message `0x433` (instant 2) |
-| type word `+0xe == 0x42` and `FUN_0044fff0(0x68f628) == 4` | "Saving Place" | client save UI (`FUN_0050155f`, `FUN_00500ad9`, `FUN_0050101e`, `player+0xa50 := [[0x6044c4]]`); no campaign map has it; not analysed |
+| type word `+0xe == 0x42` and `FUN_0044fff0(0x68f628) == 4` | "Saving Place" | **unreachable in single player** (CONFIRMED, [8.2](#82-the-saving-place-branch)): the test is the network session mode `+0x4e0 == 4` (TCP/IP), set only by the multiplayer menus; the chain `FUN_0050155f` / `FUN_00500ad9` / `FUN_0050101e` is the multiplayer save-slot UI. No campaign map has the type either |
 | type word `0x1c`, `0x1d`, `0x4c`, `0x4d` | **switches 1/2 and altars 1/2** | `+0x42 = (+0x42 == 0) ? 1 : 0`, then `FUN_00503672(structure, 0, 0)` (§4). No other test: any unit, any owner, no limit, **toggles back** on the next use |
 | (anything else) | graves 39/40, houses | nothing |
 
@@ -308,7 +308,10 @@ Answers to Q5:
 * Not stored per hero: charges are the structure's `+0x42`, shown by the info panel as `Health hp/max` for the selected well (existing reader).
 * The info panel of a hovered well shows `hp/max` of `obj+0x104` (`structure_rows`, ui-layout 10), so it follows the charges as the `0x82` handler writes them (engine tested: `3/3` -> `2/3`). VERIFY IN GAME only that the panel redraws while hovering without a new hover event (INFERRED); the well sound heard in the original, if any, is not from the server (no sound request exists in the path read here).
 
+### 8.2 The Saving Place branch
+
+CONFIRMED (REA). `FUN_0044fff0` returns `[this + 0x4e0]` of the global session object `0x68f628` (the DirectPlay / winsock transport). The field is the connection mode: the constructor `0x50696a` sets **5 (none)**; the only writer is `FUN_00507864(mode)` (`0x507879`), called by the multiplayer menus: `FUN_0044506f` (the connection-type list, mode = the chosen row's value, dialog messages `0x453`-`0x455` / `0x452` on failure for modes 3 / 0 / 1 / 2), `FUN_004891d8` (mode 3) and `FUN_0048e90f` / `FUN_0048ef1f` (mode 4). Mode 4 initialises Winsock (`WSAStartup(0x101)`, `FUN_00508f49`), i.e. **TCP/IP**; modes 0-3 are the DirectPlay providers (CoCreateInstance GUIDs at `0x5cda00` / `0x5cda20`, `FUN_005097bf`). Single-player flows (menu, campaign, load) never call `FUN_00507864`, so the session stays at 5 and the "Saving Place" test (`== 4`) is false: the branch, and the `FUN_0050155f` chain (find the connection whose player id equals a message's `+7`; the host's save-slot UI), are multiplayer only and out of scope. The type id `0x42` itself also appears in no campaign map. `FUN_0050f12c` case `0xf` has no other unanalysed branch: its classes are all in section 3 (the shop / inn classes are multiplayer).
+
 ## Open questions
 
-* The meaning of `FUN_0044fff0(0x68f628) == 4` for the "Saving Place" branch (probably a game-type value) and the `FUN_0050155f` chain (save UI); no campaign map has the type.
 * VERIFY IN GAME: the 2.1 stop cells on map 103 (which side hits 7 and 9), and that a far use click answers "No way".
