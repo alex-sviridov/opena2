@@ -8,11 +8,13 @@ pass of a group with order 0 (`FUN_00569321`, every 16 ticks): `FUN_005696e8`, `
 
 from engine.world import DEAD
 
-from . import ai, combat as cb, movement as mv
+from . import ai, combat as cb, movement as mv, spells
 from .pathfinding import chebyshev
 
 FOLLOW_DEFAULT = 3              # `FUN_0056d5b9` / `FUN_0056d638`: brain+0x70 when the range argument is 0
 DEFEND_ORDER, PATROL_ORDER, FOLLOW_ORDER = 8, 0xA, 0x11
+MANA_RESERVE_PERCENT = 95       # player `+0xa5c` (`FUN_00515cd8` constructor `0x515e32`; the only other writer is the save load): unit `+0xa0` = this % of max mana (`FUN_0051366b`, `FUN_005118be`)
+HEAL = 0x18
 DEFEND_RADIUS = 5               # `FUN_00567945` / `FUN_00567988`: the square of radius mover+8 (5) round the leader / the anchor
 
 
@@ -116,7 +118,7 @@ def exec_follow(world, u):
 
 def exec_defend(world, u):
     """`FUN_005696e8` (order 8): beyond the range Brain mode 4; in range the leader's surroundings are scanned (`FUN_0056a73b`; a unit with a
-    spell list takes `FUN_00569968` first, which may Heal the leader: not built, the plain scan runs instead) and, when no attack or cast mode
+    spell list takes `FUN_00569968` first = `heal_leader`, which may Heal the leader, else the plain scan) and, when no attack or cast mode
     resulted and the distance is below 2, the unit steps away."""
     t = _leader(world, u)
     if t is None:
@@ -125,10 +127,34 @@ def exec_defend(world, u):
     if rng < d:
         set_mode4(world, u, t, rng)
         return
-    if world.ai_on:
+    if not heal_leader(world, u, t) and world.ai_on:
         defend_scan(world, u, t)
     if not (u.mode_attack or u.mode_cast or u.mode_cell) and d < 2:
         _step_away(world, u, t, rng)
+
+
+def mana_reserve(u):
+    """Unit `+0xa0` (`FUN_0051366b` end, `FUN_005118be`): `player+0xa5c * maxMana / 100` (C int division, 95 % in single player); a unit without an
+    owner has the whole maximum.  CONFIRMED."""
+    return MANA_RESERVE_PERCENT * u.mana_max // 100 if u.owner else u.mana_max
+
+
+def heal_leader(world, u, leader):
+    """`FUN_00569968(u, leader)` (called only by the defend executor `FUN_005696e8`, for a unit with a spell list `+0x140 != 0`): Heal (`0x18`) is wanted
+    when the reserve `+0xa0 == 0` and the leader's HP `+0x94` < max `+0x96`, or when `+0xa0 < maxMana + 3` (always true: the reserve is at most the maximum)
+    and the leader's HP < max >> 1.  If the book has it (`FUN_0051c391`) and `wrapper+0xc <= mana` the unit casts it at the leader (`brain+0x60 := 1`,
+    `FUN_0056c72b` = Brain mode 8) and nothing else runs; else the plain scan.  Returns True when the cast was made.  CONFIRMED (REA)."""
+    if not spells.known_mask(u) or world.spell_table is None:
+        return False
+    reserve = mana_reserve(u)
+    if reserve == 0:
+        want = leader.hp < leader.hp_max
+    else:
+        want = reserve < u.mana_max + 3 and leader.hp < (leader.hp_max >> 1)
+    if not want or ai.castable(world, u, HEAL) is None:
+        return False
+    ai.cast_at(world, u, leader, HEAL)
+    return True
 
 
 def defend_scan(world, u, leader):

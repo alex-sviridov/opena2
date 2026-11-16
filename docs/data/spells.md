@@ -103,7 +103,7 @@ cast at a unit, `0xe` cast at a cell; phase `+0x58`, countdown `+0x6c`):
 Wrapper object (class `0x5d1160`, ctor by name `FUN_005190e4`, by number `FUN_0051906d`, copy `FUN_0051937b`; filled from
 the record by `FUN_0051922e`): `+4` record, `+8` number, `+9` range, `+0xa` defensive, `+0xc` mana, `+0xe` damage
 min, `+0xf` spread, `+0x10` duration (u16). Level scaling `FUN_005195b1(level)` is called by `FUN_00519483` (cast
-time) and rewrites `+9`, `+0xe..+0x10` (§6). Spells are added to a spellbook by `FUN_0051c29e(n)` (console `+spell n` / `+spell all`
+time) and rewrites `+9`, `+0xe..+0x10` (§6). **`FUN_00519483` is a thiscall on the wrapper itself (CONFIRMED REA, `ECX` kept into `FUN_005195b1`): it scales that wrapper in place** from the caster passed on the stack (`skill[sphere] - 30 + Mind`, clamp 0..255). Its two callers: the Prismatic Spray cast (`0x519b9a`, on the book's wrapper) and `FUN_0051c3e4(unit)`, which does it for every wrapper of the book and is run by the recompute `FUN_0051366b` of a unit with a spell list (`+0x140 != 0`). So a book wrapper's `+9` is the range at the caster's level of its last recompute, the value `spells.wrapper_range` computes (no copy is scaled). Spells are added to a spellbook by `FUN_0051c29e(n)` (console `+spell n` / `+spell all`
 in `FUN_004f3d68`, unit creation from `known_spells` bit n, `FUN_00511959`).
 
 ## 4. Effect handlers
@@ -327,7 +327,7 @@ Chebyshev `<=` range, else the move driver with stop distance = range); state `0
 (`0x5115a5`), skills = `spell_power` or `skill*` (mages), the book = the slot spells or the `known_spells` mask, the mage flag from the mask (ai §12.1).
 
 Engine (`engine/sim/spells.py`; since phase K2 also `engine/sim/effects.py`, [effects](../engine/effects.md)): the damage branch (I4a), **Heal 24** (`heal_release`, §4 row, `0x51a2b8`: no effect on an at-war target, HP > -10 and `+0x98 != 0`,
-`min' + rand(1..spread')` capped at `maxHP - HP`, `FUN_00510484` with the revive `FUN_00510534`) and **Drain Life 26** (`drain_release`, `0x51a3f3`: astral protection,
+`min' + rand(1..spread')` capped at `maxHP - HP`, `FUN_00510484` with the revive `FUN_00510534`) (**revive, CONFIRMED REA**: `FUN_005551d6` is called on the position object `unit+0x10` and sets the sub-cell to `(0x80, 0x80)`, so a revived unit stands at its cell centre; the recompute in vtable slot `+0x58` is `FUN_0051366b`, which rewrites `+0xbe := Reaction / 3`, so the `<<= 1` defence is not kept; engine `spells.revive`) and **Drain Life 26** (`drain_release`, `0x51a3f3`: astral protection,
 cap HP + 10, damage XP credit, hit reaction, last attacker, the caster heals the amount) are built; `FUN_0051fa4e(n)` = `rand(n - 1) + 1`. Phase K2 built the effect
 system and the other handlers ([effects](../engine/effects.md)): protections, Bless / Curse, Haste / Slow, Shield, Invisibility, Stone Curse (point carriers), Poison Cloud,
 Darkness, Light, Wall of Fire, Wall of Earth (area carriers with the cell slots), Fire Ball (missile + apply-once square), Blizzard and Acid Stream (field carriers),
@@ -447,4 +447,4 @@ The final string is `title+mana, damage, range, duration, helper row` concatenat
 
 ## 11. Open questions
 
-- Book wrapper scaling: whether `FUN_00519483` rewrites the spellbook wrapper's `+9` in place (the AI reads `+9` as a range, [ai §12](../engine/ai.md#open-questions)).
+- None open.

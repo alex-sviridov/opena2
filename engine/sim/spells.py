@@ -466,14 +466,16 @@ def heal(world, t, amount, caster=None):
 
 def revive(world, t):
     """`FUN_00510534`: the dying state is undone: corpse stage byte `+0x13c := 0` (the next HP <= 0 starts the countdown again), phase 0, done flag 1,
-    defence `<<= 1` then the recompute (vtable +0x58; INFERRED: it rebuilds the combat numbers, so the engine drops its halved copy), HP at least 1, then
-    `FUN_0056dba1` (cancel + order 0xc on the own cell).  `FUN_005551d6(position)` is not decoded (INFERRED: a grid update; nothing modelled)."""
+    defence `<<= 1` then the recompute (vtable +0x58 = `FUN_0051366b`, which rewrites `+0xbe := Reaction / 3`: the engine drops its halved copy), HP at
+    least 1, then `FUN_0056dba1` (cancel + order 0xc on the own cell).  `FUN_005551d6` on the position object (`unit+0x10`) sets the sub-cell to
+    (0x80, 0x80): the unit stands at its cell centre again (CONFIRMED REA)."""
     t.death_seen = False
     t.death_tick = None
     t.phase = 0
     t.done = True
     t.combat = None
     t.hp = max(t.hp, 1)
+    t.sub_x = t.sub_y = 128
     mv.fail_stop(world, t)
     mv._set_action(world, t, mv.IDLE)
 

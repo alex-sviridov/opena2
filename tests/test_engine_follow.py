@@ -161,3 +161,58 @@ def test_an_attack_command_stops_a_member_that_is_the_target():
     w, sim, h, a, b = setup(script([cmd(10, 1, (S.K_UNIT, 2))], TRUE, []))
     T.run_instant(w, w.script, 0)
     assert a.order == 0xC and b.order == 3 and b.target == a.id        # FUN_0056d1be: the target itself stops
+
+
+# --- the caster branch of the defend executor, FUN_00569968 (ai.md 14.2) -------------------------------------------------------------
+
+def _healer(mana=40, mask=1 << 24, **kw):
+    from test_engine_ai_casting import monster, world as cworld
+    w = cworld()
+    leader = hero(w, 2, 24, 20)
+    m = monster(w, 1, 20, 20, owner=1, known=mask, mana=mana, **kw)
+    g = orders._new_group(w, 1)
+    orders._join(w, g, m)
+    follow.defend_group(w, g, leader, 5)
+    return w, m, leader
+
+
+def test_mana_reserve_is_95_percent_of_the_maximum_mana():
+    w, m, _ = _healer(mana=40)
+    assert follow.mana_reserve(m) == 38 and follow.mana_reserve(type("U", (), {"owner": 0, "mana_max": 40})()) == 40
+
+
+def test_a_defending_caster_heals_a_leader_below_half_health_and_nothing_else_runs():
+    w, m, leader = _healer()
+    leader.hp = leader.hp_max // 2 - 1
+    assert follow.heal_leader(w, m, leader)
+    cast = [c for c in w.ai_emitted if getattr(c, "spell_id", 0) == 0x18]
+    assert cast and cast[0].target_id == leader.id and m.mode_cast
+
+
+def test_a_leader_at_half_health_or_more_is_not_healed():
+    w, m, leader = _healer()
+    leader.hp = leader.hp_max // 2
+    assert not follow.heal_leader(w, m, leader) and not w.ai_emitted
+
+
+def test_no_heal_without_the_spell_or_the_mana_or_a_spell_list():
+    for kw in ({"mask": 1 << 5}, {"mana": 1}, {"mask": -1, "mana": 0}):
+        w, m, leader = _healer(**kw)
+        leader.hp = 1
+        assert not follow.heal_leader(w, m, leader) and not w.ai_emitted
+
+
+def test_a_zero_reserve_heals_at_any_wound():
+    w, m, leader = _healer()
+    m.mana_max = 1                                      # 95 * 1 // 100 == 0: the first branch of FUN_00569968
+    assert follow.mana_reserve(m) == 0
+    leader.hp = leader.hp_max - 1
+    assert follow.heal_leader(w, m, leader)
+
+
+def test_revive_snaps_the_unit_to_the_cell_centre():
+    from engine.sim import spells
+    w, m, leader = _healer()
+    m.sub_x, m.sub_y = 10, 200
+    spells.revive(w, m)
+    assert (m.sub_x, m.sub_y) == (128, 128)

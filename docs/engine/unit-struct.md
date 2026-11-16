@@ -96,7 +96,7 @@ Offsets from the constructors 0x50d493, 0x50dc2b, init 0x50e173, copy 0x50e48e (
 | +0x9a | 2 | **mana** | CONFIRMED 0x50fdd8 |
 | +0x9c | 2 | **max mana** | CONFIRMED 0x514d78 |
 | +0x9e | 2 | mana regeneration rate | CONFIRMED 0x50fe2f |
-| +0xa0 | 2 | copied (monster param 6 also writes); UNKNOWN | UNKNOWN |
+| +0xa0 | 2 | mana reserve = `player+0xa5c` (95) `* +0x9c / 100` (whole `+0x9c` without owner); written by `FUN_0051366b` / `FUN_005118be`, copied by the object copy (monster param 6 also writes); read by the caster follow branch `FUN_00569968` (ai.md 14.2) | CONFIRMED (REA) |
 | +0xa2 / +0xa3 | 1 | fractional accumulators (0..99) HP / mana regen | CONFIRMED 0x50fd5b, 0x50fe4f |
 | +0xa4 | 2 | sight word, 8.8 fixed point; client view +0x10a; human recompute `ftol(((mind + reaction) / 25 + 4) * 256)` + bonus `+0xe4` (`0x513a54`, `0x511477`), monsters `+0xa5 << 8` | CONFIRMED (ui-layout 11.1) |
 | +0xa5 | 1 | scan range byte (human param 8 at 0x514dc4) | CONFIRMED loader |
