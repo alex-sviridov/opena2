@@ -2,7 +2,7 @@
 the cursor is hidden.  One pixel per tick, a tick every 23 ms or more (`0x43bcac`, timeGetTime); the text starts 480 px down.  A line starting with `"` is a picture
 (`main\\graphics\\logo\\<name>`) centred on x + 320, any other line is font1 text centred on x + 320: the highlight table (`0x61fa80`) for line 0 and for a line after an
 empty line, the normal table (`0x620928`) otherwise.  The scroll ends when the first visible line is past the last line, and any key press or button press ends it earlier
-(INFERRED, `0x43bc74` / `0x43bc95` both call the close at `0x43c2d2`, which posts `0x445`).  Close -> the menu (the hall of fame `0x429` is not built)."""
+(INFERRED, `0x43bc74` / `0x43bc95` both call the close at `0x43c2d2`, which posts `0x445`).  Close (`0x445`, handler `0x489d17`) -> the hall of fame `0x429` when the campaign is finished (`FUN_00493da0`), else the menu `0x421`."""
 
 from allods2.text import decode_text
 
@@ -56,6 +56,9 @@ class Credits(Screen):
     def last(self):
         return min(self.first + 480 // self.line_h + 1, len(self.lines))
 
+    def close(self):
+        return "hall" if self.shell.campaign_finished() else "menu"
+
     def done(self):
         return self.first >= len(self.lines)
 
@@ -65,12 +68,12 @@ class Credits(Screen):
             self.acc -= TICK_MS
             self.offset -= 1
             if self.done():
-                return "menu"
+                return self.close()
         return None
 
     def event(self, ev):
         if isinstance(ev, (Key, Press)):
-            return "menu"
+            return self.close()
         return None
 
     # -- drawing ---------------------------------------------------------------------------------------------------------------------

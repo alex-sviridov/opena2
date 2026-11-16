@@ -20,7 +20,7 @@ Facts are CONFIRMED (REA / objdump of GOG `allods2.exe`, routine given) or **INF
 ## 2. Engine
 
 `Credits` screen (graph: `menu` / `game` -> `credits` -> `menu`), `music = "credit"`, no cursor. Main menu button 3 is enabled. The last mission's ending (`Outcome.kind == "ending"`, after its chapter video) goes to `credits`.
-`DECISION`: the hall of fame screen is not built, so the credits always lead to the menu (the hall entry is still recorded, `Shell.record_ending`). The tick uses an exact 23 ms accumulator (the exe takes the timer's granularity). Line height = `Font.line_height()` (INFERRED equal to the exe's font height call `0x402a90`).
+Since m3 the credits lead to the hall of fame screen ([hall.md](hall.md)) when `Shell.campaign_finished()`, else to the menu (the hall entry is recorded by `Shell.record_ending`). The tick uses an exact 23 ms accumulator (the exe takes the timer's granularity). Line height = `Font.line_height()` (INFERRED equal to the exe's font height call `0x402a90`).
 
 ## 3. VERIFY IN GAME
 

@@ -13,8 +13,9 @@ from engine.ui import story
 
 GRAPH = {
     "startup": {"menu"},
-    "menu": {"newgame", "load", "cutlist", "credits", "quit"},
-    "credits": {"menu"},                                # any key / click or the end of the text (the hall of fame `0x429` is not built)
+    "menu": {"newgame", "load", "cutlist", "credits", "hall", "quit"},
+    "credits": {"menu", "hall"},                        # any key / click or the end of the text; the hall of fame `0x429` when the campaign is finished (`0x493da0`)
+    "hall": {"menu"},                                   # OK (`0x445`) -> `0x421`
     "cutlist": {"menu", "cutlist"},                     # the Cut Scenes window: Cancel, or Ok -> the video -> the window again
     "newgame": {"menu", "chargen"},
     "chargen": {"newgame", "locations"},
@@ -97,7 +98,8 @@ class Shell:
             from .cutscene import Cutscene
             from .cutlist import CutList
             from .credits import Credits
-            screens = (Startup, MainMenu, NewGame, CharGen, Locations, LoadGame, GameScreen, TownScene, Inn, Shop, Cutscene, CutList, Credits)
+            from .hall import Hall
+            screens = (Startup, MainMenu, NewGame, CharGen, Locations, LoadGame, GameScreen, TownScene, Inn, Shop, Cutscene, CutList, Credits, Hall)
         for cls in screens:
             self.screens[cls.name] = cls(self)
 
@@ -164,6 +166,11 @@ class Shell:
         if self.hall is None:
             self.hall = famehall.load(self.hall_file, self.fs)
         return self.hall
+
+    def campaign_finished(self):
+        """`FUN_00493da0` (CONFIRMED): `Scenario.GetVar(0x300) >= 0x78`, the chapter counter of the running campaign (a finished one, or a loaded save of one)."""
+        camp = getattr(self.campaign, "camp", None)
+        return camp is not None and camp.vars.get(0x300, 0) >= 0x78
 
     def record_ending(self, campaign):
         """The campaign's end (`0x486ce2`, `FUN_004a8d28`): the main hero enters the hall of fame with the exe's score (`famehall.score`).  Returns the position or None (no hero)."""
