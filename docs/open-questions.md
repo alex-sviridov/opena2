@@ -44,7 +44,7 @@ from both places when answered).
 
 - [Triggers](engine/triggers.md#open-questions): (the owner race of the `Var(0x301)` readers: answered, all human scene; the shop's `window+0x160` and `Var(0x302)` are answered in [town-shop](engine/town-shop.md)); (the hire price: none, answered). Instants 29 / 30 stay documented no-ops (the effect system exists now: [effects](engine/effects.md)).
 
-- Shop windows ([town-shop 8 / 9](engine/town-shop.md#9-l8-rea-round-2026-11-15), built in L8): the Yes / No shopkeeper clips, shelf highlights and shelf-turn animations (`0x4baa98`, `0x4bae3e`, `0x4baf3f`, `0x4bb040`), the shop tooltips (`0x4b37f7`, `0x4bb2c4`, `0x4bccf8`), the equip path of a drop on the doll (server `0x4f5d27`; refused for now), the insert order of a returned item inside its shelf (`0x52151c`) and the two lists per block, the pack region's hover rule (`+0x144`), the druid / Kaarg animation tables, a lost mission's DLL shop update (the L1 flow).
+- Shop windows ([town-shop 8 / 11](engine/town-shop.md#11-third-rea-round-2026-11-16)): the two lists per block of the server's shelf object (`0x52151c` calls the list at `block + 0xc`, then the one at `block + 4`; which feeds the client's shelf message is not traced), the timed effects of a potion dropped on the doll (not modelled).
 
 ## Movement and orders
 
@@ -88,6 +88,6 @@ from both places when answered).
 
 - Using a structure ([structures](engine/structures.md#open-questions)): verify in game the use-walk stop cells, a far use click failing (structures 2.1, answered in the exe) and that the hovered well's panel redraws as the charges fall (8.1).
 - Cutscenes, m1 ([cutscenes](engine/cutscenes.md#open-questions), [REA notes](engine/cutscenes-rea.md#open-questions)): the audio channel order / cache markers are checked by stream ends only; the list's double click / wheel (`0x5cffc8`), the 640x360 blit rectangle, frame dropping in `smackw32.dll`, message `0x436`, town 2 / 3 leave codes; VERIFY IN GAME: [cutscenes 7](engine/cutscenes.md#7-verify-in-game-nothing-watched-yet).
-- Shop, second round ([shop-rea2](engine/shop-rea2.md#8-tooltips-confirmed-where-read)): the stock panel's text branch (`0x4b37f7`, `0x4b14d4`), the Kaarg fire bitmap order (lite / burn / cicle INFERRED), whether the druid / Kaarg keeper draws are opaque too; the shelf / keeper tooltips are not built; VERIFY IN GAME: the human shelf clips, idle and Yes / No clips, the Kaarg brazier, price numbers.
+- Shop, second round ([shop-rea2](engine/shop-rea2.md#open-questions)): the writer of the `0x80` identify box (INFERRED dead), the Kaarg fire bitmap order (lite / burn / cicle INFERRED); VERIFY IN GAME: the human shelf clips, idle and Yes / No clips, the Kaarg brazier, price numbers.
 - Item sparkle ([item-new-rea](engine/item-new-rea.md)): where the client reads wire bit `0x40` (the pickup mark), whether trades / hero-death drops / script items also write server `+8`; `PickupWatch` still counts `Item.new`, which nothing clears.
 - Minimap water ([minimap-water-rea](engine/minimap-water-rea.md)): white is the exe's result from the table; whether it is intended art needs an original screenshot.

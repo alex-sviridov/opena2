@@ -6,8 +6,7 @@ Input as the exe's: a press on an item cell takes one piece (Shift: the stack) i
 button acts on the release over the pressed one (Cancel / Exit also play their sound on the press), a click on a shelf of the picture shows it, ESC = Exit (the table is returned).
 
 CONFIRMED in the L8 REA round (town-shop 9): the grids' cell rects and scroll arrows, the shelf rects, the buttons panel (the picture holds the buttons, `ShopButtonN` only while held, a caption and a
-number per button), Shift = the whole stack.  DECISIONs (INFERRED, town.md 5 "L8 as built"): no shopkeeper animations / shelf highlights / tooltips (the picture is static), a drop on the doll is
-refused, the druid / Kaarg shops use their own art directories."""
+number per button), Shift = the whole stack.  DECISIONs (INFERRED, town.md 5 "L8 as built"): (shopkeeper animations, highlights, tooltips and the doll drop were built later: shop-rea2, town-shop 11), the druid / Kaarg shops use their own art directories."""
 
 from types import SimpleNamespace
 
@@ -448,15 +447,15 @@ class Shop(Screen):
         ops.append(Image(MAIN_PIC[self.core.town], ox + sx + P.PICTURE_AT[0], oy + sy + P.PICTURE_AT[1]))
         ops.append(Sprite(self.art + "shopframe.256", 0, ox + sx, oy + sy))
         if self.core.town == 3 and st.game.camp.get(P.DRUID_GATE):                      # the elven goods are part of the picture once the gate variable is set (`0x4bf908`)
-            ops.append(Image(self.art + "elven.bmp", ox + sx + K.ELVEN_AT[0], oy + sy + K.ELVEN_AT[1], True))
-        human = self.core.town == 1                                                   # the human draw `0x4bb3d7` blits clips and keeper with vtable `+0x18` = opaque (CONFIRMED); druid / Kaarg stay keyed (draws not read)
+            ops.append(Image(self.art + "elven.bmp", ox + sx + K.ELVEN_AT[0], oy + sy + K.ELVEN_AT[1]))
+        # every keeper-panel draw (`0x4bb3d7`, `0x4bf908`, `0x4c28c6`: elven picture, highlights, keeper, brazier) blits with vtable `+0x18` = opaque (CONFIRMED, shop-rea2 3.1): no colour key
         for pic in self.keeper.highlight_pics():
-            ops.append(Image(pic.path, ox + sx + pic.x, oy + sy + pic.y, not human))
+            ops.append(Image(pic.path, ox + sx + pic.x, oy + sy + pic.y))
         kp = self.keeper.keeper_pic()
-        ops.append(Image(kp.path, ox + sx + kp.x, oy + sy + kp.y, not human))
+        ops.append(Image(kp.path, ox + sx + kp.x, oy + sy + kp.y))
         fp = self.keeper.fire_pic()
         if fp is not None:
-            ops.append(Image(fp.path, ox + sx + fp.x, oy + sy + fp.y, True))
+            ops.append(Image(fp.path, ox + sx + fp.x, oy + sy + fp.y))
         # the buttons panel (+0x78): the menu picture holds the four buttons up; the `ShopButton` pictures are the pressed look (`0x4bcd05`, CONFIRMED); every button has its caption
         # and, under it, one of the four numbers (gold, minus the buy prices, the sell value, the gold after the deal)
         ops.append(Image(self.art + "shopmenu.bmp", ox + P.BUTTONS_PANEL[0], oy))

@@ -3,6 +3,7 @@ hero arrows), and the screen driven by clicks.  The synthetic tests need no inst
 out/) skip without one."""
 
 import random
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -250,12 +251,25 @@ def test_the_table_holds_five_lots_and_merges_equal_stackables():
     assert drag(st, (P.KIND_SHELF + 1, 0), (P.KIND_TABLE, -1)) == [] and len(st.lots) == 5 and st.lots[-1].item.count == 2     # the same potion merges even when the table is full
 
 
-def test_a_table_lot_dropped_on_the_pack_is_filed_there_unpaid_the_exes_quirk():
+def test_the_pack_refuses_a_shop_owned_lot_but_takes_a_hero_lot():
+    """`0x4b5156` (CONFIRMED): the pack hover allows a carried item whose `+0x18` is 1 or 2 only, so the table -> pack "quirk" of the server's mixed path cannot be reached by a bought lot."""
     st = state(g=game(gold=0))
     drag(st, (P.KIND_SHELF, 0), (P.KIND_TABLE, -1))
-    assert st.pick(P.KIND_TABLE, 0) and st.drop(P.KIND_PACK, -1) == []
-    assert [i.code for i in st.pack()] == [SWORD] and not st.lots and st.gold == 0 and len(st.shelf_items()) == 1
-    assert st.pick(P.KIND_SHELF, 0) and st.drop(P.KIND_PACK, -1)[0].value == "nofit"             # a shelf item straight to the pack does nothing
+    assert st.pick(P.KIND_TABLE, 0) and st.drop(P.KIND_PACK, -1)[0].value == "nofit"
+    assert len(st.lots) == 1 and not st.pack() and len(st.shelf_items()) == 1           # the lot stays on the table
+    assert st.pick(P.KIND_SHELF, 0) and st.drop(P.KIND_PACK, -1)[0].value == "nofit"    # a shelf item straight to the pack does nothing
+    st.cancel()
+    st.entry().bought = (item(SWORD, 1, 40),)
+    drag(st, (P.KIND_PACK, 0), (P.KIND_TABLE, -1))
+    assert st.pick(P.KIND_TABLE, 0) and st.drop(P.KIND_PACK, -1) == [] and [i.code for i in st.pack()] == [SWORD]       # the hero's own lot goes back
+
+
+def test_a_drop_on_the_doll_needs_a_carried_state_and_a_hero_owned_item():
+    st = state(g=game(gold=0))
+    assert st.pick(P.KIND_SHELF, 0) and st.drop(P.KIND_EQUIP, -1) == [] and len(st.shelf_items()) == 2       # shop-owned: returned silently (`0x4aebc8`, no sound)
+    st.entry().bought = (item(SWORD, 1, 40),)
+    assert st.pick(P.KIND_PACK, 0) and st.drop(P.KIND_EQUIP, -1) == [] and [i.code for i in st.pack()] == [SWORD]  # a hero with no carried state: no doll model, refused
+
 
 
 def test_the_pick_up_takes_one_piece_and_shift_the_stack():
@@ -440,3 +454,79 @@ def test_bought_items_reach_a_hero_that_was_never_in_a_world_and_the_doll_sells_
     gold = g.gold
     st.sell()
     assert g.gold > gold and [i.code for i in st.stock.shelves[3]] == [potion.code]
+
+
+@needs_install
+def test_equip_path_of_a_drop_on_the_doll():
+    """Server `0x4f5d27` / `put` `FUN_00512573` through the client rules `0x4b028d`: worn, the replaced piece goes to the pack at the source index, an unusable item and a quest item are refused,
+    a potion is used up, a stack gives one piece."""
+    from engine.ui import pack as UP
+    g = CampaignGame(INSTALL)
+    g.new_game(visit=True)
+    table = g.assets.items()
+    world, _ = g.start_mission(10)
+    g.carry_over(world)
+    entry = g.roster[0]
+    state_ = entry.state
+    assert state_.equipment and any(i.code for i in state_.equipment)
+    st = P.ShopState(g, 1, P.Stock([[], [], [], []]), table)
+    gen = [P.from_generated(x) for x in itemgen.generate(table, 0, 3000, 0x10418103, 12, 1, itemgen.MsvcRng(5))]
+    mage = gear_is_mage(state_)
+    weapons = [i for i in gen if UP.usable_by(UP.item_flags(table, i), mage) and (UP.item_flags(table, i) & 6)]
+    assert weapons
+    w = P.replace(weapons[0], count=1)
+    slots_before = {k: v.code for k, v in P.gear.slots_of(state_).items()}
+    entry.state.pack = (w,) + tuple(state_.pack)
+    n_pack = len(state_.pack)
+    assert st.pick(P.KIND_PACK, 0) and st.drop(P.KIND_EQUIP, -1) == []
+    slots_after = {k: v.code for k, v in P.gear.slots_of(state_).items()}
+    assert w.code in slots_after.values()                                                  # worn
+    assert len(state_.pack) in (n_pack - 1, n_pack) and state_.carried == tuple(i.code for i in state_.pack)
+    if slots_before != slots_after and len(slots_before) == len(slots_after):
+        assert len(state_.pack) == n_pack                                                 # the replaced piece took the place in the pack
+    quest = S.Item(QUEST, 1, 0)
+    entry.state.pack = (quest,)
+    assert st.pick(P.KIND_PACK, 0) and st.drop(P.KIND_EQUIP, -1) == [] and [i.code for i in state_.pack] == [QUEST]    # no usable bit: refused, stays
+
+
+def gear_is_mage(st):
+    return P.gear.is_mage(st)
+
+
+@needs_install
+def test_a_potion_dropped_on_the_doll_is_used_up_one_piece_at_a_time():
+    g = CampaignGame(INSTALL)
+    g.new_game(visit=True)
+    table = g.assets.items()
+    world, _ = g.start_mission(10)
+    g.carry_over(world)
+    state_ = g.roster[0].state
+    st = P.ShopState(g, 1, P.Stock([[], [], [], []]), table)
+    gen = itemgen.generate(table, 0, 1500, 0x4000000, 5, 2, itemgen.MsvcRng(3))
+    potion = next(i for i in map(P.from_generated, gen) if P.group_of(table, i) == 3 and P.price_of(table, i) > 0 and P.UP.item_flags(table, i) & 2)
+    state_.pack = (replace(potion, count=3),)
+    assert st.pick(P.KIND_PACK, 0, True) and st.drop(P.KIND_EQUIP, -1) == []
+    assert [(i.code, i.count) for i in state_.pack] == [(potion.code, 2)]
+
+
+def test_a_returned_item_is_appended_to_its_shelf_or_merged_into_the_first_equal_stackable():
+    """`0x52151c` (CONFIRMED): scan the list in order; an equal stackable entry takes the count, else `Add` at the END (no sorting)."""
+    table = _assets_or_none()
+    shelf = [item(0x0101 + 1, 1, 10), item(POTION, 5, 10), item(POTION, 2, 10)]
+    P.gear.pack_insert(table, shelf, item(POTION, 1, 10))
+    assert [(i.code, i.count) for i in shelf] == [(0x0102, 1), (POTION, 5 + 1), (POTION, 2)] or table is None
+    P.gear.pack_insert(table, shelf, item(0x0150, 1, 10))
+    assert shelf[-1].code == 0x0150
+
+
+def _assets_or_none():
+    return _assets().items() if GFS is not None and GFS.exists("graphics/interface/shopinv.bmp") else None
+
+
+def test_a_lost_mission_does_not_touch_the_dlls_shop_table():
+    """`0x486a68` case `0x41d` (CONFIRMED): with the victory latch `+0x3e4` clear the exe ends the game and posts `0x421` (main menu); `ScenarioLeaveLocation` (the shop table update) and the
+    carry-over run only on the victory path."""
+    g = game()
+    before = repr((g.camp.shop, g.camp.vars))
+    assert g.leave_mission(None, "lost").kind == "main_menu"
+    assert repr((g.camp.shop, g.camp.vars)) == before

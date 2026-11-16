@@ -8,14 +8,16 @@ nothing (the nofit sound); the server buys in table order and stops at the first
 on the shelf whose block takes its group (armour `0x1000000`, weapon `0x400000`, other `0x4000000`), Cancel / Leave return shop items to their shelf and hero items to the pack.
 The stock is regenerated at every arrival in a town (`TownCore.visit`), not at every opening of the window.
 
-CONFIRMED in the L8 REA round (town-shop 9): a drag moves one piece, Shift (`0x6227dc`) the whole stack (`0x4b242d`); the table holds 5 lots (`0x4b5a63`); a table lot dropped on a pack is
-filed there by the server's mixed path (`0x4f5bec` -> `0x4f5e15`) with no payment, the client's release has no origin test (`0x4b25cb`): the exe's own quirk, kept; shelf -> pack does nothing on the
-server; a sold item goes to the block of `Stock.block_for` (never gone).
-DECISIONs (INFERRED): the doll is refused as a target (the town has no equip path: no world); a hero that was never in a world has only the items he bought (`RosterEntry.bought`) to sell; one
+CONFIRMED in the L8 REA round (town-shop 9): a drag moves one piece, Shift (`0x6227dc`) the whole stack (`0x4b242d`); the table holds 5 lots (`0x4b5a63`); a sold item goes to the block of
+`Stock.block_for` (never gone).  Third round (town-shop 11): the pack's hover rule `0x4b5156` allows a carried item whose `+0x18` is 1 or 2 only (hero-owned), so a bought lot cannot go to a pack (the
+server's mixed `0x22` path that would file it unpaid is unreachable from the UI); a drop on the doll runs the info panel's rules `0x4aebc8` -> `0x4b028d` and the server's `put` (`equip_plan`, `_equip`);
+a returned item is appended to its shelf, or merged into the first equal stackable (`0x52151c`), and a shelf-tagged item (`+0x4d`) goes back to its own block (`0x521d4c`).
+DECISIONs (INFERRED): a hero without a carried state has no doll model (refused as a target); a hero that was never in a world has only the items he bought (`RosterEntry.bought`) to sell; one
 price source (the item's own price) for display and charge."""
 
 import random
 from dataclasses import dataclass, replace
+from types import SimpleNamespace
 
 from allods2.formats import itemdefs as idefs
 from allods2.formats import itemgen
@@ -24,6 +26,7 @@ from allods2.formats import saves as S
 from engine import inn as I
 from engine.sim import campaign as C
 from engine.sim import gear
+from engine.ui import pack as UP
 
 KIND_EQUIP, KIND_PACK, KIND_TABLE, KIND_SHELF = 1, 2, 4, 5
 SHELVES = 4
@@ -346,15 +349,85 @@ class ShopState:
         c = self.carried
         if c is None:
             return False
+        if kind == KIND_EQUIP:
+            return self.hero_owned(c) and self.equip_plan(c) is not None
         if self.price(c.item) == 0 and kind != KIND_PACK:
             return False
         if kind == KIND_TABLE:
             return c.kind == KIND_TABLE or self.table_room(c.item)
         if kind == KIND_PACK:
-            return c.kind in (KIND_PACK, KIND_EQUIP, KIND_TABLE)      # a table lot of either side: the server's mixed path files it in the pack, paid or not (below)
+            return self.hero_owned(c)         # `0x4b5156` (CONFIRMED): the pack accepts a carried item whose `+0x18` is 1 or 2 only (a shop-owned item, 5..8, is refused)
         if KIND_SHELF <= kind < KIND_SHELF + SHELVES:
             return c.kind == kind or (c.kind == KIND_TABLE and self.lots[c.index].shelf == kind - KIND_SHELF)
         return False
+
+    def hero_owned(self, c):
+        """The carried item's `+0x18` is 1 or 2 (the hero's own: pack, doll, or a table lot he put there); the shelf items and the lots taken from a shelf carry 5..8 (INFERRED: the
+        table refresh `0x4b8443` rewrites the origin fields; the totals `0x4b960c` already treat `+0x18 == 2` as the sell side)."""
+        return c.kind in (KIND_PACK, KIND_EQUIP) or (c.kind == KIND_TABLE and self.lots[c.index].side == "sell")
+
+    def equip_plan(self, c):
+        """The info panel's release rules `0x4aebc8` -> `0x4b028d` (CONFIRMED, the mission pack's drop on the doll is the same routine, `engine/ui/pack.equip_carried`): the carried item
+        is refused when the hero cannot use it (`FUN_0046a9c2`: fighter bit 2 / mage bit 4, a quest item has neither), for a book he cannot learn (not a mage, or the spell is known:
+        `FUN_004b10b0`) and for a scroll (the mission turns it into the cast item; the shop has no cast mode: INFERRED refused).  Else (the pieces to move, flags) with one piece for a special
+        item (`FUN_00438b13` clones, the carried piece keeps 1).  None = refused.  A hero without a carried state has no doll model (DECISION): refused too."""
+        entry = self.entry()
+        st = entry.state if entry is not None else None
+        if st is None or not st.equipment or self.table is None:
+            return None
+        item = c.item
+        flags = UP.item_flags(self.table, item)
+        mage = gear.is_mage(st)
+        if not UP.usable_by(flags, mage) or (flags & 6) == 0 or (flags & UP.FLAG_SCROLL and flags & 1):
+            return None
+        t = UP.teach_spell(item)
+        if t and (not mage or ((st.spellbook or 0) >> t) & 1):
+            return None
+        return (1 if flags & 1 and item.count > 1 else item.count), flags
+
+    def _equip(self, c):
+        """Release on the doll: a shop-owned item returns silently (`0x4aebc8`: 5..8 -> `0x4b91e8`, no sound); a hero-owned one is refused (it stays where it was) or sent as message
+        `0x22` with destination kind 1: the server (`0x4f5d27`) takes it from the source, `put`s it (`FUN_00512573`: the doll slot follows the item, the pointer position does not matter)
+        and files the replaced or refused object in the pack at the source index (`local_58[0x1f] + 0x1c = src_index`, `FUN_00529ae2`; a stack count is split to one piece for a special item)."""
+        plan = self.equip_plan(c) if self.hero_owned(c) else None
+        if plan is None:
+            return []
+        n, _ = plan
+        bag, st = self.bag(), self.entry().state
+        if c.kind == KIND_PACK:
+            pack = bag.pack
+            item = gear.pack_take(pack, c.index, n)
+            bag.set_pack(pack)
+        elif c.kind == KIND_EQUIP:
+            item = bag.take_slot(c.index + 1)
+        else:
+            item = self._take_lot(c.index, n)
+        if item is None:
+            return []
+        back = self._put(st, item, c.index)
+        if back is not None:
+            self._file(bag, back, c.index)
+        gear.sync_carried(st)
+        return []
+
+    def _put(self, st, item, index):
+        """`FUN_00512573` on a carried state: the replaced / refused object comes back, a special item is used up.  The permanent effects of a use are applied (attributes 2..5, a book's
+        spell); a heal needs no world (HP / mana are at their maxima between missions, INFERRED), the timed effects need the effect system and are lost (DECISION: not modelled)."""
+        shim = SimpleNamespace(item_table=self.table)
+        st.pack_index = index
+        r = gear.resolve(self.table, item)
+        if r is not None and r.defn.kind == idefs.SPECIAL:
+            for e in r.effects:
+                if e.kind in (2, 3, 4, 5):
+                    name = gear.cs.STAT_ATTR[e.kind]
+                    raw = gear.prog.attributes(st.stats)[("body", "reaction", "mind", "spirit").index(name)]
+                    fields = dict(st.stats.fields)
+                    fields[name] = min(raw + e.value, gear.CAP_ATTR)
+                    st.stats = replace(st.stats, fields=fields)
+                elif e.kind == gear.K_TEACH and (st.spellbook is not None or gear.is_mage(st)):
+                    st.spellbook = (st.spellbook or 0) | (1 << e.value)
+            return None
+        return gear.put(shim, st, item)
 
     def table_room(self, item):
         """`0x4b5a63` (CONFIRMED): the table takes an item when it merges with a lot (same code, both stackable) or has fewer than `TABLE_CAPACITY` lots."""
@@ -367,6 +440,9 @@ class ShopState:
         c = self.carried
         if c is None:
             return []
+        if kind == KIND_EQUIP:
+            self.carried = None
+            return self._equip(c)
         ok = self.drop_allowed(kind)
         self.carried = None
         if not ok:
